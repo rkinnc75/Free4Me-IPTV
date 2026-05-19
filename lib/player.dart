@@ -55,7 +55,10 @@ class _PlayerState extends State<Player> {
   String? _bufferingState;
 
   // Cast state
-  bool _castAvailable = false;
+  // True only when Play Services are present AND the stream format is
+  // supported by the Default Media Receiver (HLS, DASH, MP4).
+  // MPEG-TS, RTMP, and other formats are not castable — icon stays hidden.
+  bool _castSupported = false;
   CastState _castState = CastState.unavailable;
   bool _isCasting = false;
 
@@ -87,10 +90,12 @@ class _PlayerState extends State<Player> {
   }
 
   Future<void> initAsync() async {
-    // Check Cast availability in parallel with starting playback.
+    // Check Cast availability and stream castability in parallel with playback.
+    final streamUrl = widget.overrideUrl ?? widget.channel.url ?? '';
     CastController.isAvailable().then((avail) {
       if (!mounted) return;
-      setState(() => _castAvailable = avail);
+      final castable = avail && CastController.isCastable(streamUrl);
+      setState(() => _castSupported = castable);
       if (avail) {
         CastController.getState().then((s) {
           if (!mounted) return;
@@ -267,7 +272,7 @@ class _PlayerState extends State<Player> {
   // ── Cast ───────────────────────────────────────────────────────────────────
 
   Future<void> _onCastTap() async {
-    if (!_castAvailable) return;
+    if (!_castSupported) return;
 
     final url = _playbackUrl();
 
@@ -303,21 +308,6 @@ class _PlayerState extends State<Player> {
         await _engine.open(
           url: url,
           startPosition: resumePosition,
-        );
-      }
-      return;
-    }
-
-    // Not castable format?
-    if (!CastController.isCastable(url)) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              "This stream format isn't supported on Chromecast. "
-              'Use a source with HLS or MP4 streams for Chromecast.',
-            ),
-          ),
         );
       }
       return;
@@ -507,7 +497,7 @@ class _PlayerState extends State<Player> {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  if (_castAvailable)
+                  if (_castSupported)
                     IconButton(
                       onPressed: _onCastTap,
                       icon: Icon(_castIcon, color: Colors.white, size: 28),
@@ -574,7 +564,7 @@ class _PlayerState extends State<Player> {
         const SizedBox(width: 10),
         Text(widget.channel.name),
         const Spacer(),
-        if (_castAvailable)
+        if (_castSupported)
           IconButton(
             onPressed: _onCastTap,
             icon: Icon(_castIcon, color: Colors.white, size: 28),
