@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:open_tv/backend/epg_service.dart';
 import 'package:open_tv/backend/settings_io.dart';
+import 'package:open_tv/views/epg_channel_mapping.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/backend/update_checker.dart';
@@ -855,6 +856,28 @@ class _SettingsState extends State<SettingsView> {
                       );
                     },
                   ),
+                  ...sources
+                      .where((s) => s.id != null)
+                      .map(
+                        (source) => ListTile(
+                          leading: const Icon(Icons.tune),
+                          title: Text(
+                            'Channel mappings — ${source.name}',
+                          ),
+                          subtitle: const Text(
+                            'Manually assign EPG IDs to unmatched channels',
+                          ),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => EpgChannelMappingView(
+                                source: source,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
 
                   const Divider(),
 
