@@ -1,6 +1,7 @@
 import 'dart:collection';
 
 import 'package:open_tv/backend/sql.dart';
+import 'package:open_tv/models/engine_type.dart';
 import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/view_type.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -23,6 +24,9 @@ const openTimeoutSecsProp = "openTimeoutSecs";
 const bufferingWatchdogSecsProp = "bufferingWatchdogSecs";
 const hwDecodeProp = "hwDecode";
 const preWarmOnFocusProp = "preWarmOnFocus";
+
+// Engine override (v1.4)
+const forcedEngineProp = "forcedEngine";
 
 // EPG settings (v1.2)
 const debugLoggingProp = "debugLogging";
@@ -79,6 +83,7 @@ class SettingsService {
     var epgHour = settingsMap[epgRefreshHourProp];
     var epgPast = settingsMap[epgPastDaysProp];
     var epgForecast = settingsMap[epgForecastDaysProp];
+    var forcedEngine = settingsMap[forcedEngineProp];
 
     if (view != null) {
       settings.defaultView = ViewType.values[int.parse(view)];
@@ -104,6 +109,9 @@ class SettingsService {
     if (epgHour != null) settings.epgRefreshHour = int.parse(epgHour);
     if (epgPast != null) settings.epgPastDays = int.parse(epgPast);
     if (epgForecast != null) settings.epgForecastDays = int.parse(epgForecast);
+    if (forcedEngine != null) {
+      settings.forcedEngine = EngineType.fromJson(forcedEngine);
+    }
 
     return settings;
   }
@@ -136,6 +144,7 @@ class SettingsService {
     settingsMap[epgRefreshHourProp] = settings.epgRefreshHour.toString();
     settingsMap[epgPastDaysProp] = settings.epgPastDays.toString();
     settingsMap[epgForecastDaysProp] = settings.epgForecastDays.toString();
+    settingsMap[forcedEngineProp] = settings.forcedEngine.toJson();
 
     await Sql.updateSettings(settingsMap);
     _cached = settings; // keep the in-memory copy in sync

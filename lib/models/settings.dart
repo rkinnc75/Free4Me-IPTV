@@ -1,3 +1,4 @@
+import 'package:open_tv/models/engine_type.dart';
 import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/view_type.dart';
 
@@ -35,6 +36,10 @@ class Settings {
   /// Pre-warm channel URL (HEAD request) when a tile receives focus.
   bool preWarmOnFocus;
 
+  // --- Engine (v1.4) ---
+  /// Global engine override. [EngineType.auto] means let EnginePicker decide.
+  EngineType forcedEngine;
+
   // --- Debug ---
   bool debugLogging;
 
@@ -61,6 +66,7 @@ class Settings {
     this.bufferingWatchdogSecs = 12,
     this.hwDecode = true,
     this.preWarmOnFocus = true,
+    this.forcedEngine = EngineType.auto,
     this.debugLogging = false,
     this.epgAutoRefresh = true,
     this.epgRefreshHours = 24,

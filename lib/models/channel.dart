@@ -1,3 +1,4 @@
+import 'package:open_tv/models/engine_type.dart';
 import 'package:open_tv/models/media_type.dart';
 
 class Channel {
@@ -28,6 +29,10 @@ class Channel {
   /// Programs older than this hide the "Watch from beginning" button.
   int? catchupDays;
 
+  // --- Engine override (v1.4) ---
+  /// Per-channel engine override. Null = use source/global/auto selection.
+  EngineType? engineOverride;
+
   Channel({
     this.id,
     required this.name,
@@ -44,6 +49,7 @@ class Channel {
     this.catchupType,
     this.catchupSource,
     this.catchupDays,
+    this.engineOverride,
   });
 
   /// True iff this channel has any flavor of catchup support.

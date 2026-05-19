@@ -1,3 +1,4 @@
+import 'package:open_tv/models/engine_type.dart';
 import 'package:open_tv/models/source_type.dart';
 
 class Source {
@@ -10,6 +11,8 @@ class Source {
   SourceType sourceType;
   bool enabled;
   String? epgUrl;
+  /// Default engine for all channels from this source. Null = auto.
+  EngineType? defaultEngine;
 
   Source({
     this.id,
@@ -21,5 +24,6 @@ class Source {
     required this.sourceType,
     this.enabled = true,
     this.epgUrl,
+    this.defaultEngine,
   });
 }

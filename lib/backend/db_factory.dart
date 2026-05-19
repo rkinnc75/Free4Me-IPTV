@@ -220,6 +220,15 @@ class DbFactory {
         await tx.execute(
           'ALTER TABLE channels ADD COLUMN catchup_days INTEGER;',
         );
+      }))
+      // v1.4: Per-channel and per-source engine override
+      ..add(SqliteMigration(7, (tx) async {
+        await tx.execute(
+          'ALTER TABLE channels ADD COLUMN engine_override TEXT;',
+        );
+        await tx.execute(
+          'ALTER TABLE sources ADD COLUMN default_engine TEXT;',
+        );
       }));
     await migrations.migrate(db);
     return db;

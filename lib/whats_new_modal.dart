@@ -66,6 +66,19 @@ const _changelog = <String, List<String>>{
     'EPG channel matching now runs in a background thread — no more ANR '
         'dialogs during refresh on large feeds',
   ],
+  '1.8': [
+    'ExoPlayer engine for HLS, DASH, and MP4 streams — better adaptive '
+        'bitrate and battery efficiency on compatible streams',
+    'Automatic engine selection: HLS/.m3u8, DASH/.mpd, and .mp4 URLs route '
+        'to ExoPlayer; everything else (MPEG-TS, RTMP) stays on libmpv',
+    'Per-channel engine override (long-press a channel tile in a future update)',
+    'Global engine override in Settings (Auto / libmpv / ExoPlayer)',
+    'Chromecast support — cast HLS, DASH, and MP4 streams to any Chromecast '
+        'or Google TV device on your network',
+    'Unsupported formats (MPEG-TS) show a clear "not supported" message '
+        'instead of silently failing',
+    'On Cast disconnect, local playback resumes from the Cast-reported position',
+  ],
 };
 
 /// Returns all changelog entries whose version key is a prefix of [version].
