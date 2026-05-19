@@ -6,6 +6,9 @@ class XtreamStream {
   final String? seriesId;
   final String? cover;
   final String? containerExtension;
+  // v1.3: catchup-related fields from /player_api.php?action=get_live_streams
+  final int? tvArchive; // 1 = catchup available, 0 / missing = not
+  final int? tvArchiveDuration; // days, when tvArchive == 1
 
   XtreamStream({
     this.streamId,
@@ -15,9 +18,18 @@ class XtreamStream {
     this.seriesId,
     this.cover,
     this.containerExtension,
+    this.tvArchive,
+    this.tvArchiveDuration,
   });
 
   factory XtreamStream.fromJson(Map<String, dynamic> json) {
+    int? asInt(dynamic v) {
+      if (v == null) return null;
+      if (v is int) return v;
+      if (v is num) return v.toInt();
+      return int.tryParse(v.toString());
+    }
+
     return XtreamStream(
       streamId: json['stream_id']?.toString(),
       name: json['name']?.toString(),
@@ -26,8 +38,12 @@ class XtreamStream {
       seriesId: json['series_id']?.toString(),
       cover: json['cover']?.toString(),
       containerExtension: json['container_extension']?.toString(),
+      tvArchive: asInt(json['tv_archive']),
+      tvArchiveDuration: asInt(json['tv_archive_duration']),
     );
   }
+
+  bool get hasCatchup => tvArchive == 1;
 }
 
 class XtreamSeries {

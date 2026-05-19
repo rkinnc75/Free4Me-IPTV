@@ -21,6 +21,11 @@ final httpOriginRegex = RegExp(r'http-origin=(.+)');
 final httpReferrerRegex = RegExp(r'http-referrer=(.+)');
 final httpUserAgentRegex = RegExp(r'http-user-agent=(.+)');
 
+// v1.3: catchup attributes — see https://github.com/iptv-org/iptv#catchup
+final catchupTypeRegex = RegExp(r'catchup="([^"]*)"');
+final catchupSourceRegex = RegExp(r'catchup-source="([^"]*)"');
+final catchupDaysRegex = RegExp(r'catchup-days="([^"]*)"');
+
 Future<void> processM3U(Source source, bool wipe, [String? path]) async {
   path ??= source.url;
   List<ChannelPreserve>? preserve;
@@ -121,6 +126,11 @@ Channel? getChannelFromLines(String l1, String last) {
   var name = getName(l1)?.trim();
   if (name == null || name.isEmpty) return null;
 
+  final epgId = idRegex.firstMatch(l1)?[1]?.trim();
+  final catchupType = catchupTypeRegex.firstMatch(l1)?[1]?.trim();
+  final catchupSource = catchupSourceRegex.firstMatch(l1)?[1]?.trim();
+  final catchupDaysStr = catchupDaysRegex.firstMatch(l1)?[1]?.trim();
+
   return Channel(
     name: name,
     group: groupRegex.firstMatch(l1)?[1]?.trim(),
@@ -129,6 +139,14 @@ Channel? getChannelFromLines(String l1, String last) {
     mediaType: getMediaType(url),
     sourceId: -1,
     url: url,
+    epgChannelId: (epgId != null && epgId.isNotEmpty) ? epgId : null,
+    catchupType:
+        (catchupType != null && catchupType.isNotEmpty) ? catchupType : null,
+    catchupSource: (catchupSource != null && catchupSource.isNotEmpty)
+        ? catchupSource
+        : null,
+    catchupDays:
+        catchupDaysStr != null ? int.tryParse(catchupDaysStr) : null,
   );
 }
 

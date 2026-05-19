@@ -19,7 +19,15 @@ import 'package:open_tv/select_dialog.dart';
 class Player extends StatefulWidget {
   final Channel channel;
   final Settings settings;
-  const Player({super.key, required this.channel, required this.settings});
+  /// Overrides the channel's normal live URL (e.g. catchup / time-shift URL).
+  /// When set, the pre-warm cache is bypassed.
+  final String? overrideUrl;
+  const Player({
+    super.key,
+    required this.channel,
+    required this.settings,
+    this.overrideUrl,
+  });
   @override
   State<StatefulWidget> createState() => _PlayerState();
 }
@@ -99,6 +107,7 @@ class _PlayerState extends State<Player> {
   }
 
   String _playbackUrl() {
+    if (widget.overrideUrl != null) return widget.overrideUrl!;
     final id = widget.channel.id;
     if (id != null) {
       final warmed = ChannelTile.prewarmedUrl(id);

@@ -332,10 +332,24 @@ http://{host}:{port}/streaming/timeshift.php?username={u}&password={p}&stream={i
 `{Y}` `{m}` `{d}` `{H}` `{M}` `{S}` `{utc}` `{duration}` `${start}` `${end}` `${timestamp}`
 
 ### Acceptance criteria
-- [ ] Xtream `tv_archive=1` channels show catchup buttons on past programmes
-- [ ] M3U `catchup-source` channels show catchup buttons (within `catchup-days`)
-- [ ] Channels without catchup support show no button on past programmes
-- [ ] Catchup playback works through existing `Player` widget without modification
+- [x] Xtream `tv_archive=1` channels show catchup buttons on past programmes
+- [x] M3U `catchup-source` channels show catchup buttons (within `catchup-days`)
+- [x] Channels without catchup support show no button on past programmes
+- [x] Catchup playback works through existing `Player` widget (`overrideUrl` param) without engine changes
+
+### Shipped in 1.7.0+20
+
+- DB migration #6: `channels.catchup_type` / `catchup_source` / `catchup_days`
+- `Channel.supportsCatchup` helper, populated by both M3U and Xtream loaders
+- Xtream loader maps `tv_archive` → `catchup_type='xc'`, `tv_archive_duration` → `catchup_days`
+- `lib/backend/catchup_url.dart` builds URLs for `xc` / `append` / `shift` / `default` / `flussonic` engines and respects the `catchup-days` window
+- `lib/views/channel_schedule.dart` shows a "Watch from beginning" trailing button on past/now programmes when catchup is available, and adds it to the details dialog
+- `lib/widgets/now_next_strip.dart` accepts an `onTap` callback; `channel_tile.dart` wires it to push `ChannelScheduleView` (eats the gesture so tap-to-play still works elsewhere on the tile)
+- `Player` gained an optional `overrideUrl` so catchup URLs play without touching the live URL or the prewarm cache
+
+### Fuzzy matcher refinement (also shipped in 1.7.0+20)
+
+- `lib/backend/epg_matcher.dart`: tiers 5–7 (token-superset, callsign, Jaccard) now **skip the match entirely** when two or more candidates tie for the best score / length. Better unmatched than wrong. Added a new `MatchTier.ambiguous` so telemetry distinguishes "no candidate" from "too many candidates".
 
 ---
 

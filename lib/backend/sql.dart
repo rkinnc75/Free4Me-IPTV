@@ -51,8 +51,12 @@ class Sql {
       insertChannel(Channel channel) {
     return (SqliteWriteContext tx, Map<String, String> memory) async {
       await tx.execute('''
-        INSERT INTO channels (name, image, url, source_id, media_type, series_id, favorite, stream_id, group_name)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO channels (
+          name, image, url, source_id, media_type, series_id, favorite,
+          stream_id, group_name, epg_channel_id,
+          catchup_type, catchup_source, catchup_days
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (name, source_id)
         DO UPDATE SET
           url = excluded.url,
@@ -60,7 +64,13 @@ class Sql {
           media_type = excluded.media_type,
           stream_id = excluded.stream_id,
           image = excluded.image,
-          series_id = excluded.series_id;
+          series_id = excluded.series_id,
+          -- preserve any user-set epg_channel_id; only fill when the new
+          -- import carries one and we have nothing stored yet
+          epg_channel_id = COALESCE(channels.epg_channel_id, excluded.epg_channel_id),
+          catchup_type = excluded.catchup_type,
+          catchup_source = excluded.catchup_source,
+          catchup_days = excluded.catchup_days;
       ''', [
         channel.name,
         channel.image,
@@ -72,7 +82,11 @@ class Sql {
         channel.seriesId,
         channel.favorite,
         channel.streamId,
-        channel.group
+        channel.group,
+        channel.epgChannelId,
+        channel.catchupType,
+        channel.catchupSource,
+        channel.catchupDays,
       ]);
       memory['lastChannelId'] =
           (await tx.get("SELECT last_insert_rowid()")).columnAt(0).toString();
@@ -267,6 +281,7 @@ class Sql {
     // Column order: id(0) name(1) group_name(2) image(3) url(4) media_type(5)
     //   source_id(6) favorite(7) series_id(8) group_id(9) stream_id(10)
     //   last_watched(11) epg_channel_id(12) epg_manual_override(13)
+    //   catchup_type(14) catchup_source(15) catchup_days(16)
     return Channel(
       id: row.columnAt(0),
       name: row.columnAt(1),
@@ -279,6 +294,9 @@ class Sql {
       seriesId: row.columnAt(8),
       groupId: row.columnAt(9),
       epgChannelId: row.columnAt(12) as String?,
+      catchupType: row.columnAt(14) as String?,
+      catchupSource: row.columnAt(15) as String?,
+      catchupDays: row.columnAt(16) as int?,
     );
   }
 

@@ -225,6 +225,14 @@ class _ChannelTileState extends State<ChannelTile> {
                       NowNextStrip(
                         epgChannelId: widget.channel.epgChannelId!,
                         sourceId: widget.channel.sourceId,
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ChannelScheduleView(
+                              channel: widget.channel,
+                            ),
+                          ),
+                        ),
                       ),
                   ],
                 ),

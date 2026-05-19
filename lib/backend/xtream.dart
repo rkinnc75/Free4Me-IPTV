@@ -156,6 +156,12 @@ Channel xtreamToChannel(
   MediaType streamType,
   String? categoryName,
 ) {
+  // v1.3: derive catchup metadata for live streams only. We mark these
+  // with type "xc" so catchup_url.dart knows to build the Xtream-style
+  // /streaming/timeshift.php URL on the fly.
+  final isLive = streamType == MediaType.livestream;
+  final hasCatchup = isLive && stream.hasCatchup;
+
   return Channel(
     name: stream.name!.trim(),
     mediaType: streamType,
@@ -172,6 +178,8 @@ Channel xtreamToChannel(
             stream.containerExtension,
           ),
     streamId: int.tryParse(stream.streamId ?? "") ?? -1,
+    catchupType: hasCatchup ? 'xc' : null,
+    catchupDays: hasCatchup ? stream.tvArchiveDuration : null,
   );
 }
 
