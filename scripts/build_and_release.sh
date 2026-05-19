@@ -58,7 +58,18 @@ APK_DOWNLOADS="$HOME/Downloads/$APK_NAME"
 cp "$APK_SRC" "$APK_DOWNLOADS"
 echo " APK copied to ~/Downloads/$APK_NAME"
 
-#  4. Git commit & push 
+# ── 3b. Update version.json (fetched by the in-app update checker) ───────────
+python3 - <<PYEOF
+import json, pathlib
+vf = pathlib.Path("$REPO_DIR/version.json")
+data = json.loads(vf.read_text()) if vf.exists() else {}
+data["latest"] = "$VERSION"
+data["releaseUrl"] = "https://github.com/rkalsky/Free4Me-IPTV/releases/tag/$TAG"
+vf.write_text(json.dumps(data, indent=2) + "\n")
+PYEOF
+echo " version.json updated to $VERSION"
+
+# ── 4. Git commit & push ──────────────────────────────────────────────────────
 # Make sure the remote is set
 if ! git remote get-url origin &>/dev/null; then
   git remote add origin git@github.com:rkalsky/Free4Me-IPTV.git

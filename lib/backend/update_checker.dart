@@ -9,9 +9,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class UpdateChecker {
-  // Replace with actual GitHub raw URL after publishing the first release.
   static const String _versionUrl =
-      'https://raw.githubusercontent.com/YOUR_USER/free4me-iptv/main/version.json';
+      'https://raw.githubusercontent.com/rkalsky/Free4Me-IPTV/main/version.json';
 
   static const Duration _checkInterval = Duration(hours: 12);
   static const String _cacheFilename = 'update_check_cache.json';

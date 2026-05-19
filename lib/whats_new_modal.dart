@@ -66,6 +66,10 @@ const _changelog = <String, List<String>>{
     'EPG channel matching now runs in a background thread — no more ANR '
         'dialogs during refresh on large feeds',
   ],
+  '1.8.2': [
+    'In-app update checker now active — you will be notified when a new '
+        'version is available on GitHub',
+  ],
   '1.8': [
     'ExoPlayer engine for HLS, DASH, and MP4 streams — better adaptive '
         'bitrate and battery efficiency on compatible streams',
