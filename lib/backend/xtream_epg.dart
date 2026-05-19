@@ -13,13 +13,22 @@ import 'package:open_tv/models/source.dart';
 class XtreamEpg {
   /// Returns the XMLTV URL for an Xtream source, or null if the source has
   /// no URL / credentials.
+  ///
+  /// Uses [Source.urlOrigin] when pre-filled; otherwise derives the origin
+  /// from [Source.url] (DB-loaded sources don't persist urlOrigin).
   static String? xmltvUrl(Source source) {
-    final base = source.urlOrigin ?? source.url;
-    if (base == null) return null;
+    final url = source.url;
+    if (url == null) return null;
+    // Compute origin lazily — urlOrigin is only set during an active Xtream
+    // refresh session, not persisted to DB.
+    final origin = source.urlOrigin?.isNotEmpty == true
+        ? source.urlOrigin!
+        : Uri.tryParse(url)?.origin;
+    if (origin == null || origin.isEmpty) return null;
     final u = source.username;
     final p = source.password;
     if (u == null || p == null) return null;
-    return '$base/xmltv.php?username=${Uri.encodeComponent(u)}&password=${Uri.encodeComponent(p)}';
+    return '$origin/xmltv.php?username=${Uri.encodeComponent(u)}&password=${Uri.encodeComponent(p)}';
   }
 
   /// Fetches Xtream short EPG for a single stream id.
