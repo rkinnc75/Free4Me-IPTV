@@ -44,9 +44,10 @@ class _ChannelScheduleViewState extends State<ChannelScheduleView> {
   String? _error;
 
   final _scrollController = ScrollController();
-  // Key placed on the "now" tile so we can scroll to it reliably regardless
-  // of variable tile heights (descriptions, catchup buttons, etc.).
   final _nowKey = GlobalKey();
+  // Flat-list index of the "now" tile — used to estimate the initial scroll
+  // offset before the lazy ListView has built that item.
+  int _nowFlatIndex = -1;
 
   @override
   void initState() {
@@ -82,8 +83,9 @@ class _ChannelScheduleViewState extends State<ChannelScheduleView> {
         orElse: () => sources.first,
       );
 
-      // Build flat list grouping programs by local date
+      // Build flat list, recording the index of the "now" tile as we go.
       final items = <_ListItem>[];
+      int nowFlatIndex = -1;
       DateTime? currentDay;
       for (final p in progs) {
         final local = p.startTime.toLocal();
@@ -92,34 +94,65 @@ class _ChannelScheduleViewState extends State<ChannelScheduleView> {
           items.add(_DayHeader(day));
           currentDay = day;
         }
-        items.add(_ProgItem(p, isNow: p.isOnNow(nowEpoch)));
+        final isNow = p.isOnNow(nowEpoch);
+        if (isNow && nowFlatIndex < 0) nowFlatIndex = items.length;
+        items.add(_ProgItem(p, isNow: isNow));
       }
 
       setState(() {
         _items = items;
         _source = source;
+        _nowFlatIndex = nowFlatIndex;
       });
 
-      // After the first frame renders, scroll so the "now" tile is visible
-      // and roughly 1/3 from the top — enough context above and below.
+      // Two-step scroll that works with ListView.builder's lazy rendering:
+      //  1. jumpTo an estimated pixel offset — brings the "now" tile into the
+      //     viewport so Flutter builds and attaches _nowKey.
+      //  2. ensureVisible in the next frame for exact alignment.
       WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToNow());
     } catch (e) {
       setState(() => _error = e.toString());
     }
   }
 
+  // Approximate heights used to estimate scroll offset before the lazy
+  // list has built the target tile.
+  static const double _headerH = 52.0;
+  static const double _tileH = 80.0; // avg tile including optional subtitle
+
   void _scrollToNow() {
-    final ctx = _nowKey.currentContext;
-    if (ctx == null) return;
-    Scrollable.ensureVisible(
-      ctx,
-      // alignment 0.25 puts the item ~25 % from the top of the viewport,
-      // which feels right for a TV remote — you see one past item and
-      // several upcoming ones without having to scroll immediately.
-      alignment: 0.25,
-      duration: const Duration(milliseconds: 350),
-      curve: Curves.easeOut,
-    );
+    if (_nowFlatIndex < 0) return;
+    if (!_scrollController.hasClients) return;
+
+    final items = _items;
+    if (items == null) return;
+
+    // Step 1 — estimate the pixel offset of the "now" tile by summing
+    // approximate heights of all items above it.
+    double approxOffset = 0;
+    for (int i = 0; i < _nowFlatIndex && i < items.length; i++) {
+      approxOffset += items[i] is _DayHeader ? _headerH : _tileH;
+    }
+
+    // Subtract 25 % of viewport so the tile lands about 1/4 from the top.
+    final pos = _scrollController.position;
+    final target = (approxOffset - pos.viewportDimension * 0.25)
+        .clamp(0.0, pos.maxScrollExtent);
+
+    _scrollController.jumpTo(target);
+
+    // Step 2 — now that the "now" tile is in the viewport and built, use
+    // ensureVisible in the next frame for pixel-perfect placement.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _nowKey.currentContext;
+      if (ctx == null || !mounted) return;
+      Scrollable.ensureVisible(
+        ctx,
+        alignment: 0.25,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   @override
