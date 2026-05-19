@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/epg_matcher.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
@@ -63,7 +64,13 @@ class EpgService {
   }) async {
     final settings = await SettingsService.getSettings();
     final url = epgUrl ?? _resolveEpgUrl(source);
-    if (url == null || source.id == null) return;
+    if (source.id == null) return;
+    if (url == null) {
+      AppLog.warn(
+        'EPG: skipping "${source.name}" — no EPG URL configured',
+      );
+      return;
+    }
 
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final windowStart = now - settings.epgPastDays * 86400;
@@ -72,6 +79,7 @@ class EpgService {
     int inserted = 0;
     String? lastError;
 
+    AppLog.info('EPG: starting refresh for "${source.name}" — $url');
     try {
       await Sql.deleteProgrammesForSource(source.id!);
 
@@ -113,12 +121,17 @@ class EpgService {
         await Sql.setChannelEpgIds(merged);
       }
 
+      AppLog.info(
+        'EPG: done "${source.name}" — $inserted programmes, '
+        '${merged.length}/${channels.length} channels matched',
+      );
       debugPrint(
         'EPG refresh done for "${source.name}": '
         '$inserted programmes, ${merged.length}/${channels.length} channels matched',
       );
     } catch (e, st) {
       lastError = e.toString();
+      AppLog.error('EPG: refresh failed for "${source.name}": $e');
       debugPrint('EPG refresh error for "${source.name}": $e\n$st');
     }
 

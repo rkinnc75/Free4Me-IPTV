@@ -35,6 +35,9 @@ class Settings {
   /// Pre-warm channel URL (HEAD request) when a tile receives focus.
   bool preWarmOnFocus;
 
+  // --- Debug ---
+  bool debugLogging;
+
   // --- EPG settings (v1.2) ---
   bool epgAutoRefresh;
   int epgRefreshHours;
@@ -58,6 +61,7 @@ class Settings {
     this.bufferingWatchdogSecs = 12,
     this.hwDecode = true,
     this.preWarmOnFocus = true,
+    this.debugLogging = false,
     this.epgAutoRefresh = true,
     this.epgRefreshHours = 24,
     this.epgRefreshHour = 3,

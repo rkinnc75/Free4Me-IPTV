@@ -25,6 +25,7 @@ const hwDecodeProp = "hwDecode";
 const preWarmOnFocusProp = "preWarmOnFocus";
 
 // EPG settings (v1.2)
+const debugLoggingProp = "debugLogging";
 const epgAutoRefreshProp = "epgAutoRefresh";
 const epgRefreshHoursProp = "epgRefreshHours";
 const epgRefreshHourProp = "epgRefreshHour";
@@ -72,6 +73,7 @@ class SettingsService {
     var watchdog = settingsMap[bufferingWatchdogSecsProp];
     var hw = settingsMap[hwDecodeProp];
     var prewarm = settingsMap[preWarmOnFocusProp];
+    var debugLog = settingsMap[debugLoggingProp];
     var epgAuto = settingsMap[epgAutoRefreshProp];
     var epgHours = settingsMap[epgRefreshHoursProp];
     var epgHour = settingsMap[epgRefreshHourProp];
@@ -96,6 +98,7 @@ class SettingsService {
     if (watchdog != null) settings.bufferingWatchdogSecs = int.parse(watchdog);
     if (hw != null) settings.hwDecode = int.parse(hw) == 1;
     if (prewarm != null) settings.preWarmOnFocus = int.parse(prewarm) == 1;
+    if (debugLog != null) settings.debugLogging = int.parse(debugLog) == 1;
     if (epgAuto != null) settings.epgAutoRefresh = int.parse(epgAuto) == 1;
     if (epgHours != null) settings.epgRefreshHours = int.parse(epgHours);
     if (epgHour != null) settings.epgRefreshHour = int.parse(epgHour);
@@ -126,6 +129,7 @@ class SettingsService {
     settingsMap[hwDecodeProp] = (settings.hwDecode ? 1 : 0).toString();
     settingsMap[preWarmOnFocusProp] = (settings.preWarmOnFocus ? 1 : 0)
         .toString();
+    settingsMap[debugLoggingProp] = (settings.debugLogging ? 1 : 0).toString();
     settingsMap[epgAutoRefreshProp] = (settings.epgAutoRefresh ? 1 : 0)
         .toString();
     settingsMap[epgRefreshHoursProp] = settings.epgRefreshHours.toString();

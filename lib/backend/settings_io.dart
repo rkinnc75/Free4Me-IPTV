@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
@@ -195,6 +197,37 @@ class SettingsIo {
       openTimeoutSecs: m['openTimeoutSecs'] as int? ?? 15,
       bufferingWatchdogSecs: m['bufferingWatchdogSecs'] as int? ?? 12,
     );
+  }
+
+  /// Save an arbitrary text string to a user-chosen file location.
+  static Future<void> exportStringToFile(
+    BuildContext context, {
+    required String content,
+    required String suggestedName,
+  }) async {
+    try {
+      final bytes = utf8.encode(content);
+      final path = await FilePicker.platform.saveFile(
+        dialogTitle: 'Save file',
+        fileName: suggestedName,
+        type: FileType.custom,
+        allowedExtensions: ['txt', 'log', 'json'],
+        bytes: Uint8List.fromList(bytes),
+      );
+      if (path == null) return;
+      if (!kIsWeb) await File(path).writeAsBytes(bytes);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('File saved.')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Export failed: $e')),
+        );
+      }
+    }
   }
 
   static Map<String, dynamic> _sourceToMap(

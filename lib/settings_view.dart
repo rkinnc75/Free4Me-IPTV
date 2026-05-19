@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/epg_service.dart';
 import 'package:open_tv/backend/settings_io.dart';
 import 'package:open_tv/views/epg_channel_mapping.dart';
@@ -356,6 +357,108 @@ class _SettingsState extends State<SettingsView> {
     });
   }
 
+  /// Shows a live progress dialog while refreshing all EPG sources, then
+  /// displays a summary of results.
+  Future<void> _runEpgRefresh(BuildContext ctx) async {
+    String _status = 'Starting…';
+    int _programmes = 0;
+    final results = <String>[];
+
+    // Show a dismissable progress dialog
+    bool dialogOpen = true;
+    showDialog(
+      context: ctx,
+      barrierDismissible: false,
+      builder: (_) => StatefulBuilder(
+        builder: (sCtx, setSt) {
+          // Store setter so we can push updates
+          _refreshSetState = setSt;
+          _refreshStatus = _status;
+          _refreshProgrammes = _programmes;
+          return AlertDialog(
+            title: const Text('Refreshing EPG…'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const LinearProgressIndicator(),
+                const SizedBox(height: 12),
+                Text(_refreshStatus, style: Theme.of(sCtx).textTheme.bodySmall),
+                if (_refreshProgrammes > 0)
+                  Text(
+                    '$_refreshProgrammes programmes loaded',
+                    style: Theme.of(sCtx).textTheme.bodySmall,
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    ).then((_) => dialogOpen = false);
+
+    for (final source in sources) {
+      if (!source.enabled) continue;
+      final url = source.epgUrl?.isNotEmpty == true ? source.epgUrl : null;
+      if (url == null &&
+          source.sourceType.index != 0 /* xtream */) continue;
+
+      _updateRefreshDialog('Refreshing "${source.name}"…', _programmes);
+
+      int sourceInserted = 0;
+      String? sourceError;
+      try {
+        await EpgService.refreshSource(
+          source,
+          epgUrl: url,
+          onProgress: (p) {
+            sourceInserted = p.programmesInserted;
+            _programmes = p.programmesInserted;
+            _updateRefreshDialog(
+              '${source.name}: ${p.programmesInserted} programmes…',
+              _programmes,
+            );
+          },
+        );
+        results.add('✓ ${source.name}: $sourceInserted programmes');
+      } catch (e) {
+        sourceError = e.toString();
+        results.add('✗ ${source.name}: $sourceError');
+      }
+    }
+
+    if (dialogOpen && mounted) Navigator.of(ctx, rootNavigator: true).pop();
+
+    if (!mounted) return;
+    showDialog(
+      context: ctx,
+      builder: (_) => AlertDialog(
+        title: const Text('EPG Refresh Complete'),
+        content: SingleChildScrollView(
+          child: Text(results.isEmpty
+              ? 'No sources had an EPG URL configured.'
+              : results.join('\n')),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Mutable state for the refresh progress dialog
+  void Function(void Function())? _refreshSetState;
+  String _refreshStatus = '';
+  int _refreshProgrammes = 0;
+
+  void _updateRefreshDialog(String status, int count) {
+    _refreshStatus = status;
+    _refreshProgrammes = count;
+    _refreshSetState?.call(() {});
+  }
+
   Future<void> updateSettings() async {
     await Error.tryAsyncNoLoading(
       () async => await SettingsService.updateSettings(settings),
@@ -688,29 +791,35 @@ class _SettingsState extends State<SettingsView> {
 
                   // ── EPG ───────────────────────────────────────────────────
                   _sectionHeader("EPG / Programme Guide"),
-                  ListTile(
-                    title: const Text("Default EPG source"),
-                    subtitle: Text(() {
-                      final names = sources
-                          .where((s) =>
-                              s.epgUrl != null && s.epgUrl!.isNotEmpty)
-                          .map((s) => s.name)
-                          .join(', ');
-                      return names.isEmpty ? 'None configured' : names;
-                    }()),
-                  ),
                   ...sources.map(
                     (source) => ListTile(
-                      leading: const Icon(Icons.tv_outlined),
+                      leading: Icon(
+                        source.epgUrl?.isNotEmpty == true
+                            ? Icons.check_circle_outline
+                            : Icons.tv_outlined,
+                        color: source.epgUrl?.isNotEmpty == true
+                            ? Theme.of(context).colorScheme.primary
+                            : null,
+                      ),
                       title: Text('EPG for "${source.name}"'),
                       subtitle: Text(
                         source.epgUrl?.isNotEmpty == true
                             ? source.epgUrl!
-                            : 'Not set — tap to configure',
+                            : 'Tap to set — default US guide pre-filled',
                       ),
                       onTap: () async {
+                        // Pre-fill with current URL or the benchmark default
+                        // so the user can accept it with one tap.
+                        final initialText = source.epgUrl?.isNotEmpty == true
+                            ? source.epgUrl!
+                            : 'https://iptv-epg.org/files/epg-us.xml';
                         final controller = TextEditingController(
-                          text: source.epgUrl ?? '',
+                          text: initialText,
+                        );
+                        // Select all text so the user can immediately replace
+                        controller.selection = TextSelection(
+                          baseOffset: 0,
+                          extentOffset: controller.text.length,
                         );
                         final result = await showDialog<String?>(
                           context: context,
@@ -719,8 +828,9 @@ class _SettingsState extends State<SettingsView> {
                             content: TextField(
                               controller: controller,
                               decoration: const InputDecoration(
-                                hintText: 'https://iptv-epg.org/files/epg-us.xml',
+                                labelText: 'XMLTV feed URL',
                               ),
+                              keyboardType: TextInputType.url,
                               autofocus: true,
                             ),
                             actions: [
@@ -849,11 +959,24 @@ class _SettingsState extends State<SettingsView> {
                     title: const Text("Refresh EPG now"),
                     subtitle: const Text("Download latest programme guide"),
                     onTap: () async {
-                      await Error.tryAsync(
-                        () async => await EpgService.refreshAllSources(),
-                        context,
-                        "EPG refresh complete",
+                      final noUrls = sources.every(
+                        (s) =>
+                            (s.epgUrl == null || s.epgUrl!.isEmpty) &&
+                            s.sourceType.index != 0, // 0 = xtream
                       );
+                      if (noUrls) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'No EPG URL configured. Tap the EPG row for '
+                              'your source and save a URL first.',
+                            ),
+                            duration: Duration(seconds: 5),
+                          ),
+                        );
+                        return;
+                      }
+                      await _runEpgRefresh(context);
                     },
                   ),
                   ...sources
@@ -878,6 +1001,74 @@ class _SettingsState extends State<SettingsView> {
                           ),
                         ),
                       ),
+
+                  const Divider(),
+
+                  // ── Diagnostics ───────────────────────────────────────────
+                  _sectionHeader("Diagnostics"),
+                  _switchTile(
+                    label: "Enable debug logging",
+                    value: settings.debugLogging,
+                    help: (
+                      title: 'Debug Logging',
+                      body:
+                          'Writes a timestamped log of every significant action '
+                          '(EPG refresh, source reload, errors, settings changes) '
+                          'to a file in app storage. Turn ON only when '
+                          'troubleshooting — leaves a file you can export and '
+                          'share. Auto-rotates at 2 MB. Default: OFF.',
+                    ),
+                    onChanged: (v) async {
+                      setState(() => settings.debugLogging = v);
+                      await AppLog.setEnabled(v);
+                      AppLog.info('Debug logging ${v ? "enabled" : "disabled"}');
+                      updateSettings();
+                    },
+                  ),
+                  ListTile(
+                    enabled: settings.debugLogging,
+                    leading: const Icon(Icons.download_outlined),
+                    title: const Text("Export log file"),
+                    subtitle: const Text(
+                      "Save the debug log to a file you can share",
+                    ),
+                    onTap: settings.debugLogging
+                        ? () async {
+                            final log = await AppLog.readLog();
+                            if (!mounted) return;
+                            if (log.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Log file is empty.'),
+                                ),
+                              );
+                              return;
+                            }
+                            await SettingsIo.exportStringToFile(
+                              context,
+                              content: log,
+                              suggestedName:
+                                  'free4me_log_${DateTime.now().millisecondsSinceEpoch}.txt',
+                            );
+                          }
+                        : null,
+                  ),
+                  ListTile(
+                    enabled: settings.debugLogging,
+                    leading: const Icon(Icons.delete_outline),
+                    title: const Text("Clear log"),
+                    onTap: settings.debugLogging
+                        ? () async {
+                            await AppLog.clearLog();
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Log cleared.'),
+                              ),
+                            );
+                          }
+                        : null,
+                  ),
 
                   const Divider(),
 
