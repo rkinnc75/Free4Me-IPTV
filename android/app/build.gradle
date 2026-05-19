@@ -41,3 +41,11 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // Free4Me-IPTV v1.4: Google Cast SDK for Chromecast support.
+    // play-services-cast-framework bundles the Cast SDK and its transitive deps.
+    implementation 'com.google.android.gms:play-services-cast-framework:21.5.0'
+    // MediaRouter is required for the device picker dialog.
+    implementation 'androidx.mediarouter:mediarouter:1.7.0'
+}

@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
+import 'package:open_tv/models/engine_type.dart';
 import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/source.dart';
 import 'package:open_tv/models/source_type.dart';
@@ -177,6 +178,7 @@ class SettingsIo {
         'vodDemuxerMaxMB': s.vodDemuxerMaxMB,
         'openTimeoutSecs': s.openTimeoutSecs,
         'bufferingWatchdogSecs': s.bufferingWatchdogSecs,
+        'forcedEngine': s.forcedEngine.toJson(),
       };
 
   static Settings _settingsFromMap(Map<String, dynamic> m) {
@@ -196,6 +198,7 @@ class SettingsIo {
       vodDemuxerMaxMB: m['vodDemuxerMaxMB'] as int? ?? 256,
       openTimeoutSecs: m['openTimeoutSecs'] as int? ?? 15,
       bufferingWatchdogSecs: m['bufferingWatchdogSecs'] as int? ?? 12,
+      forcedEngine: EngineType.fromJson(m['forcedEngine'] as String?),
     );
   }
 

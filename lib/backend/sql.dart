@@ -2,6 +2,7 @@ import 'dart:collection';
 
 import 'package:open_tv/backend/db_factory.dart';
 import 'package:open_tv/models/channel.dart';
+import 'package:open_tv/models/engine_type.dart';
 import 'package:open_tv/models/channel_http_headers.dart';
 import 'package:open_tv/models/channel_preserve.dart';
 import 'package:open_tv/models/filters.dart';
@@ -70,7 +71,9 @@ class Sql {
           epg_channel_id = COALESCE(channels.epg_channel_id, excluded.epg_channel_id),
           catchup_type = excluded.catchup_type,
           catchup_source = excluded.catchup_source,
-          catchup_days = excluded.catchup_days;
+          catchup_days = excluded.catchup_days
+          -- engine_override intentionally omitted: preserve any user override
+          ;
       ''', [
         channel.name,
         channel.image,
@@ -282,6 +285,7 @@ class Sql {
     //   source_id(6) favorite(7) series_id(8) group_id(9) stream_id(10)
     //   last_watched(11) epg_channel_id(12) epg_manual_override(13)
     //   catchup_type(14) catchup_source(15) catchup_days(16)
+    //   engine_override(17)
     return Channel(
       id: row.columnAt(0),
       name: row.columnAt(1),
@@ -297,6 +301,7 @@ class Sql {
       catchupType: row.columnAt(14) as String?,
       catchupSource: row.columnAt(15) as String?,
       catchupDays: row.columnAt(16) as int?,
+      engineOverride: EngineType.fromJson(row.columnAt(17) as String?),
     );
   }
 
@@ -364,7 +369,7 @@ class Sql {
 
   static Source rowToSource(Row row) {
     // Column order: id(0) name(1) source_type(2) url(3) username(4)
-    //   password(5) enabled(6) epg_url(7)
+    //   password(5) enabled(6) epg_url(7) default_engine(8)
     return Source(
       id: row.columnAt(0),
       name: row.columnAt(1),
@@ -374,6 +379,7 @@ class Sql {
       password: row.columnAt(5),
       enabled: row.columnAt(6) == 1,
       epgUrl: row.columnAt(7) as String?,
+      defaultEngine: EngineType.fromJson(row.columnAt(8) as String?),
     );
   }
 
@@ -458,9 +464,31 @@ class Sql {
     var db = await DbFactory.db;
     await db.execute('''
       UPDATE sources
-      SET url = ?, username = ?, password = ?
+      SET url = ?, username = ?, password = ?, default_engine = ?
       WHERE id = ?
-    ''', [source.url, source.username, source.password, source.id]);
+    ''', [
+      source.url,
+      source.username,
+      source.password,
+      source.defaultEngine == null || source.defaultEngine == EngineType.auto
+          ? null
+          : source.defaultEngine!.toJson(),
+      source.id,
+    ]);
+  }
+
+  static Future<void> setChannelEngineOverride(
+    int channelId,
+    EngineType? engine,
+  ) async {
+    var db = await DbFactory.db;
+    await db.execute(
+      'UPDATE channels SET engine_override = ? WHERE id = ?',
+      [
+        engine == null || engine == EngineType.auto ? null : engine.toJson(),
+        channelId,
+      ],
+    );
   }
 
   static Future<Source> getSourceFromId(int id) async {

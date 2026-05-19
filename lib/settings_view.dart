@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:open_tv/backend/app_logger.dart';
+import 'package:open_tv/models/engine_type.dart';
 import 'package:open_tv/backend/epg_service.dart';
 import 'package:open_tv/backend/settings_io.dart';
 import 'package:open_tv/views/epg_channel_mapping.dart';
@@ -601,6 +602,71 @@ class _SettingsState extends State<SettingsView> {
     );
   }
 
+  /// A "popup menu" tile for the global engine selection setting.
+  Widget _engineSelectionTile(Settings settings) {
+    return ListTile(
+      title: Row(
+        children: [
+          const Text('Player engine'),
+          const SizedBox(width: 4),
+          IconButton(
+            icon: Icon(
+              Icons.info_outline,
+              size: 18,
+              color: Theme.of(context)
+                  .colorScheme
+                  .onSurface
+                  .withValues(alpha: 0.4),
+            ),
+            tooltip: 'About this setting',
+            onPressed: () => SettingHelpDialog.show(
+              context,
+              title: 'Player Engine',
+              body:
+                  'Controls which media engine plays your streams.\n\n'
+                  '"Auto (recommended)" picks automatically: HLS (.m3u8), DASH (.mpd) '
+                  'and MP4 streams use ExoPlayer for better adaptive bitrate and battery '
+                  'efficiency; everything else (MPEG-TS, RTMP) uses libmpv.\n\n'
+                  '"libmpv" forces libmpv for all streams — best for MPEG-TS and RTMP '
+                  'sources that ExoPlayer cannot handle.\n\n'
+                  '"ExoPlayer" forces ExoPlayer — use only if Auto selects the wrong '
+                  'engine for your source. Note: track selection (subtitles/audio) is '
+                  'not available in ExoPlayer mode.',
+            ),
+          ),
+        ],
+      ),
+      trailing: DropdownButton<String>(
+        value: settings.forcedEngine.toJson(),
+        underline: const SizedBox.shrink(),
+        items: [
+          DropdownMenuItem(
+            value: 'auto',
+            child: Text('Auto', style: Theme.of(context).textTheme.bodyMedium),
+          ),
+          DropdownMenuItem(
+            value: 'libmpv',
+            child: Text('libmpv', style: Theme.of(context).textTheme.bodyMedium),
+          ),
+          DropdownMenuItem(
+            value: 'exoplayer',
+            child: Text(
+              'ExoPlayer',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ),
+        ],
+        onChanged: (v) {
+          if (v == null) return;
+          setState(
+            () => settings.forcedEngine = EngineType.fromJson(v),
+          );
+          updateSettings();
+        },
+      ),
+    );
+  }
+
   // ─── Build ────────────────────────────────────────────────────────────────
 
   @override
@@ -766,7 +832,7 @@ class _SettingsState extends State<SettingsView> {
                     },
                   ),
 
-                  // ── Hardware decode / pre-warm ────────────────────────────
+                  // ── Hardware decode / pre-warm / engine ───────────────────
                   _switchTile(
                     label: "Hardware decoding",
                     value: settings.hwDecode,
@@ -785,6 +851,7 @@ class _SettingsState extends State<SettingsView> {
                       updateSettings();
                     },
                   ),
+                  _engineSelectionTile(settings),
 
                   const Divider(),
 
