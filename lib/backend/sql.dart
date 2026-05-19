@@ -703,4 +703,55 @@ class Sql {
     ''', [sourceId]);
     return rows.map(rowToChannel).toList();
   }
+
+  // ── EPG manual channel mapping ─────────────────────────────────────────────
+
+  /// All live channels for a source, ordered: unmatched first then matched.
+  static Future<List<Channel>> getLiveChannelsForMapping(int sourceId) async {
+    var db = await DbFactory.db;
+    final rows = await db.getAll('''
+      SELECT * FROM channels
+      WHERE source_id = ? AND media_type = 0
+      ORDER BY epg_channel_id IS NOT NULL ASC, name ASC
+    ''', [sourceId]);
+    return rows.map(rowToChannel).toList();
+  }
+
+  /// Distinct EPG channel IDs that have programme data for a source,
+  /// paired with the most recent title (as a display hint).
+  static Future<List<(String, String)>> getAvailableEpgIds(
+    int sourceId,
+  ) async {
+    var db = await DbFactory.db;
+    final rows = await db.getAll('''
+      SELECT epg_channel_id,
+             (SELECT title FROM programmes p2
+              WHERE p2.epg_channel_id = p.epg_channel_id
+                AND p2.source_id = p.source_id
+              ORDER BY start_utc DESC LIMIT 1) AS sample_title
+      FROM programmes p
+      WHERE source_id = ?
+      GROUP BY epg_channel_id
+      ORDER BY epg_channel_id ASC
+    ''', [sourceId]);
+    return rows
+        .map(
+          (r) => (r.columnAt(0) as String, r.columnAt(1) as String? ?? ''),
+        )
+        .toList();
+  }
+
+  /// Save a manual EPG override for a channel and update epg_channel_id.
+  /// Pass null to clear the mapping.
+  static Future<void> setManualEpgOverride(
+    int channelId,
+    String? epgChannelId,
+  ) async {
+    var db = await DbFactory.db;
+    await db.execute('''
+      UPDATE channels
+      SET epg_channel_id = ?, epg_manual_override = ?
+      WHERE id = ?
+    ''', [epgChannelId, epgChannelId, channelId]);
+  }
 }

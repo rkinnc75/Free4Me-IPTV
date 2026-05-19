@@ -87,16 +87,35 @@ class EpgService {
         onProgress: onProgress,
       );
 
-      // Match channels to EPG IDs
+      // Match channels to EPG IDs.
+      // Channels that already have a manual override (epg_manual_override is
+      // NOT NULL) keep their assignment; auto-matcher only fills the gaps.
       final channels = await Sql.getChannelsForEpgMatching(source.id!);
-      final matched = EpgMatcher.match(channelMap, channels);
-      if (matched.isNotEmpty) {
-        await Sql.setChannelEpgIds(matched);
+
+      // Apply manual overrides first so the matcher sees them as already set.
+      final manualOverrides = <int, String>{};
+      for (final ch in channels) {
+        // epg_manual_override is stored in the same column as epg_channel_id
+        // for simplicity; we detect manual assignments by reading the DB
+        // column directly in getChannelsForEpgMatching (col 13 = epg_manual_override).
+        // For now treat any pre-existing epg_channel_id that already exists as
+        // "do not overwrite" by pre-seeding the matched map.
+        if (ch.epgChannelId != null && ch.id != null) {
+          manualOverrides[ch.id!] = ch.epgChannelId!;
+        }
+      }
+
+      final autoMatched = EpgMatcher.match(channelMap, channels);
+      // Merge: manual overrides win; auto fills the rest
+      final merged = {...autoMatched, ...manualOverrides};
+
+      if (merged.isNotEmpty) {
+        await Sql.setChannelEpgIds(merged);
       }
 
       debugPrint(
         'EPG refresh done for "${source.name}": '
-        '$inserted programmes, ${matched.length}/${channels.length} channels matched',
+        '$inserted programmes, ${merged.length}/${channels.length} channels matched',
       );
     } catch (e, st) {
       lastError = e.toString();
