@@ -25,11 +25,11 @@ const _changelog = <String, List<String>>{
     'Setting help tooltips — tap any setting label for a full explanation',
   ],
   '1.6.0': [
-    'EPG / Electronic Programme Guide support',
+    'EPG / Electronic Program Guide support',
     'XMLTV feed download and streaming parse (handles gzip feeds)',
     'Automatic channel ↔ EPG matching with 7 tiers of heuristics',
     'Now / Next strip on channel tiles',
-    'Full programme schedule screen per channel',
+    'Full program schedule screen per channel',
     'Per-source EPG URL setting with benchmark default',
     'Manual EPG channel mapping override screen',
     'Background EPG auto-refresh (configurable interval and time-of-day)',
@@ -58,7 +58,7 @@ const _changelog = <String, List<String>>{
   '1.7': [
     'Catchup / time-shift playback',
     'Xtream sources with tv_archive=1 show a "Watch from beginning" button '
-        'on past and currently-airing programmes',
+        'on past and currently-airing programs',
     'M3U sources with catchup-source/catchup-days attributes are fully '
         'supported (append / shift / default / flussonic engines)',
     'Tap the Now/Next strip on a channel tile to open the full schedule',

@@ -360,34 +360,56 @@ class _SettingsState extends State<SettingsView> {
   /// Shows a live progress dialog while refreshing all EPG sources, then
   /// displays a summary of results.
   Future<void> _runEpgRefresh(BuildContext ctx) async {
-    String _status = 'Starting…';
-    int _programmes = 0;
+    String status = 'Starting…';
+    int programs = 0;
+    int matchDone = 0;
+    int matchTotal = 0;
     final results = <String>[];
 
-    // Show a dismissable progress dialog
     bool dialogOpen = true;
     showDialog(
       context: ctx,
       barrierDismissible: false,
       builder: (_) => StatefulBuilder(
         builder: (sCtx, setSt) {
-          // Store setter so we can push updates
           _refreshSetState = setSt;
-          _refreshStatus = _status;
-          _refreshProgrammes = _programmes;
+          _refreshStatus = status;
+
+          final isMatching = matchTotal > 0;
+          final matchFraction =
+              isMatching ? matchDone / matchTotal : null;
+
           return AlertDialog(
             title: const Text('Refreshing EPG…'),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const LinearProgressIndicator(),
+                // Indeterminate during download; determinate during matching
+                matchFraction != null
+                    ? LinearProgressIndicator(value: matchFraction)
+                    : const LinearProgressIndicator(),
                 const SizedBox(height: 12),
-                Text(_refreshStatus, style: Theme.of(sCtx).textTheme.bodySmall),
-                if (_refreshProgrammes > 0)
+                Text(
+                  _refreshStatus,
+                  style: Theme.of(sCtx).textTheme.bodySmall,
+                ),
+                // Download phase: show loaded program count
+                if (programs > 0 && !isMatching)
                   Text(
-                    '$_refreshProgrammes programmes loaded',
+                    '$programs programs loaded',
                     style: Theme.of(sCtx).textTheme.bodySmall,
+                  ),
+                // Matching phase: bold X / Y channel counter
+                if (isMatching)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      'Channels matched: $matchDone / $matchTotal',
+                      style: Theme.of(sCtx).textTheme.bodySmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
                   ),
               ],
             ),
@@ -399,11 +421,14 @@ class _SettingsState extends State<SettingsView> {
     for (final source in sources) {
       if (!source.enabled) continue;
       final hasManualUrl = source.epgUrl?.isNotEmpty == true;
-      final isXtream = source.sourceType.index == 0; // 0 = xtream
+      final isXtream = source.sourceType.index == 0;
       if (!hasManualUrl && !isXtream) continue;
 
       final url = hasManualUrl ? source.epgUrl : null;
-      _updateRefreshDialog('Preparing "${source.name}"…', _programmes);
+      matchDone = 0;
+      matchTotal = 0;
+      status = 'Preparing "${source.name}"…';
+      _updateRefreshDialog(status);
 
       int sourceInserted = 0;
       String? sourceError;
@@ -412,31 +437,36 @@ class _SettingsState extends State<SettingsView> {
           source,
           epgUrl: url,
           onProgress: (p) {
-            sourceInserted = p.programmesInserted;
-            _programmes = p.programmesInserted;
-            // Use the parser's own status message when present
-            // (Connecting / Downloading / etc.); otherwise show a running
-            // programme count.
-            final status = p.statusMessage != null
-                ? '${source.name}: ${p.statusMessage}'
-                : '${source.name}: ${p.programmesInserted} programmes…';
-            _updateRefreshDialog(status, _programmes);
+            sourceInserted = p.programsInserted;
+            programs = p.programsInserted;
+
+            if (p.isMatching) {
+              matchDone = p.matchingChannelsDone;
+              matchTotal = p.matchingChannelsTotal;
+              status = '${source.name}: matching channels…';
+              _updateRefreshDialog(status);
+            } else {
+              status = p.statusMessage != null
+                  ? '${source.name}: ${p.statusMessage}'
+                  : '${source.name}: $programs programs…';
+              _updateRefreshDialog(status);
+            }
           },
         );
         if (sourceInserted == 0) {
           results.add(
-            '⚠ ${source.name}: refresh completed but 0 programmes loaded '
+            '⚠ ${source.name}: refresh completed but 0 programs loaded '
             '(check EPG URL, server response, or date window)',
           );
         } else {
-          results.add('✓ ${source.name}: $sourceInserted programmes');
+          results.add('✓ ${source.name}: $sourceInserted programs');
         }
       } catch (e) {
         sourceError = e.toString();
         results.add('✗ ${source.name}: $sourceError');
       }
     }
-
+  
     if (dialogOpen && mounted) Navigator.of(ctx, rootNavigator: true).pop();
 
     if (!mounted) return;
@@ -462,11 +492,9 @@ class _SettingsState extends State<SettingsView> {
   // Mutable state for the refresh progress dialog
   void Function(void Function())? _refreshSetState;
   String _refreshStatus = '';
-  int _refreshProgrammes = 0;
 
-  void _updateRefreshDialog(String status, int count) {
+  void _updateRefreshDialog(String status, [int count = 0]) {
     _refreshStatus = status;
-    _refreshProgrammes = count;
     _refreshSetState?.call(() {});
   }
 
@@ -801,7 +829,7 @@ class _SettingsState extends State<SettingsView> {
                   const Divider(),
 
                   // ── EPG ───────────────────────────────────────────────────
-                  _sectionHeader("EPG / Programme Guide"),
+                  _sectionHeader("EPG / Program Guide"),
                   ...sources.map(
                     (source) => ListTile(
                       leading: Icon(
@@ -880,7 +908,7 @@ class _SettingsState extends State<SettingsView> {
                     help: (
                       title: 'Auto-refresh EPG',
                       body:
-                          'Automatically downloads updated programme guide data '
+                          'Automatically downloads updated program guide data '
                           'in the background at the scheduled hour. Turn OFF to '
                           'only refresh manually. Default: ON.',
                     ),
@@ -899,7 +927,7 @@ class _SettingsState extends State<SettingsView> {
                     help: (
                       title: 'EPG Refresh Interval (hours)',
                       body:
-                          'How often the app checks for updated programme data. '
+                          'How often the app checks for updated program data. '
                           'Increasing reduces data usage. Decreasing keeps the '
                           'guide more current. Default: 24 h. Range: 6–48 h.',
                     ),
@@ -936,9 +964,9 @@ class _SettingsState extends State<SettingsView> {
                     help: (
                       title: 'EPG Past Days',
                       body:
-                          'How many days of past programme data to retain. '
+                          'How many days of past program data to retain. '
                           'Increasing lets you see what aired recently. '
-                          'Set to 0 to keep only current and future programmes. '
+                          'Set to 0 to keep only current and future programs. '
                           'Default: 1. Range: 0–3.',
                     ),
                     onChanged: (v) {
@@ -955,7 +983,7 @@ class _SettingsState extends State<SettingsView> {
                     help: (
                       title: 'EPG Forecast Days',
                       body:
-                          'How many days ahead of programme data to download. '
+                          'How many days ahead of program data to download. '
                           'Increasing gives more advance schedule visibility '
                           'but uses more storage and download time. '
                           'Default: 7. Range: 3–14.',
@@ -968,7 +996,7 @@ class _SettingsState extends State<SettingsView> {
                   ListTile(
                     leading: const Icon(Icons.refresh),
                     title: const Text("Refresh EPG now"),
-                    subtitle: const Text("Download latest programme guide"),
+                    subtitle: const Text("Download latest program guide"),
                     onTap: () async {
                       final noUrls = sources.every(
                         (s) =>

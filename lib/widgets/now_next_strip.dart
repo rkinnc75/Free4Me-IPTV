@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:open_tv/backend/sql.dart';
-import 'package:open_tv/models/programme.dart';
+import 'package:open_tv/models/program.dart';
 
 final _timeFmt = DateFormat.Hm(); // e.g. "20:30"
 
@@ -24,7 +24,7 @@ class NowNextStrip extends StatefulWidget {
 }
 
 class _NowNextStripState extends State<NowNextStrip> {
-  (Programme?, Programme?)? _data;
+  (Program?, Program?)? _data;
 
   @override
   void initState() {

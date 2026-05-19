@@ -1,13 +1,13 @@
 import 'package:open_tv/models/channel.dart';
-import 'package:open_tv/models/programme.dart';
+import 'package:open_tv/models/program.dart';
 import 'package:open_tv/models/source.dart';
 
-/// Builds the catchup / time-shift URL for a given programme on a given
+/// Builds the catchup / time-shift URL for a given program on a given
 /// channel + source.
 ///
 /// Returns `null` when:
 ///   - the channel doesn't support catchup ([Channel.supportsCatchup] false)
-///   - the programme started in the future or before the catchup window
+///   - the program started in the future or before the catchup window
 ///   - the catchup metadata is malformed
 ///
 /// Supported [Channel.catchupType] values:
@@ -22,47 +22,47 @@ import 'package:open_tv/models/source.dart';
 ///   `{Y}` `{m}` `{d}` `{H}` `{M}` `{S}` — UTC start time components
 ///   `{utc}` — Unix epoch of start (seconds)
 ///   `{lutc}` — Unix epoch "now" (live UTC, seconds)
-///   `{duration}` — programme duration in seconds
+///   `{duration}` — program duration in seconds
 ///   `${start}` `${end}` `${timestamp}` — Kodi-style aliases
 class CatchupUrl {
   CatchupUrl._();
 
-  /// Returns the catchup URL for [programme] on [channel] / [source],
-  /// or null if catchup is unavailable for that programme.
+  /// Returns the catchup URL for [program] on [channel] / [source],
+  /// or null if catchup is unavailable for that program.
   static String? build({
     required Channel channel,
-    required Programme programme,
+    required Program program,
     required Source source,
   }) {
     if (!channel.supportsCatchup) return null;
     final nowEpoch = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
-    // Don't offer catchup for future programmes
-    if (programme.startUtc > nowEpoch) return null;
+    // Don't offer catchup for future programs
+    if (program.startUtc > nowEpoch) return null;
 
     // Honor catchup-days window when known
     final days = channel.catchupDays;
     if (days != null && days > 0) {
       final windowStart = nowEpoch - days * 86400;
-      if (programme.startUtc < windowStart) return null;
+      if (program.startUtc < windowStart) return null;
     }
 
     final type = channel.catchupType!.toLowerCase();
 
     switch (type) {
       case 'xc':
-        return _buildXtream(channel, programme, source);
+        return _buildXtream(channel, program, source);
       case 'append':
-        return _appendToLive(channel, programme, nowEpoch);
+        return _appendToLive(channel, program, nowEpoch);
       case 'shift':
-        return _shiftQuery(channel, programme, nowEpoch);
+        return _shiftQuery(channel, program, nowEpoch);
       case 'default':
       case 'flussonic':
       case 'fs':
-        return _substitute(channel.catchupSource, programme, nowEpoch);
+        return _substitute(channel.catchupSource, program, nowEpoch);
       default:
         // Treat any other value as "default" — most providers use a template
-        return _substitute(channel.catchupSource, programme, nowEpoch);
+        return _substitute(channel.catchupSource, program, nowEpoch);
     }
   }
 
@@ -71,7 +71,7 @@ class CatchupUrl {
   //   &stream={id}&start=YYYY-MM-DD:HH-MM&duration={duration_minutes}
   static String? _buildXtream(
     Channel channel,
-    Programme programme,
+    Program program,
     Source source,
   ) {
     final origin = _xtreamOrigin(source);
@@ -81,13 +81,13 @@ class CatchupUrl {
     if (streamId == null || streamId <= 0) return null;
 
     final start = DateTime.fromMillisecondsSinceEpoch(
-      programme.startUtc * 1000,
+      program.startUtc * 1000,
       isUtc: true,
     );
     final startStr =
         '${_pad(start.year, 4)}-${_pad(start.month)}-${_pad(start.day)}:'
         '${_pad(start.hour)}-${_pad(start.minute)}';
-    final durationMins = (programme.duration.inSeconds / 60).ceil();
+    final durationMins = (program.duration.inSeconds / 60).ceil();
 
     return '$origin/streaming/timeshift.php'
         '?username=${Uri.encodeComponent(source.username!)}'
@@ -115,12 +115,12 @@ class CatchupUrl {
   // placeholders resolved against start time.
   static String? _appendToLive(
     Channel channel,
-    Programme programme,
+    Program program,
     int nowEpoch,
   ) {
     final base = channel.url;
     if (base == null) return null;
-    final suffix = _substitute(channel.catchupSource, programme, nowEpoch);
+    final suffix = _substitute(channel.catchupSource, program, nowEpoch);
     if (suffix == null) return null;
     final sep = base.contains('?') ? '&' : '?';
     return '$base$sep${suffix.startsWith('?') || suffix.startsWith('&') ? suffix.substring(1) : suffix}';
@@ -130,26 +130,26 @@ class CatchupUrl {
   // Append ?utc={start}&lutc={now} to the live URL.
   static String _shiftQuery(
     Channel channel,
-    Programme programme,
+    Program program,
     int nowEpoch,
   ) {
     final base = channel.url ?? '';
     final sep = base.contains('?') ? '&' : '?';
-    return '$base${sep}utc=${programme.startUtc}&lutc=$nowEpoch';
+    return '$base${sep}utc=${program.startUtc}&lutc=$nowEpoch';
   }
 
   // ── Placeholder substitution ──────────────────────────────────────────────
   static String? _substitute(
     String? template,
-    Programme programme,
+    Program program,
     int nowEpoch,
   ) {
     if (template == null || template.isEmpty) return null;
     final start = DateTime.fromMillisecondsSinceEpoch(
-      programme.startUtc * 1000,
+      program.startUtc * 1000,
       isUtc: true,
     );
-    final duration = programme.duration.inSeconds;
+    final duration = program.duration.inSeconds;
 
     String out = template;
     final replacements = <String, String>{
@@ -160,12 +160,12 @@ class CatchupUrl {
       '{H}': _pad(start.hour),
       '{M}': _pad(start.minute),
       '{S}': _pad(start.second),
-      '{utc}': programme.startUtc.toString(),
+      '{utc}': program.startUtc.toString(),
       '{lutc}': nowEpoch.toString(),
       '{duration}': duration.toString(),
       // Kodi-style aliases (also seen as ${start} ${end} ${timestamp})
-      r'${start}': programme.startUtc.toString(),
-      r'${end}': programme.stopUtc.toString(),
+      r'${start}': program.startUtc.toString(),
+      r'${end}': program.stopUtc.toString(),
       r'${timestamp}': nowEpoch.toString(),
       r'${duration}': duration.toString(),
     };

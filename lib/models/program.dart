@@ -1,4 +1,4 @@
-class Programme {
+class Program {
   final int? id;
   final String epgChannelId;
   final int sourceId;
@@ -9,7 +9,7 @@ class Programme {
   final int stopUtc;  // Unix epoch seconds
   final String? episodeNum;
 
-  const Programme({
+  const Program({
     this.id,
     required this.epgChannelId,
     required this.sourceId,

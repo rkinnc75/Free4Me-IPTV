@@ -7,7 +7,7 @@ import 'package:open_tv/models/channel_preserve.dart';
 import 'package:open_tv/models/filters.dart';
 import 'package:open_tv/models/id_data.dart';
 import 'package:open_tv/models/media_type.dart';
-import 'package:open_tv/models/programme.dart';
+import 'package:open_tv/models/program.dart';
 import 'package:open_tv/models/source.dart';
 import 'package:open_tv/models/source_type.dart';
 import 'package:open_tv/models/view_type.dart';
@@ -578,8 +578,8 @@ class Sql {
     });
   }
 
-  /// Delete all programmes for a source before re-importing.
-  static Future<void> deleteProgrammesForSource(int sourceId) async {
+  /// Delete all programs for a source before re-importing.
+  static Future<void> deleteProgramsForSource(int sourceId) async {
     var db = await DbFactory.db;
     await db.execute(
       'DELETE FROM programmes WHERE source_id = ?',
@@ -587,14 +587,14 @@ class Sql {
     );
   }
 
-  /// Insert a batch of programmes in a single write transaction.
-  static Future<void> insertProgrammesBatch(
-    List<Programme> programmes,
+  /// Insert a batch of programs in a single write transaction.
+  static Future<void> insertProgramsBatch(
+    List<Program> programs,
   ) async {
-    if (programmes.isEmpty) return;
+    if (programs.isEmpty) return;
     var db = await DbFactory.db;
     await db.writeTransaction((tx) async {
-      for (final p in programmes) {
+      for (final p in programs) {
         await tx.execute('''
           INSERT OR IGNORE INTO programmes
             (epg_channel_id, source_id, title, description, category,
@@ -614,8 +614,8 @@ class Sql {
     });
   }
 
-  /// Returns [now, next] programmes for a channel, or null entries if none.
-  static Future<(Programme?, Programme?)> getNowNext(
+  /// Returns [now, next] programs for a channel, or null entries if none.
+  static Future<(Program?, Program?)> getNowNext(
     String epgChannelId,
     int sourceId,
   ) async {
@@ -631,20 +631,20 @@ class Sql {
       ORDER BY start_utc ASC
       LIMIT 2
     ''', [epgChannelId, sourceId, nowEpoch]);
-    final programmes = rows.map(_rowToProgramme).toList();
-    final now = programmes.isNotEmpty && programmes[0].isOnNow(nowEpoch)
-        ? programmes[0]
+    final programs = rows.map(_rowToProgram).toList();
+    final now = programs.isNotEmpty && programs[0].isOnNow(nowEpoch)
+        ? programs[0]
         : null;
-    final next = now != null && programmes.length > 1
-        ? programmes[1]
-        : (programmes.isNotEmpty && !programmes[0].isOnNow(nowEpoch)
-            ? programmes[0]
+    final next = now != null && programs.length > 1
+        ? programs[1]
+        : (programs.isNotEmpty && !programs[0].isOnNow(nowEpoch)
+            ? programs[0]
             : null);
     return (now, next);
   }
 
-  /// Returns all programmes for a channel within [windowStart, windowEnd].
-  static Future<List<Programme>> getSchedule(
+  /// Returns all programs for a channel within [windowStart, windowEnd].
+  static Future<List<Program>> getSchedule(
     String epgChannelId,
     int sourceId,
     int windowStartEpoch,
@@ -661,11 +661,11 @@ class Sql {
         AND stop_utc > ?
       ORDER BY start_utc ASC
     ''', [epgChannelId, sourceId, windowEndEpoch, windowStartEpoch]);
-    return rows.map(_rowToProgramme).toList();
+    return rows.map(_rowToProgram).toList();
   }
 
-  static Programme _rowToProgramme(Row row) {
-    return Programme(
+  static Program _rowToProgram(Row row) {
+    return Program(
       id: row.columnAt(0) as int?,
       epgChannelId: row.columnAt(1) as String,
       sourceId: row.columnAt(2) as int,
@@ -681,7 +681,7 @@ class Sql {
   /// Upsert a refresh log entry for a source.
   static Future<void> upsertEpgRefreshLog(
     int sourceId,
-    int programmesLoaded,
+    int programsLoaded,
     String? lastError,
   ) async {
     final nowEpoch = DateTime.now().millisecondsSinceEpoch ~/ 1000;
@@ -693,7 +693,7 @@ class Sql {
         last_refreshed_utc = excluded.last_refreshed_utc,
         programmes_loaded  = excluded.programmes_loaded,
         last_error         = excluded.last_error
-    ''', [sourceId, nowEpoch, programmesLoaded, lastError]);
+    ''', [sourceId, nowEpoch, programsLoaded, lastError]);
   }
 
   /// Returns the last refresh log for a source, or null if never refreshed.
@@ -706,7 +706,7 @@ class Sql {
     if (row == null) return null;
     return {
       'lastRefreshedUtc': row.columnAt(0) as int,
-      'programmesLoaded': row.columnAt(1) as int,
+      'programsLoaded': row.columnAt(1) as int,
       'lastError': row.columnAt(2) as String?,
     };
   }
@@ -735,7 +735,7 @@ class Sql {
     return rows.map(rowToChannel).toList();
   }
 
-  /// Distinct EPG channel IDs that have programme data for a source,
+  /// Distinct EPG channel IDs that have program data for a source,
   /// paired with the most recent title (as a display hint).
   static Future<List<(String, String)>> getAvailableEpgIds(
     int sourceId,

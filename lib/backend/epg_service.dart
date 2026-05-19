@@ -1,3 +1,5 @@
+import 'dart:math' show min;
+
 import 'package:flutter/foundation.dart';
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/epg_matcher.dart';
@@ -11,12 +13,15 @@ import 'package:open_tv/models/source_type.dart';
 import 'package:workmanager/workmanager.dart';
 
 // Top-level function required by compute() — closures are not allowed.
-// Runs EpgMatcher.matchWithReport in a separate Dart isolate so the main
-// thread stays responsive during large EPG → channel matching passes.
+// Matches a single batch of channels against the full EPG map in an isolate.
 (Map<int, String>, MatchReport) _matchInIsolate(
   (Map<String, String>, List<Channel>) args,
 ) =>
     EpgMatcher.matchWithReport(args.$1, args.$2);
+
+// How many channels to process per isolate invocation. Smaller = more frequent
+// progress updates; larger = less overhead. 300 is a good balance.
+const _matchBatchSize = 300;
 
 /// Task name registered with WorkManager for background EPG refresh.
 const epgBackgroundTask = 'epg_refresh';
@@ -90,7 +95,7 @@ class EpgService {
 
     AppLog.info('EPG: starting refresh for "${source.name}" — $url');
     try {
-      await Sql.deleteProgrammesForSource(source.id!);
+      await Sql.deleteProgramsForSource(source.id!);
 
       final channelMap = await XmltvParser.parse(
         url: url,
@@ -98,7 +103,7 @@ class EpgService {
         windowStartEpoch: windowStart,
         windowEndEpoch: windowEnd,
         onBatch: (batch) async {
-          await Sql.insertProgrammesBatch(batch);
+          await Sql.insertProgramsBatch(batch);
           inserted += batch.length;
         },
         onProgress: onProgress,
@@ -122,11 +127,45 @@ class EpgService {
         }
       }
 
-      // Run the matcher in a separate Dart isolate.
-      // matchWithReport is O(channels × EPG entries) and can take several
-      // seconds on a large feed — calling it on the main thread causes an ANR.
-      final (autoMatched, report) =
-          await compute(_matchInIsolate, (channelMap, channels));
+      // Run the matcher in batches of _matchBatchSize channels, each batch in
+      // its own Dart isolate so the UI thread stays alive and we can stream
+      // progress back to the caller after every batch.
+      final allMatched = <int, String>{};
+      final tierCounts = <MatchTier, int>{};
+      final sampleUnmatched = <String>[];
+
+      for (int i = 0; i < channels.length; i += _matchBatchSize) {
+        final end = min(i + _matchBatchSize, channels.length);
+        final batch = channels.sublist(i, end);
+
+        final (batchMatched, batchReport) =
+            await compute(_matchInIsolate, (channelMap, batch));
+
+        allMatched.addAll(batchMatched);
+        for (final e in batchReport.counts.entries) {
+          tierCounts[e.key] = (tierCounts[e.key] ?? 0) + e.value;
+        }
+        if (sampleUnmatched.length < 10) {
+          sampleUnmatched.addAll(
+            batchReport.sampleUnmatched.take(10 - sampleUnmatched.length),
+          );
+        }
+
+        onProgress?.call(XmltvProgress(
+          programsInserted: inserted,
+          matchingChannelsDone: end,
+          matchingChannelsTotal: channels.length,
+          statusMessage:
+              'Matching channels: $end / ${channels.length}',
+        ));
+      }
+
+      final report = MatchReport(
+        counts: tierCounts,
+        sampleUnmatched: sampleUnmatched,
+        totalChannels: channels.length,
+      );
+      final autoMatched = allMatched;
       // Merge: manual overrides win; auto fills the rest
       final merged = {...autoMatched, ...manualOverrides};
 
@@ -144,12 +183,12 @@ class EpgService {
         );
       }
       AppLog.info(
-        'EPG: done "${source.name}" — $inserted programmes, '
+        'EPG: done "${source.name}" — $inserted programs, '
         '${merged.length}/${channels.length} channels matched',
       );
       debugPrint(
         'EPG refresh done for "${source.name}": '
-        '$inserted programmes, ${merged.length}/${channels.length} channels matched',
+        '$inserted programs, ${merged.length}/${channels.length} channels matched',
       );
     } catch (e, st) {
       lastError = e.toString();

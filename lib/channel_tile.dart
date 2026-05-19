@@ -242,7 +242,7 @@ class _ChannelTileState extends State<ChannelTile> {
                 widget.channel.mediaType == MediaType.livestream)
               IconButton(
                 icon: const Icon(Icons.calendar_today_outlined, size: 20),
-                tooltip: 'Programme guide',
+                tooltip: 'Program guide',
                 onPressed: () => Navigator.push(
                   context,
                   MaterialPageRoute(

@@ -4,7 +4,7 @@ import 'package:open_tv/backend/catchup_url.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/models/channel.dart';
-import 'package:open_tv/models/programme.dart';
+import 'package:open_tv/models/program.dart';
 import 'package:open_tv/models/source.dart';
 import 'package:open_tv/player.dart';
 
@@ -21,14 +21,14 @@ class _DayHeader extends _ListItem {
 }
 
 class _ProgItem extends _ListItem {
-  final Programme p;
+  final Program p;
   final bool isNow;
   _ProgItem(this.p, {required this.isNow});
 }
 
 // ─── View ────────────────────────────────────────────────────────────────────
 
-/// Full programme schedule for a single channel.
+/// Full program schedule for a single channel.
 class ChannelScheduleView extends StatefulWidget {
   final Channel channel;
 
@@ -75,14 +75,14 @@ class _ChannelScheduleViewState extends State<ChannelScheduleView> {
         Sql.getSchedule(epgId, widget.channel.sourceId, windowStart, windowEnd),
         Sql.getSources(),
       ]);
-      final progs = results[0] as List<Programme>;
+      final progs = results[0] as List<Program>;
       final sources = results[1] as List<Source>;
       final source = sources.firstWhere(
         (s) => s.id == widget.channel.sourceId,
         orElse: () => sources.first,
       );
 
-      // Build flat list grouping programmes by local date
+      // Build flat list grouping programs by local date
       final items = <_ListItem>[];
       DateTime? currentDay;
       for (final p in progs) {
@@ -139,7 +139,7 @@ class _ChannelScheduleViewState extends State<ChannelScheduleView> {
       return const Center(child: CircularProgressIndicator());
     }
     if (items.isEmpty) {
-      return const Center(child: Text('No programme data available.'));
+      return const Center(child: Text('No program data available.'));
     }
 
     final nowEpoch = DateTime.now().millisecondsSinceEpoch ~/ 1000;
@@ -152,7 +152,7 @@ class _ChannelScheduleViewState extends State<ChannelScheduleView> {
         return switch (item) {
           _DayHeader(:final day) => _buildDayHeader(day),
           _ProgItem(:final p, :final isNow) =>
-            _programmeTile(p, nowEpoch, isNow: isNow),
+            _programTile(p, nowEpoch, isNow: isNow),
         };
       },
     );
@@ -170,7 +170,7 @@ class _ChannelScheduleViewState extends State<ChannelScheduleView> {
     );
   }
 
-  Widget _programmeTile(Programme p, int nowEpoch, {required bool isNow}) {
+  Widget _programTile(Program p, int nowEpoch, {required bool isNow}) {
     final isPast = p.stopUtc <= nowEpoch;
     final start = _timeFmt.format(p.startTime.toLocal());
     final durationMins = _durationFmt.format(p.duration.inMinutes.toDouble());
@@ -182,7 +182,7 @@ class _ChannelScheduleViewState extends State<ChannelScheduleView> {
     final catchupUrl = showCatchup
         ? CatchupUrl.build(
             channel: widget.channel,
-            programme: p,
+            program: p,
             source: source,
           )
         : null;
@@ -206,7 +206,7 @@ class _ChannelScheduleViewState extends State<ChannelScheduleView> {
       );
     }
 
-    // Leading: time + "NOW" chip stacked vertically for the current programme
+    // Leading: time + "NOW" chip stacked vertically for the current program
     Widget leading = SizedBox(
       width: 56,
       child: Column(
@@ -278,7 +278,7 @@ class _ChannelScheduleViewState extends State<ChannelScheduleView> {
     );
   }
 
-  Future<void> _playCatchup(Programme p, String url) async {
+  Future<void> _playCatchup(Program p, String url) async {
     final settings =
         SettingsService.cached ?? await SettingsService.getSettings();
     if (!mounted) return;
@@ -294,7 +294,7 @@ class _ChannelScheduleViewState extends State<ChannelScheduleView> {
     );
   }
 
-  void _showDetails(Programme p) {
+  void _showDetails(Program p) {
     final nowEpoch = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final source = _source;
     final canCatchup = source != null &&
@@ -303,7 +303,7 @@ class _ChannelScheduleViewState extends State<ChannelScheduleView> {
     final catchupUrl = canCatchup
         ? CatchupUrl.build(
             channel: widget.channel,
-            programme: p,
+            program: p,
             source: source,
           )
         : null;
