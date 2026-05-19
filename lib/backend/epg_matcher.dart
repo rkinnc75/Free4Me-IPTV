@@ -9,6 +9,7 @@ enum MatchTier {
   tokenSuperset, // channel-name tokens ⊇ EPG-name tokens
   callsign, // US K/W callsign substring match in EPG id or display name
   jaccard, // best Jaccard overlap above threshold
+  ambiguous, // a fuzzy tier found >1 equally-good candidates — skipped
   none,
 }
 
@@ -24,8 +25,10 @@ class MatchReport {
     required this.totalChannels,
   });
 
-  int get matched =>
-      counts.entries.where((e) => e.key != MatchTier.none).fold(0, (s, e) => s + e.value);
+  int get matched => counts.entries
+      .where((e) =>
+          e.key != MatchTier.none && e.key != MatchTier.ambiguous)
+      .fold(0, (s, e) => s + e.value);
 
   @override
   String toString() {
@@ -133,63 +136,75 @@ class EpgMatcher {
         continue;
       }
 
-      // 5. Token-superset: channel name contains every word of an EPG name
+      // ─── Fuzzy tiers below ─────────────────────────────────────────────
+      // Rule for every fuzzy tier: if two or more candidates tie for "best",
+      // skip the match entirely. Better unmatched than wrong.
+      bool fuzzyAmbiguous = false;
+
+      // 5. Token-superset: channel name contains every word of an EPG name.
+      // Pick the entry with the MOST tokens (most specific). Skip if there's
+      // a tie at the most-specific level.
       final chTokens = _tokens(normName);
       if (chTokens.isNotEmpty) {
         String? bestId;
-        int bestEpgSize = 0; // prefer longest (most specific) EPG name
+        int bestEpgSize = 0;
+        int bestCount = 0;
         for (var i = 0; i < epgTokens.length; i++) {
           final epgT = epgTokens[i];
-          if (epgT.isEmpty) continue;
-          if (epgT.length > chTokens.length) continue;
-          if (epgT.every(chTokens.contains)) {
-            // Take the EPG name with the most tokens — "espn 2" beats "espn"
-            if (epgT.length > bestEpgSize) {
-              bestEpgSize = epgT.length;
-              bestId = epgIds[i];
-            }
+          if (epgT.isEmpty || epgT.length > chTokens.length) continue;
+          if (!epgT.every(chTokens.contains)) continue;
+          if (epgT.length > bestEpgSize) {
+            bestEpgSize = epgT.length;
+            bestId = epgIds[i];
+            bestCount = 1;
+          } else if (epgT.length == bestEpgSize) {
+            bestCount++;
           }
         }
-        if (bestId != null) {
+        if (bestCount == 1 && bestId != null) {
           result[ch.id!] = bestId;
           record(MatchTier.tokenSuperset);
           continue;
+        } else if (bestCount > 1) {
+          fuzzyAmbiguous = true;
         }
       }
 
       // 6. US callsign — extract 4-letter K/W callsigns from the *original*
       // channel name (preserves uppercase) and look for an EPG id whose
-      // normalized form contains that callsign as a substring. This catches
-      // e.g. channel "(m) AK| CBS Fairbanks KXDF" → EPG id "CBSKXDF.us"
-      // where the EPG id concatenates network + callsign so token matching
-      // fails.
+      // lowercased form contains that callsign as a substring. Skip on ties.
       final callsigns = _extractCallsigns(ch.name);
       if (callsigns.isNotEmpty) {
         String? bestId;
-        int bestEpgLen = 1 << 30; // prefer the shortest (most specific) id
+        int bestEpgLen = 1 << 30;
+        int bestCount = 0;
         for (final cs in callsigns) {
           final csLower = cs.toLowerCase();
           for (final epgId in epgIds) {
-            final epgLower = epgId.toLowerCase();
-            if (!epgLower.contains(csLower)) continue;
-            // Prefer the most specific (shortest) id match
+            if (!epgId.toLowerCase().contains(csLower)) continue;
             if (epgId.length < bestEpgLen) {
               bestEpgLen = epgId.length;
               bestId = epgId;
+              bestCount = 1;
+            } else if (epgId.length == bestEpgLen && epgId != bestId) {
+              bestCount++;
             }
           }
         }
-        if (bestId != null) {
+        if (bestCount == 1 && bestId != null) {
           result[ch.id!] = bestId;
           record(MatchTier.callsign);
           continue;
+        } else if (bestCount > 1) {
+          fuzzyAmbiguous = true;
         }
       }
 
-      // 7. Jaccard fallback — keep best score above threshold
+      // 7. Jaccard fallback — keep best score above threshold. Skip on ties.
       if (chTokens.isNotEmpty) {
         String? bestId;
         double bestScore = 0;
+        int bestCount = 0;
         for (var i = 0; i < epgTokens.length; i++) {
           final epgT = epgTokens[i];
           if (epgT.isEmpty) continue;
@@ -200,13 +215,28 @@ class EpgMatcher {
           if (score > bestScore) {
             bestScore = score;
             bestId = epgIds[i];
+            bestCount = 1;
+          } else if (score == bestScore) {
+            bestCount++;
           }
         }
-        if (bestId != null && bestScore >= _jaccardThreshold) {
+        if (bestCount == 1 &&
+            bestId != null &&
+            bestScore >= _jaccardThreshold) {
           result[ch.id!] = bestId;
           record(MatchTier.jaccard);
           continue;
+        } else if (bestCount > 1 && bestScore >= _jaccardThreshold) {
+          fuzzyAmbiguous = true;
         }
+      }
+
+      if (fuzzyAmbiguous) {
+        record(MatchTier.ambiguous);
+        if (unmatched.length < 10) {
+          unmatched.add('${ch.name} (ambiguous)');
+        }
+        continue;
       }
 
       // No match
