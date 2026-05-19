@@ -1,0 +1,130 @@
+import 'package:flutter/foundation.dart';
+import 'package:open_tv/backend/epg_matcher.dart';
+import 'package:open_tv/backend/settings_service.dart';
+import 'package:open_tv/backend/sql.dart';
+import 'package:open_tv/backend/xmltv_parser.dart';
+import 'package:open_tv/backend/xtream_epg.dart';
+import 'package:open_tv/models/source.dart';
+import 'package:open_tv/models/source_type.dart';
+import 'package:workmanager/workmanager.dart';
+
+/// Task name registered with WorkManager for background EPG refresh.
+const epgBackgroundTask = 'epg_refresh';
+
+/// Top-level WorkManager callback dispatcher.
+/// Must be annotated with `@pragma('vm:entry-point')` so tree-shaking
+/// doesn't remove it in release builds.
+@pragma('vm:entry-point')
+void callbackDispatcher() {
+  Workmanager().executeTask((task, inputData) async {
+    if (task == epgBackgroundTask) {
+      await EpgService.refreshAllSources(background: true);
+    }
+    return true;
+  });
+}
+
+class EpgService {
+  /// Register (or re-register) the periodic background EPG refresh task.
+  static Future<void> scheduleBackgroundRefresh() async {
+    final settings = await SettingsService.getSettings();
+    if (!settings.epgAutoRefresh) {
+      await Workmanager().cancelByUniqueName(epgBackgroundTask);
+      return;
+    }
+
+    await Workmanager().registerPeriodicTask(
+      epgBackgroundTask,
+      epgBackgroundTask,
+      frequency: Duration(hours: settings.epgRefreshHours),
+      initialDelay: _delayUntilRefreshHour(settings.epgRefreshHour),
+      constraints: Constraints(networkType: NetworkType.connected),
+      existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
+    );
+  }
+
+  /// Refresh EPG for all sources that have an EPG URL configured.
+  static Future<void> refreshAllSources({bool background = false}) async {
+    final sources = await Sql.getSources();
+    for (final source in sources) {
+      if (!source.enabled) continue;
+      final epgUrl = _resolveEpgUrl(source);
+      if (epgUrl == null) continue;
+      await refreshSource(source, epgUrl: epgUrl, background: background);
+    }
+  }
+
+  /// Refresh EPG for a single source.
+  static Future<void> refreshSource(
+    Source source, {
+    String? epgUrl,
+    bool background = false,
+    void Function(XmltvProgress)? onProgress,
+  }) async {
+    final settings = await SettingsService.getSettings();
+    final url = epgUrl ?? _resolveEpgUrl(source);
+    if (url == null || source.id == null) return;
+
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final windowStart = now - settings.epgPastDays * 86400;
+    final windowEnd = now + settings.epgForecastDays * 86400;
+
+    int inserted = 0;
+    String? lastError;
+
+    try {
+      await Sql.deleteProgrammesForSource(source.id!);
+
+      final channelMap = await XmltvParser.parse(
+        url: url,
+        sourceId: source.id!,
+        windowStartEpoch: windowStart,
+        windowEndEpoch: windowEnd,
+        onBatch: (batch) async {
+          await Sql.insertProgrammesBatch(batch);
+          inserted += batch.length;
+        },
+        onProgress: onProgress,
+      );
+
+      // Match channels to EPG IDs
+      final channels = await Sql.getChannelsForEpgMatching(source.id!);
+      final matched = EpgMatcher.match(channelMap, channels);
+      if (matched.isNotEmpty) {
+        await Sql.setChannelEpgIds(matched);
+      }
+
+      debugPrint(
+        'EPG refresh done for "${source.name}": '
+        '$inserted programmes, ${matched.length}/${channels.length} channels matched',
+      );
+    } catch (e, st) {
+      lastError = e.toString();
+      debugPrint('EPG refresh error for "${source.name}": $e\n$st');
+    }
+
+    await Sql.upsertEpgRefreshLog(source.id!, inserted, lastError);
+  }
+
+  /// Determines the EPG URL to use for a source:
+  /// - Manual override (source.epgUrl) wins
+  /// - Xtream sources fall back to their built-in XMLTV endpoint
+  /// - M3U sources have no automatic EPG URL
+  static String? _resolveEpgUrl(Source source) {
+    if (source.epgUrl != null && source.epgUrl!.isNotEmpty) {
+      return source.epgUrl;
+    }
+    if (source.sourceType == SourceType.xtream) {
+      return XtreamEpg.xmltvUrl(source);
+    }
+    return null;
+  }
+
+  /// Computes how long to wait until the next occurrence of [targetHour] (local time).
+  static Duration _delayUntilRefreshHour(int targetHour) {
+    final now = DateTime.now();
+    var next = DateTime(now.year, now.month, now.day, targetHour);
+    if (!next.isAfter(now)) next = next.add(const Duration(days: 1));
+    return next.difference(now);
+  }
+}
