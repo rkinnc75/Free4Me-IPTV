@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/http_client.dart';
 import 'package:open_tv/models/programme.dart';
 import 'package:xml/xml_events.dart';
@@ -14,6 +15,7 @@ class XmltvProgress {
   final int programmesSkipped;
   final bool done;
   final String? error;
+  final String? statusMessage;
 
   const XmltvProgress({
     this.channelMapSize = 0,
@@ -21,6 +23,7 @@ class XmltvProgress {
     this.programmesSkipped = 0,
     this.done = false,
     this.error,
+    this.statusMessage,
   });
 }
 
@@ -46,17 +49,34 @@ class XmltvParser {
     void Function(XmltvProgress)? onProgress,
     int batchSize = defaultBatchSize,
   }) async {
+    onProgress?.call(const XmltvProgress(statusMessage: 'Connecting…'));
+    AppLog.info('XMLTV: GET $url');
+
     final uri = Uri.parse(url);
     final request = await AppHttp.buildGetRequest(uri);
-    final response = await AppHttp.sendStreaming(request);
+    final response = await AppHttp.sendStreaming(
+      request,
+      timeout: const Duration(seconds: 60),
+    );
     if (response == null) {
-      throw Exception('Failed to fetch EPG feed: $url');
+      AppLog.error(
+        'XMLTV: connection failed (timeout / DNS / refused) — $url',
+      );
+      throw Exception('Failed to fetch EPG feed (connection failed): $url');
     }
+    AppLog.info(
+      'XMLTV: HTTP ${response.statusCode}, '
+      'content-length=${response.contentLength ?? "?"}, '
+      'encoding=${response.headers['content-encoding'] ?? "none"}',
+    );
     if (response.statusCode != 200) {
       throw Exception(
         'EPG feed returned HTTP ${response.statusCode}: $url',
       );
     }
+    onProgress?.call(
+      const XmltvProgress(statusMessage: 'Downloading & parsing…'),
+    );
 
     final isGzip = (response.headers['content-encoding'] ?? '')
             .toLowerCase()
@@ -172,6 +192,10 @@ class XmltvParser {
       done: true,
     ));
 
+    AppLog.info(
+      'XMLTV: parse done — ${channelMap.length} channels, '
+      '$inserted programmes inserted, $skipped outside window',
+    );
     debugPrint(
       'XMLTV parse done: ${channelMap.length} channels, '
       '$inserted programmes inserted, $skipped skipped',

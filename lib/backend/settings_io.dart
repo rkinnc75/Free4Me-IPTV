@@ -200,6 +200,12 @@ class SettingsIo {
   }
 
   /// Save an arbitrary text string to a user-chosen file location.
+  ///
+  /// On Android/iOS, `file_picker.saveFile(bytes: ...)` writes the file via
+  /// the Storage Access Framework directly and returns a SAF document URI
+  /// (e.g. `/document/primary:foo.txt`) which is NOT a real filesystem path.
+  /// On desktop, file_picker just returns the chosen path and we must write
+  /// the bytes ourselves.
   static Future<void> exportStringToFile(
     BuildContext context, {
     required String content,
@@ -215,10 +221,18 @@ class SettingsIo {
         bytes: Uint8List.fromList(bytes),
       );
       if (path == null) return;
-      if (!kIsWeb) await File(path).writeAsBytes(bytes);
+
+      final isMobile =
+          !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+      // On desktop file_picker only returns the path — we have to write.
+      // On mobile file_picker has already persisted the bytes via SAF.
+      if (!isMobile) {
+        await File(path).writeAsBytes(bytes);
+      }
+
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('File saved.')),
+          SnackBar(content: Text('Saved to $suggestedName')),
         );
       }
     } catch (e) {
