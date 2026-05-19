@@ -113,7 +113,8 @@ class EpgService {
         }
       }
 
-      final autoMatched = EpgMatcher.match(channelMap, channels);
+      final (autoMatched, report) =
+          EpgMatcher.matchWithReport(channelMap, channels);
       // Merge: manual overrides win; auto fills the rest
       final merged = {...autoMatched, ...manualOverrides};
 
@@ -121,6 +122,15 @@ class EpgService {
         await Sql.setChannelEpgIds(merged);
       }
 
+      AppLog.info(
+        'EPG: matcher "${source.name}" — $report',
+      );
+      if (report.sampleUnmatched.isNotEmpty) {
+        AppLog.info(
+          'EPG: sample unmatched channels — '
+          '${report.sampleUnmatched.map((n) => "\"$n\"").join(", ")}',
+        );
+      }
       AppLog.info(
         'EPG: done "${source.name}" — $inserted programmes, '
         '${merged.length}/${channels.length} channels matched',
