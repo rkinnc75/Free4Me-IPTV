@@ -174,7 +174,7 @@ class DbFactory {
           'CREATE INDEX idx_channels_epg_id ON channels(epg_channel_id);',
         );
 
-        // Programme guide table
+        // Program guide table
         await tx.execute('''
           CREATE TABLE programmes (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -190,11 +190,11 @@ class DbFactory {
           );
         ''');
         await tx.execute('''
-          CREATE INDEX idx_programmes_channel_time
+          CREATE INDEX idx_programs_channel_time
             ON programmes(epg_channel_id, source_id, start_utc);
         ''');
         await tx.execute('''
-          CREATE INDEX idx_programmes_time_range
+          CREATE INDEX idx_programs_time_range
             ON programmes(source_id, start_utc, stop_utc);
         ''');
 

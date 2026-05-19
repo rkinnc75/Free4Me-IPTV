@@ -5,32 +5,40 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/http_client.dart';
-import 'package:open_tv/models/programme.dart';
+import 'package:open_tv/models/program.dart';
 import 'package:xml/xml_events.dart';
 
 /// Emitted during a streaming XMLTV parse so callers can show progress.
 class XmltvProgress {
   final int channelMapSize;
-  final int programmesInserted;
-  final int programmesSkipped;
+  final int programsInserted;
+  final int programsSkipped;
   final bool done;
   final String? error;
   final String? statusMessage;
 
+  // Matching-phase progress (populated after download completes)
+  final int matchingChannelsDone;
+  final int matchingChannelsTotal;
+
   const XmltvProgress({
     this.channelMapSize = 0,
-    this.programmesInserted = 0,
-    this.programmesSkipped = 0,
+    this.programsInserted = 0,
+    this.programsSkipped = 0,
     this.done = false,
     this.error,
     this.statusMessage,
+    this.matchingChannelsDone = 0,
+    this.matchingChannelsTotal = 0,
   });
+
+  bool get isMatching => matchingChannelsTotal > 0;
 }
 
 /// Streams and event-parses an XMLTV file.
 ///
-/// Emits progress via [onProgress] and delivers programmes in batches of
-/// [batchSize] to [onBatch]. Filters programmes outside
+/// Emits progress via [onProgress] and delivers programs in batches of
+/// [batchSize] to [onBatch]. Filters programs outside
 /// [windowStartEpoch, windowEndEpoch] to keep DB size manageable.
 ///
 /// Handles both plain XML and gzip-compressed XML transparently
@@ -39,13 +47,13 @@ class XmltvParser {
   static const int defaultBatchSize = 1000;
 
   /// Returns a map of EPG channel-id → display-name from the file.
-  /// Also calls [onBatch] for each batch of in-window programmes.
+  /// Also calls [onBatch] for each batch of in-window programs.
   static Future<Map<String, String>> parse({
     required String url,
     required int sourceId,
     required int windowStartEpoch,
     required int windowEndEpoch,
-    required Future<void> Function(List<Programme>) onBatch,
+    required Future<void> Function(List<Program>) onBatch,
     void Function(XmltvProgress)? onProgress,
     int batchSize = defaultBatchSize,
   }) async {
@@ -87,14 +95,14 @@ class XmltvParser {
     Stream<List<int>> byteStream = await _maybeUngzip(response.stream);
 
     final channelMap = <String, String>{}; // epg-id → display-name
-    final batch = <Programme>[];
+    final batch = <Program>[];
     int inserted = 0;
     int skipped = 0;
 
     // State machine
     String? _currentChannelId;
     String? _currentChildElement; // 'display-name' | 'title' | 'desc' | etc.
-    _ProgrammeBuilder? _prog;
+    _ProgramBuilder? _prog;
     final _text = StringBuffer();
 
     Future<void> flushBatch() async {
@@ -104,8 +112,8 @@ class XmltvParser {
       batch.clear();
       onProgress?.call(XmltvProgress(
         channelMapSize: channelMap.length,
-        programmesInserted: inserted,
-        programmesSkipped: skipped,
+        programsInserted: inserted,
+        programsSkipped: skipped,
       ));
     }
 
@@ -123,12 +131,12 @@ class XmltvParser {
           case 'channel':
             _currentChannelId = _attr(event, 'id');
             _currentChildElement = null;
-          case 'programme':
+          case 'program':
             final startRaw = _attr(event, 'start');
             final stopRaw = _attr(event, 'stop');
             final channelId = _attr(event, 'channel');
             if (startRaw != null && stopRaw != null && channelId != null) {
-              _prog = _ProgrammeBuilder(
+              _prog = _ProgramBuilder(
                 epgChannelId: channelId,
                 sourceId: sourceId,
                 startUtc: _parseXmltvTime(startRaw),
@@ -166,7 +174,7 @@ class XmltvParser {
           case 'episode-num':
             _prog?.episodeNum = text.isNotEmpty ? text : null;
             _currentChildElement = null;
-          case 'programme':
+          case 'program':
             final p = _prog;
             _prog = null;
             if (p != null && p.title != null) {
@@ -187,18 +195,18 @@ class XmltvParser {
 
     onProgress?.call(XmltvProgress(
       channelMapSize: channelMap.length,
-      programmesInserted: inserted,
-      programmesSkipped: skipped,
+      programsInserted: inserted,
+      programsSkipped: skipped,
       done: true,
     ));
 
     AppLog.info(
       'XMLTV: parse done — ${channelMap.length} channels, '
-      '$inserted programmes inserted, $skipped outside window',
+      '$inserted programs inserted, $skipped outside window',
     );
     debugPrint(
       'XMLTV parse done: ${channelMap.length} channels, '
-      '$inserted programmes inserted, $skipped skipped',
+      '$inserted programs inserted, $skipped skipped',
     );
     return channelMap;
   }
@@ -290,7 +298,7 @@ class XmltvParser {
   }
 }
 
-class _ProgrammeBuilder {
+class _ProgramBuilder {
   final String epgChannelId;
   final int sourceId;
   final int startUtc;
@@ -300,14 +308,14 @@ class _ProgrammeBuilder {
   String? category;
   String? episodeNum;
 
-  _ProgrammeBuilder({
+  _ProgramBuilder({
     required this.epgChannelId,
     required this.sourceId,
     required this.startUtc,
     required this.stopUtc,
   });
 
-  Programme build() => Programme(
+  Program build() => Program(
         epgChannelId: epgChannelId,
         sourceId: sourceId,
         title: title ?? '',

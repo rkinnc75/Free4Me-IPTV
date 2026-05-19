@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/http_client.dart';
-import 'package:open_tv/models/programme.dart';
+import 'package:open_tv/models/program.dart';
 import 'package:open_tv/models/source.dart';
 
 /// Fetches EPG data from an Xtream API endpoint.
@@ -63,8 +63,8 @@ class XtreamEpg {
   }
 
   /// Fetches Xtream short EPG for a single stream id.
-  /// Returns a list of [Programme]s for the next few hours.
-  static Future<List<Programme>> fetchShortEpg(
+  /// Returns a list of [Program]s for the next few hours.
+  static Future<List<Program>> fetchShortEpg(
     Source source,
     int streamId,
     int sourceId,
@@ -92,7 +92,7 @@ class XtreamEpg {
         final m = e as Map<String, dynamic>;
         final start = _parseEpochSecs(m['start'] as String? ?? '');
         final end = _parseEpochSecs(m['end'] as String? ?? '');
-        return Programme(
+        return Program(
           epgChannelId: (m['stream_id'] ?? streamId).toString(),
           sourceId: sourceId,
           title: _decodeBase64(m['title'] as String? ?? ''),

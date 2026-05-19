@@ -221,7 +221,7 @@ The table covers every setting row in `settings_view.dart` in display order. Def
 | Channel matcher heuristics (`epg_matcher.dart`) | **Opus 4.7** | Lots of edge cases |
 | Xtream EPG fetcher (`xtream_epg.dart`) | **Sonnet 4.6** | Mostly wiring |
 | Refresh service + workmanager setup | **GPT-5** | Native Android background work |
-| Sql.dart CRUD for programmes | **Sonnet 4.6** | Standard SQL work |
+| Sql.dart CRUD for programs | **Sonnet 4.6** | Standard SQL work |
 | Now/Next strip widget | **Sonnet 4.6** | Query-driven UI |
 | Channel schedule view | **Sonnet 4.6** | ListView builder + date formatting |
 | Settings UI for EPG section | **Composer 2.5** | Mirror existing slider/switch tiles |
@@ -242,7 +242,7 @@ The table covers every setting row in `settings_view.dart` in display order. Def
 ### Critical implementation requirements
 
 #### Streaming XMLTV parser
-Reference feed (iptv-epg.org/files/epg-us.xml) is **466 MB uncompressed, 56 MB gzipped, 1.03M programmes**. Cannot DOM-parse on a 1–2 GB RAM Android TV box.
+Reference feed (iptv-epg.org/files/epg-us.xml) is **466 MB uncompressed, 56 MB gzipped, 1.03M programs**. Cannot DOM-parse on a 1–2 GB RAM Android TV box.
 
 **Required approach:**
 - Use `package:xml`'s `XmlEventDecoder` for event-stream parsing
@@ -252,7 +252,7 @@ Reference feed (iptv-epg.org/files/epg-us.xml) is **466 MB uncompressed, 56 MB g
 - Throw away `<icon>` URLs to save DB space
 - Emit `RefreshProgress` stream for UI progress display
 
-**Expected outcome for the US feed:** 1.03M programmes → ~50–70k after window filter → ~15–20 MB DB growth → 30–60 second refresh.
+**Expected outcome for the US feed:** 1.03M programs → ~50–70k after window filter → ~15–20 MB DB growth → 30–60 second refresh.
 
 #### Channel matching (tiered)
 1. Exact `tvg-id` match
@@ -287,7 +287,7 @@ CREATE INDEX idx_programmes_time_range ON programmes(source_id, start_utc, stop_
 CREATE TABLE epg_refresh_log (
   source_id INTEGER PRIMARY KEY,
   last_refreshed_utc INTEGER NOT NULL,
-  programmes_loaded INTEGER NOT NULL,
+  programs_loaded INTEGER NOT NULL,
   last_error TEXT,
   FOREIGN KEY(source_id) REFERENCES sources(id) ON DELETE CASCADE
 );
@@ -318,7 +318,7 @@ CREATE TABLE epg_refresh_log (
 - `lib/backend/m3u.dart` (parse `catchup` / `catchup-source` / `catchup-days` M3U attributes)
 - `lib/backend/xtream.dart` (use `tv_archive` flag from Xtream live streams)
 - `lib/backend/catchup_url.dart` (**NEW** — URL template substitution)
-- `lib/views/channel_schedule.dart` (add "Watch from beginning" button on past programmes)
+- `lib/views/channel_schedule.dart` (add "Watch from beginning" button on past programs)
 - `lib/widgets/now_next_strip.dart` (add tap → schedule view)
 
 ### Catchup URL formats
@@ -332,9 +332,9 @@ http://{host}:{port}/streaming/timeshift.php?username={u}&password={p}&stream={i
 `{Y}` `{m}` `{d}` `{H}` `{M}` `{S}` `{utc}` `{duration}` `${start}` `${end}` `${timestamp}`
 
 ### Acceptance criteria
-- [x] Xtream `tv_archive=1` channels show catchup buttons on past programmes
+- [x] Xtream `tv_archive=1` channels show catchup buttons on past programs
 - [x] M3U `catchup-source` channels show catchup buttons (within `catchup-days`)
-- [x] Channels without catchup support show no button on past programmes
+- [x] Channels without catchup support show no button on past programs
 - [x] Catchup playback works through existing `Player` widget (`overrideUrl` param) without engine changes
 
 ### Shipped in 1.7.0+20
@@ -343,7 +343,7 @@ http://{host}:{port}/streaming/timeshift.php?username={u}&password={p}&stream={i
 - `Channel.supportsCatchup` helper, populated by both M3U and Xtream loaders
 - Xtream loader maps `tv_archive` → `catchup_type='xc'`, `tv_archive_duration` → `catchup_days`
 - `lib/backend/catchup_url.dart` builds URLs for `xc` / `append` / `shift` / `default` / `flussonic` engines and respects the `catchup-days` window
-- `lib/views/channel_schedule.dart` shows a "Watch from beginning" trailing button on past/now programmes when catchup is available, and adds it to the details dialog
+- `lib/views/channel_schedule.dart` shows a "Watch from beginning" trailing button on past/now programs when catchup is available, and adds it to the details dialog
 - `lib/widgets/now_next_strip.dart` accepts an `onTap` callback; `channel_tile.dart` wires it to push `ChannelScheduleView` (eats the gesture so tap-to-play still works elsewhere on the tile)
 - `Player` gained an optional `overrideUrl` so catchup URLs play without touching the live URL or the prewarm cache
 
@@ -424,7 +424,7 @@ EngineType pick(Channel channel, Source source, Settings settings) {
 - 30-minute slots, 6-hour window visible at once
 - Auto-scroll to "now" line on open
 - Long-press a programme → details dialog with full description
-- Only render visible programmes (virtual scrolling)
+- Only render visible programs (virtual scrolling)
 - Skip unless you've lived with v1.2's now/next strip for a few weeks and genuinely miss the grid
 
 ### Acceptance criteria

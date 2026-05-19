@@ -25,7 +25,7 @@ class Channel {
   String? catchupSource;
 
   /// How many days back the provider promises catchup will work.
-  /// Programmes older than this hide the "Watch from beginning" button.
+  /// Programs older than this hide the "Watch from beginning" button.
   int? catchupDays;
 
   Channel({
