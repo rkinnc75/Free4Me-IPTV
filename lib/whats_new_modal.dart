@@ -66,6 +66,19 @@ const _changelog = <String, List<String>>{
     'EPG channel matching now runs in a background thread — no more ANR '
         'dialogs during refresh on large feeds',
   ],
+  '1.9.0': [
+    'Xtream catchup stream IDs now correctly read from the database',
+    'EPG auto-matcher no longer locks user-set channel mappings on every refresh',
+    'ExoPlayer no longer triggers false reconnects on live HLS streams',
+    'Player engine selection now uses per-source default when opening from grid',
+    'Editing a source URL no longer clears the per-source engine preference',
+    'Settings backup now includes EPG, debug, and per-source preferences',
+    'EPG background refresh now registers correctly on first launch',
+    'Cast errors surface as snackbar messages instead of silent failures',
+    'Issue-report and donate links updated to Free4Me-IPTV repository',
+    'EPG program import up to 100× faster (batched multi-row SQL inserts)',
+    'Eliminated redundant settings database read on every cold start',
+  ],
   '1.8.2': [
     'In-app update checker now active — you will be notified when a new '
         'version is available on GitHub',
@@ -112,7 +125,7 @@ class WhatsNewModal extends StatelessWidget {
           onPressed: () async {
             await launchUrl(
               Uri.parse(
-                'https://github.com/Fredolx/fred-tv-mobile/discussions/1',
+                'https://github.com/rkalsky/Free4Me-IPTV/discussions',
               ),
               mode: LaunchMode.externalApplication,
             );

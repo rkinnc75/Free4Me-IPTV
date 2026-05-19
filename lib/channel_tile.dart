@@ -141,25 +141,34 @@ class _ChannelTileState extends State<ChannelTile> {
           false,
         );
       }
+      final seriesNodeId = widget.channel.mediaType == MediaType.serie
+          ? (widget.channel.seriesId ??
+              int.tryParse(widget.channel.url ?? '') ??
+              widget.channel.id!)
+          : widget.channel.id!;
       widget.setNode(
         Node(
-          id: widget.channel.mediaType == MediaType.group
-              ? widget.channel.id!
-              : int.parse(widget.channel.url!),
+          id: seriesNodeId,
           name: widget.channel.name,
           type: fromMediaType(widget.channel.mediaType),
         ),
       );
     } else {
+      final channelId = widget.channel.id;
+      if (channelId == null || widget.channel.url == null) return;
       final settings =
           SettingsService.cached ?? await SettingsService.getSettings();
-      final channelId = widget.channel.id!;
+      final source = await Sql.getSourceById(widget.channel.sourceId);
       unawaited(Sql.addToHistory(channelId));
       if (!mounted) return;
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => Player(channel: widget.channel, settings: settings),
+          builder: (_) => Player(
+            channel: widget.channel,
+            settings: settings,
+            source: source,
+          ),
         ),
       );
     }

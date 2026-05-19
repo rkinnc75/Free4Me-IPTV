@@ -1,6 +1,6 @@
 {
-  "latest": "1.8.2",
-  "releaseUrl": "https://github.com/rkalsky/Free4Me-IPTV/releases/tag/v1.8.2",
+  "latest": "1.9.0",
+  "releaseUrl": "https://github.com/rkalsky/Free4Me-IPTV/releases/tag/v1.9.0",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
   "releaseNotes": "ExoPlayer for HLS/DASH/MP4 streams, Chromecast support, automatic engine selection."

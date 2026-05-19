@@ -24,6 +24,7 @@ import 'package:open_tv/models/view_type.dart';
 import 'package:open_tv/error.dart';
 import 'package:open_tv/setup.dart';
 import 'package:open_tv/widgets/setting_help_dialog.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 // ─── Help copy constants ─────────────────────────────────────────────────────
@@ -189,6 +190,7 @@ class _SettingsState extends State<SettingsView> {
   Settings settings = Settings();
   List<Source> sources = [];
   bool loading = true;
+  String _appVersion = '';
 
   @override
   void initState() {
@@ -197,13 +199,17 @@ class _SettingsState extends State<SettingsView> {
   }
 
   Future<void> initAsync() async {
-    var results = await Future.wait([
+    final results = await Future.wait([
       SettingsService.getSettings(),
       Sql.getSources(),
+      PackageInfo.fromPlatform(),
     ]);
+    if (!mounted) return;
     setState(() {
       settings = results[0] as Settings;
       sources = results[1] as List<Source>;
+      final info = results[2] as PackageInfo;
+      _appVersion = 'v${info.version}';
       loading = false;
     });
   }
@@ -701,7 +707,7 @@ class _SettingsState extends State<SettingsView> {
                     ),
                     onTap: () async => await launchUrl(
                       Uri.parse(
-                        "https://github.com/Fredolx/fred-tv-mobile/discussions/1",
+                        "https://github.com/rkalsky/Free4Me-IPTV/discussions",
                       ),
                       mode: LaunchMode.externalApplication,
                     ),
@@ -1243,6 +1249,11 @@ class _SettingsState extends State<SettingsView> {
                       );
                       await UpdateChecker.checkOnLaunch(context);
                     },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.info_outline),
+                    title: const Text('App version'),
+                    subtitle: Text(_appVersion.isEmpty ? '…' : _appVersion),
                   ),
 
                   const Divider(),

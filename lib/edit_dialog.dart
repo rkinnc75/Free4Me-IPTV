@@ -43,7 +43,10 @@ class _EditDialogState extends State<EditDialog> {
                           : null,
                       password: widget.source.sourceType == SourceType.xtream
                           ? _formKey.currentState?.value["password"]
-                          : null)),
+                          : null,
+                      enabled: widget.source.enabled,
+                      epgUrl: widget.source.epgUrl,
+                      defaultEngine: widget.source.defaultEngine)),
                   context);
               await widget.afterSave();
             },

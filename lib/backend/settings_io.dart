@@ -15,7 +15,7 @@ import 'package:open_tv/models/view_type.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
-const int _schemaVersion = 1;
+const int _schemaVersion = 2;
 
 class SettingsIo {
   /// Export all sources + settings to a JSON file chosen by the user.
@@ -140,6 +140,9 @@ class SettingsIo {
             username: map['username'] as String?,
             password: map['password'] as String?,
             sourceType: SourceType.values[map['sourceType'] as int? ?? 0],
+            enabled: map['enabled'] as bool? ?? true,
+            epgUrl: map['epgUrl'] as String?,
+            defaultEngine: EngineType.fromJson(map['defaultEngine'] as String?),
           );
           await Sql.commitWrite([Sql.getOrCreateSourceByName(source)]);
         }
@@ -179,6 +182,13 @@ class SettingsIo {
         'openTimeoutSecs': s.openTimeoutSecs,
         'bufferingWatchdogSecs': s.bufferingWatchdogSecs,
         'forcedEngine': s.forcedEngine.toJson(),
+        // EPG & debug (added schema v2)
+        'debugLogging': s.debugLogging,
+        'epgAutoRefresh': s.epgAutoRefresh,
+        'epgRefreshHours': s.epgRefreshHours,
+        'epgRefreshHour': s.epgRefreshHour,
+        'epgPastDays': s.epgPastDays,
+        'epgForecastDays': s.epgForecastDays,
       };
 
   static Settings _settingsFromMap(Map<String, dynamic> m) {
@@ -199,6 +209,12 @@ class SettingsIo {
       openTimeoutSecs: m['openTimeoutSecs'] as int? ?? 15,
       bufferingWatchdogSecs: m['bufferingWatchdogSecs'] as int? ?? 12,
       forcedEngine: EngineType.fromJson(m['forcedEngine'] as String?),
+      debugLogging: m['debugLogging'] as bool? ?? false,
+      epgAutoRefresh: m['epgAutoRefresh'] as bool? ?? true,
+      epgRefreshHours: m['epgRefreshHours'] as int? ?? 12,
+      epgRefreshHour: m['epgRefreshHour'] as int? ?? 3,
+      epgPastDays: m['epgPastDays'] as int? ?? 1,
+      epgForecastDays: m['epgForecastDays'] as int? ?? 7,
     );
   }
 
@@ -257,5 +273,8 @@ class SettingsIo {
         'sourceType': s.sourceType.index,
         'username': includeCredentials ? s.username : null,
         'password': includeCredentials ? s.password : null,
+        'enabled': s.enabled,
+        'epgUrl': s.epgUrl,
+        'defaultEngine': s.defaultEngine?.toJson(),
       };
 }
