@@ -127,8 +127,12 @@ class ExoEngine implements PlayerEngine {
       _errorCtrl.add(v.errorDescription ?? 'ExoPlayer error');
     }
 
-    // End of stream (position >= duration for VOD)
-    if (!v.isPlaying && v.isInitialized && v.position >= v.duration) {
+    // End of stream for VOD only. Live HLS streams report duration == zero;
+    // skip in that case to avoid false reconnect loops.
+    if (!v.isPlaying &&
+        v.isInitialized &&
+        v.duration > Duration.zero &&
+        v.position >= v.duration) {
       _completedCtrl.add(true);
     }
 

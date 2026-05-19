@@ -114,16 +114,13 @@ class EpgService {
       // NOT NULL) keep their assignment; auto-matcher only fills the gaps.
       final channels = await Sql.getChannelsForEpgMatching(source.id!);
 
-      // Apply manual overrides first so the matcher sees them as already set.
+      // Protect only channels the user explicitly mapped (epg_manual_override
+      // is non-null). Auto-matched channels (epgManualOverride == null) are
+      // re-matched every refresh so stale assignments get corrected.
       final manualOverrides = <int, String>{};
       for (final ch in channels) {
-        // epg_manual_override is stored in the same column as epg_channel_id
-        // for simplicity; we detect manual assignments by reading the DB
-        // column directly in getChannelsForEpgMatching (col 13 = epg_manual_override).
-        // For now treat any pre-existing epg_channel_id that already exists as
-        // "do not overwrite" by pre-seeding the matched map.
-        if (ch.epgChannelId != null && ch.id != null) {
-          manualOverrides[ch.id!] = ch.epgChannelId!;
+        if (ch.epgManualOverride != null && ch.id != null) {
+          manualOverrides[ch.id!] = ch.epgManualOverride!;
         }
       }
 

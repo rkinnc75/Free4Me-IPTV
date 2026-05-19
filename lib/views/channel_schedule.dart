@@ -99,6 +99,7 @@ class _ChannelScheduleViewState extends State<ChannelScheduleView> {
         items.add(_ProgItem(p, isNow: isNow));
       }
 
+      if (!mounted) return;
       setState(() {
         _items = items;
         _source = source;
@@ -111,6 +112,7 @@ class _ChannelScheduleViewState extends State<ChannelScheduleView> {
       //  2. ensureVisible in the next frame for exact alignment.
       WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToNow());
     } catch (e) {
+      if (!mounted) return;
       setState(() => _error = e.toString());
     }
   }

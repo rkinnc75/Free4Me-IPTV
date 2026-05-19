@@ -1,13 +1,13 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
-import 'package:open_tv/backend/settings_service.dart';
-import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/epg_service.dart';
 import 'package:open_tv/backend/settings_service.dart';
+import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/backend/update_checker.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:open_tv/home.dart';
@@ -24,11 +24,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
   await Workmanager().initialize(callbackDispatcher, isInDebugMode: false);
-  // Restore debug-logging preference from persisted settings
-  final startupSettings = await SettingsService.getSettings();
-  await AppLog.setEnabled(startupSettings.debugLogging);
-  AppLog.info('App started');
-  // FIX (Tier 2, #11): parallelize cold-start awaits.
+  // Parallelize all cold-start awaits — settings loaded once and cached.
   final results = await Future.wait([
     Sql.hasSources(),
     SettingsService.getSettings(),
@@ -39,6 +35,10 @@ Future<void> main() async {
   final settings = results[1] as Settings;
   final hasTouchScreen = results[2] as bool;
   final isTV = results[3] as bool;
+  await AppLog.setEnabled(settings.debugLogging);
+  AppLog.info('App started');
+  // Ensure WorkManager registration matches the persisted epgAutoRefresh pref.
+  unawaited(EpgService.scheduleBackgroundRefresh());
   runApp(
     MyApp(
       skipSetup: hasSources,

@@ -104,9 +104,12 @@ class _PlayerState extends State<Player> {
       }
     });
 
-    final headers = await Sql.getChannelHeaders(widget.channel.id!);
-    final seconds = widget.channel.mediaType == MediaType.movie
-        ? await Sql.getPosition(widget.channel.id!)
+    final channelId = widget.channel.id;
+    final headers =
+        channelId != null ? await Sql.getChannelHeaders(channelId) : null;
+    final seconds = (widget.channel.mediaType == MediaType.movie &&
+            channelId != null)
+        ? await Sql.getPosition(channelId)
         : null;
     await _startPlayback(
       seconds != null ? Duration(seconds: seconds) : null,
@@ -146,7 +149,11 @@ class _PlayerState extends State<Player> {
       final warmed = ChannelTile.prewarmedUrl(id);
       if (warmed != null) return warmed;
     }
-    return widget.channel.url!;
+    final url = widget.channel.url;
+    if (url == null || url.isEmpty) {
+      throw StateError('Channel "${widget.channel.name}" has no playback URL');
+    }
+    return url;
   }
 
   bool _isIgnoreSsl(ChannelHttpHeaders? headers) {
@@ -331,13 +338,25 @@ class _PlayerState extends State<Player> {
     }
 
     // Connected — begin casting
-    final ok = await CastController.startCast(
-      url: url,
-      title: widget.channel.name,
-      contentType: CastController.mimeTypeFor(url),
-    );
-    if (ok && mounted) {
-      setState(() => _isCasting = true);
+    try {
+      final ok = await CastController.startCast(
+        url: url,
+        title: widget.channel.name,
+        contentType: CastController.mimeTypeFor(url),
+      );
+      if (ok && mounted) {
+        setState(() => _isCasting = true);
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cast session not ready — try again.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Cast error: $e')),
+        );
+      }
     }
   }
 

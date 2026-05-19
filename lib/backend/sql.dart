@@ -286,18 +286,26 @@ class Sql {
     //   last_watched(11) epg_channel_id(12) epg_manual_override(13)
     //   catchup_type(14) catchup_source(15) catchup_days(16)
     //   engine_override(17)
+    final rawMediaType = row.columnAt(5) as int?;
+    final mediaType = (rawMediaType != null &&
+            rawMediaType >= 0 &&
+            rawMediaType < MediaType.values.length)
+        ? MediaType.values[rawMediaType]
+        : MediaType.livestream;
     return Channel(
       id: row.columnAt(0),
       name: row.columnAt(1),
       group: row.columnAt(2),
       image: row.columnAt(3),
       url: row.columnAt(4),
-      mediaType: MediaType.values[row.columnAt(5)],
+      mediaType: mediaType,
       sourceId: row.columnAt(6),
       favorite: row.columnAt(7) == 1,
       seriesId: row.columnAt(8),
       groupId: row.columnAt(9),
+      streamId: row.columnAt(10) as int?,
       epgChannelId: row.columnAt(12) as String?,
+      epgManualOverride: row.columnAt(13) as String?,
       catchupType: row.columnAt(14) as String?,
       catchupSource: row.columnAt(15) as String?,
       catchupDays: row.columnAt(16) as int?,
@@ -365,6 +373,15 @@ class Sql {
       FROM sources 
     ''');
     return results.map(rowToSource).toList();
+  }
+
+  static Future<Source?> getSourceById(int id) async {
+    var db = await DbFactory.db;
+    final row = await db.getOptional(
+      'SELECT * FROM sources WHERE id = ?',
+      [id],
+    );
+    return row == null ? null : rowToSource(row);
   }
 
   static Source rowToSource(Row row) {
@@ -615,29 +632,45 @@ class Sql {
     );
   }
 
-  /// Insert a batch of programs in a single write transaction.
+  /// Insert a batch of programs using multi-row VALUES clauses for performance.
+  /// SQLite supports up to 999 parameters per statement; with 8 columns we use
+  /// chunks of 100 rows (800 params) to stay well within the limit.
   static Future<void> insertProgramsBatch(
     List<Program> programs,
   ) async {
     if (programs.isEmpty) return;
+    const chunkSize = 100;
+    const cols = 8;
     var db = await DbFactory.db;
     await db.writeTransaction((tx) async {
-      for (final p in programs) {
+      for (var offset = 0; offset < programs.length; offset += chunkSize) {
+        final chunk = programs.sublist(
+          offset,
+          offset + chunkSize > programs.length
+              ? programs.length
+              : offset + chunkSize,
+        );
+        final placeholders =
+            List.filled(chunk.length, '(?,?,?,?,?,?,?,?)').join(',');
+        final params = <Object?>[];
+        for (final p in chunk) {
+          params.addAll([
+            p.epgChannelId,
+            p.sourceId,
+            p.title,
+            p.description,
+            p.category,
+            p.startUtc,
+            p.stopUtc,
+            p.episodeNum,
+          ]);
+        }
         await tx.execute('''
           INSERT OR IGNORE INTO programmes
             (epg_channel_id, source_id, title, description, category,
              start_utc, stop_utc, episode_num)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', [
-          p.epgChannelId,
-          p.sourceId,
-          p.title,
-          p.description,
-          p.category,
-          p.startUtc,
-          p.stopUtc,
-          p.episodeNum,
-        ]);
+          VALUES $placeholders
+        ''', params);
       }
     });
   }

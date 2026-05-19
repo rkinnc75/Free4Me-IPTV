@@ -14,6 +14,9 @@ class Channel {
   int? seriesId;
   int? streamId;
   String? epgChannelId;
+  /// Non-null when the user explicitly picked this EPG mapping via the
+  /// channel-mapping screen. Auto-matched channels have this as null.
+  String? epgManualOverride;
 
   // --- Catchup / time-shift (v1.3) ---
   /// Catchup engine: 'default', 'append', 'shift', 'flussonic', 'xc' (xtream).
@@ -46,6 +49,7 @@ class Channel {
     this.seriesId,
     this.streamId,
     this.epgChannelId,
+    this.epgManualOverride,
     this.catchupType,
     this.catchupSource,
     this.catchupDays,
