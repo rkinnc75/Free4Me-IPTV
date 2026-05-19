@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/http_client.dart';
 import 'package:open_tv/models/programme.dart';
 import 'package:open_tv/models/source.dart';
@@ -18,17 +19,47 @@ class XtreamEpg {
   /// from [Source.url] (DB-loaded sources don't persist urlOrigin).
   static String? xmltvUrl(Source source) {
     final url = source.url;
-    if (url == null) return null;
-    // Compute origin lazily — urlOrigin is only set during an active Xtream
-    // refresh session, not persisted to DB.
-    final origin = source.urlOrigin?.isNotEmpty == true
-        ? source.urlOrigin!
-        : Uri.tryParse(url)?.origin;
-    if (origin == null || origin.isEmpty) return null;
+    if (url == null) {
+      AppLog.warn(
+        'XtreamEpg: "${source.name}" has no url — cannot derive XMLTV URL',
+      );
+      return null;
+    }
+    String? origin;
+    if (source.urlOrigin?.isNotEmpty == true) {
+      origin = source.urlOrigin;
+    } else {
+      try {
+        final parsed = Uri.parse(url);
+        // Uri.origin throws if scheme isn't http/https, so guard it.
+        if (parsed.scheme == 'http' || parsed.scheme == 'https') {
+          origin = parsed.origin;
+        }
+      } catch (e) {
+        AppLog.warn(
+          'XtreamEpg: cannot parse url for "${source.name}": $url ($e)',
+        );
+      }
+    }
+    if (origin == null || origin.isEmpty) {
+      AppLog.warn(
+        'XtreamEpg: cannot derive origin from "$url" for "${source.name}"',
+      );
+      return null;
+    }
     final u = source.username;
     final p = source.password;
-    if (u == null || p == null) return null;
-    return '$origin/xmltv.php?username=${Uri.encodeComponent(u)}&password=${Uri.encodeComponent(p)}';
+    if (u == null || p == null) {
+      AppLog.warn(
+        'XtreamEpg: "${source.name}" missing username/password — '
+        'cannot build XMLTV URL',
+      );
+      return null;
+    }
+    final built =
+        '$origin/xmltv.php?username=${Uri.encodeComponent(u)}&password=${Uri.encodeComponent(p)}';
+    AppLog.info('XtreamEpg: built XMLTV URL → $origin/xmltv.php?...');
+    return built;
   }
 
   /// Fetches Xtream short EPG for a single stream id.

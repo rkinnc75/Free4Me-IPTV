@@ -398,11 +398,12 @@ class _SettingsState extends State<SettingsView> {
 
     for (final source in sources) {
       if (!source.enabled) continue;
-      final url = source.epgUrl?.isNotEmpty == true ? source.epgUrl : null;
-      if (url == null &&
-          source.sourceType.index != 0 /* xtream */) continue;
+      final hasManualUrl = source.epgUrl?.isNotEmpty == true;
+      final isXtream = source.sourceType.index == 0; // 0 = xtream
+      if (!hasManualUrl && !isXtream) continue;
 
-      _updateRefreshDialog('Refreshing "${source.name}"…', _programmes);
+      final url = hasManualUrl ? source.epgUrl : null;
+      _updateRefreshDialog('Preparing "${source.name}"…', _programmes);
 
       int sourceInserted = 0;
       String? sourceError;
@@ -413,13 +414,23 @@ class _SettingsState extends State<SettingsView> {
           onProgress: (p) {
             sourceInserted = p.programmesInserted;
             _programmes = p.programmesInserted;
-            _updateRefreshDialog(
-              '${source.name}: ${p.programmesInserted} programmes…',
-              _programmes,
-            );
+            // Use the parser's own status message when present
+            // (Connecting / Downloading / etc.); otherwise show a running
+            // programme count.
+            final status = p.statusMessage != null
+                ? '${source.name}: ${p.statusMessage}'
+                : '${source.name}: ${p.programmesInserted} programmes…';
+            _updateRefreshDialog(status, _programmes);
           },
         );
-        results.add('✓ ${source.name}: $sourceInserted programmes');
+        if (sourceInserted == 0) {
+          results.add(
+            '⚠ ${source.name}: refresh completed but 0 programmes loaded '
+            '(check EPG URL, server response, or date window)',
+          );
+        } else {
+          results.add('✓ ${source.name}: $sourceInserted programmes');
+        }
       } catch (e) {
         sourceError = e.toString();
         results.add('✗ ${source.name}: $sourceError');
