@@ -10,11 +10,13 @@ final _timeFmt = DateFormat.Hm(); // e.g. "20:30"
 class NowNextStrip extends StatefulWidget {
   final String epgChannelId;
   final int sourceId;
+  final VoidCallback? onTap;
 
   const NowNextStrip({
     super.key,
     required this.epgChannelId,
     required this.sourceId,
+    this.onTap,
   });
 
   @override
@@ -59,14 +61,25 @@ class _NowNextStripState extends State<NowNextStrip> {
       parts.add('Next $startStr: ${next.title}');
     }
 
-    return Padding(
+    final text = Text(
+      parts.join('  •  '),
+      style: style,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+
+    final body = Padding(
       padding: const EdgeInsets.only(top: 2),
-      child: Text(
-        parts.join('  •  '),
-        style: style,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
+      child: text,
+    );
+
+    if (widget.onTap == null) return body;
+    // Consume the tap (HitTestBehavior.opaque) so the parent tile's "tap to
+    // play" gesture doesn't also fire.
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: widget.onTap,
+      child: body,
     );
   }
 }

@@ -208,6 +208,18 @@ class DbFactory {
             FOREIGN KEY(source_id) REFERENCES sources(id) ON DELETE CASCADE
           );
         ''');
+      }))
+      // v1.3: Catchup / time-shift columns
+      ..add(SqliteMigration(6, (tx) async {
+        await tx.execute(
+          'ALTER TABLE channels ADD COLUMN catchup_type TEXT;',
+        );
+        await tx.execute(
+          'ALTER TABLE channels ADD COLUMN catchup_source TEXT;',
+        );
+        await tx.execute(
+          'ALTER TABLE channels ADD COLUMN catchup_days INTEGER;',
+        );
       }));
     await migrations.migrate(db);
     return db;

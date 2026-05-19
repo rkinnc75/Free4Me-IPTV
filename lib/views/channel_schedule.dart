@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:open_tv/backend/catchup_url.dart';
+import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/models/channel.dart';
 import 'package:open_tv/models/programme.dart';
+import 'package:open_tv/models/source.dart';
+import 'package:open_tv/player.dart';
 
 final _dateFmt = DateFormat.MMMEd();   // e.g. "Mon, May 19"
 final _timeFmt = DateFormat.Hm();      // e.g. "20:30"
@@ -20,6 +24,7 @@ class ChannelScheduleView extends StatefulWidget {
 
 class _ChannelScheduleViewState extends State<ChannelScheduleView> {
   List<Programme>? _programmes;
+  Source? _source;
   String? _error;
 
   @override
@@ -38,13 +43,20 @@ class _ChannelScheduleViewState extends State<ChannelScheduleView> {
       final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       final start = now - 86400; // 1 day back
       final end = now + 7 * 86400; // 7 days forward
-      final progs = await Sql.getSchedule(
-        epgId,
-        widget.channel.sourceId,
-        start,
-        end,
+      final results = await Future.wait([
+        Sql.getSchedule(epgId, widget.channel.sourceId, start, end),
+        Sql.getSources(),
+      ]);
+      final progs = results[0] as List<Programme>;
+      final sources = results[1] as List<Source>;
+      final source = sources.firstWhere(
+        (s) => s.id == widget.channel.sourceId,
+        orElse: () => sources.first,
       );
-      setState(() => _programmes = progs);
+      setState(() {
+        _programmes = progs;
+        _source = source;
+      });
     } catch (e) {
       setState(() => _error = e.toString());
     }
@@ -107,9 +119,39 @@ class _ChannelScheduleViewState extends State<ChannelScheduleView> {
 
   Widget _programmeTile(Programme p, int nowEpoch) {
     final isNow = p.isOnNow(nowEpoch);
+    final isPast = p.stopUtc <= nowEpoch;
     final start = _timeFmt.format(p.startTime.toLocal());
     final durationMins =
         _durationFmt.format(p.duration.inMinutes.toDouble());
+
+    // Catchup is available for past programmes (and currently-airing
+    // programmes — "watch from the beginning of this show")
+    final source = _source;
+    final showCatchup = source != null &&
+        widget.channel.supportsCatchup &&
+        (isPast || isNow);
+    final catchupUrl = showCatchup
+        ? CatchupUrl.build(
+            channel: widget.channel,
+            programme: p,
+            source: source,
+          )
+        : null;
+
+    Widget? trailing;
+    if (catchupUrl != null) {
+      trailing = IconButton(
+        icon: const Icon(Icons.replay_outlined),
+        tooltip: 'Watch from beginning',
+        color: Theme.of(context).colorScheme.primary,
+        onPressed: () => _playCatchup(p, catchupUrl),
+      );
+    } else {
+      trailing = Text(
+        '$durationMins min',
+        style: Theme.of(context).textTheme.bodySmall,
+      );
+    }
 
     return ListTile(
       leading: SizedBox(
@@ -133,10 +175,7 @@ class _ChannelScheduleViewState extends State<ChannelScheduleView> {
       subtitle: p.description != null
           ? Text(p.description!, maxLines: 2, overflow: TextOverflow.ellipsis)
           : null,
-      trailing: Text(
-        '$durationMins min',
-        style: Theme.of(context).textTheme.bodySmall,
-      ),
+      trailing: trailing,
       tileColor: isNow
           ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.08)
           : null,
@@ -144,7 +183,36 @@ class _ChannelScheduleViewState extends State<ChannelScheduleView> {
     );
   }
 
+  Future<void> _playCatchup(Programme p, String url) async {
+    final settings =
+        SettingsService.cached ?? await SettingsService.getSettings();
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => Player(
+          channel: widget.channel,
+          settings: settings,
+          overrideUrl: url,
+        ),
+      ),
+    );
+  }
+
   void _showDetails(Programme p) {
+    final nowEpoch = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final source = _source;
+    final canCatchup = source != null &&
+        widget.channel.supportsCatchup &&
+        (p.stopUtc <= nowEpoch || p.isOnNow(nowEpoch));
+    final catchupUrl = canCatchup
+        ? CatchupUrl.build(
+            channel: widget.channel,
+            programme: p,
+            source: source,
+          )
+        : null;
+
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -179,6 +247,15 @@ class _ChannelScheduleViewState extends State<ChannelScheduleView> {
           ),
         ),
         actions: [
+          if (catchupUrl != null)
+            FilledButton.icon(
+              icon: const Icon(Icons.replay_outlined),
+              label: const Text('Watch from beginning'),
+              onPressed: () {
+                Navigator.pop(context);
+                _playCatchup(p, catchupUrl);
+              },
+            ),
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Close'),
