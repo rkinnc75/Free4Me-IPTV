@@ -8,9 +8,25 @@ import 'package:open_tv/models/programme.dart';
 import 'package:open_tv/models/source.dart';
 import 'package:open_tv/player.dart';
 
-final _dateFmt = DateFormat.MMMEd();   // e.g. "Mon, May 19"
-final _timeFmt = DateFormat.Hm();      // e.g. "20:30"
+final _dateFmt = DateFormat.MMMEd(); // e.g. "Mon, May 19"
+final _timeFmt = DateFormat.Hm(); // e.g. "20:30"
 final _durationFmt = NumberFormat('0');
+
+// ─── Flat list item types ────────────────────────────────────────────────────
+sealed class _ListItem {}
+
+class _DayHeader extends _ListItem {
+  final DateTime day;
+  _DayHeader(this.day);
+}
+
+class _ProgItem extends _ListItem {
+  final Programme p;
+  final bool isNow;
+  _ProgItem(this.p, {required this.isNow});
+}
+
+// ─── View ────────────────────────────────────────────────────────────────────
 
 /// Full programme schedule for a single channel.
 class ChannelScheduleView extends StatefulWidget {
@@ -23,14 +39,25 @@ class ChannelScheduleView extends StatefulWidget {
 }
 
 class _ChannelScheduleViewState extends State<ChannelScheduleView> {
-  List<Programme>? _programmes;
+  List<_ListItem>? _items;
   Source? _source;
   String? _error;
+
+  final _scrollController = ScrollController();
+  // Key placed on the "now" tile so we can scroll to it reliably regardless
+  // of variable tile heights (descriptions, catchup buttons, etc.).
+  final _nowKey = GlobalKey();
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -40,11 +67,12 @@ class _ChannelScheduleViewState extends State<ChannelScheduleView> {
       return;
     }
     try {
-      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-      final start = now - 86400; // 1 day back
-      final end = now + 7 * 86400; // 7 days forward
+      final nowEpoch = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final windowStart = nowEpoch - 86400; // 1 day back
+      final windowEnd = nowEpoch + 7 * 86400;
+
       final results = await Future.wait([
-        Sql.getSchedule(epgId, widget.channel.sourceId, start, end),
+        Sql.getSchedule(epgId, widget.channel.sourceId, windowStart, windowEnd),
         Sql.getSources(),
       ]);
       final progs = results[0] as List<Programme>;
@@ -53,13 +81,45 @@ class _ChannelScheduleViewState extends State<ChannelScheduleView> {
         (s) => s.id == widget.channel.sourceId,
         orElse: () => sources.first,
       );
+
+      // Build flat list grouping programmes by local date
+      final items = <_ListItem>[];
+      DateTime? currentDay;
+      for (final p in progs) {
+        final local = p.startTime.toLocal();
+        final day = DateTime(local.year, local.month, local.day);
+        if (day != currentDay) {
+          items.add(_DayHeader(day));
+          currentDay = day;
+        }
+        items.add(_ProgItem(p, isNow: p.isOnNow(nowEpoch)));
+      }
+
       setState(() {
-        _programmes = progs;
+        _items = items;
         _source = source;
       });
+
+      // After the first frame renders, scroll so the "now" tile is visible
+      // and roughly 1/3 from the top — enough context above and below.
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToNow());
     } catch (e) {
       setState(() => _error = e.toString());
     }
+  }
+
+  void _scrollToNow() {
+    final ctx = _nowKey.currentContext;
+    if (ctx == null) return;
+    Scrollable.ensureVisible(
+      ctx,
+      // alignment 0.25 puts the item ~25 % from the top of the viewport,
+      // which feels right for a TV remote — you see one past item and
+      // several upcoming ones without having to scroll immediately.
+      alignment: 0.25,
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOut,
+    );
   }
 
   @override
@@ -74,58 +134,47 @@ class _ChannelScheduleViewState extends State<ChannelScheduleView> {
     if (_error != null) {
       return Center(child: Text(_error!, textAlign: TextAlign.center));
     }
-    final programmes = _programmes;
-    if (programmes == null) {
+    final items = _items;
+    if (items == null) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (programmes.isEmpty) {
+    if (items.isEmpty) {
       return const Center(child: Text('No programme data available.'));
     }
-
-    // Group by local date
-    final byDay = <DateTime, List<Programme>>{};
-    for (final p in programmes) {
-      final local = p.startTime.toLocal();
-      final day = DateTime(local.year, local.month, local.day);
-      byDay.putIfAbsent(day, () => []).add(p);
-    }
-    final days = byDay.keys.toList()..sort();
 
     final nowEpoch = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
     return ListView.builder(
-      itemCount: days.length,
-      itemBuilder: (context, dayIdx) {
-        final day = days[dayIdx];
-        final dayProgs = byDay[day]!;
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-              child: Text(
-                _dateFmt.format(day),
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-              ),
-            ),
-            ...dayProgs.map((p) => _programmeTile(p, nowEpoch)),
-          ],
-        );
+      controller: _scrollController,
+      itemCount: items.length,
+      itemBuilder: (context, i) {
+        final item = items[i];
+        return switch (item) {
+          _DayHeader(:final day) => _buildDayHeader(day),
+          _ProgItem(:final p, :final isNow) =>
+            _programmeTile(p, nowEpoch, isNow: isNow),
+        };
       },
     );
   }
 
-  Widget _programmeTile(Programme p, int nowEpoch) {
-    final isNow = p.isOnNow(nowEpoch);
+  Widget _buildDayHeader(DateTime day) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+      child: Text(
+        _dateFmt.format(day),
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+      ),
+    );
+  }
+
+  Widget _programmeTile(Programme p, int nowEpoch, {required bool isNow}) {
     final isPast = p.stopUtc <= nowEpoch;
     final start = _timeFmt.format(p.startTime.toLocal());
-    final durationMins =
-        _durationFmt.format(p.duration.inMinutes.toDouble());
+    final durationMins = _durationFmt.format(p.duration.inMinutes.toDouble());
 
-    // Catchup is available for past programmes (and currently-airing
-    // programmes — "watch from the beginning of this show")
     final source = _source;
     final showCatchup = source != null &&
         widget.channel.supportsCatchup &&
@@ -149,37 +198,83 @@ class _ChannelScheduleViewState extends State<ChannelScheduleView> {
     } else {
       trailing = Text(
         '$durationMins min',
-        style: Theme.of(context).textTheme.bodySmall,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: isNow
+                  ? Theme.of(context).colorScheme.primary
+                  : null,
+            ),
       );
     }
 
-    return ListTile(
-      leading: SizedBox(
-        width: 48,
-        child: Text(
-          start,
-          style: TextStyle(
-            fontWeight: isNow ? FontWeight.bold : FontWeight.normal,
-            color: isNow
-                ? Theme.of(context).colorScheme.primary
-                : null,
+    // Leading: time + "NOW" chip stacked vertically for the current programme
+    Widget leading = SizedBox(
+      width: 56,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            start,
+            style: TextStyle(
+              fontWeight: isNow ? FontWeight.bold : FontWeight.normal,
+              color: isNow ? Theme.of(context).colorScheme.primary : null,
+              fontSize: 13,
+            ),
           ),
-        ),
+          if (isNow)
+            Container(
+              margin: const EdgeInsets.only(top: 3),
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primary,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                'NOW',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onPrimary,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ),
+        ],
       ),
+    );
+
+    final tile = ListTile(
+      key: isNow ? _nowKey : null,
+      leading: leading,
       title: Text(
         p.title,
         style: TextStyle(
           fontWeight: isNow ? FontWeight.bold : FontWeight.normal,
+          fontSize: isNow ? 15 : null,
         ),
       ),
       subtitle: p.description != null
           ? Text(p.description!, maxLines: 2, overflow: TextOverflow.ellipsis)
           : null,
       trailing: trailing,
-      tileColor: isNow
-          ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.08)
-          : null,
+      // No tileColor here — we wrap with a DecoratedBox for the left border
       onTap: () => _showDetails(p),
+    );
+
+    if (!isNow) return tile;
+
+    // "Now" row: primary-coloured left border + gentle background tint
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.10),
+        border: Border(
+          left: BorderSide(
+            color: Theme.of(context).colorScheme.primary,
+            width: 4,
+          ),
+        ),
+      ),
+      child: tile,
     );
   }
 
