@@ -5,9 +5,18 @@ import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/backend/xmltv_parser.dart';
 import 'package:open_tv/backend/xtream_epg.dart';
+import 'package:open_tv/models/channel.dart';
 import 'package:open_tv/models/source.dart';
 import 'package:open_tv/models/source_type.dart';
 import 'package:workmanager/workmanager.dart';
+
+// Top-level function required by compute() — closures are not allowed.
+// Runs EpgMatcher.matchWithReport in a separate Dart isolate so the main
+// thread stays responsive during large EPG → channel matching passes.
+(Map<int, String>, MatchReport) _matchInIsolate(
+  (Map<String, String>, List<Channel>) args,
+) =>
+    EpgMatcher.matchWithReport(args.$1, args.$2);
 
 /// Task name registered with WorkManager for background EPG refresh.
 const epgBackgroundTask = 'epg_refresh';
@@ -113,8 +122,11 @@ class EpgService {
         }
       }
 
+      // Run the matcher in a separate Dart isolate.
+      // matchWithReport is O(channels × EPG entries) and can take several
+      // seconds on a large feed — calling it on the main thread causes an ANR.
       final (autoMatched, report) =
-          EpgMatcher.matchWithReport(channelMap, channels);
+          await compute(_matchInIsolate, (channelMap, channels));
       // Merge: manual overrides win; auto fills the rest
       final merged = {...autoMatched, ...manualOverrides};
 
