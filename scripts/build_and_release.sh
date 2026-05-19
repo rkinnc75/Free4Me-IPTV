@@ -105,25 +105,48 @@ Install \`${APK_NAME}\` by sideloading on your Android TV device.
 
 See [DEVELOPMENT-HANDBOOK.md](https://github.com/rkinnc75/Free4Me-IPTV/blob/main/DEVELOPMENT-HANDBOOK.md) for the full feature roadmap and changelog."
 
+  # Build JSON payload safely — avoid shell quoting nightmares
+  JSON_PAYLOAD=$(python3 - <<PYEOF
+import json
+print(json.dumps({
+  "tag_name": "${TAG}",
+  "name": "${TAG}",
+  "body": """${RELEASE_BODY}""",
+  "draft": False,
+  "prerelease": False
+}))
+PYEOF
+)
+
   RESPONSE=$(curl -sf -X POST \
     -H "Authorization: token $GITHUB_TOKEN" \
     -H "Content-Type: application/json" \
     "https://api.github.com/repos/rkinnc75/Free4Me-IPTV/releases" \
-    -d "$(python3 -c "
-import json, sys
-print(json.dumps({
-  'tag_name': '${TAG}',
-  'name': '${TAG}',
-  'body': '''${RELEASE_BODY}''',
-  'draft': False,
-  'prerelease': False
-}))")")
+    -d "$JSON_PAYLOAD")
 
   RELEASE_ID=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
   echo "▶ Release created (id=$RELEASE_ID)"
 fi
 
 # ── 8. Upload APK asset ──────────────────────────────────────────────────────
+# Delete any existing asset with the same name (idempotent re-runs)
+EXISTING_ASSET_ID=$(curl -sf \
+  -H "Authorization: token $GITHUB_TOKEN" \
+  "https://api.github.com/repos/rkinnc75/Free4Me-IPTV/releases/${RELEASE_ID}/assets" \
+  | python3 -c "
+import sys, json
+assets = json.load(sys.stdin)
+match = [a['id'] for a in assets if a['name'] == '${APK_NAME}']
+print(match[0] if match else '')
+" 2>/dev/null || true)
+
+if [[ -n "$EXISTING_ASSET_ID" ]]; then
+  echo "▶ Removing existing asset (id=$EXISTING_ASSET_ID)…"
+  curl -sf -X DELETE \
+    -H "Authorization: token $GITHUB_TOKEN" \
+    "https://api.github.com/repos/rkinnc75/Free4Me-IPTV/releases/assets/${EXISTING_ASSET_ID}" || true
+fi
+
 echo "▶ Uploading $APK_NAME…"
 UPLOAD_RESPONSE=$(curl -sf -X POST \
   -H "Authorization: token $GITHUB_TOKEN" \
