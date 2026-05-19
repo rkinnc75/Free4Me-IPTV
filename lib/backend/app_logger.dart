@@ -17,7 +17,7 @@ class AppLogger {
 
   static AppLogger get instance => _instance;
 
-  static const int _maxBytes = 2 * 1024 * 1024; // 2 MB
+  static const int _maxBytes = 20 * 1024 * 1024; // 20 MB
   static const String _fileName = 'app_log.txt';
 
   bool _enabled = false;
