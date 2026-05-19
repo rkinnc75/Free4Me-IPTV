@@ -78,13 +78,13 @@ class XmltvParser {
       const XmltvProgress(statusMessage: 'Downloading & parsing…'),
     );
 
-    final isGzip = (response.headers['content-encoding'] ?? '')
-            .toLowerCase()
-            .contains('gzip') ||
-        url.toLowerCase().endsWith('.gz');
-
-    Stream<List<int>> byteStream = response.stream;
-    if (isGzip) byteStream = byteStream.transform(gzip.decoder);
+    // Detect gzip by sniffing magic bytes (0x1f 0x8b) on the first chunk
+    // rather than trusting Content-Encoding. Dart's IOClient with
+    // autoUncompress=true (our AppHttp default) already strips gzip from
+    // the body but *leaves the Content-Encoding header on the response* —
+    // so trusting the header double-decodes and throws "FormatException:
+    // Filter error, bad data" on the already-plain XML stream.
+    Stream<List<int>> byteStream = await _maybeUngzip(response.stream);
 
     final channelMap = <String, String>{}; // epg-id → display-name
     final batch = <Programme>[];
@@ -201,6 +201,54 @@ class XmltvParser {
       '$inserted programmes inserted, $skipped skipped',
     );
     return channelMap;
+  }
+
+  /// Peeks at the first chunk of [source] and, if it starts with the gzip
+  /// magic bytes (0x1f 0x8b), returns a stream that decompresses on the fly.
+  /// Otherwise returns the original byte stream unchanged.
+  static Future<Stream<List<int>>> _maybeUngzip(
+    Stream<List<int>> source,
+  ) async {
+    final controller = StreamController<List<int>>();
+    bool? isGzip;
+    final completer = Completer<Stream<List<int>>>();
+
+    late final StreamSubscription<List<int>> sub;
+    sub = source.listen(
+      (chunk) {
+        if (isGzip == null && chunk.isNotEmpty) {
+          isGzip = chunk.length >= 2 &&
+              chunk[0] == 0x1f &&
+              chunk[1] == 0x8b;
+          AppLog.info(
+            'XMLTV: gzip-sniff → ${isGzip! ? "compressed" : "plain"} '
+            '(first bytes 0x${chunk[0].toRadixString(16).padLeft(2, "0")} '
+            '0x${chunk.length > 1 ? chunk[1].toRadixString(16).padLeft(2, "0") : "??"})',
+          );
+          if (isGzip!) {
+            completer.complete(
+              controller.stream.transform(gzip.decoder),
+            );
+          } else {
+            completer.complete(controller.stream);
+          }
+        }
+        controller.add(chunk);
+      },
+      onError: (Object e, StackTrace st) {
+        controller.addError(e, st);
+        if (!completer.isCompleted) {
+          completer.complete(controller.stream);
+        }
+      },
+      onDone: () {
+        controller.close();
+        sub.cancel();
+      },
+      cancelOnError: false,
+    );
+
+    return completer.future;
   }
 
   static String? _attr(XmlStartElementEvent event, String name) {
