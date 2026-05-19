@@ -7,6 +7,7 @@ enum MatchTier {
   normalizedName, // exact match after normalization
   strippedSuffix, // after stripping regional suffix (.us, .uk, …)
   tokenSuperset, // channel-name tokens ⊇ EPG-name tokens
+  callsign, // US K/W callsign substring match in EPG id or display name
   jaccard, // best Jaccard overlap above threshold
   none,
 }
@@ -45,7 +46,9 @@ class MatchReport {
 ///   4. Same after stripping regional suffix from id (.us, .uk, .sxm, …)
 ///   5. Token superset — every word in the EPG display name appears in
 ///      the channel name (e.g. EPG "ESPN" ⊂ channel "US| ESPN HD")
-///   6. Jaccard token-overlap ≥ 0.6 — best candidate among all EPG names
+///   6. US callsign — 4-letter K/W callsign from channel name appears as
+///      a substring of an EPG id (catches "KXDF" → "CBSKXDF.us")
+///   7. Jaccard token-overlap ≥ 0.6 — best candidate among all EPG names
 class EpgMatcher {
   /// Convenience shim for callers that don't care about the report.
   static Map<int, String> match(
@@ -154,7 +157,36 @@ class EpgMatcher {
         }
       }
 
-      // 6. Jaccard fallback — keep best score above threshold
+      // 6. US callsign — extract 4-letter K/W callsigns from the *original*
+      // channel name (preserves uppercase) and look for an EPG id whose
+      // normalized form contains that callsign as a substring. This catches
+      // e.g. channel "(m) AK| CBS Fairbanks KXDF" → EPG id "CBSKXDF.us"
+      // where the EPG id concatenates network + callsign so token matching
+      // fails.
+      final callsigns = _extractCallsigns(ch.name);
+      if (callsigns.isNotEmpty) {
+        String? bestId;
+        int bestEpgLen = 1 << 30; // prefer the shortest (most specific) id
+        for (final cs in callsigns) {
+          final csLower = cs.toLowerCase();
+          for (final epgId in epgIds) {
+            final epgLower = epgId.toLowerCase();
+            if (!epgLower.contains(csLower)) continue;
+            // Prefer the most specific (shortest) id match
+            if (epgId.length < bestEpgLen) {
+              bestEpgLen = epgId.length;
+              bestId = epgId;
+            }
+          }
+        }
+        if (bestId != null) {
+          result[ch.id!] = bestId;
+          record(MatchTier.callsign);
+          continue;
+        }
+      }
+
+      // 7. Jaccard fallback — keep best score above threshold
       if (chTokens.isNotEmpty) {
         String? bestId;
         double bestScore = 0;
@@ -229,6 +261,19 @@ class EpgMatcher {
     // Collapse whitespace
     out = out.replaceAll(RegExp(r'\s+'), ' ').trim();
     return out;
+  }
+
+  /// US TV station callsigns: 4 letters starting with K (west of Mississippi)
+  /// or W (east). We require exactly 4 to avoid grabbing network names like
+  /// WGN/WWE/MTV/CNN. Also tolerates `-TV` / `-DT` / `-CD` suffixes which the
+  /// word boundary handles correctly (the dash is a word boundary).
+  static final _callsignRe = RegExp(r'\b[KW][A-Z]{3}\b');
+
+  static List<String> _extractCallsigns(String originalName) {
+    return _callsignRe
+        .allMatches(originalName)
+        .map((m) => m.group(0)!)
+        .toList(growable: false);
   }
 
   static final _stopWords = <String>{
