@@ -7,6 +7,16 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.11.6': [
+    'Fix: dual audio during PiP swap — three root causes addressed:\n'
+        '  1. Overlay engine now muted BEFORE open() so the stream never '
+        'starts at full volume (was muted after, leaving a window)\n'
+        '  2. unregisterMain() is now engine-scoped — the old Player\'s '
+        'dispose() no longer wipes the new Player\'s registration, fixing '
+        'broken swap on 2nd and subsequent uses\n'
+        '  3. muteMain() is now called before any navigation so the pop '
+        'transition animation plays silently',
+  ],
   '1.11.5': [
     'Settings: tap the App version tile to open the full version history',
     'Mini-player: audio from the main player is now muted before the swap '

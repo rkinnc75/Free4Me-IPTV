@@ -324,7 +324,9 @@ class _PlayerState extends State<Player> {
 
   @override
   void dispose() {
-    OverlayPlayerController.instance.unregisterMain();
+    // Pass our engine so that if a new Player already called registerMain
+    // during a swap transition, we don't accidentally wipe its registration.
+    OverlayPlayerController.instance.unregisterMain(_engine);
     PipController.setPlaying(false);
     _bufferingWatchdog?.cancel();
     for (final s in subscriptions) {

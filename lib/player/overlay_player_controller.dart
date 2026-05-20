@@ -45,7 +45,13 @@ class OverlayPlayerController extends ChangeNotifier {
     _mainEngine = engine;
   }
 
-  void unregisterMain() {
+  /// Unregisters [engine] as the main player.  If [engine] is provided and
+  /// no longer matches the currently registered engine (because a new Player
+  /// already called [registerMain] during a swap transition), the call is a
+  /// no-op — this prevents the old Player's [dispose] from wiping the new
+  /// Player's registration.
+  void unregisterMain([PlayerEngine? engine]) {
+    if (engine != null && _mainEngine != engine) return;
     _mainChannel = null;
     _mainSettings = null;
     _mainSource = null;
@@ -76,12 +82,13 @@ class OverlayPlayerController extends ChangeNotifier {
       settings: s,
       fullscreenOnOpen: false,
     );
+    // Mute BEFORE open so the stream starts silent — avoids the window between
+    // playback starting and a post-open setVolume call reaching the mpv queue.
+    await engine.setVolume(0.0);
     _engine = engine;
     notifyListeners();
 
     await engine.open(url: url);
-    // Mute immediately — overlay is always silent
-    await engine.setVolume(0.0);
   }
 
   /// Stop the overlay and release all resources.
