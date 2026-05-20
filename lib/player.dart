@@ -82,6 +82,7 @@ class _PlayerState extends State<Player> {
       widget.channel,
       widget.settings,
       widget.source,
+      _engine,
     );
     initAsync();
   }

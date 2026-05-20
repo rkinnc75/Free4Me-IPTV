@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/backend/utils.dart';
@@ -115,8 +116,23 @@ class _HomeState extends State<Home> {
     } else {
       widget.home.filters.page = 1;
     }
+    if (AppLog.enabled) {
+      final f = widget.home.filters;
+      AppLog.info(
+        'Home.load: view=${viewTypeToString(f.viewType)} '
+        'page=${f.page} more=$more '
+        'sources=${f.sourceIds?.length ?? "null"} '
+        'mediaTypes=${f.mediaTypes?.map((m) => m.name).join(",") ?? "null"} '
+        'groupId=${f.groupId} seriesId=${f.seriesId} '
+        'query=${f.query ?? "none"}',
+      );
+    }
     await Error.tryAsyncNoLoading(() async {
       final results = await Sql.search(widget.home.filters);
+      if (AppLog.enabled) {
+        AppLog.info('Home.load: got ${results.length} results '
+            'for ${viewTypeToString(widget.home.filters.viewType)}');
+      }
       if (!mounted) return;
       setState(() {
         if (!more) {
@@ -168,6 +184,16 @@ class _HomeState extends State<Home> {
   }
 
   void updateViewMode(ViewType type) {
+    if (AppLog.enabled) {
+      final f = widget.home.filters;
+      AppLog.info(
+        'Home: switching view → ${viewTypeToString(type)} '
+        '| sources=${f.sourceIds?.length ?? "null"} '
+        '| mediaTypes=${f.mediaTypes?.map((m) => m.name).join(",") ?? "null"} '
+        '| groupId=${f.groupId} '
+        '| query=${f.query ?? "none"}',
+      );
+    }
     Navigator.of(context).pushAndRemoveUntil(
       NoPushAnimationMaterialPageRoute(
         builder: (context) => Home(

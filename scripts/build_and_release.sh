@@ -50,6 +50,7 @@ fi
 
 #  3. Build release APK 
 echo " Building release APK"
+export PATH="$PATH:/Users/builder/tools/flutter/bin"
 flutter build apk --release
 
 APK_SRC="$REPO_DIR/build/app/outputs/flutter-apk/app-release.apk"

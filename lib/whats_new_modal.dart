@@ -7,6 +7,17 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.11.5': [
+    'Settings: tap the App version tile to open the full version history',
+    'Mini-player: audio from the main player is now muted before the swap '
+        'transition, preventing dual-audio bleed during navigation',
+    'EPG: maximum refresh interval raised from 48 h to 168 h (7 days)',
+    'Diagnostics: when debug logging is enabled, tab/filter switches '
+        '(All → Categories → Favorites → History) are now logged with full '
+        'filter state to help diagnose blank-category issues',
+    'History: confirmed already sorted by most-recently-watched first '
+        '(ORDER BY last_watched DESC)',
+  ],
   '1.11.4': [
     'Fix: eliminated the 3-second reconnect on every livestream open — '
         'mpv was allocating a rewind buffer and probing a seek on non-seekable '
@@ -230,7 +241,7 @@ class WhatsNewModal extends StatelessWidget {
           onPressed: () {
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const _FullChangelogPage()),
+              MaterialPageRoute(builder: (_) => const FullChangelogPage()),
             );
           },
           child: const Text('Full changelog'),
@@ -269,8 +280,8 @@ class WhatsNewModal extends StatelessWidget {
 }
 
 /// Full scrollable changelog — all versions newest-first.
-class _FullChangelogPage extends StatelessWidget {
-  const _FullChangelogPage();
+class FullChangelogPage extends StatelessWidget {
+  const FullChangelogPage({super.key});
 
   @override
   Widget build(BuildContext context) {

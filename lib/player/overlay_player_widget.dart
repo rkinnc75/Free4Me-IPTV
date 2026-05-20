@@ -262,6 +262,10 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
   /// If no full-screen player is registered the overlay channel simply becomes
   /// the new full-screen player (equivalent to maximize).
   Future<void> _swap() async {
+    // Mute the main player immediately so audio doesn't bleed during the
+    // navigation transition animation.
+    await _ctrl.muteMain();
+
     final snapshot = await _ctrl.consumeOverlay();
     if (snapshot == null) return;
 

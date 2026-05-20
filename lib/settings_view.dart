@@ -25,6 +25,7 @@ import 'package:open_tv/models/source_type.dart';
 import 'package:open_tv/models/view_type.dart';
 import 'package:open_tv/error.dart';
 import 'package:open_tv/setup.dart';
+import 'package:open_tv/whats_new_modal.dart';
 import 'package:open_tv/widgets/setting_help_dialog.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -1019,14 +1020,14 @@ class _SettingsState extends State<SettingsView> {
                     label: "Refresh every (hours)",
                     value: settings.epgRefreshHours.toDouble(),
                     min: 6,
-                    max: 48,
-                    divisions: 42,
+                    max: 168,
+                    divisions: 162,
                     help: (
                       title: 'EPG Refresh Interval (hours)',
                       body:
                           'How often the app checks for updated program data. '
                           'Increasing reduces data usage. Decreasing keeps the '
-                          'guide more current. Default: 24 h. Range: 6–48 h.',
+                          'guide more current. Default: 24 h. Range: 6–168 h (7 days).',
                     ),
                     onChanged: (v) {
                       setState(() => settings.epgRefreshHours = v.round());
@@ -1274,6 +1275,17 @@ class _SettingsState extends State<SettingsView> {
                     leading: const Icon(Icons.info_outline),
                     title: const Text('App version'),
                     subtitle: Text(_appVersion.isEmpty ? '…' : _appVersion),
+                    onTap: _appVersion.isEmpty
+                        ? null
+                        : () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const FullChangelogPage(),
+                              ),
+                            ),
+                    trailing: _appVersion.isEmpty
+                        ? null
+                        : const Icon(Icons.chevron_right),
                   ),
 
                   const Divider(),
