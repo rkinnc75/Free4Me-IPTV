@@ -26,7 +26,7 @@ import 'package:open_tv/tv_home.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
-  await Workmanager().initialize(callbackDispatcher, isInDebugMode: false);
+  await Workmanager().initialize(callbackDispatcher);
   // Parallelize all cold-start awaits — settings loaded once and cached.
   final results = await Future.wait([
     Sql.hasSources(),

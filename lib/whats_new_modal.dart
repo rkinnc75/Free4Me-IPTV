@@ -7,6 +7,22 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.11.12': [
+    'Maintenance: removed deprecated isInDebugMode parameter from Workmanager '
+        'initializer (parameter was a no-op; replaced by WorkmanagerDebug handlers).',
+    'Maintenance: upgraded Gradle wrapper 8.13 → 8.14 and Kotlin plugin 2.1.0 '
+        '→ 2.2.20 to satisfy upcoming Flutter minimum version requirements.',
+    'Maintenance: migrated app\'s own Android build to Built-in Kotlin support '
+        '(removed explicit id "kotlin-android" from build.gradle). This '
+        'eliminates the "Your Android app project applies the Kotlin Gradle '
+        'Plugin" build warning, which would have become a build failure in a '
+        'future Flutter version.',
+    'Note: third-party plugin KGP warnings (file_picker, video_player, '
+        'workmanager) remain until their authors publish Built-in Kotlin '
+        'compatible versions — blocked by a win32 version split in the '
+        'Flutter plugin ecosystem that will resolve when file_picker 12.0.0 '
+        'stable ships.',
+  ],
   '1.11.11': [
     'Fix (fix11): eliminated residual "Cannot seek in this stream." reconnects '
         'on MPEG-TS livestreams. The force-seekable=no property was being reset '
