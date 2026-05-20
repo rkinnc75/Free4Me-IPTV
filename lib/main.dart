@@ -9,6 +9,7 @@ import 'package:open_tv/backend/epg_service.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/backend/update_checker.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:open_tv/home.dart';
 import 'package:open_tv/models/app_navigator.dart';
@@ -38,7 +39,11 @@ Future<void> main() async {
   final hasTouchScreen = results[2] as bool;
   final isTV = results[3] as bool;
   await AppLog.setEnabled(settings.debugLogging);
-  AppLog.info('App started');
+  final packageInfo = await PackageInfo.fromPlatform();
+  AppLog.info(
+    'App started — version=${packageInfo.version}'
+    ' build=${packageInfo.buildNumber}',
+  );
   // Ensure WorkManager registration matches the persisted epgAutoRefresh pref.
   unawaited(EpgService.scheduleBackgroundRefresh());
   runApp(

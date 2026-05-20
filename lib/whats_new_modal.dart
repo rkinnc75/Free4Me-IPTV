@@ -7,6 +7,19 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.11.11': [
+    'Fix (fix11): eliminated residual "Cannot seek in this stream." reconnects '
+        'on MPEG-TS livestreams. The force-seekable=no property was being reset '
+        'by mpv\'s internal demuxer init on every open(). Now passed via '
+        'media_kit extras so it travels with the open command itself and '
+        'survives the reset. A startup-grace guard suppresses any slip-through.',
+    'Fix (fix10): stableThresholdSecs setting was not persisted to SQLite — '
+        'every app restart silently reset it to 30 regardless of what was '
+        'configured. Persistence wired in settings_service.dart.',
+    'Fix (fix10): app version and build number are now logged on every startup '
+        '("App started — version=1.11.11 build=44"). Log files are now '
+        'self-identifying — no more guessing which build produced a given log.',
+  ],
   '1.11.10': [
     'Fix (fix9): eliminated the "Cannot seek in this stream." reconnect on '
         'every channel open — mpv probes seekability during demuxer init by '

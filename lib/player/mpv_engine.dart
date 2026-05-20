@@ -72,11 +72,20 @@ class MpvEngine implements PlayerEngine {
     // Calling _applyMpvOptions() here would set mpv properties on the
     // still-active previous stream, triggering a demuxer reset and seek
     // probe on non-seekable MPEG-TS livestreams → "Cannot seek in this stream."
+    //
+    // force-seekable=no is also passed via extras so it survives mpv's
+    // internal demuxer reset on open(). Setting it via setProperty() alone
+    // is insufficient — mpv resets stream-level runtime properties when
+    // initializing a new stream, wiping the value before the seek probe runs.
+    final extras = channel.mediaType == MediaType.livestream
+        ? const {'force-seekable': 'no'}
+        : null;
     await _player.open(
       mk.Media(
         url,
         start: startPosition,
         httpHeaders: headers,
+        extras: extras,
       ),
     );
     if (fullscreenOnOpen) await _videoKey.currentState?.enterFullscreen();

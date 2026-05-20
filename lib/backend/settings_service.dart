@@ -28,6 +28,9 @@ const preWarmOnFocusProp = "preWarmOnFocus";
 // Engine override (v1.4)
 const forcedEngineProp = "forcedEngine";
 
+// Reconnect stability (v1.11.9)
+const stableThresholdSecsProp = "stableThresholdSecs";
+
 // EPG settings (v1.2)
 const debugLoggingProp = "debugLogging";
 const epgAutoRefreshProp = "epgAutoRefresh";
@@ -84,6 +87,7 @@ class SettingsService {
     var epgPast = settingsMap[epgPastDaysProp];
     var epgForecast = settingsMap[epgForecastDaysProp];
     var forcedEngine = settingsMap[forcedEngineProp];
+    var stableThreshold = settingsMap[stableThresholdSecsProp];
 
     if (view != null) {
       settings.defaultView = ViewType.values[int.parse(view)];
@@ -111,6 +115,9 @@ class SettingsService {
     if (epgForecast != null) settings.epgForecastDays = int.parse(epgForecast);
     if (forcedEngine != null) {
       settings.forcedEngine = EngineType.fromJson(forcedEngine);
+    }
+    if (stableThreshold != null) {
+      settings.stableThresholdSecs = int.parse(stableThreshold);
     }
 
     return settings;
@@ -145,6 +152,8 @@ class SettingsService {
     settingsMap[epgPastDaysProp] = settings.epgPastDays.toString();
     settingsMap[epgForecastDaysProp] = settings.epgForecastDays.toString();
     settingsMap[forcedEngineProp] = settings.forcedEngine.toJson();
+    settingsMap[stableThresholdSecsProp] =
+        settings.stableThresholdSecs.toString();
 
     await Sql.updateSettings(settingsMap);
     _cached = settings; // keep the in-memory copy in sync

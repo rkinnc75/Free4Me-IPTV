@@ -165,6 +165,22 @@ class _PlayerState extends State<Player> {
     subscriptions.add(
       _engine.errorStream.listen((err) {
         debugPrint('player error: $err');
+
+        // Suppress the mpv seekability probe error during startup grace.
+        // mpv probes seekability on every open() and MPEG-TS livestreams
+        // reject it with "Cannot seek in this stream." — the stream plays
+        // fine after this; only the reconnect it triggers is harmful.
+        // fix9 (force-seekable=no in _applyMpvOptions) and fix11A (extras)
+        // attempt to prevent the probe entirely; this guard is a zero-cost
+        // safety net in case any edge case lets the probe through.
+        if (_startupGrace && err.contains('Cannot seek in this stream')) {
+          AppLog.info(
+            'Player: suppressed seek probe error during startup'
+            ' channel="${widget.channel.name}"',
+          );
+          return;
+        }
+
         final isPermanent = err.contains('Failed to open') ||
             err.contains('404') ||
             err.contains('403') ||
