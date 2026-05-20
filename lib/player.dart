@@ -173,9 +173,9 @@ class _PlayerState extends State<Player> {
           'Player: engine error [${isPermanent ? "permanent" : "transient"}]'
           ' — "$err" channel="${widget.channel.name}"',
         );
-        // Permanent failures count toward the reconnect limit immediately
-        // so they stop retrying faster.
-        if (isPermanent) _totalReconnectAttempts++;
+        // onDisconnect() is the single source of truth for incrementing
+        // _totalReconnectAttempts — do not pre-increment here, which caused
+        // the counter to jump by 2 per failure and exceed _maxReconnectAttempts.
         onDisconnect(reason: 'player error: $err');
       }),
     );
@@ -273,6 +273,14 @@ class _PlayerState extends State<Player> {
       AppLog.warn(
         'Player: max reconnects reached — giving up on "${widget.channel.name}"',
       );
+      // Stop all background activity so the watchdog, errorStream, and
+      // completedStream listeners no-op — prevents automatic re-open after
+      // give-up when a background timer fires.
+      exiting = true;
+      _bufferingWatchdog?.cancel();
+      _bufferingWatchdog = null;
+      _stableTimer?.cancel();
+      _stableTimer = null;
       if (mounted) {
         setState(() => _bufferingState =
             'Stream unavailable — ${Error.friendlyMessage(reason)}');

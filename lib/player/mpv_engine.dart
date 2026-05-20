@@ -212,6 +212,14 @@ class MpvEngine implements PlayerEngine {
     }
 
     if (channel.mediaType == MediaType.livestream) {
+      // Declare stream non-seekable upfront. Without this, mpv probes
+      // seekability by attempting a seek during demuxer init — MPEG-TS
+      // livestreams reject it, surfacing "Cannot seek in this stream." as a
+      // player error and triggering an unnecessary reconnect on every open.
+      // (mpv even reports the fix itself: "You can force it with
+      //  '--force-seekable=yes'." — the inverse, 'no', suppresses the probe.)
+      await np.setProperty('force-seekable', 'no');
+
       // Back buffer disabled for all live branches: MPEG-TS and most IPTV
       // streams reject seeks, which mpv surfaces as a fatal player error
       // ("Cannot seek in this stream.") causing an immediate reconnect loop.

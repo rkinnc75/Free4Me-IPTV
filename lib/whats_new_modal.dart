@@ -7,6 +7,20 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.11.10': [
+    'Fix (fix9): eliminated the "Cannot seek in this stream." reconnect on '
+        'every channel open — mpv probes seekability during demuxer init by '
+        'attempting a seek; MPEG-TS livestreams reject it. Adding '
+        'force-seekable=no suppresses the probe entirely. Every channel '
+        'should now open cleanly on the first attempt with no reconnect.',
+    'Fix (fix8 #2): reconnect counter was incrementing by 2 per permanent '
+        'failure (pre-increment in errorStream + increment in onDisconnect). '
+        'Removed the pre-increment; onDisconnect is now the single source '
+        'of truth, giving the correct 1/6 → 2/6 → … sequence.',
+    'Fix (fix8 #3): after "max reconnects reached", the stream could '
+        'automatically re-open ~60 s later via a background timer. '
+        'Give-up path now sets exiting=true and cancels all timers.',
+  ],
   '1.11.9': [
     'Fix: update dialog now shows "v1.x.x → v1.y.y" instead of a static '
         'description; build script now auto-extracts per-version release notes '

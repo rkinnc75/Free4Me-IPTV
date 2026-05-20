@@ -1,7 +1,7 @@
 {
-  "latest": "1.11.9",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.11.9",
+  "latest": "1.11.10",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.11.10",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: update dialog now shows \"v1.x.x \u2192 v1.y.y\" instead of a static description; build script now auto-extracts per-version release notes from the in-app changelog and writes them to version.json\n\u2022 Settings: \"Stable playback threshold\" slider (5\u201360 s, default 30 s) \u2014 controls how long a stream must play without interruption before the reconnect retry counter resets; replaces the previous hardcoded 30 s"
+  "releaseNotes": "\u2022 Fix (fix9): eliminated the \"Cannot seek in this stream.\" reconnect on every channel open \u2014 mpv probes seekability during demuxer init by attempting a seek; MPEG-TS livestreams reject it. Adding force-seekable=no suppresses the probe entirely. Every channel should now open cleanly on the first attempt with no reconnect.\n\u2022 Fix (fix8 #2): reconnect counter was incrementing by 2 per permanent failure (pre-increment in errorStream + increment in onDisconnect). Removed the pre-increment; onDisconnect is now the single source of truth, giving the correct 1/6 \u2192 2/6 \u2192 \u2026 sequence.\n\u2022 Fix (fix8 #3): after \"max reconnects reached\", the stream could automatically re-open ~60 s later via a background timer. Give-up path now sets exiting=true and cancels all timers."
 }
