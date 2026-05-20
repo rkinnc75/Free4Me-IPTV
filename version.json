@@ -1,7 +1,7 @@
 {
-  "latest": "1.11.10",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.11.10",
+  "latest": "1.11.11",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.11.11",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix (fix9): eliminated the \"Cannot seek in this stream.\" reconnect on every channel open \u2014 mpv probes seekability during demuxer init by attempting a seek; MPEG-TS livestreams reject it. Adding force-seekable=no suppresses the probe entirely. Every channel should now open cleanly on the first attempt with no reconnect.\n\u2022 Fix (fix8 #2): reconnect counter was incrementing by 2 per permanent failure (pre-increment in errorStream + increment in onDisconnect). Removed the pre-increment; onDisconnect is now the single source of truth, giving the correct 1/6 \u2192 2/6 \u2192 \u2026 sequence.\n\u2022 Fix (fix8 #3): after \"max reconnects reached\", the stream could automatically re-open ~60 s later via a background timer. Give-up path now sets exiting=true and cancels all timers."
+  "releaseNotes": "\u2022 Fix (fix11): eliminated residual \"Cannot seek in this stream.\" reconnects on MPEG-TS livestreams. The force-seekable=no property was being reset by mpv's internal demuxer init on every open(). Now passed via media_kit extras so it travels with the open command itself and survives the reset. A startup-grace guard suppresses any slip-through.\n\u2022 Fix (fix10): stableThresholdSecs setting was not persisted to SQLite \u2014 every app restart silently reset it to 30 regardless of what was configured. Persistence wired in settings_service.dart.\n\u2022 Fix (fix10): app version and build number are now logged on every startup (\"App started \u2014 version=1.11.11 build=44\"). Log files are now self-identifying \u2014 no more guessing which build produced a given log."
 }
