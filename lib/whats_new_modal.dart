@@ -7,6 +7,13 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.11.8': [
+    'Fix: infinite reconnect loop still occurred after fix7 — the brief '
+        'buffering=false event that fires immediately after open() was '
+        'resetting the reconnect counter before the async "Failed to open" '
+        'error arrived, causing the counter to stick at 2/6 indefinitely. '
+        'Counter now resets only after 30 seconds of confirmed stable playback.',
+  ],
   '1.11.7': [
     'Fix (fix6): eliminated the "Cannot seek in this stream" reconnect loop '
         'caused by _applyMpvOptions() running twice on reconnect — mpv properties '

@@ -54,11 +54,14 @@ class _PlayerState extends State<Player> {
   int _consecutiveOpenFailures = 0;
   static const int _maxOpenFailures = 6;
   // Counts every onDisconnect() call regardless of path (catches the async
-  // error path that bypasses _consecutiveOpenFailures). Reset only on
-  // confirmed stable playback (buffering→false).
+  // error path that bypasses _consecutiveOpenFailures). Only reset after
+  // the stream is confirmed stable for _stableThresholdSecs seconds — a
+  // brief buffering=false right after open() does NOT count as "stable".
   int _totalReconnectAttempts = 0;
   static const int _maxReconnectAttempts = 6;
   Timer? _bufferingWatchdog;
+  Timer? _stableTimer;
+  static const int _stableThresholdSecs = 30;
   bool _isReconnecting = false;
   String? _bufferingState;
   // Suppresses false reconnect triggers during the first 3s after open().
@@ -216,6 +219,7 @@ class _PlayerState extends State<Player> {
     if (!mounted || exiting) return;
     AppLog.info('Player: buffering=$buffering channel="${widget.channel.name}"');
     if (buffering) {
+      _stableTimer?.cancel(); // stream is no longer stable
       if (mounted) setState(() => _bufferingState = 'Buffering...');
       // During startup grace the indicator is shown but the watchdog is
       // suppressed — prevents reconnect loops while the stream stabilises.
@@ -227,13 +231,28 @@ class _PlayerState extends State<Player> {
         );
       }
     } else {
-      // Stream confirmed playing — reset both reconnect counters so a
-      // temporary blip doesn't permanently consume the retry budget.
-      _totalReconnectAttempts = 0;
-      _consecutiveOpenFailures = 0;
       _bufferingWatchdog?.cancel();
       _bufferingWatchdog = null;
       if (mounted) setState(() => _bufferingState = null);
+      // Start a stability timer. Only if the stream is still playing after
+      // _stableThresholdSecs do we reset the reconnect counters — this
+      // prevents the brief buffering=false that follows every open() from
+      // zeroing the counter before the async "Failed to open" fires.
+      _stableTimer?.cancel();
+      _stableTimer = Timer(
+        Duration(seconds: _stableThresholdSecs),
+        () {
+          if (mounted && !exiting) {
+            AppLog.info(
+              'Player: stream stable for ${_stableThresholdSecs}s'
+              ' — resetting reconnect counters'
+              ' channel="${widget.channel.name}"',
+            );
+            _totalReconnectAttempts = 0;
+            _consecutiveOpenFailures = 0;
+          }
+        },
+      );
     }
   }
 
@@ -367,6 +386,7 @@ class _PlayerState extends State<Player> {
     OverlayPlayerController.instance.unregisterMain(_engine);
     PipController.setPlaying(false);
     _bufferingWatchdog?.cancel();
+    _stableTimer?.cancel();
     for (final s in subscriptions) {
       s.cancel();
     }
