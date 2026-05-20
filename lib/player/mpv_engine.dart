@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart' as mk;
@@ -199,8 +200,10 @@ class MpvEngine implements PlayerEngine {
       await np.setProperty('hls-bitrate', s.lowLatency ? 'min' : 'max');
     }
 
-    if (s.hwDecode) {
+    if (s.hwDecode && Platform.isAndroid) {
       await np.setProperty('hwdec', 'mediacodec');
+    } else if (s.hwDecode && Platform.isIOS) {
+      await np.setProperty('hwdec', 'videotoolbox');
     } else {
       await np.setProperty('hwdec', 'no');
     }

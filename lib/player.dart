@@ -4,6 +4,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/channel_tile.dart';
 import 'package:open_tv/error.dart';
@@ -55,6 +56,8 @@ class _PlayerState extends State<Player> {
   Timer? _bufferingWatchdog;
   bool _isReconnecting = false;
   String? _bufferingState;
+  // Suppresses false reconnect triggers during the first 3s after open().
+  bool _startupGrace = false;
 
   // Cast state
   // True only when Play Services are present AND the stream format is
@@ -72,6 +75,7 @@ class _PlayerState extends State<Player> {
   void initState() {
     super.initState();
     _engineType = _pickEngine();
+    AppLog.info('Player: engine=$_engineType channel="${widget.channel.name}"');
     _engine = _createEngine(_engineType);
     // Register so the overlay swap can pop this route and take over.
     OverlayPlayerController.instance.registerMain(
@@ -147,7 +151,7 @@ class _PlayerState extends State<Player> {
 
     subscriptions.add(
       _engine.completedStream.listen((completed) {
-        if (completed) onDisconnect(reason: 'stream completed');
+        if (completed && !_startupGrace) onDisconnect(reason: 'stream completed');
       }),
     );
     subscriptions.add(
@@ -192,7 +196,8 @@ class _PlayerState extends State<Player> {
   }
 
   void _onBufferingChanged(bool buffering) {
-    if (!mounted || exiting) return;
+    if (!mounted || exiting || _startupGrace) return;
+    AppLog.info('Player: buffering=$buffering channel="${widget.channel.name}"');
     if (buffering) {
       if (mounted) setState(() => _bufferingState = 'Buffering...');
       if (widget.channel.mediaType == MediaType.livestream) {
@@ -213,6 +218,9 @@ class _PlayerState extends State<Player> {
     if (!mounted || exiting || _isReconnecting) return;
     if (widget.channel.mediaType != MediaType.livestream) return;
     _isReconnecting = true;
+    AppLog.warn(
+      'Player: reconnect — reason="$reason" channel="${widget.channel.name}"',
+    );
     debugPrint('Live stream reconnect ($reason)...');
     if (mounted) setState(() => _bufferingState = 'Reconnecting...');
     await Future.delayed(const Duration(seconds: 1));
@@ -229,6 +237,7 @@ class _PlayerState extends State<Player> {
     Duration? startPosition, {
     ChannelHttpHeaders? headers,
   }) async {
+    _startupGrace = false; // Reset on every attempt (including retries)
     final timeout = Duration(seconds: widget.settings.openTimeoutSecs);
     while (true) {
       if (!mounted || exiting) return;
@@ -249,6 +258,7 @@ class _PlayerState extends State<Player> {
           );
         }
 
+        _startupGrace = true;
         await _engine
             .open(
               url: playbackUrl,
@@ -263,13 +273,26 @@ class _PlayerState extends State<Player> {
             );
 
         _consecutiveOpenFailures = 0;
+        AppLog.info(
+          'Player: open() succeeded — engine=$_engineType url="$playbackUrl"',
+        );
+        // 3-second grace after open() — lets the stream stabilize before
+        // buffering watchdog and completion events can fire.
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted) setState(() => _startupGrace = false);
+        });
         unawaited(PipController.setPlaying(true));
         if (!_engine.handlesOwnFullscreen) {
           await _enterSystemFullscreen();
         }
         return;
       } catch (e) {
+        _startupGrace = false;
         _consecutiveOpenFailures++;
+        AppLog.warn(
+          'Player: open() failed ($_consecutiveOpenFailures/$_maxOpenFailures)'
+          ' — $e — channel="${widget.channel.name}"',
+        );
         debugPrint(
           'Playback failed ($_consecutiveOpenFailures/$_maxOpenFailures): $e',
         );

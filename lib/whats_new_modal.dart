@@ -7,6 +7,19 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.11.1': [
+    'New app icon — updated to the Free4Me-IPTV brand logo',
+    'Full Changelog — tap "Full changelog" in the What\'s New dialog to see '
+        'all release notes for every version',
+    'Fix: hardware decode (HW) now uses the correct decoder per platform '
+        '(mediacodec on Android, VideoToolbox on iOS)',
+    'Fix: eliminated false reconnect loop on stream open — '
+        '3-second startup grace period prevents buffering/completion events '
+        'from firing before the stream has stabilized',
+    'Player events (engine selection, open success/failure, buffering, reconnect) '
+        'are now written to the debug log for remote diagnosis',
+    'EPG background refresh scheduling is now logged so over-refresh can be diagnosed',
+  ],
   '1.11.0': [
     'Dual-stream mini-player: long-press any live channel tile → '
         '"Watch in mini-player" to open a floating, muted overlay while '
@@ -135,6 +148,46 @@ List<MapEntry<String, List<String>>> _entriesForVersion(String version) {
       .toList();
 }
 
+/// All versions sorted newest-first using semver-style comparison.
+List<String> get _allVersionsSorted {
+  final keys = _changelog.keys.toList();
+  keys.sort((a, b) {
+    final aParts = a.split('.').map((s) => int.tryParse(s) ?? 0).toList();
+    final bParts = b.split('.').map((s) => int.tryParse(s) ?? 0).toList();
+    final len = aParts.length > bParts.length ? aParts.length : bParts.length;
+    for (var i = 0; i < len; i++) {
+      final av = i < aParts.length ? aParts[i] : 0;
+      final bv = i < bParts.length ? bParts[i] : 0;
+      if (av != bv) return bv.compareTo(av); // descending
+    }
+    return 0;
+  });
+  return keys;
+}
+
+/// Bullet list widget reused in both the "What's New" and "Full Changelog" views.
+Widget _bulletList(List<String> bullets) {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      for (final bullet in bullets)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('• ', style: TextStyle(fontSize: 14)),
+              Expanded(
+                child: Text(bullet, style: const TextStyle(fontSize: 14)),
+              ),
+            ],
+          ),
+        ),
+    ],
+  );
+}
+
 class WhatsNewModal extends StatelessWidget {
   final String version;
   const WhatsNewModal({super.key, required this.version});
@@ -143,7 +196,6 @@ class WhatsNewModal extends StatelessWidget {
   Widget build(BuildContext context) {
     final entries = _entriesForVersion(version);
 
-    // Build bullet-point content for this version
     final bullets = entries.isEmpty
         ? ['See the GitHub releases page for details.']
         : entries.expand((e) => e.value).toList();
@@ -151,6 +203,15 @@ class WhatsNewModal extends StatelessWidget {
     return AlertDialog(
       title: Text("What's new in $version"),
       actions: [
+        TextButton(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const _FullChangelogPage()),
+            );
+          },
+          child: const Text('Full changelog'),
+        ),
         TextButton(
           onPressed: () async {
             await launchUrl(
@@ -176,27 +237,51 @@ class WhatsNewModal extends StatelessWidget {
         child: SingleChildScrollView(
           child: Padding(
             padding: const EdgeInsets.only(right: 8.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (final bullet in bullets)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('• ', style: TextStyle(fontSize: 14)),
-                        Expanded(
-                          child: Text(bullet, style: const TextStyle(fontSize: 14)),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
+            child: _bulletList(bullets),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Full scrollable changelog — all versions newest-first.
+class _FullChangelogPage extends StatelessWidget {
+  const _FullChangelogPage();
+
+  @override
+  Widget build(BuildContext context) {
+    final versions = _allVersionsSorted;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Full Changelog'),
+      ),
+      body: ListView.builder(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        itemCount: versions.length,
+        itemBuilder: (context, index) {
+          final ver = versions[index];
+          final bullets = _changelog[ver]!;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'v$ver',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                ),
+                const SizedBox(height: 6),
+                _bulletList(bullets),
+                const Divider(height: 24),
+              ],
+            ),
+          );
+        },
       ),
     );
   }

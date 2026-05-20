@@ -44,10 +44,16 @@ class EpgService {
   static Future<void> scheduleBackgroundRefresh() async {
     final settings = await SettingsService.getSettings();
     if (!settings.epgAutoRefresh) {
+      AppLog.info('EPG: auto-refresh disabled — cancelling background task');
       await Workmanager().cancelByUniqueName(epgBackgroundTask);
       return;
     }
 
+    AppLog.info(
+      'EPG: scheduling background refresh — '
+      'interval=${settings.epgRefreshHours}h '
+      'refreshHour=${settings.epgRefreshHour}',
+    );
     await Workmanager().registerPeriodicTask(
       epgBackgroundTask,
       epgBackgroundTask,
