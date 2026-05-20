@@ -66,6 +66,11 @@ const _changelog = <String, List<String>>{
     'EPG channel matching now runs in a background thread — no more ANR '
         'dialogs during refresh on large feeds',
   ],
+  '1.9.1': [
+    'XMLTV parser now correctly matches <programme> tags',
+    'Android TV D-pad no longer gets stuck on settings sliders and text fields',
+    'Engine picker and source-name entry now work with D-pad in TV mode',
+  ],
   '1.9.0': [
     'Xtream catchup stream IDs now correctly read from the database',
     'EPG auto-matcher no longer locks user-set channel mappings on every refresh',
