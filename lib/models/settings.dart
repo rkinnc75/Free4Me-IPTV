@@ -30,6 +30,10 @@ class Settings {
   /// Reconnect after this many seconds of sustained buffering on livestreams.
   int bufferingWatchdogSecs;
 
+  /// Seconds of uninterrupted playback required before the reconnect counter
+  /// is reset. A brief buffering=false right after open() does not count.
+  int stableThresholdSecs;
+
   /// Enable hardware decoding via Android mediacodec.
   bool hwDecode;
 
@@ -64,6 +68,7 @@ class Settings {
     this.vodDemuxerMaxMB = 256,
     this.openTimeoutSecs = 15,
     this.bufferingWatchdogSecs = 12,
+    this.stableThresholdSecs = 30,
     this.hwDecode = true,
     this.preWarmOnFocus = true,
     this.forcedEngine = EngineType.auto,

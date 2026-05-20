@@ -1,7 +1,7 @@
 {
-  "latest": "1.11.8",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.11.8",
+  "latest": "1.11.9",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.11.9",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "ExoPlayer for HLS/DASH/MP4 streams, Chromecast support, automatic engine selection."
+  "releaseNotes": "\u2022 Fix: update dialog now shows \"v1.x.x \u2192 v1.y.y\" instead of a static description; build script now auto-extracts per-version release notes from the in-app changelog and writes them to version.json\n\u2022 Settings: \"Stable playback threshold\" slider (5\u201360 s, default 30 s) \u2014 controls how long a stream must play without interruption before the reconnect retry counter resets; replaces the previous hardcoded 30 s"
 }

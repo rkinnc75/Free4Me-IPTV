@@ -61,7 +61,6 @@ class _PlayerState extends State<Player> {
   static const int _maxReconnectAttempts = 6;
   Timer? _bufferingWatchdog;
   Timer? _stableTimer;
-  static const int _stableThresholdSecs = 30;
   bool _isReconnecting = false;
   String? _bufferingState;
   // Suppresses false reconnect triggers during the first 3s after open().
@@ -239,12 +238,13 @@ class _PlayerState extends State<Player> {
       // prevents the brief buffering=false that follows every open() from
       // zeroing the counter before the async "Failed to open" fires.
       _stableTimer?.cancel();
+      final stableSecs = widget.settings.stableThresholdSecs;
       _stableTimer = Timer(
-        Duration(seconds: _stableThresholdSecs),
+        Duration(seconds: stableSecs),
         () {
           if (mounted && !exiting) {
             AppLog.info(
-              'Player: stream stable for ${_stableThresholdSecs}s'
+              'Player: stream stable for ${stableSecs}s'
               ' — resetting reconnect counters'
               ' channel="${widget.channel.name}"',
             );

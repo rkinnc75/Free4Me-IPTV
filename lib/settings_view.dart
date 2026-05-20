@@ -857,6 +857,28 @@ class _SettingsState extends State<SettingsView> {
                       updateSettings();
                     },
                   ),
+                  _bufferSlider(
+                    label: "Stable playback threshold (seconds)",
+                    value: settings.stableThresholdSecs.toDouble(),
+                    min: 5,
+                    max: 60,
+                    divisions: 55,
+                    help: (
+                      title: 'Stable Playback Threshold (seconds)',
+                      body:
+                          'How long a stream must play without interruption '
+                          'before the reconnect retry counter is reset. '
+                          'A lower value resets the counter sooner after a '
+                          'blip; a higher value requires more sustained '
+                          'stability. Default: 30 s. Range: 5–60 s.',
+                    ),
+                    onChanged: (v) {
+                      setState(
+                        () => settings.stableThresholdSecs = v.round(),
+                      );
+                      updateSettings();
+                    },
+                  ),
 
                   // ── Hardware decode / pre-warm / engine ───────────────────
                   _switchTile(

@@ -181,6 +181,7 @@ class SettingsIo {
         'vodDemuxerMaxMB': s.vodDemuxerMaxMB,
         'openTimeoutSecs': s.openTimeoutSecs,
         'bufferingWatchdogSecs': s.bufferingWatchdogSecs,
+        'stableThresholdSecs': s.stableThresholdSecs,
         'forcedEngine': s.forcedEngine.toJson(),
         // EPG & debug (added schema v2)
         'debugLogging': s.debugLogging,
@@ -208,6 +209,7 @@ class SettingsIo {
       vodDemuxerMaxMB: m['vodDemuxerMaxMB'] as int? ?? 256,
       openTimeoutSecs: m['openTimeoutSecs'] as int? ?? 15,
       bufferingWatchdogSecs: m['bufferingWatchdogSecs'] as int? ?? 12,
+      stableThresholdSecs: m['stableThresholdSecs'] as int? ?? 30,
       forcedEngine: EngineType.fromJson(m['forcedEngine'] as String?),
       debugLogging: m['debugLogging'] as bool? ?? false,
       epgAutoRefresh: m['epgAutoRefresh'] as bool? ?? true,

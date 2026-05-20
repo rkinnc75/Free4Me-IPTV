@@ -82,7 +82,7 @@ class UpdateChecker {
 
     if (_isNewer(remote, local)) {
       AppLog.info('UpdateChecker: update available ($local → $remote)');
-      if (context.mounted) _showUpdateDialog(context, info);
+      if (context.mounted) _showUpdateDialog(context, info, local);
     } else {
       AppLog.info('UpdateChecker: already on latest');
       if (showUpToDate && context.mounted) {
@@ -184,14 +184,17 @@ class UpdateChecker {
   static void _showUpdateDialog(
     BuildContext context,
     Map<String, dynamic> info,
+    String localVersion,
   ) {
+    final remoteVersion = info['latest'] as String? ?? '';
+    final notes = info['releaseNotes'] as String?;
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Update available'),
         content: Text(
-          'Version ${info['latest']} is available.'
-          '${info['releaseNotes'] != null ? '\n\n${info['releaseNotes']}' : ''}',
+          'v$localVersion → v$remoteVersion'
+          '${notes != null && notes.isNotEmpty ? '\n\n$notes' : ''}',
         ),
         actions: [
           TextButton(

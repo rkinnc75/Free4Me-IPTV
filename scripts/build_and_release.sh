@@ -61,12 +61,55 @@ echo " APK copied to ~/Downloads/$APK_NAME"
 
 # ── 3b. Update version.json (fetched by the in-app update checker) ───────────
 python3 - <<PYEOF
-import json, pathlib
-vf = pathlib.Path("$REPO_DIR/version.json")
+import json, pathlib, re
+
+repo  = pathlib.Path("$REPO_DIR")
+ver   = "$VERSION"
+tag   = "$TAG"
+
+# ── Extract changelog for this version from whats_new_modal.dart ─────────────
+dart = (repo / "lib/whats_new_modal.dart").read_text()
+
+def extract_notes(text, version):
+    marker = f"  '{version}': ["
+    idx = text.find(marker)
+    if idx == -1:
+        return f"Version {version}"
+    start = text.index('[', idx) + 1
+    end   = text.find('\n  ],', start)
+    if end == -1:
+        return f"Version {version}"
+    block = text[start:end]
+
+    bullets, cur = [], []
+    for line in block.split('\n'):
+        m = re.search(r"'((?:[^'\\\\]|\\\\.)*)'", line)
+        if not m:
+            continue
+        content = (m.group(1)
+                    .replace('\\\\n', '\n')
+                    .replace("\\\\'", "'")
+                    .replace('\\\\\\\\', '\\\\'))
+        # 4-space indent = new list element; 8-space = continuation
+        if re.match(r'^    [^ ]', line):
+            if cur:
+                bullets.append(''.join(cur))
+            cur = [content]
+        else:
+            cur.append(content)
+    if cur:
+        bullets.append(''.join(cur))
+    return '\n'.join(f'• {b.strip()}' for b in bullets) if bullets else f"Version {version}"
+
+notes = extract_notes(dart, ver)
+
+vf   = repo / "version.json"
 data = json.loads(vf.read_text()) if vf.exists() else {}
-data["latest"] = "$VERSION"
-data["releaseUrl"] = "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/$TAG"
+data["latest"]      = ver
+data["releaseUrl"]  = f"https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/{tag}"
+data["releaseNotes"] = notes
 vf.write_text(json.dumps(data, indent=2) + "\n")
+print(f"  releaseNotes for {ver}:\n{notes}")
 PYEOF
 echo " version.json updated to $VERSION"
 

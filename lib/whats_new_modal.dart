@@ -7,6 +7,14 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.11.9': [
+    'Fix: update dialog now shows "v1.x.x → v1.y.y" instead of a static '
+        'description; build script now auto-extracts per-version release notes '
+        'from the in-app changelog and writes them to version.json',
+    'Settings: "Stable playback threshold" slider (5–60 s, default 30 s) — '
+        'controls how long a stream must play without interruption before the '
+        'reconnect retry counter resets; replaces the previous hardcoded 30 s',
+  ],
   '1.11.8': [
     'Fix: infinite reconnect loop still occurred after fix7 — the brief '
         'buffering=false event that fires immediately after open() was '
