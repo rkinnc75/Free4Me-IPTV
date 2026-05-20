@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/models/engine_type.dart';
 import 'package:open_tv/backend/epg_service.dart';
@@ -589,7 +590,7 @@ class _SettingsState extends State<SettingsView> {
           ],
         ),
       ),
-      subtitle: Slider(
+      subtitle: _DpadFriendlySlider(
         value: value.clamp(min, max),
         min: min,
         max: max,
@@ -684,7 +685,9 @@ class _SettingsState extends State<SettingsView> {
           child: SafeArea(
             child: Padding(
               padding: const EdgeInsetsDirectional.symmetric(vertical: 10),
-              child: ListView(
+              child: FocusTraversalGroup(
+                policy: OrderedTraversalPolicy(),
+                child: ListView(
                 children: [
                   const SizedBox(height: 10),
                   const Padding(
@@ -1300,6 +1303,7 @@ class _SettingsState extends State<SettingsView> {
                   ...sources.map(getSource),
                 ],
               ),
+              ),
             ),
           ),
         ),
@@ -1310,6 +1314,93 @@ class _SettingsState extends State<SettingsView> {
               startingView: ViewType.settings,
             )
           : null,
+    );
+  }
+}
+
+/// A [Slider] that does not consume D-pad up/down key events.
+///
+/// Flutter's stock [Slider] treats up/down arrow keys the same as right/left
+/// (nudging the value), which on Android TV traps focus on the first slider
+/// in a list — the user cannot move past it. This wrapper handles
+/// left/right itself (so the value can still be adjusted) but returns
+/// [KeyEventResult.ignored] for up/down, allowing the parent
+/// [FocusTraversalGroup] / [ListView] to move focus to the next row.
+class _DpadFriendlySlider extends StatefulWidget {
+  final double value;
+  final double min;
+  final double max;
+  final int divisions;
+  final String label;
+  final ValueChanged<double> onChanged;
+
+  const _DpadFriendlySlider({
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.divisions,
+    required this.label,
+    required this.onChanged,
+  });
+
+  @override
+  State<_DpadFriendlySlider> createState() => _DpadFriendlySliderState();
+}
+
+class _DpadFriendlySliderState extends State<_DpadFriendlySlider> {
+  late final FocusNode _focusNode = FocusNode(debugLabel: 'DpadSlider');
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  double get _step =>
+      (widget.max - widget.min) / widget.divisions;
+
+  void _nudge(double delta) {
+    final next = (widget.value + delta).clamp(widget.min, widget.max);
+    if (next != widget.value) widget.onChanged(next);
+  }
+
+  KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    final key = event.logicalKey;
+    // Let up/down propagate so the ListView can move focus.
+    if (key == LogicalKeyboardKey.arrowUp ||
+        key == LogicalKeyboardKey.arrowDown) {
+      return KeyEventResult.ignored;
+    }
+    if (key == LogicalKeyboardKey.arrowLeft) {
+      _nudge(-_step);
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowRight) {
+      _nudge(_step);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Focus(
+      focusNode: _focusNode,
+      onKeyEvent: _handleKey,
+      child: Slider(
+        value: widget.value.clamp(widget.min, widget.max),
+        min: widget.min,
+        max: widget.max,
+        divisions: widget.divisions,
+        label: widget.label,
+        // Do not let the stock Slider grab keyboard focus — our outer
+        // Focus node receives keys and forwards left/right manually.
+        focusNode: FocusNode(skipTraversal: true, canRequestFocus: false),
+        onChanged: widget.onChanged,
+      ),
     );
   }
 }
