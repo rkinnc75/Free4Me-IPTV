@@ -66,6 +66,11 @@ const _changelog = <String, List<String>>{
     'EPG channel matching now runs in a background thread — no more ANR '
         'dialogs during refresh on large feeds',
   ],
+  '1.10.0': [
+    'Picture-in-picture: press the PiP button or Home to keep watching in a '
+        'floating mini-window while you use other apps',
+    'PiP activates automatically on Android 12+ when you navigate away mid-stream',
+  ],
   '1.9.2': [
     'TV mode: pressing OK/Enter on the EPG URL field now saves immediately',
     'TV mode: Save button is the first action in the EPG URL dialog (one D-pad press away)',

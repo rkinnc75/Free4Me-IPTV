@@ -16,6 +16,7 @@ import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/source.dart';
 import 'package:open_tv/player/cast_controller.dart';
 import 'package:open_tv/player/engine_picker.dart';
+import 'package:open_tv/player/pip_controller.dart';
 import 'package:open_tv/player/exo_engine.dart';
 import 'package:open_tv/player/mpv_engine.dart';
 import 'package:open_tv/player/player_engine.dart';
@@ -62,6 +63,10 @@ class _PlayerState extends State<Player> {
   CastState _castState = CastState.unavailable;
   bool _isCasting = false;
 
+  // PiP state
+  bool _pipSupported = false;
+  bool _inPipMode = false;
+
   @override
   void initState() {
     super.initState();
@@ -90,7 +95,7 @@ class _PlayerState extends State<Player> {
   }
 
   Future<void> initAsync() async {
-    // Check Cast availability and stream castability in parallel with playback.
+    // Check Cast + PiP availability in parallel with playback startup.
     final streamUrl = widget.overrideUrl ?? widget.channel.url ?? '';
     CastController.isAvailable().then((avail) {
       if (!mounted) return;
@@ -101,6 +106,23 @@ class _PlayerState extends State<Player> {
           if (!mounted) return;
           setState(() => _castState = s);
         });
+      }
+    });
+
+    PipController.isSupported().then((supported) {
+      if (!mounted) return;
+      setState(() => _pipSupported = supported);
+      if (supported) {
+        subscriptions.add(
+          PipController.pipModeStream.listen((inPip) {
+            if (!mounted) return;
+            setState(() => _inPipMode = inPip);
+            if (!inPip) {
+              // Returned from PiP — re-enter fullscreen if not engine-managed.
+              if (!_engine.handlesOwnFullscreen) _enterSystemFullscreen();
+            }
+          }),
+        );
       }
     });
 
@@ -234,6 +256,7 @@ class _PlayerState extends State<Player> {
             );
 
         _consecutiveOpenFailures = 0;
+        unawaited(PipController.setPlaying(true));
         if (!_engine.handlesOwnFullscreen) {
           await _enterSystemFullscreen();
         }
@@ -268,6 +291,7 @@ class _PlayerState extends State<Player> {
 
   @override
   void dispose() {
+    PipController.setPlaying(false);
     _bufferingWatchdog?.cancel();
     for (final s in subscriptions) {
       s.cancel();
@@ -424,6 +448,7 @@ class _PlayerState extends State<Player> {
   void onExit() async {
     if (exiting) return;
     exiting = true;
+    unawaited(PipController.setPlaying(false));
     _bufferingWatchdog?.cancel();
     if (widget.channel.mediaType == MediaType.movie) {
       await Sql.setPosition(
@@ -448,6 +473,16 @@ class _PlayerState extends State<Player> {
 
   @override
   Widget build(BuildContext context) {
+    // In PiP mode: render only the video — no controls, no overlays, no gestures.
+    if (_inPipMode) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: SizedBox.expand(
+          child: _engine.buildVideoView(context),
+        ),
+      );
+    }
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) => onExit(),
@@ -522,6 +557,16 @@ class _PlayerState extends State<Player> {
                       icon: Icon(_castIcon, color: Colors.white, size: 28),
                       tooltip: _isCasting ? 'Stop casting' : 'Cast to TV',
                     ),
+                  if (_pipSupported)
+                    IconButton(
+                      onPressed: () => PipController.enterPip(),
+                      icon: const Icon(
+                        Icons.picture_in_picture_alt,
+                        color: Colors.white,
+                        size: 28,
+                      ),
+                      tooltip: 'Picture-in-picture',
+                    ),
                 ],
               ),
             ),
@@ -575,7 +620,7 @@ class _PlayerState extends State<Player> {
       seekBarThumbSize: 20,
       seekBarHeight: 10,
       seekGesture: widget.channel.mediaType != MediaType.livestream,
-      topButtonBar: [
+        topButtonBar: [
         IconButton(
           onPressed: onExit,
           icon: const Icon(Icons.arrow_back, color: Colors.white, size: 32),
@@ -588,6 +633,16 @@ class _PlayerState extends State<Player> {
             onPressed: _onCastTap,
             icon: Icon(_castIcon, color: Colors.white, size: 28),
             tooltip: _isCasting ? 'Stop casting' : 'Cast to TV',
+          ),
+        if (_pipSupported)
+          IconButton(
+            onPressed: () => PipController.enterPip(),
+            icon: const Icon(
+              Icons.picture_in_picture_alt,
+              color: Colors.white,
+              size: 28,
+            ),
+            tooltip: 'Picture-in-picture',
           ),
       ],
       bottomButtonBar: [
