@@ -66,6 +66,10 @@ const _changelog = <String, List<String>>{
     'EPG channel matching now runs in a background thread — no more ANR '
         'dialogs during refresh on large feeds',
   ],
+  '1.9.2': [
+    'TV mode: pressing OK/Enter on the EPG URL field now saves immediately',
+    'TV mode: Save button is the first action in the EPG URL dialog (one D-pad press away)',
+  ],
   '1.9.1': [
     'XMLTV parser now correctly matches <programme> tags',
     'Android TV D-pad no longer gets stuck on settings sliders and text fields',

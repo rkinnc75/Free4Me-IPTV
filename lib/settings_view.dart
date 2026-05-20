@@ -954,7 +954,7 @@ class _SettingsState extends State<SettingsView> {
                         );
                         final result = await showDialog<String?>(
                           context: context,
-                          builder: (_) => AlertDialog(
+                          builder: (ctx) => AlertDialog(
                             title: Text('EPG URL for "${source.name}"'),
                             content: DpadTextField(
                               controller: controller,
@@ -963,23 +963,28 @@ class _SettingsState extends State<SettingsView> {
                               ),
                               keyboardType: TextInputType.url,
                               autofocus: true,
+                              // Enter/OK on D-pad saves immediately
+                              onSubmitted: (text) =>
+                                  Navigator.pop(ctx, text.trim()),
                             ),
+                            // Save first so one D-pad-down from the field
+                            // lands on Save, not Cancel.
                             actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context, null),
-                                child: const Text('Cancel'),
-                              ),
-                              TextButton(
-                                onPressed: () =>
-                                    Navigator.pop(context, ''),
-                                child: const Text('Clear'),
-                              ),
                               FilledButton(
                                 onPressed: () => Navigator.pop(
-                                  context,
+                                  ctx,
                                   controller.text.trim(),
                                 ),
                                 child: const Text('Save'),
+                              ),
+                              TextButton(
+                                onPressed: () =>
+                                    Navigator.pop(ctx, ''),
+                                child: const Text('Clear'),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, null),
+                                child: const Text('Cancel'),
                               ),
                             ],
                           ),
