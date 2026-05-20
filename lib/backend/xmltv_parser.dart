@@ -131,7 +131,7 @@ class XmltvParser {
           case 'channel':
             _currentChannelId = _attr(event, 'id');
             _currentChildElement = null;
-          case 'program':
+          case 'programme':
             final startRaw = _attr(event, 'start');
             final stopRaw = _attr(event, 'stop');
             final channelId = _attr(event, 'channel');
@@ -174,7 +174,7 @@ class XmltvParser {
           case 'episode-num':
             _prog?.episodeNum = text.isNotEmpty ? text : null;
             _currentChildElement = null;
-          case 'program':
+          case 'programme':
             final p = _prog;
             _prog = null;
             if (p != null && p.title != null) {
