@@ -209,12 +209,17 @@ class MpvEngine implements PlayerEngine {
     }
 
     if (channel.mediaType == MediaType.livestream) {
+      // Back buffer disabled for all live branches: MPEG-TS and most IPTV
+      // streams reject seeks, which mpv surfaces as a fatal player error
+      // ("Cannot seek in this stream.") causing an immediate reconnect loop.
+      // VOD keeps its back buffer for normal reverse-seek support.
       if (s.lowLatency) {
         await np.setProperty('profile', 'low-latency');
+        await np.setProperty('demuxer-max-back-bytes', '0');
       } else {
         await np.setProperty('cache-secs', s.liveCacheSecs.toString());
         await np.setProperty('demuxer-max-bytes', '${s.liveDemuxerMaxMB}MiB');
-        await np.setProperty('demuxer-max-back-bytes', '32MiB');
+        await np.setProperty('demuxer-max-back-bytes', '0');
       }
     } else {
       await np.setProperty('cache-secs', s.vodCacheSecs.toString());

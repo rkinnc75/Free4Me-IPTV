@@ -7,6 +7,13 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.11.4': [
+    'Fix: eliminated the 3-second reconnect on every livestream open — '
+        'mpv was allocating a rewind buffer and probing a seek on non-seekable '
+        'MPEG-TS streams, which the server rejected as a fatal error. '
+        'Back buffer is now set to 0 for all live streams '
+        '(confirmed via exported debug log).',
+  ],
   '1.11.3': [
     'Fix: mini-player restore and swap buttons now correctly open full-screen '
         '(root cause: overlay widget lives outside the Navigator subtree — '
