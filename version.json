@@ -1,7 +1,7 @@
 {
-  "latest": "1.11.11",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.11.11",
+  "latest": "1.11.12",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.11.12",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix (fix11): eliminated residual \"Cannot seek in this stream.\" reconnects on MPEG-TS livestreams. The force-seekable=no property was being reset by mpv's internal demuxer init on every open(). Now passed via media_kit extras so it travels with the open command itself and survives the reset. A startup-grace guard suppresses any slip-through.\n\u2022 Fix (fix10): stableThresholdSecs setting was not persisted to SQLite \u2014 every app restart silently reset it to 30 regardless of what was configured. Persistence wired in settings_service.dart.\n\u2022 Fix (fix10): app version and build number are now logged on every startup (\"App started \u2014 version=1.11.11 build=44\"). Log files are now self-identifying \u2014 no more guessing which build produced a given log."
+  "releaseNotes": "\u2022 Maintenance: removed deprecated isInDebugMode parameter from Workmanager initializer (parameter was a no-op; replaced by WorkmanagerDebug handlers).\n\u2022 Maintenance: upgraded Gradle wrapper 8.13 \u2192 8.14 and Kotlin plugin 2.1.0 \u2192 2.2.20 to satisfy upcoming Flutter minimum version requirements.\n\u2022 Maintenance: migrated app's own Android build to Built-in Kotlin support (removed explicit id \"kotlin-android\" from build.gradle). This eliminates the \"Your Android app project applies the Kotlin Gradle Plugin\" build warning, which would have become a build failure in a future Flutter version.\n\u2022 Note: third-party plugin KGP warnings (file_picker, video_player, workmanager) remain until their authors publish Built-in Kotlin compatible versions \u2014 blocked by a win32 version split in the Flutter plugin ecosystem that will resolve when file_picker 12.0.0 stable ships."
 }
