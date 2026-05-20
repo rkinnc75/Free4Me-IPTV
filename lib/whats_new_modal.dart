@@ -66,6 +66,12 @@ const _changelog = <String, List<String>>{
     'EPG channel matching now runs in a background thread — no more ANR '
         'dialogs during refresh on large feeds',
   ],
+  '1.10.1': [
+    'Update checker: manual "Check for updates" button now always runs '
+        'regardless of throttle, and shows "up to date" confirmation',
+    'Update checker: shortened to 1-hour interval when debug logging is on',
+    'Update checker: all steps now logged to the debug log for diagnosis',
+  ],
   '1.10.0': [
     'Picture-in-picture: press the PiP button or Home to keep watching in a '
         'floating mini-window while you use other apps',

@@ -1265,13 +1265,9 @@ class _SettingsState extends State<SettingsView> {
                     title: const Text("Check for updates"),
                     subtitle: const Text("Check for a newer version of the app"),
                     onTap: () async {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Checking for updates…'),
-                          duration: Duration(seconds: 2),
-                        ),
-                      );
-                      await UpdateChecker.checkOnLaunch(context);
+                      // checkNow bypasses the throttle and shows
+                      // "up to date" feedback, unlike checkOnLaunch.
+                      await UpdateChecker.checkNow(context);
                     },
                   ),
                   ListTile(
