@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:open_tv/backend/sql.dart';
+import 'package:open_tv/widgets/dpad_text_field.dart';
 import 'package:open_tv/models/channel.dart';
 import 'package:open_tv/models/source.dart';
 
@@ -65,7 +66,7 @@ class _EpgChannelMappingViewState extends State<EpgChannelMappingView> {
           preferredSize: const Size.fromHeight(56),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-            child: TextField(
+            child: DpadTextField(
               decoration: InputDecoration(
                 hintText: 'Filter channels…',
                 prefixIcon: const Icon(Icons.search),
@@ -238,7 +239,7 @@ class _EpgIdPickerDialogState extends State<_EpgIdPickerDialog> {
           // Search box
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: TextField(
+            child: DpadTextField(
               autofocus: true,
               decoration: InputDecoration(
                 hintText: 'Search EPG IDs…',

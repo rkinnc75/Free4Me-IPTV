@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_form_builder/flutter_form_builder.dart';
+import 'package:open_tv/widgets/dpad_text_field.dart';
 import 'package:form_builder_validators/form_builder_validators.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/models/source.dart';
@@ -57,11 +58,14 @@ class _EditDialogState extends State<EditDialog> {
       ],
       content: FormBuilder(
           key: _formKey,
-          child: Column(
+          child: FocusTraversalGroup(
+            policy: OrderedTraversalPolicy(),
+            child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               const SizedBox(height: 15),
-              FormBuilderTextField(
+              DpadFocusEscape(
+                child: FormBuilderTextField(
                 initialValue: widget.source.url,
                 autovalidateMode: AutovalidateMode.onUserInteraction,
                 validator: FormBuilderValidators.compose(
@@ -72,13 +76,14 @@ class _EditDialogState extends State<EditDialog> {
                   border: OutlineInputBorder(),
                 ),
                 name: 'url',
-              ),
+              )),
               Visibility(
                   visible: widget.source.sourceType == SourceType.xtream,
                   child: const SizedBox(height: 30)),
               Visibility(
                   visible: widget.source.sourceType == SourceType.xtream,
-                  child: FormBuilderTextField(
+                  child: DpadFocusEscape(
+                    child: FormBuilderTextField(
                     initialValue: widget.source.username,
                     autovalidateMode: AutovalidateMode.onUserInteraction,
                     validator: FormBuilderValidators.compose(
@@ -89,13 +94,14 @@ class _EditDialogState extends State<EditDialog> {
                       border: OutlineInputBorder(),
                     ),
                     name: 'username',
-                  )),
+                  ))),
               Visibility(
                   visible: widget.source.sourceType == SourceType.xtream,
                   child: const SizedBox(height: 30)),
               Visibility(
                   visible: widget.source.sourceType == SourceType.xtream,
-                  child: FormBuilderTextField(
+                  child: DpadFocusEscape(
+                    child: FormBuilderTextField(
                     initialValue: widget.source.password,
                     autovalidateMode: AutovalidateMode.onUserInteraction,
                     validator: FormBuilderValidators.compose(
@@ -106,9 +112,9 @@ class _EditDialogState extends State<EditDialog> {
                       border: OutlineInputBorder(),
                     ),
                     name: 'password',
-                  )),
+                  ))),
             ],
-          )),
+          ))),
     )));
   }
 }
