@@ -14,6 +14,7 @@ import 'package:open_tv/confirm_delete.dart';
 import 'package:open_tv/models/filters.dart';
 import 'package:open_tv/select_dialog.dart';
 import 'package:open_tv/edit_dialog.dart';
+import 'package:open_tv/widgets/dpad_text_field.dart';
 import 'package:open_tv/home.dart';
 import 'package:open_tv/loading.dart';
 import 'package:open_tv/models/home_manager.dart';
@@ -940,7 +941,7 @@ class _SettingsState extends State<SettingsView> {
                           context: context,
                           builder: (_) => AlertDialog(
                             title: Text('EPG URL for "${source.name}"'),
-                            content: TextField(
+                            content: DpadTextField(
                               controller: controller,
                               decoration: const InputDecoration(
                                 labelText: 'XMLTV feed URL',

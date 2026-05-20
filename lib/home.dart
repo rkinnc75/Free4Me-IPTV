@@ -7,6 +7,7 @@ import 'package:open_tv/backend/utils.dart';
 import 'package:open_tv/bottom_nav.dart';
 import 'package:open_tv/channel_tile.dart';
 import 'package:open_tv/loading.dart';
+import 'package:open_tv/widgets/dpad_text_field.dart';
 import 'package:open_tv/models/channel.dart';
 import 'package:open_tv/models/filters.dart';
 import 'package:open_tv/models/home_manager.dart';
@@ -228,7 +229,7 @@ class _HomeState extends State<Home> {
                     child: Padding(
                       padding: const EdgeInsets.all(16),
                       child: Center(
-                        child: TextField(
+                        child: DpadTextField(
                           style: TextStyle(
                             fontSize: Theme.of(
                               context,
