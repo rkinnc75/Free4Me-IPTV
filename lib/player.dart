@@ -196,11 +196,13 @@ class _PlayerState extends State<Player> {
   }
 
   void _onBufferingChanged(bool buffering) {
-    if (!mounted || exiting || _startupGrace) return;
+    if (!mounted || exiting) return;
     AppLog.info('Player: buffering=$buffering channel="${widget.channel.name}"');
     if (buffering) {
       if (mounted) setState(() => _bufferingState = 'Buffering...');
-      if (widget.channel.mediaType == MediaType.livestream) {
+      // During startup grace the indicator is shown but the watchdog is
+      // suppressed — prevents reconnect loops while the stream stabilises.
+      if (!_startupGrace && widget.channel.mediaType == MediaType.livestream) {
         _bufferingWatchdog?.cancel();
         _bufferingWatchdog = Timer(
           Duration(seconds: widget.settings.bufferingWatchdogSecs),
@@ -610,19 +612,26 @@ class _PlayerState extends State<Player> {
                       ),
                       tooltip: 'Picture-in-picture',
                     ),
-                  if (widget.channel.mediaType == MediaType.livestream)
-                    IconButton(
-                      onPressed: _minimizeToOverlay,
-                      icon: const Icon(
-                        Icons.picture_in_picture,
-                        color: Colors.white,
-                        size: 28,
-                      ),
-                      tooltip: 'Watch in mini-player',
-                    ),
                 ],
               ),
             ),
+            // Bottom bar — mini-player button anchored to bottom-right
+            if (widget.channel.mediaType == MediaType.livestream)
+              Align(
+                alignment: Alignment.bottomRight,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 8, right: 4),
+                  child: IconButton(
+                    onPressed: _minimizeToOverlay,
+                    icon: const Icon(
+                      Icons.picture_in_picture,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                    tooltip: 'Watch in mini-player',
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -697,16 +706,6 @@ class _PlayerState extends State<Player> {
             ),
             tooltip: 'Picture-in-picture',
           ),
-        if (widget.channel.mediaType == MediaType.livestream)
-          IconButton(
-            onPressed: _minimizeToOverlay,
-            icon: const Icon(
-              Icons.picture_in_picture,
-              color: Colors.white,
-              size: 28,
-            ),
-            tooltip: 'Watch in mini-player',
-          ),
       ],
       bottomButtonBar: [
         if (_engine.supportsTrackSelection) ...[
@@ -731,6 +730,19 @@ class _PlayerState extends State<Player> {
           ),
           onPressed: toggleZoom,
         ),
+        // Mini-player button — bottom-right, separated from system PiP (top-right)
+        if (widget.channel.mediaType == MediaType.livestream) ...[
+          const Spacer(),
+          IconButton(
+            onPressed: _minimizeToOverlay,
+            icon: const Icon(
+              Icons.picture_in_picture,
+              color: Colors.white,
+              size: 32,
+            ),
+            tooltip: 'Watch in mini-player',
+          ),
+        ],
       ],
     );
   }

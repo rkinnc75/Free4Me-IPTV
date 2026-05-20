@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:open_tv/models/app_navigator.dart';
 import 'package:open_tv/player.dart';
 import 'package:open_tv/player/overlay_player_controller.dart';
 
@@ -108,7 +109,7 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
               // ── Video surface (draggable + tap-to-maximize) ──────────────
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: () => _maximize(context),
+                onTap: _maximize,
                 onPanUpdate: (d) {
                   setState(() {
                     final cur = _dragOffset ?? snapped;
@@ -162,7 +163,7 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
               icon: Icons.open_in_full,
               tooltip: 'Restore to full screen',
               color: Colors.white,
-              onTap: () => _maximize(context),
+              onTap: _maximize,
             ),
 
             // ── Channel name ────────────────────────────────────────────────
@@ -189,7 +190,7 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
               icon: Icons.swap_horiz,
               tooltip: 'Swap with full-screen',
               color: Colors.white,
-              onTap: () => _swap(context),
+              onTap: _swap,
             ),
 
             // Thin visual separator so close is clearly distinct
@@ -239,12 +240,13 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
 
   // ── Actions ────────────────────────────────────────────────────────────────
 
+  NavigatorState get _nav => appNavigatorKey.currentState!;
+
   /// Push a full-screen [Player] for the overlay channel and close the overlay.
-  Future<void> _maximize(BuildContext context) async {
+  Future<void> _maximize() async {
     final snapshot = await _ctrl.consumeOverlay();
     if (snapshot == null) return;
-    if (!context.mounted) return;
-    Navigator.of(context).push(
+    _nav.push(
       MaterialPageRoute(
         builder: (_) => Player(
           channel: snapshot.ch,
@@ -259,7 +261,7 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
   ///
   /// If no full-screen player is registered the overlay channel simply becomes
   /// the new full-screen player (equivalent to maximize).
-  Future<void> _swap(BuildContext context) async {
+  Future<void> _swap() async {
     final snapshot = await _ctrl.consumeOverlay();
     if (snapshot == null) return;
 
@@ -268,13 +270,10 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
     final mainSource = _ctrl.mainSource;
 
     // Close the current full-screen player (if any)
-    if (mainCh != null && context.mounted) {
-      Navigator.of(context).pop();
-    }
+    if (mainCh != null) _nav.pop();
 
     // Open the ex-overlay channel as the new full-screen player
-    if (!context.mounted) return;
-    Navigator.of(context).push(
+    _nav.push(
       MaterialPageRoute(
         builder: (_) => Player(
           channel: snapshot.ch,

@@ -11,6 +11,7 @@ import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/backend/update_checker.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:open_tv/home.dart';
+import 'package:open_tv/models/app_navigator.dart';
 import 'package:open_tv/models/custom_shortcut.dart';
 import 'package:open_tv/player/overlay_player_widget.dart';
 import 'package:open_tv/models/device_detector.dart';
@@ -102,8 +103,7 @@ class MyApp extends StatelessWidget {
   final Settings settings;
   final bool hasTouchScreen;
   final bool isTV;
-  static final GlobalKey<NavigatorState> navigatorKey =
-      GlobalKey<NavigatorState>();
+  static final GlobalKey<NavigatorState> navigatorKey = appNavigatorKey;
 
   const MyApp({
     super.key,

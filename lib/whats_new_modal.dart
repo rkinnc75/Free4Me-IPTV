@@ -7,6 +7,16 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.11.3': [
+    'Fix: mini-player restore and swap buttons now correctly open full-screen '
+        '(root cause: overlay widget lives outside the Navigator subtree — '
+        'now uses the app navigator key directly)',
+    'Fix: stream startup delay is back to normal — buffering indicator is '
+        'visible immediately again; only the reconnect watchdog is suppressed '
+        'during the 3-second stabilisation window',
+    'Layout: native PiP button stays top-right; mini-player (⧉) button '
+        'moved to bottom-right so the two icons are clearly separated',
+  ],
   '1.11.2': [
     'Mini-player: buttons are now 44 px touch targets — no more accidental close when tapping swap',
     'Mini-player: drag is now on the video surface only, so button taps are never swallowed',
