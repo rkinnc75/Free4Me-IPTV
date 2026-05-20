@@ -68,7 +68,10 @@ class MpvEngine implements PlayerEngine {
     Duration? startPosition,
     Map<String, String>? headers,
   }) async {
-    await _applyMpvOptions(url: url);
+    // Options must be applied via reapplyOptions() BEFORE calling open().
+    // Calling _applyMpvOptions() here would set mpv properties on the
+    // still-active previous stream, triggering a demuxer reset and seek
+    // probe on non-seekable MPEG-TS livestreams → "Cannot seek in this stream."
     await _player.open(
       mk.Media(
         url,

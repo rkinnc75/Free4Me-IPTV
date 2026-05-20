@@ -7,6 +7,21 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.11.7': [
+    'Fix (fix6): eliminated the "Cannot seek in this stream" reconnect loop '
+        'caused by _applyMpvOptions() running twice on reconnect — mpv properties '
+        'are now applied only before open(), never mid-stream',
+    'Fix (fix6): cast resume path now also calls reapplyOptions() before open()',
+    'Fix (fix7): infinite reconnect loop on permanently unavailable streams '
+        '(geo-blocked, offline, expired token) — a new _totalReconnectAttempts '
+        'counter catches the async error path that bypassed the existing '
+        '_consecutiveOpenFailures guard; stops after 6 attempts and shows '
+        '"Stream unavailable" instead of looping forever',
+    'Fix (fix7): permanent errors (Failed to open, 403, 404, Connection refused) '
+        'are classified separately and exhaust the retry budget faster',
+    'Fix (fix7): reconnect counters reset when stable playback is confirmed '
+        'so a brief blip does not permanently consume the retry budget',
+  ],
   '1.11.6': [
     'Fix: dual audio during PiP swap — three root causes addressed:\n'
         '  1. Overlay engine now muted BEFORE open() so the stream never '

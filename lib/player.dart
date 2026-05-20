@@ -53,6 +53,11 @@ class _PlayerState extends State<Player> {
   // Reconnect bookkeeping
   int _consecutiveOpenFailures = 0;
   static const int _maxOpenFailures = 6;
+  // Counts every onDisconnect() call regardless of path (catches the async
+  // error path that bypasses _consecutiveOpenFailures). Reset only on
+  // confirmed stable playback (buffering→false).
+  int _totalReconnectAttempts = 0;
+  static const int _maxReconnectAttempts = 6;
   Timer? _bufferingWatchdog;
   bool _isReconnecting = false;
   String? _bufferingState;
@@ -158,6 +163,17 @@ class _PlayerState extends State<Player> {
     subscriptions.add(
       _engine.errorStream.listen((err) {
         debugPrint('player error: $err');
+        final isPermanent = err.contains('Failed to open') ||
+            err.contains('404') ||
+            err.contains('403') ||
+            err.contains('Connection refused');
+        AppLog.warn(
+          'Player: engine error [${isPermanent ? "permanent" : "transient"}]'
+          ' — "$err" channel="${widget.channel.name}"',
+        );
+        // Permanent failures count toward the reconnect limit immediately
+        // so they stop retrying faster.
+        if (isPermanent) _totalReconnectAttempts++;
         onDisconnect(reason: 'player error: $err');
       }),
     );
@@ -211,6 +227,10 @@ class _PlayerState extends State<Player> {
         );
       }
     } else {
+      // Stream confirmed playing — reset both reconnect counters so a
+      // temporary blip doesn't permanently consume the retry budget.
+      _totalReconnectAttempts = 0;
+      _consecutiveOpenFailures = 0;
       _bufferingWatchdog?.cancel();
       _bufferingWatchdog = null;
       if (mounted) setState(() => _bufferingState = null);
@@ -220,10 +240,28 @@ class _PlayerState extends State<Player> {
   void onDisconnect({String reason = 'unknown'}) async {
     if (!mounted || exiting || _isReconnecting) return;
     if (widget.channel.mediaType != MediaType.livestream) return;
-    _isReconnecting = true;
+
+    _totalReconnectAttempts++;
     AppLog.warn(
-      'Player: reconnect — reason="$reason" channel="${widget.channel.name}"',
+      'Player: onDisconnect — attempt $_totalReconnectAttempts/$_maxReconnectAttempts'
+      ' reconnecting=$_isReconnecting'
+      ' openFailures=$_consecutiveOpenFailures'
+      ' startupGrace=$_startupGrace'
+      ' reason="$reason" channel="${widget.channel.name}"',
     );
+
+    if (_totalReconnectAttempts >= _maxReconnectAttempts) {
+      AppLog.warn(
+        'Player: max reconnects reached — giving up on "${widget.channel.name}"',
+      );
+      if (mounted) {
+        setState(() => _bufferingState =
+            'Stream unavailable — ${Error.friendlyMessage(reason)}');
+      }
+      return;
+    }
+
+    _isReconnecting = true;
     debugPrint('Live stream reconnect ($reason)...');
     if (mounted) setState(() => _bufferingState = 'Reconnecting...');
     await Future.delayed(const Duration(seconds: 1));
@@ -371,7 +409,12 @@ class _PlayerState extends State<Player> {
           _isCasting = false;
           _castState = CastState.notConnected;
         });
-        // Resume locally from Cast-reported position
+        // Resume locally from Cast-reported position.
+        // reapplyOptions() must precede open() since open() no longer
+        // calls _applyMpvOptions() internally (fix6).
+        if (_engine case final MpvEngine mpv) {
+          await mpv.reapplyOptions(url: url);
+        }
         await _engine.open(
           url: url,
           startPosition: resumePosition,
