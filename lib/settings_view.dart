@@ -644,34 +644,48 @@ class _SettingsState extends State<SettingsView> {
           ),
         ],
       ),
-      trailing: DropdownButton<String>(
-        value: settings.forcedEngine.toJson(),
-        underline: const SizedBox.shrink(),
-        items: [
-          DropdownMenuItem(
-            value: 'auto',
-            child: Text('Auto', style: Theme.of(context).textTheme.bodyMedium),
-          ),
-          DropdownMenuItem(
-            value: 'libmpv',
-            child: Text('libmpv', style: Theme.of(context).textTheme.bodyMedium),
-          ),
-          DropdownMenuItem(
-            value: 'exoplayer',
-            child: Text(
-              'ExoPlayer',
+      trailing: TextButton(
+        onPressed: () => _showEnginePickerDialog(context),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _engineShortLabel(settings.forcedEngine),
               style: Theme.of(context).textTheme.bodyMedium,
             ),
-          ),
-        ],
-        onChanged: (v) {
-          if (v == null) return;
-          setState(
-            () => settings.forcedEngine = EngineType.fromJson(v),
-          );
-          updateSettings();
-        },
+            const SizedBox(width: 4),
+            const Icon(Icons.arrow_drop_down),
+          ],
+        ),
       ),
+    );
+  }
+
+  String _engineShortLabel(EngineType engine) => switch (engine) {
+        EngineType.auto => 'Auto',
+        EngineType.libmpv => 'libmpv',
+        EngineType.exoplayer => 'ExoPlayer',
+      };
+
+  Future<void> _showEnginePickerDialog(BuildContext context) async {
+    await showDialog(
+      barrierDismissible: true,
+      context: context,
+      builder: (BuildContext context) {
+        return SelectDialog(
+          title: 'Player engine',
+          data: EngineType.values
+              .map((e) => IdData(id: e.index, data: _engineShortLabel(e)))
+              .toList(),
+          action: (idx) {
+            setState(() {
+              settings.forcedEngine = EngineType.values[idx];
+              updateSettings();
+            });
+            Navigator.of(context).pop();
+          },
+        );
+      },
     );
   }
 
@@ -705,6 +719,7 @@ class _SettingsState extends State<SettingsView> {
 
                   // ── Donate ──────────────────────────────────────────────
                   ListTile(
+                    autofocus: true,
                     title: const Text("Donate"),
                     subtitle: const Text(
                       "Free4Me-IPTV is a fork of Fred TV. Support the original project ❤️",
