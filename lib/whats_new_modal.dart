@@ -7,6 +7,12 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.11.2': [
+    'Mini-player: buttons are now 44 px touch targets — no more accidental close when tapping swap',
+    'Mini-player: drag is now on the video surface only, so button taps are never swallowed',
+    'Mini-player: added ⤢ Restore button (far left) — tap to expand the overlay back to full screen; tap the video does the same',
+    'Mini-player: close button (✕) is now red so it is visually distinct from swap (⇄)',
+  ],
   '1.11.1': [
     'New app icon — updated to the Free4Me-IPTV brand logo',
     'Full Changelog — tap "Full changelog" in the What\'s New dialog to see '

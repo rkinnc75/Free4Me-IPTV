@@ -8,7 +8,17 @@ import 'package:open_tv/player/overlay_player_controller.dart';
 /// When no overlay is active ([OverlayPlayerController.channel] is null),
 /// renders a zero-size widget.
 ///
-/// Layout: 224 × 156 px total (30 px top bar + 126 px video at 16:9).
+/// Layout: 256 wide × 188 px total (44 px control bar + 144 px video at 16:9).
+///
+/// Interaction design:
+/// - Drag: grab the **video area** to drag the window to a new corner.
+/// - Tap video: maximizes (restores the channel to full-screen Player).
+/// - ⤢ button: same as tapping the video — restore to full screen.
+/// - ⇄ button: swap the overlay channel with the current full-screen player.
+/// - ✕ button: close the mini-player.
+///
+/// The control bar buttons are NOT inside the drag GestureDetector, which
+/// prevents accidental dismissal when tapping near the edge of a button.
 class OverlayPlayerWidget extends StatefulWidget {
   const OverlayPlayerWidget({super.key});
 
@@ -17,16 +27,18 @@ class OverlayPlayerWidget extends StatefulWidget {
 }
 
 class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
-  static const double _kWidth = 224;
-  static const double _kVideoHeight = 126; // 224 × 9 / 16
-  static const double _kBarHeight = 30;
+  // Dimensions chosen so every touch target is ≥ 44 px (Material / HIG spec).
+  static const double _kWidth = 256;
+  static const double _kVideoHeight = 144; // 256 × 9 / 16
+  static const double _kBarHeight = 44;
   static const double _kTotalHeight = _kVideoHeight + _kBarHeight;
+  static const double _kBtnWidth = 44;
   static const double _kMarginH = 12;
   static const double _kMarginV = 72; // clear bottom nav / system bars
 
   final _ctrl = OverlayPlayerController.instance;
 
-  /// Drag position; null means "use snapped corner position".
+  /// Non-null while the user is dragging; null = use snapped corner position.
   Offset? _dragOffset;
 
   @override
@@ -61,109 +73,65 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
       top: pos.dy,
       child: Material(
         color: Colors.transparent,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onPanUpdate: (d) {
-            setState(() {
-              final cur = _dragOffset ?? snapped;
-              _dragOffset = Offset(
-                (cur.dx + d.delta.dx).clamp(0.0, size.width - _kWidth),
-                (cur.dy + d.delta.dy)
-                    .clamp(padding.top, size.height - _kTotalHeight),
-              );
-            });
-          },
-          onPanEnd: (_) {
-            final cur = _dragOffset ?? snapped;
-            _ctrl.setCorner(_nearestCorner(cur, size));
-            setState(() => _dragOffset = null);
-          },
-          child: _buildCard(context),
-        ),
+        child: _buildCard(context, size, padding, snapped),
       ),
     );
   }
 
-  Widget _buildCard(BuildContext context) {
-    final engine = _ctrl.engine;
+  Widget _buildCard(
+    BuildContext context,
+    Size size,
+    EdgeInsets padding,
+    Offset snapped,
+  ) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(10),
       child: SizedBox(
         width: _kWidth,
         height: _kTotalHeight,
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: Colors.black,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(10),
             boxShadow: const [
               BoxShadow(
-                color: Color(0xAA000000),
-                blurRadius: 10,
+                color: Color(0xBB000000),
+                blurRadius: 12,
                 spreadRadius: 2,
               ),
             ],
           ),
           child: Column(
             children: [
-              // ── Control bar ────────────────────────────────────────────────
-              SizedBox(
-                height: _kBarHeight,
-                child: ColoredBox(
-                  color: const Color(0xDD000000),
-                  child: Row(
-                    children: [
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          _ctrl.channel?.name ?? '',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      // Swap
-                      SizedBox(
-                        width: 30,
-                        height: _kBarHeight,
-                        child: IconButton(
-                          padding: EdgeInsets.zero,
-                          iconSize: 16,
-                          tooltip: 'Swap channels',
-                          icon: const Icon(
-                            Icons.swap_horiz,
-                            color: Colors.white,
-                          ),
-                          onPressed: () => _swap(context),
-                        ),
-                      ),
-                      // Close
-                      SizedBox(
-                        width: 30,
-                        height: _kBarHeight,
-                        child: IconButton(
-                          padding: EdgeInsets.zero,
-                          iconSize: 16,
-                          tooltip: 'Close mini-player',
-                          icon: const Icon(
-                            Icons.close,
-                            color: Colors.white,
-                          ),
-                          onPressed: () => _ctrl.stopOverlay(),
-                        ),
-                      ),
-                    ],
-                  ),
+              // ── Control bar (NOT draggable — owns the button touch targets)
+              _buildControlBar(context),
+              // ── Video surface (draggable + tap-to-maximize) ──────────────
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _maximize(context),
+                onPanUpdate: (d) {
+                  setState(() {
+                    final cur = _dragOffset ?? snapped;
+                    _dragOffset = Offset(
+                      (cur.dx + d.delta.dx)
+                          .clamp(0.0, size.width - _kWidth),
+                      (cur.dy + d.delta.dy)
+                          .clamp(padding.top, size.height - _kTotalHeight),
+                    );
+                  });
+                },
+                onPanEnd: (_) {
+                  final cur = _dragOffset ?? snapped;
+                  _ctrl.setCorner(_nearestCorner(cur, size));
+                  setState(() => _dragOffset = null);
+                },
+                child: SizedBox(
+                  width: _kWidth,
+                  height: _kVideoHeight,
+                  child: _ctrl.engine != null
+                      ? _ctrl.engine!.buildVideoView(context)
+                      : const ColoredBox(color: Colors.black),
                 ),
-              ),
-              // ── Video surface ──────────────────────────────────────────────
-              SizedBox(
-                width: _kWidth,
-                height: _kVideoHeight,
-                child: engine != null
-                    ? engine.buildVideoView(context)
-                    : const ColoredBox(color: Colors.black),
               ),
             ],
           ),
@@ -172,10 +140,126 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
     );
   }
 
-  // ── Swap ───────────────────────────────────────────────────────────────────
+  // ── Control bar ────────────────────────────────────────────────────────────
+  //
+  // Layout (left → right):
+  //   [⤢ maximize 44px] [channel name expanded] [⇄ swap 44px] [✕ close 44px]
+  //
+  // Each action button is exactly _kBtnWidth × _kBarHeight — meeting the
+  // 44 px minimum touch target on both axes.  The close button has a red
+  // icon tint so it is visually distinct from swap even at a glance.
 
+  Widget _buildControlBar(BuildContext context) {
+    return SizedBox(
+      height: _kBarHeight,
+      child: ColoredBox(
+        color: const Color(0xEE111111),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // ── Maximize (restore to full screen) ───────────────────────────
+            _barButton(
+              icon: Icons.open_in_full,
+              tooltip: 'Restore to full screen',
+              color: Colors.white,
+              onTap: () => _maximize(context),
+            ),
+
+            // ── Channel name ────────────────────────────────────────────────
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    _ctrl.channel?.name ?? '',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+                ),
+              ),
+            ),
+
+            // ── Swap ────────────────────────────────────────────────────────
+            _barButton(
+              icon: Icons.swap_horiz,
+              tooltip: 'Swap with full-screen',
+              color: Colors.white,
+              onTap: () => _swap(context),
+            ),
+
+            // Thin visual separator so close is clearly distinct
+            const VerticalDivider(
+              width: 1,
+              thickness: 1,
+              color: Color(0x55FFFFFF),
+              indent: 8,
+              endIndent: 8,
+            ),
+
+            // ── Close ───────────────────────────────────────────────────────
+            _barButton(
+              icon: Icons.close,
+              tooltip: 'Close mini-player',
+              color: Colors.redAccent,
+              onTap: () => _ctrl.stopOverlay(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// A button cell inside the control bar.  Uses [GestureDetector] directly
+  /// so the full [_kBtnWidth] × [_kBarHeight] area is the touch target —
+  /// `IconButton` clips its splash to a smaller circle by default.
+  Widget _barButton({
+    required IconData icon,
+    required String tooltip,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: SizedBox(
+          width: _kBtnWidth,
+          height: _kBarHeight,
+          child: Icon(icon, color: color, size: 20),
+        ),
+      ),
+    );
+  }
+
+  // ── Actions ────────────────────────────────────────────────────────────────
+
+  /// Push a full-screen [Player] for the overlay channel and close the overlay.
+  Future<void> _maximize(BuildContext context) async {
+    final snapshot = await _ctrl.consumeOverlay();
+    if (snapshot == null) return;
+    if (!context.mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => Player(
+          channel: snapshot.ch,
+          settings: snapshot.s,
+          source: snapshot.src,
+        ),
+      ),
+    );
+  }
+
+  /// Swap the overlay channel with the current full-screen player.
+  ///
+  /// If no full-screen player is registered the overlay channel simply becomes
+  /// the new full-screen player (equivalent to maximize).
   Future<void> _swap(BuildContext context) async {
-    // Capture state before mutating
     final snapshot = await _ctrl.consumeOverlay();
     if (snapshot == null) return;
 
@@ -183,12 +267,12 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
     final mainSettings = _ctrl.mainSettings;
     final mainSource = _ctrl.mainSource;
 
-    // Pop the current full-screen player (if any)
+    // Close the current full-screen player (if any)
     if (mainCh != null && context.mounted) {
       Navigator.of(context).pop();
     }
 
-    // Push the ex-overlay channel as the new full-screen player
+    // Open the ex-overlay channel as the new full-screen player
     if (!context.mounted) return;
     Navigator.of(context).push(
       MaterialPageRoute(
