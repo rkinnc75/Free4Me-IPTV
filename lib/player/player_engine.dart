@@ -69,6 +69,13 @@ abstract class PlayerEngine {
 
   // ── Fullscreen ─────────────────────────────────────────────────────────────
 
+  // ── Volume ─────────────────────────────────────────────────────────────────
+
+  /// Set playback volume. [volume] is 0.0 (muted) to 1.0 (full).
+  Future<void> setVolume(double volume);
+
+  // ── Fullscreen ─────────────────────────────────────────────────────────────
+
   /// Whether this engine controls its own fullscreen transition.
   /// MpvEngine uses media_kit_video's VideoState; ExoEngine delegates to the
   /// caller, which uses [SystemChrome] directly.

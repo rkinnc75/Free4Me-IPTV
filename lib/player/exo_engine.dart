@@ -103,6 +103,13 @@ class ExoEngine implements PlayerEngine {
   @override
   Future<void> setAudioTrack(int index) async {}
 
+  // ── Volume ─────────────────────────────────────────────────────────────────
+
+  @override
+  Future<void> setVolume(double volume) async {
+    await _controller?.setVolume(volume);
+  }
+
   // ── Fullscreen — delegated to caller ──────────────────────────────────────
 
   @override

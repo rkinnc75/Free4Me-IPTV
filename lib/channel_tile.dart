@@ -14,6 +14,7 @@ import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/node.dart';
 import 'package:open_tv/models/node_type.dart';
 import 'package:open_tv/player.dart';
+import 'package:open_tv/player/overlay_player_controller.dart';
 import 'package:open_tv/views/channel_schedule.dart';
 import 'package:open_tv/widgets/now_next_strip.dart';
 
@@ -105,6 +106,65 @@ class _ChannelTileState extends State<ChannelTile> {
     super.dispose();
   }
 
+  Future<void> _onLongPress() async {
+    // For groups, long-press does nothing
+    if (widget.channel.mediaType == MediaType.group) return;
+
+    // For livestreams offer "Favorite" + "Watch in mini-player"
+    if (widget.channel.mediaType == MediaType.livestream) {
+      await showModalBottomSheet<void>(
+        context: context,
+        builder: (ctx) {
+          return SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: Icon(
+                    widget.channel.favorite ? Icons.star : Icons.star_border,
+                    color: Colors.amber,
+                  ),
+                  title: Text(
+                    widget.channel.favorite
+                        ? 'Remove from favorites'
+                        : 'Add to favorites',
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    favorite();
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.picture_in_picture),
+                  title: const Text('Watch in mini-player'),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    await _watchInMiniPlayer();
+                  },
+                ),
+              ],
+            ),
+          );
+        },
+      );
+      return;
+    }
+
+    // For movies / series, keep original behavior (favorite toggle)
+    await favorite();
+  }
+
+  Future<void> _watchInMiniPlayer() async {
+    final ch = widget.channel;
+    if (ch.url == null || ch.id == null) return;
+    final settings =
+        SettingsService.cached ?? await SettingsService.getSettings();
+    if (!mounted) return;
+    final source = await Sql.getSourceById(ch.sourceId);
+    if (!mounted) return;
+    await OverlayPlayerController.instance.startOverlay(ch, settings, source);
+  }
+
   Future<void> favorite() async {
     if (widget.channel.mediaType == MediaType.group) return;
     final wasFavorite = widget.channel.favorite;
@@ -182,7 +242,7 @@ class _ChannelTileState extends State<ChannelTile> {
       color: Theme.of(context).colorScheme.surfaceContainer,
       child: InkWell(
         focusNode: _focusNode,
-        onLongPress: favorite,
+        onLongPress: _onLongPress,
         onTap: () async => await play(),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -16,6 +16,7 @@ import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/source.dart';
 import 'package:open_tv/player/cast_controller.dart';
 import 'package:open_tv/player/engine_picker.dart';
+import 'package:open_tv/player/overlay_player_controller.dart';
 import 'package:open_tv/player/pip_controller.dart';
 import 'package:open_tv/player/exo_engine.dart';
 import 'package:open_tv/player/mpv_engine.dart';
@@ -72,6 +73,12 @@ class _PlayerState extends State<Player> {
     super.initState();
     _engineType = _pickEngine();
     _engine = _createEngine(_engineType);
+    // Register so the overlay swap can pop this route and take over.
+    OverlayPlayerController.instance.registerMain(
+      widget.channel,
+      widget.settings,
+      widget.source,
+    );
     initAsync();
   }
 
@@ -291,6 +298,7 @@ class _PlayerState extends State<Player> {
 
   @override
   void dispose() {
+    OverlayPlayerController.instance.unregisterMain();
     PipController.setPlaying(false);
     _bufferingWatchdog?.cancel();
     for (final s in subscriptions) {
@@ -443,6 +451,18 @@ class _PlayerState extends State<Player> {
     setState(() => fill = !fill);
   }
 
+  // ── Mini-player ────────────────────────────────────────────────────────────
+
+  /// Sends the current channel to the floating overlay and pops this route.
+  Future<void> _minimizeToOverlay() async {
+    await OverlayPlayerController.instance.startOverlay(
+      widget.channel,
+      widget.settings,
+      widget.source,
+    );
+    if (mounted) onExit();
+  }
+
   // ── Exit ───────────────────────────────────────────────────────────────────
 
   void onExit() async {
@@ -567,6 +587,16 @@ class _PlayerState extends State<Player> {
                       ),
                       tooltip: 'Picture-in-picture',
                     ),
+                  if (widget.channel.mediaType == MediaType.livestream)
+                    IconButton(
+                      onPressed: _minimizeToOverlay,
+                      icon: const Icon(
+                        Icons.picture_in_picture,
+                        color: Colors.white,
+                        size: 28,
+                      ),
+                      tooltip: 'Watch in mini-player',
+                    ),
                 ],
               ),
             ),
@@ -643,6 +673,16 @@ class _PlayerState extends State<Player> {
               size: 28,
             ),
             tooltip: 'Picture-in-picture',
+          ),
+        if (widget.channel.mediaType == MediaType.livestream)
+          IconButton(
+            onPressed: _minimizeToOverlay,
+            icon: const Icon(
+              Icons.picture_in_picture,
+              color: Colors.white,
+              size: 28,
+            ),
+            tooltip: 'Watch in mini-player',
           ),
       ],
       bottomButtonBar: [

@@ -12,6 +12,7 @@ import 'package:open_tv/backend/update_checker.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:open_tv/home.dart';
 import 'package:open_tv/models/custom_shortcut.dart';
+import 'package:open_tv/player/overlay_player_widget.dart';
 import 'package:open_tv/models/device_detector.dart';
 import 'package:open_tv/models/filters.dart';
 import 'package:open_tv/models/home_manager.dart';
@@ -124,22 +125,28 @@ class MyApp extends StatelessWidget {
       title: 'Free4Me-IPTV',
       navigatorKey: navigatorKey,
       builder: (context, child) {
-        return CallbackShortcuts(
-          bindings: {
-            CustomShortcut(
-              const SingleActivator(LogicalKeyboardKey.escape),
-            ): () {
-              if (_isEditingText) return;
-              navigatorKey.currentState?.maybePop();
-            },
-            CustomShortcut(
-              const SingleActivator(LogicalKeyboardKey.backspace),
-            ): () {
-              if (_isEditingText) return;
-              navigatorKey.currentState?.maybePop();
-            },
-          },
-          child: child ?? const SizedBox.shrink(),
+        return Stack(
+          children: [
+            CallbackShortcuts(
+              bindings: {
+                CustomShortcut(
+                  const SingleActivator(LogicalKeyboardKey.escape),
+                ): () {
+                  if (_isEditingText) return;
+                  navigatorKey.currentState?.maybePop();
+                },
+                CustomShortcut(
+                  const SingleActivator(LogicalKeyboardKey.backspace),
+                ): () {
+                  if (_isEditingText) return;
+                  navigatorKey.currentState?.maybePop();
+                },
+              },
+              child: child ?? const SizedBox.shrink(),
+            ),
+            // Floating mini-player overlay — always on top of all routes
+            const OverlayPlayerWidget(),
+          ],
         );
       },
       theme: ThemeData(

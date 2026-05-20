@@ -7,6 +7,16 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.11.0': [
+    'Dual-stream mini-player: long-press any live channel tile → '
+        '"Watch in mini-player" to open a floating, muted overlay while '
+        'you keep browsing',
+    'Mini-player is draggable and snaps to any corner of the screen',
+    'Swap button (⇄) in the mini-player swaps the overlay and full-screen '
+        'channels instantly',
+    'In-player minimize button — press the mini-player icon in the top bar '
+        'to shrink the current channel to a corner overlay',
+  ],
   '1.0': [
     'Configurable buffer (cache seconds, demuxer size) for live and VOD',
     'Player startup timeout + proper reconnect on error or stall',

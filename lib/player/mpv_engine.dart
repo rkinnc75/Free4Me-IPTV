@@ -15,6 +15,9 @@ import 'package:open_tv/player/player_engine.dart';
 class MpvEngine implements PlayerEngine {
   final Channel channel;
   final Settings settings;
+  /// When false, [open] skips the fullscreen-entry call. Set to false for
+  /// the overlay (mini-player) so it never steals fullscreen.
+  final bool fullscreenOnOpen;
 
   late final mk.Player _player = mk.Player(
     configuration: const mk.PlayerConfiguration(
@@ -35,7 +38,11 @@ class MpvEngine implements PlayerEngine {
 
   final List<StreamSubscription<dynamic>> _subs = [];
 
-  MpvEngine({required this.channel, required this.settings}) {
+  MpvEngine({
+    required this.channel,
+    required this.settings,
+    this.fullscreenOnOpen = true,
+  }) {
     _player.setPlaylistMode(mk.PlaylistMode.none);
 
     _subs.add(_player.stream.buffering.listen((v) => _bufferingCtrl.add(v)));
@@ -68,7 +75,13 @@ class MpvEngine implements PlayerEngine {
         httpHeaders: headers,
       ),
     );
-    await _videoKey.currentState?.enterFullscreen();
+    if (fullscreenOnOpen) await _videoKey.currentState?.enterFullscreen();
+  }
+
+  @override
+  Future<void> setVolume(double volume) async {
+    // media_kit uses a 0–100 scale
+    await _player.setVolume(volume * 100);
   }
 
   @override
