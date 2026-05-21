@@ -38,17 +38,50 @@ class Player extends StatefulWidget {
     this.source,
     this.overrideUrl,
   });
+
+  /// Channels that recently hit max reconnects. Maps channel ID → DateTime
+  /// when the give-up occurred. New Player widgets respect a cooldown before
+  /// retrying, preventing rapid re-open loops when the provider is
+  /// rate-limiting. Static so it persists across widget rebuilds.
+  static final Map<int, DateTime> _recentGiveUps = {};
+  static const Duration _giveUpCooldown = Duration(seconds: 60);
+
+  /// Removes any active give-up cooldown entry for [channelId].
+  ///
+  /// Called before promoting an overlay (mini-player) channel to full screen,
+  /// since the overlay's active playback proves the stream is live and any
+  /// stale cooldown record from an earlier attempt would needlessly block
+  /// the fresh full-screen Player. Idempotent and null-safe.
+  static void clearCooldown(int? channelId) {
+    if (channelId == null) return;
+    if (_recentGiveUps.remove(channelId) != null) {
+      AppLog.info('Player: cleared stale cooldown for channel id=$channelId');
+    }
+  }
+
   @override
   State<StatefulWidget> createState() => _PlayerState();
 }
 
 class _PlayerState extends State<Player> {
-  late final EngineType _engineType;
-  late final PlayerEngine _engine;
+  // Reassignable so a mid-flight engine swap (ExoPlayer → libmpv fallback)
+  // can replace the active engine without rebuilding the whole route.
+  late EngineType _engineType;
+  late PlayerEngine _engine;
 
   bool exiting = false;
   bool fill = false;
   List<StreamSubscription<dynamic>> subscriptions = [];
+
+  /// Subscriptions specifically tied to [_engine]'s streams (errorStream,
+  /// bufferingStream, completedStream). Tracked separately from
+  /// [subscriptions] so we can cancel and re-subscribe when swapping engines
+  /// mid-flight (e.g. ExoPlayer → libmpv fallback).
+  final List<StreamSubscription<dynamic>> _engineSubs = [];
+
+  /// True after a one-shot ExoPlayer → libmpv fallback has fired for this
+  /// Player widget. Prevents an infinite swap loop if both engines fail.
+  bool _exoFallbackTried = false;
 
   // Reconnect bookkeeping
   int _consecutiveOpenFailures = 0;
@@ -60,12 +93,6 @@ class _PlayerState extends State<Player> {
   int _totalReconnectAttempts = 0;
   static const int _maxReconnectAttempts = 6;
 
-  /// Channels that recently hit max reconnects. Maps channel ID → DateTime
-  /// when the give-up occurred. New Player widgets respect a cooldown before
-  /// retrying, preventing rapid re-open loops when the provider is
-  /// rate-limiting. Static so it persists across widget rebuilds.
-  static final Map<int, DateTime> _recentGiveUps = {};
-  static const Duration _giveUpCooldown = Duration(seconds: 60);
   Timer? _bufferingWatchdog;
   Timer? _stableTimer;
   bool _isReconnecting = false;
@@ -128,11 +155,11 @@ class _PlayerState extends State<Player> {
     // immediately hammer a rate-limited provider again.
     final giveUpChannelId = widget.channel.id;
     if (giveUpChannelId != null) {
-      final gaveUp = _recentGiveUps[giveUpChannelId];
+      final gaveUp = Player._recentGiveUps[giveUpChannelId];
       if (gaveUp != null) {
         final elapsed = DateTime.now().difference(gaveUp);
-        if (elapsed < _giveUpCooldown) {
-          final remaining = (_giveUpCooldown - elapsed).inSeconds;
+        if (elapsed < Player._giveUpCooldown) {
+          final remaining = (Player._giveUpCooldown - elapsed).inSeconds;
           AppLog.warn(
             'Player: cooldown active for "${widget.channel.name}"'
             ' — ${remaining}s remaining',
@@ -144,7 +171,7 @@ class _PlayerState extends State<Player> {
           return;
         } else {
           // Cooldown expired — clear the record and allow a fresh attempt.
-          _recentGiveUps.remove(giveUpChannelId);
+          Player._recentGiveUps.remove(giveUpChannelId);
           AppLog.info(
             'Player: cooldown expired for "${widget.channel.name}" — retrying',
           );
@@ -195,54 +222,7 @@ class _PlayerState extends State<Player> {
       headers: headers,
     );
 
-    subscriptions.add(
-      _engine.completedStream.listen((completed) {
-        if (completed && !_startupGrace) onDisconnect(reason: 'stream completed');
-      }),
-    );
-    subscriptions.add(
-      _engine.errorStream.listen((err) {
-        AppLog.warn('Player: engine error — $err');
-
-        // Suppress the mpv seekability probe error during startup grace.
-        // mpv probes seekability on every open() and MPEG-TS livestreams
-        // reject it with "Cannot seek in this stream." — the stream plays
-        // fine after this; only the reconnect it triggers is harmful.
-        // fix9 (force-seekable=no in _applyMpvOptions) and fix11A (extras)
-        // attempt to prevent the probe entirely; this guard is a zero-cost
-        // safety net in case any edge case lets the probe through.
-        // mpv emits two messages on every seek rejection:
-        //   1. "Cannot seek in this stream."
-        //   2. "You can force it with '--force-seekable=yes'."
-        // Both arrive on errorStream. Only suppressing the first lets the
-        // second slip through to onDisconnect() and cause a reconnect.
-        if (_startupGrace &&
-            (err.contains('Cannot seek in this stream') ||
-                err.contains('force-seekable=yes'))) {
-          AppLog.info(
-            'Player: suppressed seek probe error during startup'
-            ' channel="${widget.channel.name}"',
-          );
-          return;
-        }
-
-        final isPermanent = err.contains('Failed to open') ||
-            err.contains('404') ||
-            err.contains('403') ||
-            err.contains('Connection refused');
-        AppLog.warn(
-          'Player: engine error [${isPermanent ? "permanent" : "transient"}]'
-          ' — "$err" channel="${widget.channel.name}"',
-        );
-        // onDisconnect() is the single source of truth for incrementing
-        // _totalReconnectAttempts — do not pre-increment here, which caused
-        // the counter to jump by 2 per failure and exceed _maxReconnectAttempts.
-        onDisconnect(reason: 'player error: $err');
-      }),
-    );
-    subscriptions.add(
-      _engine.bufferingStream.listen(_onBufferingChanged),
-    );
+    _subscribeEngineStreams();
     subscriptions.add(
       Connectivity().onConnectivityChanged.listen((results) {
         final hasNet =
@@ -253,6 +233,59 @@ class _PlayerState extends State<Player> {
         }
       }),
     );
+  }
+
+  /// Subscribe to the current [_engine]'s lifecycle streams. Safe to call
+  /// after a mid-flight engine swap — cancels any prior engine subscriptions
+  /// first.
+  void _subscribeEngineStreams() {
+    for (final s in _engineSubs) {
+      s.cancel();
+    }
+    _engineSubs.clear();
+
+    _engineSubs.add(_engine.completedStream.listen((completed) {
+      if (completed && !_startupGrace) onDisconnect(reason: 'stream completed');
+    }));
+    _engineSubs.add(_engine.errorStream.listen((err) {
+      AppLog.warn('Player: engine error — $err');
+
+      // Suppress the mpv seekability probe error during startup grace.
+      // mpv probes seekability on every open() and MPEG-TS livestreams
+      // reject it with "Cannot seek in this stream." — the stream plays
+      // fine after this; only the reconnect it triggers is harmful.
+      // fix9 (force-seekable=no in _applyMpvOptions) and fix11A (extras)
+      // attempt to prevent the probe entirely; this guard is a zero-cost
+      // safety net in case any edge case lets the probe through.
+      // mpv emits two messages on every seek rejection:
+      //   1. "Cannot seek in this stream."
+      //   2. "You can force it with '--force-seekable=yes'."
+      // Both arrive on errorStream. Only suppressing the first lets the
+      // second slip through to onDisconnect() and cause a reconnect.
+      if (_startupGrace &&
+          (err.contains('Cannot seek in this stream') ||
+              err.contains('force-seekable=yes'))) {
+        AppLog.info(
+          'Player: suppressed seek probe error during startup'
+          ' channel="${widget.channel.name}"',
+        );
+        return;
+      }
+
+      final isPermanent = err.contains('Failed to open') ||
+          err.contains('404') ||
+          err.contains('403') ||
+          err.contains('Connection refused');
+      AppLog.warn(
+        'Player: engine error [${isPermanent ? "permanent" : "transient"}]'
+        ' — "$err" channel="${widget.channel.name}"',
+      );
+      // onDisconnect() is the single source of truth for incrementing
+      // _totalReconnectAttempts — do not pre-increment here, which caused
+      // the counter to jump by 2 per failure and exceed _maxReconnectAttempts.
+      onDisconnect(reason: 'player error: $err');
+    }));
+    _engineSubs.add(_engine.bufferingStream.listen(_onBufferingChanged));
   }
 
   String _playbackUrl() {
@@ -352,7 +385,7 @@ class _PlayerState extends State<Player> {
       // Record cooldown so fresh widget instances (user re-navigates to the
       // channel) don't immediately hammer a rate-limited provider again.
       final channelId = widget.channel.id;
-      if (channelId != null) _recentGiveUps[channelId] = DateTime.now();
+      if (channelId != null) Player._recentGiveUps[channelId] = DateTime.now();
 
       // Stop all background activity so the watchdog, errorStream, and
       // completedStream listeners no-op — prevents automatic re-open after
@@ -442,6 +475,28 @@ class _PlayerState extends State<Player> {
       } catch (e) {
         _startupGrace = false;
         _consecutiveOpenFailures++;
+        final errStr = e.toString();
+
+        // One-shot ExoPlayer → libmpv fallback. ExoPlayer emits a generic
+        // "Source error" / "VideoError" for streams whose codec or container
+        // it cannot demux (most commonly IPTV MPEG-TS variants on Android TV
+        // hardware where the codec/surface combination fails). Five more
+        // retries on the same engine will not change that — switch to libmpv
+        // immediately and let it try.
+        if (!_exoFallbackTried &&
+            _engineType == EngineType.exoplayer &&
+            _isExoSourceError(errStr)) {
+          _exoFallbackTried = true;
+          AppLog.warn(
+            'Player: ExoPlayer source error — falling back to libmpv'
+            ' channel="${widget.channel.name}" — $errStr',
+          );
+          await _swapEngine(EngineType.libmpv);
+          if (!mounted || exiting) return;
+          _consecutiveOpenFailures = 0;
+          continue;
+        }
+
         AppLog.warn(
           'Player: open() failed ($_consecutiveOpenFailures/$_maxOpenFailures)'
           ' — $e — channel="${widget.channel.name}"',
@@ -469,6 +524,40 @@ class _PlayerState extends State<Player> {
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   }
 
+  /// True for the family of ExoPlayer errors that mean "I can't play this
+  /// stream's codec/container", as opposed to network failures or 4xx
+  /// responses. We use these to trigger the libmpv fallback rather than
+  /// burn through the open-retry budget on a fundamentally incompatible
+  /// engine choice.
+  bool _isExoSourceError(String err) {
+    return err.contains('Source error') ||
+        err.contains('VideoError') ||
+        err.contains('ExoPlaybackException');
+  }
+
+  /// Mid-flight engine swap. Cancels the current engine's stream
+  /// subscriptions, disposes it, instantiates [type], re-registers with the
+  /// overlay controller, and re-subscribes to lifecycle streams. Triggers a
+  /// rebuild so [_buildVideoArea] picks up the new engine widget.
+  Future<void> _swapEngine(EngineType type) async {
+    for (final s in _engineSubs) {
+      await s.cancel();
+    }
+    _engineSubs.clear();
+    await _engine.dispose();
+    _engineType = type;
+    _engine = _createEngine(type);
+    OverlayPlayerController.instance.registerMain(
+      widget.channel,
+      widget.settings,
+      widget.source,
+      _engine,
+    );
+    _subscribeEngineStreams();
+    if (mounted) setState(() {});
+    AppLog.info('Player: swapped engine → $type');
+  }
+
   @override
   void dispose() {
     // Pass our engine so that if a new Player already called registerMain
@@ -480,6 +569,10 @@ class _PlayerState extends State<Player> {
     for (final s in subscriptions) {
       s.cancel();
     }
+    for (final s in _engineSubs) {
+      s.cancel();
+    }
+    _engineSubs.clear();
     _engine.dispose();
     super.dispose();
   }
@@ -793,37 +886,63 @@ class _PlayerState extends State<Player> {
   }
 
   Widget _buildBufferingOverlay() {
+    final message = _bufferingState!;
+    // Cooldown / give-up states ("please wait …", "Unable to connect …") are
+    // terminal — we are not actively buffering anymore. Show a Go Back button
+    // so the user can leave the dead channel without going through system
+    // back, and drop the spinner since nothing is in progress.
+    final isTerminal = message.contains('please wait') ||
+        message.startsWith('Unable to connect');
+
+    final card = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (!isTerminal) ...[
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(width: 10),
+          ] else ...[
+            const Icon(Icons.info_outline, color: Colors.white, size: 16),
+            const SizedBox(width: 10),
+          ],
+          Flexible(
+            child: Text(
+              message,
+              style: const TextStyle(color: Colors.white),
+            ),
+          ),
+          if (isTerminal) ...[
+            const SizedBox(width: 12),
+            TextButton(
+              onPressed: () => Navigator.of(context).maybePop(),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                minimumSize: const Size(0, 32),
+              ),
+              child: const Text('Go back'),
+            ),
+          ],
+        ],
+      ),
+    );
+
     return Positioned(
       top: 24,
       right: 24,
-      child: IgnorePointer(
-        child: Container(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.6),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                _bufferingState!,
-                style: const TextStyle(color: Colors.white),
-              ),
-            ],
-          ),
-        ),
-      ),
+      child: isTerminal ? card : IgnorePointer(child: card),
     );
   }
 

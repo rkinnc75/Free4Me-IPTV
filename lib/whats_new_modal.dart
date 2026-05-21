@@ -7,6 +7,31 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.13.4': [
+    'Fix (fix16): PIP swap and maximize now clear any stale give-up cooldown '
+        'for the channel being promoted. Previously, if a channel had hit '
+        'max reconnects earlier in the session, swapping it from the mini-'
+        'player to full-screen would block playback with a "please wait" '
+        'message even though the overlay was actively streaming it.',
+    'Fix (fix16): Cooldown and "Unable to connect" overlays now show a '
+        '"Go back" button so the user can leave a dead channel without '
+        'using the system back gesture. The spinner is hidden in those '
+        'terminal states since nothing is in progress.',
+    'Fix (fix16): ExoPlayer now falls back to libmpv after the first '
+        'Source error / VideoError on a stream, instead of retrying the '
+        'same incompatible engine 5 more times. Big improvement on '
+        'Android TV (Shield, Fire TV) for IPTV MPEG-TS variants where '
+        'ExoPlayer cannot demux the stream.',
+    'Fix (fix15): Stream scanner now fast-fails responses served as '
+        'text/html, application/json, or text/plain regardless of HTTP '
+        'status. Captive portal "200 OK" pages no longer slip through to '
+        'byte validation.',
+    'Fix (fix15): Stream scanner now detects HLS playlists by URL '
+        'substring "m3u8" (covers query-string variants) and by '
+        'Content-Type "mpegurl", in addition to the existing .m3u8 '
+        'extension match. DASH and MP4 detection are also '
+        'Content-Type-aware.',
+  ],
   '1.13.3': [
     'Feature: Debug log file is now cleared automatically the first time '
         'the app boots on a new version. The cleared-for version is tracked '

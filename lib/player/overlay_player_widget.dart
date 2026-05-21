@@ -246,6 +246,11 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
   Future<void> _maximize() async {
     final snapshot = await _ctrl.consumeOverlay();
     if (snapshot == null) return;
+
+    // The overlay was actively streaming this channel — any stale cooldown
+    // entry is wrong and would block the freshly created Player widget.
+    Player.clearCooldown(snapshot.ch.id);
+
     _nav.push(
       MaterialPageRoute(
         builder: (_) => Player(
@@ -272,6 +277,12 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
     final mainCh = _ctrl.mainChannel;
     final mainSettings = _ctrl.mainSettings;
     final mainSource = _ctrl.mainSource;
+
+    // Overlay was streaming live — clear any stale give-up cooldown for the
+    // promoted channel so its new Player widget starts immediately. Without
+    // this, a channel that earlier hit max-reconnects in this session would
+    // be blocked here despite proving it is currently live.
+    Player.clearCooldown(snapshot.ch.id);
 
     // Close the current full-screen player (if any)
     if (mainCh != null) _nav.pop();

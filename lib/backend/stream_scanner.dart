@@ -67,13 +67,32 @@ class StreamScanner {
         return false;
       }
 
-      final lower = uri.path.toLowerCase();
-      final isHls = lower.endsWith('.m3u8') ||
-          (response.headers['content-type'] ?? '')
-              .toLowerCase()
-              .contains('mpegurl');
-      final isMp4 = lower.endsWith('.mp4');
-      final isDash = lower.endsWith('.mpd');
+      final contentType =
+          (response.headers['content-type'] ?? '').toLowerCase();
+
+      // Fast-fail HTML/JSON error pages served as 200 OK (captive portals,
+      // CDN error pages, expired-token responses). These would otherwise
+      // pass byte validation only by coincidence, and we want to flag them
+      // as failed even before reading the body.
+      if (contentType.contains('text/html') ||
+          contentType.contains('application/json') ||
+          contentType.startsWith('text/plain')) {
+        await _drain(response.stream);
+        return false;
+      }
+
+      final lowerUrl = url.toLowerCase();
+      final lowerPath = uri.path.toLowerCase();
+
+      // Match HLS via .m3u8 extension, "m3u8" anywhere in URL (Xtream-style
+      // /live/.../1.m3u8 paths still work, but so do URLs with query strings
+      // that strip the dot), or an mpegurl Content-Type.
+      final isHls = lowerUrl.contains('m3u8') ||
+          contentType.contains('mpegurl');
+      final isMp4 = lowerPath.endsWith('.mp4') ||
+          contentType.contains('mp4');
+      final isDash = lowerPath.endsWith('.mpd') ||
+          contentType.contains('dash+xml');
 
       // Read first chunks (cap ~16 KB) under the same timeout budget.
       final body = await _readPrefix(response.stream, 16 * 1024)
