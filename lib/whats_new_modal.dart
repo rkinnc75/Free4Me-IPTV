@@ -7,6 +7,25 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.11.13': [
+    'Fix (fix12 #1): eliminated the "double-start" reconnect on every channel '
+        'open. The startup grace window was anchored to open() (3s fixed), but '
+        'the mpv seek probe fires relative to buffering=false. If buffering '
+        'took >3s, grace expired before the error arrived. Grace now expires '
+        '500ms after buffering=false instead, ensuring the suppression guard '
+        'is always active when the probe fires.',
+    'Fix (fix12 #2): mpv emits two messages on every seek rejection: '
+        '"Cannot seek in this stream." and "You can force it with '
+        '\'--force-seekable=yes\'." Only the first was suppressed — the second '
+        'was slipping through to onDisconnect() and causing a reconnect. Both '
+        'messages are now suppressed during startup grace.',
+    'Fix (fix12 #3): eliminated the force-close loop when a stream hits max '
+        'reconnects. After give-up, navigating away and back created a fresh '
+        'widget that immediately re-hammered a rate-limited provider. A 60s '
+        'cross-session cooldown (static map) now prevents any new player '
+        'instance from retrying within that window, showing a countdown '
+        'instead.',
+  ],
   '1.11.12': [
     'Maintenance: removed deprecated isInDebugMode parameter from Workmanager '
         'initializer (parameter was a no-op; replaced by WorkmanagerDebug handlers).',

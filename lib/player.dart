@@ -59,6 +59,13 @@ class _PlayerState extends State<Player> {
   // brief buffering=false right after open() does NOT count as "stable".
   int _totalReconnectAttempts = 0;
   static const int _maxReconnectAttempts = 6;
+
+  /// Channels that recently hit max reconnects. Maps channel ID → DateTime
+  /// when the give-up occurred. New Player widgets respect a cooldown before
+  /// retrying, preventing rapid re-open loops when the provider is
+  /// rate-limiting. Static so it persists across widget rebuilds.
+  static final Map<int, DateTime> _recentGiveUps = {};
+  static const Duration _giveUpCooldown = Duration(seconds: 60);
   Timer? _bufferingWatchdog;
   Timer? _stableTimer;
   bool _isReconnecting = false;
@@ -114,6 +121,37 @@ class _PlayerState extends State<Player> {
   }
 
   Future<void> initAsync() async {
+    // Check cross-session give-up cooldown before attempting playback.
+    // When a channel hits max reconnects, a 60s cooldown is recorded in the
+    // static _recentGiveUps map. If the user navigates away and back within
+    // that window, a new widget instance would otherwise reset all state and
+    // immediately hammer a rate-limited provider again.
+    final giveUpChannelId = widget.channel.id;
+    if (giveUpChannelId != null) {
+      final gaveUp = _recentGiveUps[giveUpChannelId];
+      if (gaveUp != null) {
+        final elapsed = DateTime.now().difference(gaveUp);
+        if (elapsed < _giveUpCooldown) {
+          final remaining = (_giveUpCooldown - elapsed).inSeconds;
+          AppLog.warn(
+            'Player: cooldown active for "${widget.channel.name}"'
+            ' — ${remaining}s remaining',
+          );
+          if (mounted) {
+            setState(() => _bufferingState =
+                'Stream unavailable — please wait ${remaining}s before retrying');
+          }
+          return;
+        } else {
+          // Cooldown expired — clear the record and allow a fresh attempt.
+          _recentGiveUps.remove(giveUpChannelId);
+          AppLog.info(
+            'Player: cooldown expired for "${widget.channel.name}" — retrying',
+          );
+        }
+      }
+    }
+
     // Check Cast + PiP availability in parallel with playback startup.
     final streamUrl = widget.overrideUrl ?? widget.channel.url ?? '';
     CastController.isAvailable().then((avail) {
@@ -173,7 +211,14 @@ class _PlayerState extends State<Player> {
         // fix9 (force-seekable=no in _applyMpvOptions) and fix11A (extras)
         // attempt to prevent the probe entirely; this guard is a zero-cost
         // safety net in case any edge case lets the probe through.
-        if (_startupGrace && err.contains('Cannot seek in this stream')) {
+        // mpv emits two messages on every seek rejection:
+        //   1. "Cannot seek in this stream."
+        //   2. "You can force it with '--force-seekable=yes'."
+        // Both arrive on errorStream. Only suppressing the first lets the
+        // second slip through to onDisconnect() and cause a reconnect.
+        if (_startupGrace &&
+            (err.contains('Cannot seek in this stream') ||
+                err.contains('force-seekable=yes'))) {
           AppLog.info(
             'Player: suppressed seek probe error during startup'
             ' channel="${widget.channel.name}"',
@@ -249,6 +294,18 @@ class _PlayerState extends State<Player> {
       _bufferingWatchdog?.cancel();
       _bufferingWatchdog = null;
       if (mounted) setState(() => _bufferingState = null);
+
+      // Expire startup grace 500ms after buffering=false. The mpv seek probe
+      // fires at the same instant as buffering=false — delaying expiry ensures
+      // the suppression guard in errorStream catches it regardless of event
+      // delivery order between the two streams (separate native callbacks,
+      // Dart delivery order not guaranteed within the same native event cycle).
+      if (_startupGrace) {
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) setState(() => _startupGrace = false);
+        });
+      }
+
       // Start a stability timer. Only if the stream is still playing after
       // _stableThresholdSecs do we reset the reconnect counters — this
       // prevents the brief buffering=false that follows every open() from
@@ -289,6 +346,11 @@ class _PlayerState extends State<Player> {
       AppLog.warn(
         'Player: max reconnects reached — giving up on "${widget.channel.name}"',
       );
+      // Record cooldown so fresh widget instances (user re-navigates to the
+      // channel) don't immediately hammer a rate-limited provider again.
+      final channelId = widget.channel.id;
+      if (channelId != null) _recentGiveUps[channelId] = DateTime.now();
+
       // Stop all background activity so the watchdog, errorStream, and
       // completedStream listeners no-op — prevents automatic re-open after
       // give-up when a background timer fires.
@@ -299,7 +361,7 @@ class _PlayerState extends State<Player> {
       _stableTimer = null;
       if (mounted) {
         setState(() => _bufferingState =
-            'Stream unavailable — ${Error.friendlyMessage(reason)}');
+            'Stream unavailable — too many failed attempts. Try again shortly.');
       }
       return;
     }
@@ -360,11 +422,10 @@ class _PlayerState extends State<Player> {
         AppLog.info(
           'Player: open() succeeded — engine=$_engineType url="$playbackUrl"',
         );
-        // 3-second grace after open() — lets the stream stabilize before
-        // buffering watchdog and completion events can fire.
-        Future.delayed(const Duration(seconds: 3), () {
-          if (mounted) setState(() => _startupGrace = false);
-        });
+        // Grace expires 500ms after buffering=false in _onBufferingChanged(),
+        // not on a fixed timer anchored to open(). The seek probe fires
+        // relative to buffering=false — anchoring to open() caused grace to
+        // expire before the error arrived when buffering took >3s.
         unawaited(PipController.setPlaying(true));
         if (!_engine.handlesOwnFullscreen) {
           await _enterSystemFullscreen();
