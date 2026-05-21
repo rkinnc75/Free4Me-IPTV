@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
+import 'package:open_tv/backend/stream_scanner.dart';
 import 'package:open_tv/backend/utils.dart';
 import 'package:open_tv/bottom_nav.dart';
 import 'package:open_tv/channel_tile.dart';
@@ -45,6 +46,12 @@ class _HomeState extends State<Home> {
   bool isLoading = false;
   bool blockSettings = false;
   bool scrolledDeepEnough = false;
+
+  // Stream scanner state
+  bool _isScanning = false;
+  bool _scanCancelled = false;
+  int _scanDone = 0;
+  int _scanTotal = 0;
 
   @override
   void initState() {
@@ -153,6 +160,77 @@ class _HomeState extends State<Home> {
     super.dispose();
   }
 
+  Future<void> _startScan() async {
+    if (_isScanning || channels.isEmpty) return;
+
+    // Clear prior results so the new scan is authoritative.
+    StreamScanner.clearResults();
+    _scanCancelled = false;
+    setState(() {
+      _isScanning = true;
+      _scanDone = 0;
+      _scanTotal = channels.length.clamp(1, 20);
+    });
+
+    // Show progress dialog with a cancel button.
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setSt) {
+          return AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.radar),
+                SizedBox(width: 8),
+                Text('Scanning streams…'),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                LinearProgressIndicator(
+                  value: _scanTotal > 0 ? _scanDone / _scanTotal : null,
+                ),
+                const SizedBox(height: 12),
+                Text('$_scanDone / $_scanTotal streams tested'),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  _scanCancelled = true;
+                  Navigator.of(ctx).pop();
+                },
+                child: const Text('Cancel'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    await StreamScanner.scan(
+      channels: channels,
+      maxChannels: 20,
+      isCancelled: () => _scanCancelled,
+      onProgress: (done, total) {
+        if (!mounted) return;
+        setState(() {
+          _scanDone = done;
+          _scanTotal = total;
+        });
+      },
+    );
+
+    if (mounted) {
+      // Close the progress dialog if still open.
+      if (!_scanCancelled) Navigator.of(context, rootNavigator: true).pop();
+      setState(() => _isScanning = false);
+    }
+  }
+
   void _scrollListener() async {
     if (!_scrollController.hasClients) return;
     final bool shouldShow = _scrollController.offset > 200;
@@ -254,52 +332,70 @@ class _HomeState extends State<Home> {
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.all(16),
-                      child: Center(
-                        child: DpadTextField(
-                          style: TextStyle(
-                            fontSize: Theme.of(
-                              context,
-                            ).textTheme.titleMedium?.fontSize!,
-                          ),
-                          controller: searchController,
-                          onChanged: (query) {
-                            _debounce?.cancel();
-                            _debounce = Timer(
-                              const Duration(milliseconds: 500),
-                              () {
-                                if (!mounted) return;
-                                widget.home.filters.query = query;
-                                load(false);
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: DpadTextField(
+                              style: TextStyle(
+                                fontSize: Theme.of(
+                                  context,
+                                ).textTheme.titleMedium?.fontSize!,
+                              ),
+                              controller: searchController,
+                              onChanged: (query) {
+                                _debounce?.cancel();
+                                _debounce = Timer(
+                                  const Duration(milliseconds: 500),
+                                  () {
+                                    if (!mounted) return;
+                                    widget.home.filters.query = query;
+                                    load(false);
+                                  },
+                                );
                               },
-                            );
-                          },
-                          decoration: InputDecoration(
-                            hintText: "Search...",
-                            hintStyle: TextStyle(
-                              fontSize: Theme.of(
-                                context,
-                              ).textTheme.titleMedium?.fontSize!,
-                            ),
-                            prefixIcon: const Icon(Icons.search),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              borderSide: BorderSide.none,
-                            ),
-                            suffixIcon: IconButton(
-                              onPressed: () {
-                                widget.home.filters.useKeywords =
-                                    !widget.home.filters.useKeywords;
-                                load(false);
-                              },
-                              icon: Icon(
-                                widget.home.filters.useKeywords
-                                    ? Icons.label
-                                    : Icons.label_outline,
+                              decoration: InputDecoration(
+                                hintText: "Search...",
+                                hintStyle: TextStyle(
+                                  fontSize: Theme.of(
+                                    context,
+                                  ).textTheme.titleMedium?.fontSize!,
+                                ),
+                                prefixIcon: const Icon(Icons.search),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: BorderSide.none,
+                                ),
+                                suffixIcon: IconButton(
+                                  onPressed: () {
+                                    widget.home.filters.useKeywords =
+                                        !widget.home.filters.useKeywords;
+                                    load(false);
+                                  },
+                                  icon: Icon(
+                                    widget.home.filters.useKeywords
+                                        ? Icons.label
+                                        : Icons.label_outline,
+                                  ),
+                                ),
+                                filled: true,
                               ),
                             ),
-                            filled: true,
                           ),
-                        ),
+                          // Radar scan button — only shown when there are
+                          // channels visible (active search or normal listing).
+                          if (channels.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 8),
+                              child: Tooltip(
+                                message: 'Scan stream validity',
+                                child: IconButton.filled(
+                                  icon: const Icon(Icons.radar),
+                                  onPressed:
+                                      _isScanning ? null : _startScan,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                   ),

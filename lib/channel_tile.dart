@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:open_tv/backend/http_client.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
+import 'package:open_tv/backend/stream_scanner.dart';
 import 'package:open_tv/backend/xtream.dart';
 import 'package:open_tv/memory.dart';
 import 'package:open_tv/models/channel.dart';
@@ -256,9 +257,16 @@ class _ChannelTileState extends State<ChannelTile> {
 
   @override
   Widget build(BuildContext context) {
+    final scanOk = widget.channel.id != null &&
+        StreamScanner.results[widget.channel.id] == true;
     return Card(
       elevation: _focusNode.hasFocus ? 8.0 : 2.0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: scanOk
+            ? const BorderSide(color: Colors.greenAccent, width: 2.5)
+            : BorderSide.none,
+      ),
       color: Theme.of(context).colorScheme.surfaceContainer,
       child: InkWell(
         focusNode: _focusNode,
@@ -278,7 +286,7 @@ class _ChannelTileState extends State<ChannelTile> {
                           memCacheHeight: 300,
                           memCacheWidth: 300,
                           fit: BoxFit.contain,
-                          errorWidget: (_, __, ___) => const Icon(
+                          errorWidget: (ctx, url, err) => const Icon(
                             Icons.tv,
                             size: 45,
                             color: Colors.grey,

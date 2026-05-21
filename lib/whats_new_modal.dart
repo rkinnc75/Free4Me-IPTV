@@ -7,6 +7,14 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.12.2': [
+    'Feature: Stream scanner — tap the radar icon next to the search bar '
+        'to probe up to 20 visible streams for validity (10 s per stream, '
+        'no video playback). Valid streams get a green outline. Progress '
+        'dialog shows "X / Y streams tested" with a Cancel button. Results '
+        'persist across navigation and are cleared automatically when you '
+        'start a new scan.',
+  ],
   '1.12.1': [
     'Feature: per-source enable/disable toggle is now a visible Switch '
         'in the source list. Disabled sources are grayed out. All features '
