@@ -39,7 +39,6 @@ class Home extends StatefulWidget {
 class _HomeState extends State<Home> {
   Timer? _debounce;
   bool reachedMax = false;
-  final int pageSize = 36;
   List<Channel> channels = [];
   late final TextEditingController searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
@@ -52,6 +51,7 @@ class _HomeState extends State<Home> {
   bool _scanCancelled = false;
   int _scanDone = 0;
   int _scanTotal = 0;
+  void Function(void Function())? _scanDialogSetState;
 
   @override
   void initState() {
@@ -179,6 +179,7 @@ class _HomeState extends State<Home> {
       barrierDismissible: false,
       builder: (_) => StatefulBuilder(
         builder: (ctx, setSt) {
+          _scanDialogSetState = setSt;
           return AlertDialog(
             title: const Row(
               children: [
@@ -209,7 +210,7 @@ class _HomeState extends State<Home> {
           );
         },
       ),
-    );
+    ).then((_) => _scanDialogSetState = null);
 
     await StreamScanner.scan(
       channels: channels,
@@ -217,10 +218,12 @@ class _HomeState extends State<Home> {
       isCancelled: () => _scanCancelled,
       onProgress: (done, total) {
         if (!mounted) return;
-        setState(() {
-          _scanDone = done;
-          _scanTotal = total;
-        });
+        _scanDone = done;
+        _scanTotal = total;
+        // Rebuild the dialog so the progress bar/text updates. Falling back
+        // to setState ensures the green outlines on tiles refresh as well.
+        _scanDialogSetState?.call(() {});
+        setState(() {});
       },
     );
 
@@ -247,11 +250,6 @@ class _HomeState extends State<Home> {
       await load(true);
       if (mounted) setState(() => isLoading = false);
     }
-  }
-
-  void clearSearch() {
-    widget.home.filters.query = null;
-    searchController.clear();
   }
 
   ViewType getStartingView() {
@@ -339,7 +337,7 @@ class _HomeState extends State<Home> {
                               style: TextStyle(
                                 fontSize: Theme.of(
                                   context,
-                                ).textTheme.titleMedium?.fontSize!,
+                                ).textTheme.titleMedium?.fontSize ?? 16,
                               ),
                               controller: searchController,
                               onChanged: (query) {
@@ -358,7 +356,7 @@ class _HomeState extends State<Home> {
                                 hintStyle: TextStyle(
                                   fontSize: Theme.of(
                                     context,
-                                  ).textTheme.titleMedium?.fontSize!,
+                                  ).textTheme.titleMedium?.fontSize ?? 16,
                                 ),
                                 prefixIcon: const Icon(Icons.search),
                                 border: OutlineInputBorder(

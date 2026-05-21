@@ -7,6 +7,31 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.13.1': [
+    'Fix: Stream scanner progress dialog now updates live. The radar scan '
+        'previously showed "0 / N streams tested" until completion because '
+        'the StatefulBuilder inside the dialog never received a rebuild. '
+        'It now refreshes after each probe alongside the channel tile '
+        'green outlines.',
+    'Fix: Setup wizard no longer double-submits a source if the Add Source '
+        'button is tapped twice rapidly. The button is now disabled while '
+        'the source is being added, and a guard prevents re-entry into '
+        'finish().',
+    'Cleanup: dead code removed — unused clearSearch() helper, unreachable '
+        'EngineType.auto branch in the player video area, and a no-op '
+        'setState block in settings reload.',
+    'Cleanup: replaced source-type magic numbers (sourceType.index == 0) '
+        'with the SourceType.xtream enum value for readability.',
+    'Cleanup: deduplicated channel schedule navigation in the channel tile '
+        '(now goes through a single _openSchedule() helper) and shared the '
+        'pageSize=36 constant between Home and Sql so pagination stays in '
+        'sync.',
+    'Cleanup: tightened null-safety in the player and home — guarded '
+        'channel.id before reconnect and movie position save, replaced '
+        'titleMedium?.fontSize! with a 16px fallback, wrapped a missing '
+        'unawaited() on PipController in dispose().',
+    'Cleanup: super.initState() now correctly runs first in Setup.',
+  ],
   '1.13.0': [
     'Cleanup: flutter analyze now reports zero warnings and zero infos. '
         'Fixed unused variables, removed unnecessary null assertions, '

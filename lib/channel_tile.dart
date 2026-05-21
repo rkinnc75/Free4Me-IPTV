@@ -255,6 +255,15 @@ class _ChannelTileState extends State<ChannelTile> {
     }
   }
 
+  void _openSchedule() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChannelScheduleView(channel: widget.channel),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final scanOk = widget.channel.id != null &&
@@ -322,14 +331,7 @@ class _ChannelTileState extends State<ChannelTile> {
                       NowNextStrip(
                         epgChannelId: widget.channel.epgChannelId!,
                         sourceId: widget.channel.sourceId,
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => ChannelScheduleView(
-                              channel: widget.channel,
-                            ),
-                          ),
-                        ),
+                        onTap: _openSchedule,
                       ),
                   ],
                 ),
@@ -340,13 +342,7 @@ class _ChannelTileState extends State<ChannelTile> {
               IconButton(
                 icon: const Icon(Icons.calendar_today_outlined, size: 20),
                 tooltip: 'Program guide',
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) =>
-                        ChannelScheduleView(channel: widget.channel),
-                  ),
-                ),
+                onPressed: _openSchedule,
               ),
             if (widget.channel.favorite)
               Padding(

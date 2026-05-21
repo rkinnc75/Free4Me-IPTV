@@ -372,9 +372,7 @@ class _SettingsState extends State<SettingsView> {
       () async => sources = await Sql.getSources(),
       context,
     );
-    setState(() {
-      sources;
-    });
+    if (mounted) setState(() {});
   }
 
   /// Shows a live progress dialog while refreshing all EPG sources, then
@@ -441,7 +439,7 @@ class _SettingsState extends State<SettingsView> {
     for (final source in sources) {
       if (!source.enabled) continue;
       final hasManualUrl = source.epgUrl?.isNotEmpty == true;
-      final isXtream = source.sourceType.index == 0;
+      final isXtream = source.sourceType == SourceType.xtream;
       if (!hasManualUrl && !isXtream) continue;
 
       final url = hasManualUrl ? source.epgUrl : null;
@@ -1270,8 +1268,8 @@ class _SettingsState extends State<SettingsView> {
                     onTap: () async {
                       final noUrls = sources.every(
                         (s) =>
-                            (s.epgUrl == null || s.epgUrl!.isEmpty) &&
-                            s.sourceType.index != 0, // 0 = xtream
+                            (s.epgUrl?.isEmpty ?? true) &&
+                            s.sourceType != SourceType.xtream,
                       );
                       if (noUrls) {
                         ScaffoldMessenger.of(context).showSnackBar(

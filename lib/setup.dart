@@ -29,6 +29,7 @@ class _SetupState extends State<Setup> {
   SourceType selectedSourceType = SourceType.xtream;
   bool isForward = true;
   bool formValid = false;
+  bool _isFinishing = false;
   final Map<Steps, FocusNode> focusNodes = {
     Steps.name: FocusNode(),
     Steps.url: FocusNode(),
@@ -54,8 +55,8 @@ class _SetupState extends State<Setup> {
 
   @override
   void initState() {
-    nextButtonFocusNode.requestFocus();
     super.initState();
+    nextButtonFocusNode.requestFocus();
   }
 
   @override
@@ -79,6 +80,8 @@ class _SetupState extends State<Setup> {
   }
 
   Future<void> finish() async {
+    if (_isFinishing) return;
+    _isFinishing = true;
     final sourceName = formValues[Steps.name]!;
     final epgUrlValue = _epgUrlController.text.trim();
 
@@ -159,6 +162,8 @@ class _SetupState extends State<Setup> {
           ),
         );
       }
+    } finally {
+      _isFinishing = false;
     }
   }
 
@@ -234,7 +239,7 @@ class _SetupState extends State<Setup> {
     // M3U file: pick file then finish immediately
     if (step == Steps.name && selectedSourceType == SourceType.m3u) {
       if (!await selectFile()) return;
-      finish();
+      await finish();
       return;
     }
 
@@ -259,7 +264,7 @@ class _SetupState extends State<Setup> {
 
     // EPG URL step (optional): proceed to finish
     if (step == Steps.epgUrl) {
-      finish();
+      await finish();
       return;
     }
 
@@ -393,9 +398,11 @@ class _SetupState extends State<Setup> {
                         order: NumericFocusOrder(1.0),
                         child: FilledButton(
                           focusNode: nextButtonFocusNode,
-                          onPressed: !formPages.contains(step) || formValid
-                              ? handleNext
-                              : null,
+                          onPressed: _isFinishing
+                              ? null
+                              : (!formPages.contains(step) || formValid
+                                  ? handleNext
+                                  : null),
                           style: FilledButton.styleFrom(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 24,

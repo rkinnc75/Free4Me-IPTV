@@ -377,7 +377,12 @@ class _PlayerState extends State<Player> {
       _isReconnecting = false;
       return;
     }
-    final headers = await Sql.getChannelHeaders(widget.channel.id!);
+    final id = widget.channel.id;
+    if (id == null) {
+      _isReconnecting = false;
+      return;
+    }
+    final headers = await Sql.getChannelHeaders(id);
     await _startPlayback(null, headers: headers);
     _isReconnecting = false;
   }
@@ -469,7 +474,7 @@ class _PlayerState extends State<Player> {
     // Pass our engine so that if a new Player already called registerMain
     // during a swap transition, we don't accidentally wipe its registration.
     OverlayPlayerController.instance.unregisterMain(_engine);
-    PipController.setPlaying(false);
+    unawaited(PipController.setPlaying(false));
     _bufferingWatchdog?.cancel();
     _stableTimer?.cancel();
     for (final s in subscriptions) {
@@ -647,10 +652,10 @@ class _PlayerState extends State<Player> {
     unawaited(PipController.setPlaying(false));
     _bufferingWatchdog?.cancel();
     if (widget.channel.mediaType == MediaType.movie) {
-      await Sql.setPosition(
-        widget.channel.id!,
-        _engine.position.inSeconds,
-      );
+      final id = widget.channel.id;
+      if (id != null) {
+        await Sql.setPosition(id, _engine.position.inSeconds);
+      }
     }
     if (_engine.handlesOwnFullscreen && _engine.isFullscreen) {
       await _engine.exitFullscreen();
@@ -695,9 +700,7 @@ class _PlayerState extends State<Player> {
   }
 
   Widget _buildVideoArea() {
-    if (_engineType == EngineType.exoplayer ||
-        (_engineType == EngineType.auto &&
-            _engine is ExoEngine)) {
+    if (_engineType == EngineType.exoplayer) {
       // ExoPlayer path: plain video widget + our own controls overlay
       return Stack(
         children: [
