@@ -7,6 +7,18 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.12.1': [
+    'Feature: per-source enable/disable toggle is now a visible Switch '
+        'in the source list. Disabled sources are grayed out. All features '
+        '(channel listings, movies, series, EPG refresh) already respected '
+        'the enabled state; the toggle is now clearly visible instead of '
+        'hidden behind a long-press.',
+    'Feature: long-press a channel in the History tab to remove it from '
+        'history. A "Remove from history" option appears in the action sheet '
+        'alongside the existing Favorite and Mini-player options.',
+    'Feature: EPG refresh results now show channel match count alongside '
+        'program count — e.g. "12,450 programs · 387/1,204 channels matched".',
+  ],
   '1.12.0': [
     'Feature: when adding a source, http:// is now automatically prepended '
         'to M3U URLs that are missing a scheme — no manual correction needed.',

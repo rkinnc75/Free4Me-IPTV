@@ -274,58 +274,67 @@ class _SettingsState extends State<SettingsView> {
     );
     await reloadSources();
     if (!mounted) return;
+    // After reloadSources(), source.enabled has been flipped in the new list,
+    // so we read the updated state from the refreshed sources list.
+    final updated = sources.where((s) => s.id == source.id).firstOrNull;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text("Source ${!source.enabled ? "enabled" : "disabled"}"),
-        duration: const Duration(milliseconds: 500),
+        content: Text(
+          "${source.name} ${updated?.enabled == true ? "enabled" : "disabled"}",
+        ),
+        duration: const Duration(milliseconds: 800),
       ),
     );
   }
 
   Widget getSource(Source source) {
-    return Card(
-      margin: const EdgeInsets.symmetric(
-        horizontal: 10,
-        vertical: 5,
-      ),
-      elevation: 5,
-      child: ListTile(
-        leading: Icon(source.enabled ? Icons.tv : Icons.tv_off),
-        horizontalTitleGap: 25,
-        onLongPress: () => toggleSource(source),
-        contentPadding: const EdgeInsets.only(left: 20),
-        title: Text(source.name),
-        subtitle: Text(source.sourceType.label),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Offstage(
-              offstage: source.sourceType == SourceType.m3u,
-              child: IconButton(
-                icon: const Icon(Icons.refresh),
-                onPressed: () async {
-                  await Error.tryAsync(
-                    () async {
-                      await Utils.refreshSource(source);
-                    },
-                    context,
-                    "Source has been refreshed successfully",
-                  );
-                },
+    return Opacity(
+      opacity: source.enabled ? 1.0 : 0.5,
+      child: Card(
+        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        elevation: 5,
+        child: ListTile(
+          leading: Icon(source.enabled ? Icons.tv : Icons.tv_off),
+          horizontalTitleGap: 25,
+          contentPadding: const EdgeInsets.only(left: 20),
+          title: Text(source.name),
+          subtitle: Text(source.sourceType.label),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Enable/disable toggle — explicit switch for discoverability
+              Switch(
+                value: source.enabled,
+                onChanged: (_) => toggleSource(source),
               ),
-            ),
-            Offstage(
-              offstage: source.sourceType == SourceType.m3u,
-              child: IconButton(
-                icon: const Icon(Icons.edit),
-                onPressed: () async => await showEditDialog(context, source),
+              Offstage(
+                offstage: source.sourceType == SourceType.m3u,
+                child: IconButton(
+                  icon: const Icon(Icons.refresh),
+                  onPressed: () async {
+                    await Error.tryAsync(
+                      () async {
+                        await Utils.refreshSource(source);
+                      },
+                      context,
+                      "Source has been refreshed successfully",
+                    );
+                  },
+                ),
               ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.delete),
-              onPressed: () async => await showConfirmDeleteDialog(source),
-            ),
-          ],
+              Offstage(
+                offstage: source.sourceType == SourceType.m3u,
+                child: IconButton(
+                  icon: const Icon(Icons.edit),
+                  onPressed: () async => await showEditDialog(context, source),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete),
+                onPressed: () async => await showConfirmDeleteDialog(source),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -441,6 +450,8 @@ class _SettingsState extends State<SettingsView> {
       _updateRefreshDialog(status);
 
       int sourceInserted = 0;
+      int sourceMatchedChannels = 0;
+      int sourceTotalChannels = 0;
       String? sourceError;
       try {
         await EpgService.refreshSource(
@@ -453,6 +464,9 @@ class _SettingsState extends State<SettingsView> {
             if (p.isMatching) {
               matchDone = p.matchingChannelsDone;
               matchTotal = p.matchingChannelsTotal;
+              // Capture running totals for the summary line
+              sourceMatchedChannels = p.matchingChannelsDone;
+              sourceTotalChannels = p.matchingChannelsTotal;
               status = '${source.name}: matching channels…';
               _updateRefreshDialog(status);
             } else {
@@ -469,7 +483,12 @@ class _SettingsState extends State<SettingsView> {
             '(check EPG URL, server response, or date window)',
           );
         } else {
-          results.add('✓ ${source.name}: $sourceInserted programs');
+          final matchSuffix = sourceTotalChannels > 0
+              ? ' · $sourceMatchedChannels/$sourceTotalChannels channels matched'
+              : '';
+          results.add(
+            '✓ ${source.name}: $sourceInserted programs$matchSuffix',
+          );
         }
       } catch (e) {
         sourceError = e.toString();

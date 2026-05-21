@@ -34,12 +34,20 @@ class ChannelTile extends StatefulWidget {
   final BuildContext parentContext;
   final Function(Node node) setNode;
   final VoidCallback? onFocusNavbar;
+  /// When [isHistory] is true, the long-press sheet includes a
+  /// "Remove from history" option. [onRemoveHistory] is called after the
+  /// entry is deleted so the parent can refresh its list.
+  final bool isHistory;
+  final VoidCallback? onRemoveHistory;
+
   const ChannelTile({
     super.key,
     required this.channel,
     required this.setNode,
     required this.parentContext,
     this.onFocusNavbar,
+    this.isHistory = false,
+    this.onRemoveHistory,
   });
 
   @override
@@ -111,6 +119,7 @@ class _ChannelTileState extends State<ChannelTile> {
     if (widget.channel.mediaType == MediaType.group) return;
 
     // For livestreams offer "Favorite" + "Watch in mini-player"
+    // + "Remove from history" when in the history view.
     if (widget.channel.mediaType == MediaType.livestream) {
       await showModalBottomSheet<void>(
         context: context,
@@ -142,6 +151,17 @@ class _ChannelTileState extends State<ChannelTile> {
                     await _watchInMiniPlayer();
                   },
                 ),
+                if (widget.isHistory && widget.channel.id != null)
+                  ListTile(
+                    leading: const Icon(Icons.history_toggle_off,
+                        color: Colors.redAccent),
+                    title: const Text('Remove from history'),
+                    onTap: () async {
+                      Navigator.pop(ctx);
+                      await Sql.deleteHistoryEntry(widget.channel.id!);
+                      widget.onRemoveHistory?.call();
+                    },
+                  ),
               ],
             ),
           );

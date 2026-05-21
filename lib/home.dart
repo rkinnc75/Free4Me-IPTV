@@ -309,6 +309,8 @@ class _HomeState extends State<Home> {
                       delegate: SliverChildBuilderDelegate(
                         (context, index) {
                           final channel = channels[index];
+                          final isHistory = widget.home.filters.viewType ==
+                              ViewType.history;
                           return ChannelTile(
                             key: ValueKey(
                               'ch-${channel.id ?? channel.name}-$index',
@@ -316,6 +318,9 @@ class _HomeState extends State<Home> {
                             channel: channel,
                             parentContext: context,
                             setNode: setNode,
+                            isHistory: isHistory,
+                            onRemoveHistory:
+                                isHistory ? () => load(false) : null,
                           );
                         },
                         childCount: channels.length,
