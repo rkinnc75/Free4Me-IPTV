@@ -1,7 +1,7 @@
 {
-  "latest": "1.12.1",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.12.1",
+  "latest": "1.12.2",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.12.2",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Feature: per-source enable/disable toggle is now a visible Switch in the source list. Disabled sources are grayed out. All features (channel listings, movies, series, EPG refresh) already respected the enabled state; the toggle is now clearly visible instead of hidden behind a long-press.\n\u2022 Feature: long-press a channel in the History tab to remove it from history. A \"Remove from history\" option appears in the action sheet alongside the existing Favorite and Mini-player options.\n\u2022 Feature: EPG refresh results now show channel match count alongside program count \u2014 e.g. \"12,450 programs \u00b7 387/1,204 channels matched\"."
+  "releaseNotes": "\u2022 Feature: Stream scanner \u2014 tap the radar icon next to the search bar to probe up to 20 visible streams for validity (10 s per stream, no video playback). Valid streams get a green outline. Progress dialog shows \"X / Y streams tested\" with a Cancel button. Results persist across navigation and are cleared automatically when you start a new scan."
 }
