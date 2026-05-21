@@ -158,13 +158,16 @@ class Error {
     }
     try {
       result = await fn();
-      if (useSuccess) showSuccess(context, successMessage!);
+      // ignore: use_build_context_synchronously
+      if (useSuccess && context.mounted) showSuccess(context, successMessage!);
       success = true;
     } catch (e, stackTrace) {
       final error = "${e.toString()}\n${stackTrace.toString()}";
-      await handleError(context, error);
+      // ignore: use_build_context_synchronously
+      if (context.mounted) await handleError(context, error);
     }
-    if (useLoading && context.loaderOverlay.visible) {
+    // ignore: use_build_context_synchronously
+    if (useLoading && context.mounted && context.loaderOverlay.visible) {
       context.loaderOverlay.hide();
     }
     return Result(success: success, data: result);

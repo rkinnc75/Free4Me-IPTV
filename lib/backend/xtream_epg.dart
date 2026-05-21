@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/http_client.dart';
 import 'package:open_tv/models/program.dart';
@@ -103,7 +102,7 @@ class XtreamEpg {
         );
       }).toList();
     } catch (e) {
-      debugPrint('XtreamEpg.fetchShortEpg error: $e');
+      AppLog.warn('XtreamEpg.fetchShortEpg error: $e');
       return [];
     }
   }

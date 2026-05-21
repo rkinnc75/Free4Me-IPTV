@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/http_client.dart';
 import 'package:open_tv/models/program.dart';
@@ -100,10 +99,9 @@ class XmltvParser {
     int skipped = 0;
 
     // State machine
-    String? _currentChannelId;
-    String? _currentChildElement; // 'display-name' | 'title' | 'desc' | etc.
-    _ProgramBuilder? _prog;
-    final _text = StringBuffer();
+    String? currentChannelId;
+    _ProgramBuilder? prog;
+    final textBuf = StringBuffer();
 
     Future<void> flushBatch() async {
       if (batch.isEmpty) return;
@@ -126,57 +124,47 @@ class XmltvParser {
 
     await for (final event in eventStream) {
       if (event is XmlStartElementEvent) {
-        _text.clear();
+        textBuf.clear();
         switch (event.name) {
           case 'channel':
-            _currentChannelId = _attr(event, 'id');
-            _currentChildElement = null;
+            currentChannelId = _attr(event, 'id');
           case 'programme':
             final startRaw = _attr(event, 'start');
             final stopRaw = _attr(event, 'stop');
             final channelId = _attr(event, 'channel');
             if (startRaw != null && stopRaw != null && channelId != null) {
-              _prog = _ProgramBuilder(
+              prog = _ProgramBuilder(
                 epgChannelId: channelId,
                 sourceId: sourceId,
                 startUtc: _parseXmltvTime(startRaw),
                 stopUtc: _parseXmltvTime(stopRaw),
               );
             }
-            _currentChildElement = null;
-          case 'display-name' || 'title' || 'desc' || 'category' || 'episode-num':
-            _currentChildElement = event.name;
         }
       } else if (event is XmlTextEvent) {
-        _text.write(event.value);
+        textBuf.write(event.value);
       } else if (event is XmlCDATAEvent) {
-        _text.write(event.value);
+        textBuf.write(event.value);
       } else if (event is XmlEndElementEvent) {
-        final text = _text.toString().trim();
+        final text = textBuf.toString().trim();
         switch (event.name) {
           case 'channel':
-            _currentChannelId = null;
-            _currentChildElement = null;
+            currentChannelId = null;
           case 'display-name':
-            if (_currentChannelId != null && text.isNotEmpty) {
-              channelMap.putIfAbsent(_currentChannelId!, () => text);
+            if (currentChannelId != null && text.isNotEmpty) {
+              channelMap.putIfAbsent(currentChannelId, () => text);
             }
-            _currentChildElement = null;
           case 'title':
-            _prog?.title = text;
-            _currentChildElement = null;
+            prog?.title = text;
           case 'desc':
-            _prog?.description = text.isNotEmpty ? text : null;
-            _currentChildElement = null;
+            prog?.description = text.isNotEmpty ? text : null;
           case 'category':
-            _prog?.category = text.isNotEmpty ? text : null;
-            _currentChildElement = null;
+            prog?.category = text.isNotEmpty ? text : null;
           case 'episode-num':
-            _prog?.episodeNum = text.isNotEmpty ? text : null;
-            _currentChildElement = null;
+            prog?.episodeNum = text.isNotEmpty ? text : null;
           case 'programme':
-            final p = _prog;
-            _prog = null;
+            final p = prog;
+            prog = null;
             if (p != null && p.title != null) {
               if (p.startUtc >= windowStartEpoch &&
                   p.startUtc <= windowEndEpoch) {
@@ -187,7 +175,7 @@ class XmltvParser {
               }
             }
         }
-        _text.clear();
+        textBuf.clear();
       }
     }
 
@@ -203,10 +191,6 @@ class XmltvParser {
     AppLog.info(
       'XMLTV: parse done — ${channelMap.length} channels, '
       '$inserted programs inserted, $skipped outside window',
-    );
-    debugPrint(
-      'XMLTV parse done: ${channelMap.length} channels, '
-      '$inserted programs inserted, $skipped skipped',
     );
     return channelMap;
   }

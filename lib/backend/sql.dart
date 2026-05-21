@@ -649,7 +649,6 @@ class Sql {
   ) async {
     if (programs.isEmpty) return;
     const chunkSize = 100;
-    const cols = 8;
     var db = await DbFactory.db;
     await db.writeTransaction((tx) async {
       for (var offset = 0; offset < programs.length; offset += chunkSize) {

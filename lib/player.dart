@@ -202,7 +202,7 @@ class _PlayerState extends State<Player> {
     );
     subscriptions.add(
       _engine.errorStream.listen((err) {
-        debugPrint('player error: $err');
+        AppLog.warn('Player: engine error — $err');
 
         // Suppress the mpv seekability probe error during startup grace.
         // mpv probes seekability on every open() and MPEG-TS livestreams
@@ -248,7 +248,7 @@ class _PlayerState extends State<Player> {
         final hasNet =
             results.isNotEmpty && !results.contains(ConnectivityResult.none);
         if (hasNet && _isReconnecting) {
-          debugPrint('Network restored; reconnecting...');
+          AppLog.info('Player: network restored; reconnecting...');
           onDisconnect(reason: 'network restored');
         }
       }),
@@ -370,7 +370,7 @@ class _PlayerState extends State<Player> {
     }
 
     _isReconnecting = true;
-    debugPrint('Live stream reconnect ($reason)...');
+    AppLog.info('Player: reconnect — $reason');
     if (mounted) setState(() => _bufferingState = 'Reconnecting...');
     await Future.delayed(const Duration(seconds: 1));
     if (!mounted || exiting) {
@@ -440,9 +440,6 @@ class _PlayerState extends State<Player> {
         AppLog.warn(
           'Player: open() failed ($_consecutiveOpenFailures/$_maxOpenFailures)'
           ' — $e — channel="${widget.channel.name}"',
-        );
-        debugPrint(
-          'Playback failed ($_consecutiveOpenFailures/$_maxOpenFailures): $e',
         );
         if (_consecutiveOpenFailures >= _maxOpenFailures) {
           if (mounted) {

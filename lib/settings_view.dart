@@ -222,7 +222,7 @@ class _SettingsState extends State<SettingsView> {
       Navigator.pushAndRemoveUntil(
         context,
         PageRouteBuilder(
-          pageBuilder: (_, __, ___) => Home(
+          pageBuilder: (_, _, _) => Home(
             home: HomeManager(filters: Filters(viewType: view)),
           ),
           transitionDuration: Duration.zero,
@@ -354,7 +354,8 @@ class _SettingsState extends State<SettingsView> {
             "Successfully deleted source",
           );
           await reloadSources();
-          if (sources.isEmpty) {
+          if (sources.isEmpty && mounted) {
+            // ignore: use_build_context_synchronously
             Navigator.pushAndRemoveUntil(
               context,
               MaterialPageRoute(builder: (context) => const Setup()),
@@ -496,9 +497,9 @@ class _SettingsState extends State<SettingsView> {
       }
     }
   
-    if (dialogOpen && mounted) Navigator.of(ctx, rootNavigator: true).pop();
+    if (dialogOpen && ctx.mounted) Navigator.of(ctx, rootNavigator: true).pop();
 
-    if (!mounted) return;
+    if (!ctx.mounted) return;
     showDialog(
       context: ctx,
       builder: (_) => AlertDialog(
@@ -605,8 +606,8 @@ class _SettingsState extends State<SettingsView> {
       }
     }
 
-    if (dialogOpen && mounted) Navigator.of(ctx, rootNavigator: true).pop();
-    if (!mounted) return;
+    if (dialogOpen && ctx.mounted) Navigator.of(ctx, rootNavigator: true).pop();
+    if (!ctx.mounted) return;
     showDialog(
       context: ctx,
       builder: (_) => AlertDialog(
@@ -630,7 +631,7 @@ class _SettingsState extends State<SettingsView> {
   void Function(void Function())? _refreshSetState;
   String _refreshStatus = '';
 
-  void _updateRefreshDialog(String status, [int count = 0]) {
+  void _updateRefreshDialog(String status) {
     _refreshStatus = status;
     _refreshSetState?.call(() {});
   }
@@ -1356,6 +1357,7 @@ class _SettingsState extends State<SettingsView> {
                             final log = await AppLog.readLog();
                             if (!mounted) return;
                             if (log.isEmpty) {
+                              // ignore: use_build_context_synchronously
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
                                   content: Text('Log file is empty.'),
@@ -1364,6 +1366,7 @@ class _SettingsState extends State<SettingsView> {
                               return;
                             }
                             await SettingsIo.exportStringToFile(
+                              // ignore: use_build_context_synchronously
                               context,
                               content: log,
                               suggestedName:
@@ -1380,6 +1383,7 @@ class _SettingsState extends State<SettingsView> {
                         ? () async {
                             await AppLog.clearLog();
                             if (!mounted) return;
+                            // ignore: use_build_context_synchronously
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text('Log cleared.'),
@@ -1422,6 +1426,7 @@ class _SettingsState extends State<SettingsView> {
                       );
                       if (includeCredentials == null || !mounted) return;
                       await SettingsIo.exportToFile(
+                        // ignore: use_build_context_synchronously
                         context,
                         includeCredentials: includeCredentials,
                       );

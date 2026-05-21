@@ -35,10 +35,9 @@ class StreamScanner {
     for (int i = 0; i < toScan.length; i++) {
       if (isCancelled()) break;
       final ch = toScan[i];
-      results[ch.id!] = await _probe(ch.url!, timeout);
-      AppLog.info(
-        'StreamScanner: "${ch.name}" → ${results[ch.id!] == true ? "OK" : "FAIL"}',
-      );
+      final ok = await _probe(ch.url!, timeout);
+      results[ch.id!] = ok;
+      AppLog.info('StreamScanner: "${ch.name}" → ${ok ? "OK" : "FAIL"}');
       onProgress(i + 1, toScan.length);
     }
   }

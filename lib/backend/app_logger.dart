@@ -120,4 +120,5 @@ class AppLogger {
 
 /// Global shorthand so any file can call `AppLog.info(...)` without
 /// carrying around the singleton reference.
+// ignore: non_constant_identifier_names
 final AppLog = AppLogger.instance;

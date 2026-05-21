@@ -30,10 +30,10 @@ class UpdateChecker {
         AppLog.info('UpdateChecker: skipped — checked recently');
         return;
       }
+      // ignore: use_build_context_synchronously
       await _runCheck(context, showUpToDate: false);
     } catch (e) {
       AppLog.warn('UpdateChecker: unexpected error — $e');
-      debugPrint('Update check failed (non-fatal): $e');
     }
   }
 

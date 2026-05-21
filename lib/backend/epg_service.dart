@@ -117,8 +117,7 @@ class EpgService {
       await Sql.upsertEpgRefreshLog(source.id!, inserted, null);
       return channelMap;
     } catch (e, st) {
-      AppLog.error('EPG: download failed for "${source.name}": $e');
-      debugPrint('EPG download error: $e\n$st');
+      AppLog.error('EPG: download failed for "${source.name}": $e\n$st');
       await Sql.upsertEpgRefreshLog(source.id!, 0, e.toString());
       return null;
     }

@@ -7,6 +7,21 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.13.0': [
+    'Cleanup: flutter analyze now reports zero warnings and zero infos. '
+        'Fixed unused variables, removed unnecessary null assertions, '
+        'corrected BuildContext-across-async-gap lint with proper mounted '
+        'checks, removed stale dart:typed_data import, registered xml as an '
+        'explicit dependency, and updated deprecated Matrix4.scale() to '
+        'scaleByDouble().',
+    'Cleanup: all debugPrint() calls replaced with AppLog — logs now '
+        'consistently appear in the in-app debug log file as well as the '
+        'console. Removed duplicate log lines that appeared for the same '
+        'event in both systems.',
+    'Cleanup: removed unused _currentChildElement state-machine variable '
+        'from the XMLTV streaming parser. Renamed underscore-prefixed local '
+        'variables to follow Dart lowerCamelCase style.',
+  ],
   '1.12.3': [
     'Fix (fix13): Android TV devices (Shield, Fire TV, Onn 4K) now use '
         'mediacodec-copy instead of mediacodec for hardware decoding. '

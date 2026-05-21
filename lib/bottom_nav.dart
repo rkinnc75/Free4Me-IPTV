@@ -49,7 +49,7 @@ class _BottomNavState extends State<BottomNav> {
       Navigator.pushAndRemoveUntil(
         context,
         PageRouteBuilder(
-          pageBuilder: (_, __, ___) => const SettingsView(),
+          pageBuilder: (_, _, _) => const SettingsView(),
           transitionDuration: Duration.zero,
           reverseTransitionDuration: Duration.zero,
           transitionsBuilder: (context, animation, secondaryAnimation, child) =>

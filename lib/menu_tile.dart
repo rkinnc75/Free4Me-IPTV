@@ -36,7 +36,7 @@ class _MenuTileState extends State<MenuTile> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOut,
-        transform: Matrix4.identity()..scale(scale),
+        transform: Matrix4.identity()..scaleByDouble(scale, scale, scale, 1.0),
         transformAlignment: Alignment.center,
         width: 200,
         height: 150,
