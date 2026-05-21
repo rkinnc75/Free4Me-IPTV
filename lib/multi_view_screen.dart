@@ -119,23 +119,40 @@ class _MultiViewScreenState extends State<MultiViewScreen> {
       ),
       body: !_restored
           ? const Center(child: CircularProgressIndicator())
-          : widget.layout == MultiViewLayout.oneByTwo
-              // Row requires Expanded children so each cell has a bounded
-              // width — without it Stack(fit:expand) collapses to zero and
-              // mpv has no surface (audio-only).
-              ? Row(children: _buildRowCells())
-              // GridView.count already provides bounded constraints to each
-              // child via crossAxisCount + childAspectRatio. Expanded here
-              // would throw "Incorrect use of ParentDataWidget".
-              : GridView.count(
+          : LayoutBuilder(
+              builder: (context, constraints) {
+                final w = constraints.maxWidth;
+                final h = constraints.maxHeight;
+                final isLandscape = w >= h;
+
+                if (widget.layout == MultiViewLayout.oneByTwo) {
+                  // Portrait → stack vertically; landscape → side by side.
+                  // Both use Expanded children so each cell fills its half.
+                  return isLandscape
+                      ? Row(children: _buildFlexCells())
+                      : Column(children: _buildFlexCells());
+                }
+
+                // 2×2 — always 2 columns × 2 rows.
+                // childAspectRatio = cellWidth / cellHeight
+                //   cellWidth  = (w − 1 gap) / 2
+                //   cellHeight = (h − 1 gap) / 2
+                // This makes the grid fill the available body exactly in
+                // both portrait and landscape without overflow or black bars.
+                const gap = 2.0;
+                final cellAspect =
+                    ((w - gap) / 2) / ((h - gap) / 2);
+                return GridView.count(
                   crossAxisCount: 2,
-                  childAspectRatio: 16 / 9,
-                  mainAxisSpacing: 2,
-                  crossAxisSpacing: 2,
+                  childAspectRatio: cellAspect.clamp(0.1, 10.0),
+                  mainAxisSpacing: gap,
+                  crossAxisSpacing: gap,
                   padding: EdgeInsets.zero,
                   physics: const NeverScrollableScrollPhysics(),
                   children: _buildGridCells(),
-                ),
+                );
+              },
+            ),
     );
   }
 
@@ -151,11 +168,12 @@ class _MultiViewScreenState extends State<MultiViewScreen> {
         onCloseCell: () => _closeCell(i),
       );
 
-  /// 1×2: cells go into a Row — each must be Expanded to get a bounded width.
-  List<Widget> _buildRowCells() =>
+  /// 1×2 cells in a Row or Column — Expanded so each occupies exactly half
+  /// the available space regardless of orientation.
+  List<Widget> _buildFlexCells() =>
       List.generate(_cellCount, (i) => Expanded(child: _buildCell(i)));
 
-  /// 2×2: cells go into a GridView — the grid provides constraints directly.
+  /// 2×2 cells in a GridView — grid provides constraints; no Expanded needed.
   List<Widget> _buildGridCells() =>
       List.generate(_cellCount, _buildCell);
 

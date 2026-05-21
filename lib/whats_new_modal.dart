@@ -7,6 +7,13 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.14.2': [
+    'Fix: Multi-view 1×2 and 2×2 now fill the screen correctly in both '
+        'portrait and landscape. 1×2 switches between side-by-side (landscape) '
+        'and stacked (portrait) automatically. 2×2 computes its cell aspect '
+        'ratio from actual screen dimensions so the grid always fills edge '
+        'to edge with no black bars.',
+  ],
   '1.14.1': [
     'Fix: 1×2 multi-view cells now show video correctly. Previously the '
         'Row layout gave cells no width, so mpv had no surface to render '
