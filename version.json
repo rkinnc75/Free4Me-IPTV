@@ -1,7 +1,7 @@
 {
-  "latest": "1.11.13",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.11.13",
+  "latest": "1.12.0",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.12.0",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix (fix12 #1): eliminated the \"double-start\" reconnect on every channel open. The startup grace window was anchored to open() (3s fixed), but the mpv seek probe fires relative to buffering=false. If buffering took >3s, grace expired before the error arrived. Grace now expires 500ms after buffering=false instead, ensuring the suppression guard is always active when the probe fires.\n\u2022 Fix (fix12 #2): mpv emits two messages on every seek rejection: \"Cannot seek in this stream.\" and \"You can force it with '--force-seekable=yes'.\" Only the first was suppressed \u2014 the second was slipping through to onDisconnect() and causing a reconnect. Both messages are now suppressed during startup grace.\n\u2022 Fix (fix12 #3): eliminated the force-close loop when a stream hits max reconnects. After give-up, navigating away and back created a fresh widget that immediately re-hammered a rate-limited provider. A 60s cross-session cooldown (static map) now prevents any new player instance from retrying within that window, showing a countdown instead."
+  "releaseNotes": "\u2022 Feature: when adding a source, http:// is now automatically prepended to M3U URLs that are missing a scheme \u2014 no manual correction needed.\n\u2022 Feature: adding a source now shows a live progress dialog (\"Loading channels: 1,200\u2026\", \"Loading movies: 340\u2026\") instead of a plain spinner, giving real-time feedback during source import.\n\u2022 Feature: new optional EPG URL step in the add-source wizard. Enter your programme guide URL at setup time alongside URL/user/password. If provided, EPG import starts immediately in the background once the source is saved."
 }
