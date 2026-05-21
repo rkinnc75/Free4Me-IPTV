@@ -7,6 +7,17 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.13.3': [
+    'Feature: Debug log file is now cleared automatically the first time '
+        'the app boots on a new version. The cleared-for version is tracked '
+        'separately so this fires exactly once per build — restarts within '
+        'the same version do not touch the log. Useful when sharing a log '
+        'for triage so you only see entries from the new build.',
+    'Confirmed: All Stream Scanner settings (Streams per scan, Scan '
+        'timeout) persist across app restarts and version updates. The '
+        'settings table uses an upsert pattern, so new keys are stored on '
+        'first save without any database migration.',
+  ],
   '1.13.2': [
     'Feature: Stream scanner now performs true media validation. Each '
         'probe streams the first ~16 KB of bytes and verifies them against '

@@ -60,6 +60,14 @@ class _HomeState extends State<Home> {
   }
 
   Future<void> initializeAsync() async {
+    // First-launch only: rotate the debug log so each new version starts with
+    // a clean slate. Idempotent — only fires the very first time the app
+    // boots on a given build number.
+    if (widget.firstLaunch) {
+      await SettingsService.maybeRotateLogOnVersionChange();
+      if (!mounted) return;
+    }
+
     if (widget.home.filters.sourceIds == null) {
       final sources = await Sql.getEnabledSourcesMinimal();
       if (!mounted) return;

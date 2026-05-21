@@ -1,7 +1,7 @@
 {
-  "latest": "1.13.2",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.13.2",
+  "latest": "1.13.3",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.13.3",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Feature: Stream scanner now performs true media validation. Each probe streams the first ~16 KB of bytes and verifies them against real format signatures: MPEG-TS sync byte 0x47 every 188 bytes (most IPTV livestreams), HLS playlists starting with #EXTM3U, DASH manifests, and MP4/fMP4 ftyp/styp/moof box headers. Captive portal pages, CDN error HTML, and auth redirects that returned HTTP 200 OK are now correctly flagged as failed even though the status code looked fine.\n\u2022 Feature: Two new sliders in Settings \u2192 Stream Scanner: \"Streams per scan\" (1\u2013100, default 20) and \"Scan timeout\" (3\u201330 s, default 8 s). Tune these for your network and how thoroughly you want to validate.\n\u2022 Fix: Scan progress dialog now updates reliably after every probe. Replaced the captured StatefulBuilder.setState with a ValueNotifier + ValueListenableBuilder so the dialog rebuilds on its own progress events regardless of parent state timing.\n\u2022 Internal: scanner now sends a player-style User-Agent (Lavf/61.7.100) so origins that gate on UA do not 403 the probe."
+  "releaseNotes": "\u2022 Feature: Debug log file is now cleared automatically the first time the app boots on a new version. The cleared-for version is tracked separately so this fires exactly once per build \u2014 restarts within the same version do not touch the log. Useful when sharing a log for triage so you only see entries from the new build.\n\u2022 Confirmed: All Stream Scanner settings (Streams per scan, Scan timeout) persist across app restarts and version updates. The settings table uses an upsert pattern, so new keys are stored on first save without any database migration."
 }

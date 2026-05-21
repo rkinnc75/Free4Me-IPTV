@@ -1,5 +1,6 @@
 import 'dart:collection';
 
+import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/models/engine_type.dart';
 import 'package:open_tv/models/settings.dart';
@@ -12,6 +13,7 @@ const showLivestreams = "showLivestreams";
 const showMovies = "showMovies";
 const showSeries = "showSeries";
 const lastSeenVersion = "lastSeenVersion";
+const lastLogClearedVersion = "lastLogClearedVersion";
 const forceTvMode = "forceTVMode";
 const lowLatencyProp = "streamCaching";
 
@@ -193,5 +195,25 @@ class SettingsService {
     return (await Sql.getSettings())[lastSeenVersion] != version
         ? version
         : null;
+  }
+
+  /// Clears the debug log file the first time the app boots on a new version.
+  ///
+  /// Idempotent: tracks the cleared-for version in [lastLogClearedVersion],
+  /// so subsequent launches on the same build do not touch the log again.
+  /// Safe to call regardless of whether file logging is currently enabled —
+  /// [AppLog.clearLog] handles both states.
+  static Future<void> maybeRotateLogOnVersionChange() async {
+    final String version = (await PackageInfo.fromPlatform()).version;
+    final settingsMap = await Sql.getSettings();
+    if (settingsMap[lastLogClearedVersion] == version) return;
+
+    await AppLog.clearLog();
+    AppLog.info(
+      'Free4Me-IPTV $version — log cleared on version change',
+    );
+    final HashMap<String, String> update = HashMap();
+    update[lastLogClearedVersion] = version;
+    await Sql.updateSettings(update);
   }
 }
