@@ -18,7 +18,11 @@ const String getLiveStreamCategories = "get_live_categories";
 const String getVodCategories = "get_vod_categories";
 const String liveStreamExtension = "ts";
 
-Future<void> getXtream(Source source, bool wipe) async {
+Future<void> getXtream(
+  Source source,
+  bool wipe, [
+  void Function(String)? onProgress,
+]) async {
   List<Future<void> Function(SqliteWriteContext, Map<String, String>)>
   statements = [];
   List<ChannelPreserve>? preserve;
@@ -28,6 +32,7 @@ Future<void> getXtream(Source source, bool wipe) async {
     statements.add(Sql.wipeSource(source.id!));
   }
   source.urlOrigin = Uri.parse(source.url!).origin;
+  onProgress?.call('Fetching data from provider…');
   var results = await Future.wait([
     getXtreamHttpData(getLiveStreams, source),
     getXtreamHttpData(getLiveStreamCategories, source),
@@ -39,9 +44,11 @@ Future<void> getXtream(Source source, bool wipe) async {
   int failCount = 0;
   if (results[0] != null && results[1] != null) {
     try {
+      final streams = processJsonList(results[0], XtreamStream.fromJson);
+      onProgress?.call('Loading ${streams.length} live channels…');
       processXtream(
         statements,
-        processJsonList(results[0], XtreamStream.fromJson),
+        streams,
         processJsonList(results[1], XtreamCategory.fromJson),
         source,
         MediaType.livestream,
@@ -54,9 +61,11 @@ Future<void> getXtream(Source source, bool wipe) async {
   }
   if (results[2] != null && results[3] != null) {
     try {
+      final vods = processJsonList(results[2], XtreamStream.fromJson);
+      onProgress?.call('Loading ${vods.length} movies…');
       processXtream(
         statements,
-        processJsonList(results[2], XtreamStream.fromJson),
+        vods,
         processJsonList(results[3], XtreamCategory.fromJson),
         source,
         MediaType.movie,
@@ -70,9 +79,11 @@ Future<void> getXtream(Source source, bool wipe) async {
 
   if (results[4] != null && results[5] != null) {
     try {
+      final series = processJsonList(results[4], XtreamStream.fromJson);
+      onProgress?.call('Loading ${series.length} series…');
       processXtream(
         statements,
-        processJsonList(results[4], XtreamStream.fromJson),
+        series,
         processJsonList(results[5], XtreamCategory.fromJson),
         source,
         MediaType.serie,
@@ -93,6 +104,7 @@ Future<void> getXtream(Source source, bool wipe) async {
   if (preserve != null) {
     statements.add(Sql.restorePreserve(preserve));
   }
+  onProgress?.call('Saving to database…');
   await Sql.commitWriteBatched(statements);
 }
 

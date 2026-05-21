@@ -174,13 +174,14 @@ class Sql {
         return;
       }
       await tx.execute('''
-            INSERT INTO sources (name, source_type, url, username, password) VALUES (?, ?, ?, ?, ?);
+            INSERT INTO sources (name, source_type, url, username, password, epg_url) VALUES (?, ?, ?, ?, ?, ?);
           ''', [
         source.name,
         source.sourceType.index,
         source.url,
         source.username,
         source.password,
+        source.epgUrl,
       ]);
       memory['sourceId'] =
           (await tx.get("SELECT last_insert_rowid();")).columnAt(0).toString();
@@ -541,6 +542,14 @@ class Sql {
       WHERE channel_id = ?
     ''', [channelId]);
     return result?.columnAt(0);
+  }
+
+  static Future<void> deleteHistoryEntry(int channelId) async {
+    var db = await DbFactory.db;
+    await db.execute(
+      'UPDATE channels SET last_watched = NULL WHERE id = ?',
+      [channelId],
+    );
   }
 
   static Future<void> addToHistory(int id) async {

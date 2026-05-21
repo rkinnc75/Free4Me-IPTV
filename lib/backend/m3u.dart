@@ -26,10 +26,16 @@ final catchupTypeRegex = RegExp(r'catchup="([^"]*)"');
 final catchupSourceRegex = RegExp(r'catchup-source="([^"]*)"');
 final catchupDaysRegex = RegExp(r'catchup-days="([^"]*)"');
 
-Future<void> processM3U(Source source, bool wipe, [String? path]) async {
+Future<void> processM3U(
+  Source source,
+  bool wipe, [
+  String? path,
+  void Function(String)? onProgress,
+]) async {
   path ??= source.url;
   List<ChannelPreserve>? preserve;
   final memory = <String, String>{};
+  onProgress?.call('Connecting…');
   await Sql.commitWrite([Sql.getOrCreateSourceByName(source)], memory: memory);
   final sourceId = int.parse(memory['sourceId']!);
   source.id = sourceId;
@@ -47,11 +53,14 @@ Future<void> processM3U(Source source, bool wipe, [String? path]) async {
   String? channelLine;
   ChannelHttpHeaders? headers;
   var httpHeadersSet = false;
+  int channelCount = 0;
 
   Future<void> flushBatch() async {
     if (batch.isEmpty) return;
     await Sql.commitWriteBatched(batch, memory: memory);
+    channelCount += batch.length;
     batch = [];
+    onProgress?.call('Loading channels: $channelCount…');
   }
 
   await for (var line in file) {
@@ -182,9 +191,14 @@ bool setChannelHeaders(String headerLine, ChannelHttpHeaders headers) {
   return false;
 }
 
-Future<void> processM3UUrl(Source source, bool wipe) async {
+Future<void> processM3UUrl(
+  Source source,
+  bool wipe, [
+  void Function(String)? onProgress,
+]) async {
+  onProgress?.call('Downloading playlist…');
   var path = await downloadM3U(source.url!);
-  await processM3U(source, wipe, path);
+  await processM3U(source, wipe, path, onProgress);
 }
 
 Future<String> downloadM3U(String urlStr) async {

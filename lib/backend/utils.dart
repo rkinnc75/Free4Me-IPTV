@@ -28,16 +28,20 @@ class Utils {
     await processSource(source, true);
   }
 
-  static Future<void> processSource(Source source, [bool wipe = false]) async {
+  static Future<void> processSource(
+    Source source, [
+    bool wipe = false,
+    void Function(String)? onProgress,
+  ]) async {
     switch (source.sourceType) {
       case SourceType.m3u:
-        await processM3U(source, wipe);
+        await processM3U(source, wipe, null, onProgress);
         break;
       case SourceType.m3uUrl:
-        await processM3UUrl(source, wipe);
+        await processM3UUrl(source, wipe, onProgress);
         break;
       case SourceType.xtream:
-        await getXtream(source, wipe);
+        await getXtream(source, wipe, onProgress);
         break;
     }
   }

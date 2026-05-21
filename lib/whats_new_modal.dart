@@ -7,6 +7,17 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.12.0': [
+    'Feature: when adding a source, http:// is now automatically prepended '
+        'to M3U URLs that are missing a scheme — no manual correction needed.',
+    'Feature: adding a source now shows a live progress dialog ("Loading '
+        'channels: 1,200…", "Loading movies: 340…") instead of a plain '
+        'spinner, giving real-time feedback during source import.',
+    'Feature: new optional EPG URL step in the add-source wizard. Enter '
+        'your programme guide URL at setup time alongside URL/user/password. '
+        'If provided, EPG import starts immediately in the background once '
+        'the source is saved.',
+  ],
   '1.11.13': [
     'Fix (fix12 #1): eliminated the "double-start" reconnect on every channel '
         'open. The startup grace window was anchored to open() (3s fixed), but '
