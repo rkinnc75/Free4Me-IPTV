@@ -792,6 +792,23 @@ class Sql {
     return rows.map(rowToChannel).toList();
   }
 
+  /// Live channels that need EPG matching: no existing assignment AND no
+  /// manual override. Channels already matched (epg_channel_id IS NOT NULL)
+  /// or manually pinned are excluded — they don't need re-matching.
+  static Future<List<Channel>> getChannelsNeedingEpgMatch(
+    int sourceId,
+  ) async {
+    var db = await DbFactory.db;
+    final rows = await db.getAll('''
+      SELECT * FROM channels
+      WHERE source_id = ?
+        AND media_type = 0
+        AND epg_manual_override IS NULL
+        AND epg_channel_id IS NULL
+    ''', [sourceId]);
+    return rows.map(rowToChannel).toList();
+  }
+
   // ── EPG manual channel mapping ─────────────────────────────────────────────
 
   /// All live channels for a source, ordered: unmatched first then matched.

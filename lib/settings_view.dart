@@ -518,6 +518,114 @@ class _SettingsState extends State<SettingsView> {
     );
   }
 
+  /// Force a full EPG re-match for all sources (forceRematch=true).
+  /// Only runs the matching step — does NOT re-download the XMLTV feed.
+  Future<void> _runEpgRematch(BuildContext ctx) async {
+    String status = 'Starting…';
+    int matchDone = 0;
+    int matchTotal = 0;
+    bool dialogOpen = true;
+
+    showDialog(
+      context: ctx,
+      barrierDismissible: false,
+      builder: (_) => StatefulBuilder(
+        builder: (sCtx, setSt) {
+          _refreshSetState = setSt;
+          final fraction = matchTotal > 0 ? matchDone / matchTotal : null;
+          return AlertDialog(
+            title: const Text('Re-matching channels…'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                fraction != null
+                    ? LinearProgressIndicator(value: fraction)
+                    : const LinearProgressIndicator(),
+                const SizedBox(height: 12),
+                Text(status,
+                    style: Theme.of(sCtx).textTheme.bodySmall),
+                if (matchTotal > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      'Channels matched: $matchDone / $matchTotal',
+                      style: Theme.of(sCtx).textTheme.bodySmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    ).then((_) => dialogOpen = false);
+
+    final results = <String>[];
+    for (final source in sources) {
+      if (!source.enabled) continue;
+      final epgUrl = EpgService.resolveEpgUrl(source);
+      if (epgUrl == null) continue;
+
+      status = 'Re-matching "${source.name}"…';
+      _updateRefreshDialog(status);
+      matchDone = 0;
+      matchTotal = 0;
+
+      try {
+        // Download fresh XMLTV to get the latest channelMap, then force-match.
+        final channelMap = await EpgService.downloadAndParseEpg(
+          source,
+          epgUrl: epgUrl,
+          onProgress: (p) {
+            status = '${source.name}: ${p.statusMessage ?? "downloading…"}';
+            _updateRefreshDialog(status);
+          },
+        );
+        if (channelMap == null) {
+          results.add('⚠ ${source.name}: failed to download EPG');
+          continue;
+        }
+        await EpgService.matchChannels(
+          source,
+          channelMap,
+          forceAll: true,
+          onProgress: (p) {
+            matchDone = p.matchingChannelsDone;
+            matchTotal = p.matchingChannelsTotal;
+            status = '${source.name}: matching…';
+            _updateRefreshDialog(status);
+          },
+        );
+        results.add('✓ ${source.name}: re-match complete'
+            '${matchTotal > 0 ? " ($matchDone/$matchTotal)" : ""}');
+      } catch (e) {
+        results.add('✗ ${source.name}: $e');
+      }
+    }
+
+    if (dialogOpen && mounted) Navigator.of(ctx, rootNavigator: true).pop();
+    if (!mounted) return;
+    showDialog(
+      context: ctx,
+      builder: (_) => AlertDialog(
+        title: const Text('Re-match Complete'),
+        content: SingleChildScrollView(
+          child: Text(results.isEmpty
+              ? 'No sources with EPG configured.'
+              : results.join('\n')),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   // Mutable state for the refresh progress dialog
   void Function(void Function())? _refreshSetState;
   String _refreshStatus = '';
@@ -898,6 +1006,28 @@ class _SettingsState extends State<SettingsView> {
                       updateSettings();
                     },
                   ),
+                  _bufferSlider(
+                    label: "Startup grace window (ms)",
+                    value: settings.startupGraceMs.toDouble(),
+                    min: 100,
+                    max: 3000,
+                    divisions: 29,
+                    help: (
+                      title: 'Startup Grace Window (ms)',
+                      body:
+                          'How long after buffering starts to suppress seek '
+                          'probe errors that would otherwise cause an '
+                          'immediate reconnect. Increase on slower TV '
+                          'hardware (Onn 4K, Fire TV Stick) if streams '
+                          'double-start. Default: 500 ms. Range: 100–3000 ms.',
+                    ),
+                    onChanged: (v) {
+                      setState(
+                        () => settings.startupGraceMs = v.round(),
+                      );
+                      updateSettings();
+                    },
+                  ),
 
                   // ── Hardware decode / pre-warm / engine ───────────────────
                   _switchTile(
@@ -1155,6 +1285,17 @@ class _SettingsState extends State<SettingsView> {
                         return;
                       }
                       await _runEpgRefresh(context);
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.manage_search),
+                    title: const Text("Re-match all channels"),
+                    subtitle: const Text(
+                      "Force full EPG re-match — use after feed or "
+                      "matcher changes",
+                    ),
+                    onTap: () async {
+                      await _runEpgRematch(context);
                     },
                   ),
                   ...sources

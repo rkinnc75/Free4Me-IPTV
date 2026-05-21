@@ -69,27 +69,26 @@ class EpgService {
     final sources = await Sql.getSources();
     for (final source in sources) {
       if (!source.enabled) continue;
-      final epgUrl = _resolveEpgUrl(source);
+      final epgUrl = resolveEpgUrl(source);
       if (epgUrl == null) continue;
       await refreshSource(source, epgUrl: epgUrl, background: background);
     }
   }
 
-  /// Refresh EPG for a single source.
-  static Future<void> refreshSource(
+  /// Step 1 — Download and parse XMLTV, insert programs.
+  /// Returns the EPG channel map (epgId → display names) for use in
+  /// [matchChannels], or null if the source has no EPG URL or an error occurs.
+  static Future<Map<String, String>?> downloadAndParseEpg(
     Source source, {
     String? epgUrl,
-    bool background = false,
     void Function(XmltvProgress)? onProgress,
   }) async {
     final settings = await SettingsService.getSettings();
-    final url = epgUrl ?? _resolveEpgUrl(source);
-    if (source.id == null) return;
+    final url = epgUrl ?? resolveEpgUrl(source);
+    if (source.id == null) return null;
     if (url == null) {
-      AppLog.warn(
-        'EPG: skipping "${source.name}" — no EPG URL configured',
-      );
-      return;
+      AppLog.warn('EPG: skipping "${source.name}" — no EPG URL configured');
+      return null;
     }
 
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
@@ -97,9 +96,7 @@ class EpgService {
     final windowEnd = now + settings.epgForecastDays * 86400;
 
     int inserted = 0;
-    String? lastError;
-
-    AppLog.info('EPG: starting refresh for "${source.name}" — $url');
+    AppLog.info('EPG: downloading "${source.name}" — $url');
     try {
       await Sql.deleteProgramsForSource(source.id!);
 
@@ -115,98 +112,147 @@ class EpgService {
         onProgress: onProgress,
       );
 
-      // Match channels to EPG IDs.
-      // Channels that already have a manual override (epg_manual_override is
-      // NOT NULL) keep their assignment; auto-matcher only fills the gaps.
-      final channels = await Sql.getChannelsForEpgMatching(source.id!);
-
-      // Protect only channels the user explicitly mapped (epg_manual_override
-      // is non-null). Auto-matched channels (epgManualOverride == null) are
-      // re-matched every refresh so stale assignments get corrected.
-      final manualOverrides = <int, String>{};
-      for (final ch in channels) {
-        if (ch.epgManualOverride != null && ch.id != null) {
-          manualOverrides[ch.id!] = ch.epgManualOverride!;
-        }
-      }
-
-      // Run the matcher in batches of _matchBatchSize channels, each batch in
-      // its own Dart isolate so the UI thread stays alive and we can stream
-      // progress back to the caller after every batch.
-      final allMatched = <int, String>{};
-      final tierCounts = <MatchTier, int>{};
-      final sampleUnmatched = <String>[];
-
-      for (int i = 0; i < channels.length; i += _matchBatchSize) {
-        final end = min(i + _matchBatchSize, channels.length);
-        final batch = channels.sublist(i, end);
-
-        final (batchMatched, batchReport) =
-            await compute(_matchInIsolate, (channelMap, batch));
-
-        allMatched.addAll(batchMatched);
-        for (final e in batchReport.counts.entries) {
-          tierCounts[e.key] = (tierCounts[e.key] ?? 0) + e.value;
-        }
-        if (sampleUnmatched.length < 10) {
-          sampleUnmatched.addAll(
-            batchReport.sampleUnmatched.take(10 - sampleUnmatched.length),
-          );
-        }
-
-        onProgress?.call(XmltvProgress(
-          programsInserted: inserted,
-          matchingChannelsDone: end,
-          matchingChannelsTotal: channels.length,
-          statusMessage:
-              'Matching channels: $end / ${channels.length}',
-        ));
-      }
-
-      final report = MatchReport(
-        counts: tierCounts,
-        sampleUnmatched: sampleUnmatched,
-        totalChannels: channels.length,
-      );
-      final autoMatched = allMatched;
-      // Merge: manual overrides win; auto fills the rest
-      final merged = {...autoMatched, ...manualOverrides};
-
-      if (merged.isNotEmpty) {
-        await Sql.setChannelEpgIds(merged);
-      }
-
       AppLog.info(
-        'EPG: matcher "${source.name}" — $report',
-      );
-      if (report.sampleUnmatched.isNotEmpty) {
-        AppLog.info(
-          'EPG: sample unmatched channels — '
-          '${report.sampleUnmatched.map((n) => "\"$n\"").join(", ")}',
-        );
-      }
-      AppLog.info(
-        'EPG: done "${source.name}" — $inserted programs, '
-        '${merged.length}/${channels.length} channels matched',
-      );
-      debugPrint(
-        'EPG refresh done for "${source.name}": '
-        '$inserted programs, ${merged.length}/${channels.length} channels matched',
-      );
+          'EPG: downloaded "${source.name}" — $inserted programs');
+      await Sql.upsertEpgRefreshLog(source.id!, inserted, null);
+      return channelMap;
     } catch (e, st) {
-      lastError = e.toString();
-      AppLog.error('EPG: refresh failed for "${source.name}": $e');
-      debugPrint('EPG refresh error for "${source.name}": $e\n$st');
+      AppLog.error('EPG: download failed for "${source.name}": $e');
+      debugPrint('EPG download error: $e\n$st');
+      await Sql.upsertEpgRefreshLog(source.id!, 0, e.toString());
+      return null;
+    }
+  }
+
+  /// Step 2 — Match channels against the EPG channel map.
+  ///
+  /// By default (incremental mode) only channels with no existing
+  /// [Channel.epgChannelId] are processed — already-matched channels are
+  /// skipped entirely, making background refreshes much faster on sources
+  /// with large channel lists (e.g. 90k+ channels).
+  ///
+  /// Pass [forceAll] = true to re-evaluate every channel regardless of
+  /// existing assignments (used by the "Re-match all channels" button in
+  /// Settings or after the matcher algorithm is updated).
+  ///
+  /// Manual overrides ([Channel.epgManualOverride] IS NOT NULL) are always
+  /// preserved and never re-matched.
+  static Future<void> matchChannels(
+    Source source,
+    Map<String, String> channelMap, {
+    bool forceAll = false,
+    void Function(XmltvProgress)? onProgress,
+  }) async {
+    if (source.id == null) return;
+
+    final toMatch = forceAll
+        ? (await Sql.getChannelsForEpgMatching(source.id!))
+              .where((c) => c.epgManualOverride == null)
+              .toList()
+        : await Sql.getChannelsNeedingEpgMatch(source.id!);
+
+    final manualOverrides = <int, String>{};
+    for (final ch in toMatch) {
+      if (ch.epgManualOverride != null && ch.id != null) {
+        manualOverrides[ch.id!] = ch.epgManualOverride!;
+      }
     }
 
-    await Sql.upsertEpgRefreshLog(source.id!, inserted, lastError);
+    AppLog.info(
+      'EPG: matching ${toMatch.length} channels'
+      ' (${forceAll ? "full re-match" : "unmatched only"})'
+      ' for "${source.name}"',
+    );
+
+    if (toMatch.isEmpty) {
+      AppLog.info('EPG: no unmatched channels — skipping matcher');
+      onProgress?.call(XmltvProgress(
+        programsInserted: 0,
+        matchingChannelsDone: 0,
+        matchingChannelsTotal: 0,
+        statusMessage: 'All channels already matched',
+      ));
+      return;
+    }
+
+    final allMatched = <int, String>{};
+    final tierCounts = <MatchTier, int>{};
+    final sampleUnmatched = <String>[];
+
+    for (int i = 0; i < toMatch.length; i += _matchBatchSize) {
+      final end = min(i + _matchBatchSize, toMatch.length);
+      final batch = toMatch.sublist(i, end);
+
+      final (batchMatched, batchReport) =
+          await compute(_matchInIsolate, (channelMap, batch));
+
+      allMatched.addAll(batchMatched);
+      for (final e in batchReport.counts.entries) {
+        tierCounts[e.key] = (tierCounts[e.key] ?? 0) + e.value;
+      }
+      if (sampleUnmatched.length < 10) {
+        sampleUnmatched.addAll(
+          batchReport.sampleUnmatched.take(10 - sampleUnmatched.length),
+        );
+      }
+
+      onProgress?.call(XmltvProgress(
+        programsInserted: 0,
+        matchingChannelsDone: end,
+        matchingChannelsTotal: toMatch.length,
+        statusMessage: 'Matching channels: $end / ${toMatch.length}',
+      ));
+    }
+
+    final merged = {...allMatched, ...manualOverrides};
+    if (merged.isNotEmpty) {
+      await Sql.setChannelEpgIds(merged);
+    }
+
+    final report = MatchReport(
+      counts: tierCounts,
+      sampleUnmatched: sampleUnmatched,
+      totalChannels: toMatch.length,
+    );
+    AppLog.info('EPG: match done "${source.name}" — $report');
+    if (report.sampleUnmatched.isNotEmpty) {
+      AppLog.info(
+        'EPG: sample unmatched — '
+        '${report.sampleUnmatched.map((n) => '"$n"').join(", ")}',
+      );
+    }
+  }
+
+  /// Combined refresh (download + incremental match).
+  ///
+  /// Pass [forceRematch] = true to re-match every channel, not just
+  /// unmatched ones (e.g. after an EPG feed change or matcher update).
+  static Future<void> refreshSource(
+    Source source, {
+    String? epgUrl,
+    bool background = false,
+    bool forceRematch = false,
+    void Function(XmltvProgress)? onProgress,
+  }) async {
+    final channelMap = await downloadAndParseEpg(
+      source,
+      epgUrl: epgUrl,
+      onProgress: onProgress,
+    );
+    if (channelMap == null) return;
+    await matchChannels(
+      source,
+      channelMap,
+      forceAll: forceRematch,
+      onProgress: onProgress,
+    );
   }
 
   /// Determines the EPG URL to use for a source:
   /// - Manual override (source.epgUrl) wins
   /// - Xtream sources fall back to their built-in XMLTV endpoint
   /// - M3U sources have no automatic EPG URL
-  static String? _resolveEpgUrl(Source source) {
+  static String? resolveEpgUrl(Source source) {
     if (source.epgUrl != null && source.epgUrl!.isNotEmpty) {
       return source.epgUrl;
     }

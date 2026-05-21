@@ -7,6 +7,27 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.12.3': [
+    'Fix (fix13): Android TV devices (Shield, Fire TV, Onn 4K) now use '
+        'mediacodec-copy instead of mediacodec for hardware decoding. '
+        'mediacodec surface mode silently produces audio-only on Tegra X1 '
+        'and similar SoCs; copy mode decodes in hardware but bypasses the '
+        'broken surface binding. Phone/tablet users are unaffected.',
+    'Feature (fix14-1): EPG matching is now incremental — only channels '
+        'with no existing EPG assignment are re-matched on each refresh. '
+        'Already-matched channels are skipped entirely, making background '
+        'refreshes dramatically faster on large sources (e.g. 92k channels '
+        'goes from ~185 isolate batches to ~9 on a typical refresh).',
+    'Feature (fix14-1): New "Re-match all channels" button in Settings → '
+        'EPG section to force a full re-match after a feed change or matcher '
+        'update.',
+    'Feature (fix14-2): Startup grace window is now user-configurable '
+        '(100–3000 ms, default 500 ms). TV users on slower hardware (Onn 4K, '
+        'Fire TV Stick) can increase this if streams still double-start after '
+        'the grace window expires before the mpv seek probe arrives.',
+    'Docs: README fully rewritten to document all features, build '
+        'instructions, and credits to the original open-tv project by Fredolx.',
+  ],
   '1.12.2': [
     'Feature: Stream scanner — tap the radar icon next to the search bar '
         'to probe up to 20 visible streams for validity (10 s per stream, '

@@ -301,9 +301,12 @@ class _PlayerState extends State<Player> {
       // delivery order between the two streams (separate native callbacks,
       // Dart delivery order not guaranteed within the same native event cycle).
       if (_startupGrace) {
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (mounted) setState(() => _startupGrace = false);
-        });
+        Future.delayed(
+          Duration(milliseconds: widget.settings.startupGraceMs),
+          () {
+            if (mounted) setState(() => _startupGrace = false);
+          },
+        );
       }
 
       // Start a stability timer. Only if the stream is still playing after

@@ -4,7 +4,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart' as mk;
 import 'package:media_kit_video/media_kit_video.dart' as mkvideo;
+import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/models/channel.dart';
+import 'package:open_tv/models/device_detector.dart';
 import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/player/player_engine.dart';
@@ -213,7 +215,17 @@ class MpvEngine implements PlayerEngine {
     }
 
     if (s.hwDecode && Platform.isAndroid) {
-      await np.setProperty('hwdec', 'mediacodec');
+      // Android TV devices (Shield, Fire TV, Onn 4K, etc.) require
+      // mediacodec-copy rather than mediacodec surface mode. In surface
+      // mode, mediacodec binds directly to a SurfaceTexture — this fails
+      // silently on Tegra X1 and similar Android TV SoCs, producing audio
+      // with a black screen. mediacodec-copy decodes in hardware but copies
+      // frames to CPU memory, bypassing the surface binding. Overhead is
+      // negligible on TV-class hardware.
+      final isTV = await DeviceDetector.isTV();
+      final hwdecMode = isTV ? 'mediacodec-copy' : 'mediacodec';
+      await np.setProperty('hwdec', hwdecMode);
+      AppLog.info('Player: hwdec=$hwdecMode isTV=$isTV');
     } else if (s.hwDecode && Platform.isIOS) {
       await np.setProperty('hwdec', 'videotoolbox');
     } else {

@@ -30,6 +30,7 @@ const forcedEngineProp = "forcedEngine";
 
 // Reconnect stability (v1.11.9)
 const stableThresholdSecsProp = "stableThresholdSecs";
+const startupGraceMsProp = "startupGraceMs";
 
 // EPG settings (v1.2)
 const debugLoggingProp = "debugLogging";
@@ -88,6 +89,7 @@ class SettingsService {
     var epgForecast = settingsMap[epgForecastDaysProp];
     var forcedEngine = settingsMap[forcedEngineProp];
     var stableThreshold = settingsMap[stableThresholdSecsProp];
+    var startupGrace = settingsMap[startupGraceMsProp];
 
     if (view != null) {
       settings.defaultView = ViewType.values[int.parse(view)];
@@ -118,6 +120,9 @@ class SettingsService {
     }
     if (stableThreshold != null) {
       settings.stableThresholdSecs = int.parse(stableThreshold);
+    }
+    if (startupGrace != null) {
+      settings.startupGraceMs = int.parse(startupGrace);
     }
 
     return settings;
@@ -154,6 +159,7 @@ class SettingsService {
     settingsMap[forcedEngineProp] = settings.forcedEngine.toJson();
     settingsMap[stableThresholdSecsProp] =
         settings.stableThresholdSecs.toString();
+    settingsMap[startupGraceMsProp] = settings.startupGraceMs.toString();
 
     await Sql.updateSettings(settingsMap);
     _cached = settings; // keep the in-memory copy in sync

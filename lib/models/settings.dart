@@ -34,6 +34,13 @@ class Settings {
   /// is reset. A brief buffering=false right after open() does not count.
   int stableThresholdSecs;
 
+  /// Milliseconds to hold the startup grace window after buffering=false
+  /// before allowing seek errors and completion events to trigger a reconnect.
+  /// Higher values help slower TV hardware (Onn 4K, Fire TV Stick) where the
+  /// mpv seek probe arrives more than 500ms after buffering=false.
+  /// Default: 500ms. Range: 100–3000ms.
+  int startupGraceMs;
+
   /// Enable hardware decoding via Android mediacodec.
   bool hwDecode;
 
@@ -69,6 +76,7 @@ class Settings {
     this.openTimeoutSecs = 15,
     this.bufferingWatchdogSecs = 12,
     this.stableThresholdSecs = 30,
+    this.startupGraceMs = 500,
     this.hwDecode = true,
     this.preWarmOnFocus = true,
     this.forcedEngine = EngineType.auto,
