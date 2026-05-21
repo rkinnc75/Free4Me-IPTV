@@ -1,7 +1,7 @@
 {
-  "latest": "1.12.0",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.12.0",
+  "latest": "1.12.1",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.12.1",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Feature: when adding a source, http:// is now automatically prepended to M3U URLs that are missing a scheme \u2014 no manual correction needed.\n\u2022 Feature: adding a source now shows a live progress dialog (\"Loading channels: 1,200\u2026\", \"Loading movies: 340\u2026\") instead of a plain spinner, giving real-time feedback during source import.\n\u2022 Feature: new optional EPG URL step in the add-source wizard. Enter your programme guide URL at setup time alongside URL/user/password. If provided, EPG import starts immediately in the background once the source is saved."
+  "releaseNotes": "\u2022 Feature: per-source enable/disable toggle is now a visible Switch in the source list. Disabled sources are grayed out. All features (channel listings, movies, series, EPG refresh) already respected the enabled state; the toggle is now clearly visible instead of hidden behind a long-press.\n\u2022 Feature: long-press a channel in the History tab to remove it from history. A \"Remove from history\" option appears in the action sheet alongside the existing Favorite and Mini-player options.\n\u2022 Feature: EPG refresh results now show channel match count alongside program count \u2014 e.g. \"12,450 programs \u00b7 387/1,204 channels matched\"."
 }
