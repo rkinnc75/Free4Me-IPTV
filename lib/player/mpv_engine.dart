@@ -21,10 +21,15 @@ class MpvEngine implements PlayerEngine {
   /// When false, [open] skips the fullscreen-entry call. Set to false for
   /// the overlay (mini-player) so it never steals fullscreen.
   final bool fullscreenOnOpen;
+  /// When true, uses a reduced buffer (32 MB) suitable for multi-view cells.
+  /// Full-screen players use 256 MB. Hardware decoding is also disabled in
+  /// preview mode to avoid surface-binding contention when multiple cells
+  /// share the same hardware decoder pool.
+  final bool previewMode;
 
   late final mk.Player _player = mk.Player(
-    configuration: const mk.PlayerConfiguration(
-      bufferSize: 256 * 1024 * 1024,
+    configuration: mk.PlayerConfiguration(
+      bufferSize: previewMode ? 32 * 1024 * 1024 : 256 * 1024 * 1024,
       logLevel: mk.MPVLogLevel.warn,
     ),
   );
@@ -45,6 +50,7 @@ class MpvEngine implements PlayerEngine {
     required this.channel,
     required this.settings,
     this.fullscreenOnOpen = true,
+    this.previewMode = false,
   }) {
     _player.setPlaylistMode(mk.PlaylistMode.none);
 
@@ -214,7 +220,12 @@ class MpvEngine implements PlayerEngine {
       await np.setProperty('hls-bitrate', s.lowLatency ? 'min' : 'max');
     }
 
-    if (s.hwDecode && Platform.isAndroid) {
+    // Preview mode (multi-view cells): force software decode to avoid
+    // surface-binding contention when multiple cells share the device's
+    // hardware decoder pool. Cells are small (≤540p) so CPU decode is fine.
+    if (previewMode) {
+      await np.setProperty('hwdec', 'no');
+    } else if (s.hwDecode && Platform.isAndroid) {
       // Android TV devices (Shield, Fire TV, Onn 4K, etc.) require
       // mediacodec-copy rather than mediacodec surface mode. In surface
       // mode, mediacodec binds directly to a SurfaceTexture — this fails
@@ -250,12 +261,14 @@ class MpvEngine implements PlayerEngine {
         await np.setProperty('demuxer-max-back-bytes', '0');
       } else {
         await np.setProperty('cache-secs', s.liveCacheSecs.toString());
-        await np.setProperty('demuxer-max-bytes', '${s.liveDemuxerMaxMB}MiB');
+        final liveMB = previewMode ? 16 : s.liveDemuxerMaxMB;
+        await np.setProperty('demuxer-max-bytes', '${liveMB}MiB');
         await np.setProperty('demuxer-max-back-bytes', '0');
       }
     } else {
       await np.setProperty('cache-secs', s.vodCacheSecs.toString());
-      await np.setProperty('demuxer-max-bytes', '${s.vodDemuxerMaxMB}MiB');
+      final vodMB = previewMode ? 32 : s.vodDemuxerMaxMB;
+      await np.setProperty('demuxer-max-bytes', '${vodMB}MiB');
       await np.setProperty('demuxer-max-back-bytes', '64MiB');
     }
   }

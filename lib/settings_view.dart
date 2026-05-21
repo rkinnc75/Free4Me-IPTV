@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/models/engine_type.dart';
+import 'package:open_tv/models/multi_view_layout.dart';
+import 'package:open_tv/multi_view_picker_dialog.dart';
 import 'package:open_tv/backend/epg_service.dart';
 import 'package:open_tv/backend/settings_io.dart';
 import 'package:open_tv/views/epg_channel_mapping.dart';
@@ -816,6 +818,63 @@ class _SettingsState extends State<SettingsView> {
     );
   }
 
+  Widget _multiViewTile(Settings settings) {
+    return ListTile(
+      title: Row(
+        children: [
+          const Text('Multi-view layout'),
+          const SizedBox(width: 4),
+          _helpIcon(
+            title: 'Multi-view',
+            body: 'Play multiple streams simultaneously in a split-screen '
+                'grid.\n\n'
+                '1×2 shows two streams side-by-side.\n'
+                '2×2 shows four streams in a quad grid.\n\n'
+                'Tap a cell to give it audio focus. Tap + to assign a '
+                'channel to an empty cell. Double-tap to promote a cell to '
+                'full-screen.\n\n'
+                'Each stream uses its own decoder. On lower-end devices, '
+                '2×2 may cause thermal throttling — start with 1×2.',
+          ),
+        ],
+      ),
+      trailing: TextButton(
+        onPressed: () => _showMultiViewPickerDialog(settings),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _multiViewShortLabel(settings.multiViewLayout),
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(width: 4),
+            const Icon(Icons.arrow_drop_down),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _multiViewShortLabel(MultiViewLayout layout) => switch (layout) {
+        MultiViewLayout.none => 'Off',
+        MultiViewLayout.oneByTwo => '1×2',
+        MultiViewLayout.twoByTwo => '2×2',
+      };
+
+  void _showMultiViewPickerDialog(Settings settings) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => MultiViewPickerDialog(
+        current: settings.multiViewLayout,
+        onSelected: (layout) {
+          setState(() => settings.multiViewLayout = layout);
+          updateSettings();
+        },
+      ),
+    );
+  }
+
   // ─── Build ────────────────────────────────────────────────────────────────
 
   @override
@@ -1095,6 +1154,7 @@ class _SettingsState extends State<SettingsView> {
                     },
                   ),
                   _engineSelectionTile(settings),
+                  _multiViewTile(settings),
 
                   const Divider(),
 

@@ -1,5 +1,6 @@
 import 'package:open_tv/models/engine_type.dart';
 import 'package:open_tv/models/media_type.dart';
+import 'package:open_tv/models/multi_view_layout.dart';
 import 'package:open_tv/models/view_type.dart';
 
 class Settings {
@@ -70,6 +71,17 @@ class Settings {
   /// is actually serving live media bytes. Default 8, range 3–30.
   int streamScanTimeoutSecs;
 
+  // --- Multi-view (v1.14) ---
+  /// Which multi-view grid layout is active (or none).
+  MultiViewLayout multiViewLayout;
+
+  /// Persisted channel IDs for the 1×2 layout (2 cells), stored as a
+  /// comma-separated string. Null entries are stored as empty string.
+  String multiViewCells1x2;
+
+  /// Persisted channel IDs for the 2×2 layout (4 cells).
+  String multiViewCells2x2;
+
   Settings({
     this.defaultView = ViewType.all,
     this.refreshOnStart = false,
@@ -97,6 +109,9 @@ class Settings {
     this.epgForecastDays = 7,
     this.streamScanMaxCount = 20,
     this.streamScanTimeoutSecs = 8,
+    this.multiViewLayout = MultiViewLayout.none,
+    this.multiViewCells1x2 = ',',
+    this.multiViewCells2x2 = ',,,',
   });
 
   List<MediaType> getMediaTypes() {

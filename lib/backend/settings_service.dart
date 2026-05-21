@@ -3,6 +3,7 @@ import 'dart:collection';
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/models/engine_type.dart';
+import 'package:open_tv/models/multi_view_layout.dart';
 import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/view_type.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -45,6 +46,11 @@ const epgForecastDaysProp = "epgForecastDays";
 // Stream scanner (v1.13.2)
 const streamScanMaxCountProp = "streamScanMaxCount";
 const streamScanTimeoutSecsProp = "streamScanTimeoutSecs";
+
+// Multi-view (v1.14)
+const multiViewLayoutProp = "multiViewLayout";
+const multiViewCells1x2Prop = "multiViewCells1x2";
+const multiViewCells2x2Prop = "multiViewCells2x2";
 
 class SettingsService {
   /// Module-level cache. Loaded on first call; updated in-place on writes.
@@ -98,6 +104,9 @@ class SettingsService {
     var startupGrace = settingsMap[startupGraceMsProp];
     var scanMaxCount = settingsMap[streamScanMaxCountProp];
     var scanTimeout = settingsMap[streamScanTimeoutSecsProp];
+    var mvLayout = settingsMap[multiViewLayoutProp];
+    var mvCells1x2 = settingsMap[multiViewCells1x2Prop];
+    var mvCells2x2 = settingsMap[multiViewCells2x2Prop];
 
     if (view != null) {
       settings.defaultView = ViewType.values[int.parse(view)];
@@ -138,6 +147,11 @@ class SettingsService {
     if (scanTimeout != null) {
       settings.streamScanTimeoutSecs = int.parse(scanTimeout);
     }
+    if (mvLayout != null) {
+      settings.multiViewLayout = MultiViewLayout.fromJson(mvLayout);
+    }
+    if (mvCells1x2 != null) settings.multiViewCells1x2 = mvCells1x2;
+    if (mvCells2x2 != null) settings.multiViewCells2x2 = mvCells2x2;
 
     return settings;
   }
@@ -178,6 +192,9 @@ class SettingsService {
         settings.streamScanMaxCount.toString();
     settingsMap[streamScanTimeoutSecsProp] =
         settings.streamScanTimeoutSecs.toString();
+    settingsMap[multiViewLayoutProp] = settings.multiViewLayout.toJson();
+    settingsMap[multiViewCells1x2Prop] = settings.multiViewCells1x2;
+    settingsMap[multiViewCells2x2Prop] = settings.multiViewCells2x2;
 
     await Sql.updateSettings(settingsMap);
     _cached = settings; // keep the in-memory copy in sync

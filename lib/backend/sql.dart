@@ -318,6 +318,17 @@ class Sql {
     return List.filled(size, "?").join(",");
   }
 
+  /// Returns the channel with [id], or null if not found.
+  static Future<Channel?> getChannelById(int id) async {
+    final db = await DbFactory.db;
+    final rows = await db.getAll(
+      'SELECT * FROM channels WHERE id = ? LIMIT 1',
+      [id],
+    );
+    if (rows.isEmpty) return null;
+    return rowToChannel(rows.first);
+  }
+
   static String getKeywordsSql(int size) {
     return List.generate(size, (_) => "name LIKE ?").join(" AND ");
   }

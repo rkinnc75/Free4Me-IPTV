@@ -6,6 +6,8 @@ import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/backend/stream_scanner.dart';
 import 'package:open_tv/backend/utils.dart';
+import 'package:open_tv/models/multi_view_layout.dart';
+import 'package:open_tv/multi_view_screen.dart';
 import 'package:open_tv/bottom_nav.dart';
 import 'package:open_tv/channel_tile.dart';
 import 'package:open_tv/loading.dart';
@@ -166,6 +168,23 @@ class _HomeState extends State<Home> {
     _debounce?.cancel();
     _scanProgress.dispose();
     super.dispose();
+  }
+
+  Future<void> _openMultiView(MultiViewLayout layout) async {
+    final settings =
+        SettingsService.cached ?? await SettingsService.getSettings();
+    final sourceIds = widget.home.filters.sourceIds;
+    if (!mounted || sourceIds == null || sourceIds.isEmpty) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => MultiViewScreen(
+          layout: layout,
+          settings: settings,
+          source: null,
+          sourceIds: sourceIds,
+        ),
+      ),
+    );
   }
 
   Future<void> _startScan() async {
@@ -406,6 +425,27 @@ class _HomeState extends State<Home> {
                                 ),
                               ),
                             ),
+                          // Multi-view button — only shown when a layout is
+                          // selected in Settings.
+                          Builder(builder: (context) {
+                            final mvLayout = (SettingsService.cached
+                                        ?.multiViewLayout ??
+                                    MultiViewLayout.none);
+                            if (mvLayout == MultiViewLayout.none) {
+                              return const SizedBox.shrink();
+                            }
+                            return Padding(
+                              padding: const EdgeInsets.only(left: 8),
+                              child: Tooltip(
+                                message: 'Multi-view',
+                                child: IconButton.filled(
+                                  icon: const Icon(Icons.grid_view),
+                                  onPressed: () =>
+                                      _openMultiView(mvLayout),
+                                ),
+                              ),
+                            );
+                          }),
                         ],
                       ),
                     ),

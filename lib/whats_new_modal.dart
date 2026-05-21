@@ -7,6 +7,20 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.14.0': [
+    'New: Multi-view — watch 1×2 (side-by-side) or 2×2 (quad grid) live '
+        'streams simultaneously. Enable in Settings → Multi-view layout, '
+        'then tap the grid icon in the channel list toolbar.',
+    'New: Each multi-view cell independently plays, mutes, and reconnects. '
+        'Tap a cell to give it audio focus. Double-tap to promote it to '
+        'full-screen. Tap + to assign a channel to an empty cell.',
+    'New: Cell assignments persist across exits — the last channels you '
+        'picked for each layout are restored on re-entry.',
+    'New: Multi-view cells use reduced buffers (32 MB each) and software '
+        'decoding to avoid hardware surface conflicts on Android TV.',
+    'New: Channel picker for multi-view is a lightweight search screen — '
+        'no modification to the main channel list.',
+  ],
   '1.13.4': [
     'Fix (fix16): PIP swap and maximize now clear any stale give-up cooldown '
         'for the channel being promoted. Previously, if a channel had hit '
