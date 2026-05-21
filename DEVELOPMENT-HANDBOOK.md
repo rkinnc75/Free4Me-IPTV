@@ -476,6 +476,86 @@ v1 is the foundation. If v1 regresses while adding v1.1+, **stop and fix the reg
 
 ---
 
+## v1.12 — Source quality-of-life + stream scanner
+
+> Shipped as v1.12.0+47 → v1.12.3+50
+
+- Auto-correct URL format on source entry (`_autoFixM3uUrl`)
+- Progress dialog during source processing (`StatefulBuilder` + `onProgress` callback)
+- Optional EPG URL field in source setup wizard (`Steps.epgUrl`)
+- Per-source enable/disable (Switch + Opacity in settings; all features respect selection)
+- Long-press history to remove entry (`Sql.deleteHistoryEntry`)
+- EPG matched-channel count shown after refresh (`XmltvProgress`)
+- `StreamScanner` service — HTTP probe + media-byte validation; green outline on valid tiles
+- Radar button in Home toolbar; configurable max count + timeout in Settings
+
+---
+
+## v1.13 — Cleanup + scanner reliability + PIP fixes
+
+> Shipped as v1.13.0+51 → v1.13.4+55
+
+### v1.13.0 — Codebase cleanup
+- Removed dead code (`clearSearch()`, `cols`, unused params), standardized `AppLog` throughout
+- Replaced all `debugPrint` with `AppLog.info/warn/error`
+- Fixed `BuildContext`-across-async-gaps lints, deprecated `Matrix4.scale()`, unused imports
+
+### v1.13.1 — Scanner + double-submit fixes
+- `_isFinishing` guard in `setup.dart` to prevent double-submit
+- Shared `pageSize` constant between `home.dart` and `sql.dart`
+- Replaced `SourceType.index == 0` magic number with `SourceType.xtream`
+
+### v1.13.2 — True stream validation
+- `StreamScanner` rewritten: reads first ~16 KB, validates MPEG-TS sync bytes, HLS `#EXTM3U`,
+  MP4 `ftyp` box, DASH `<MPD` — HTTP 200 alone no longer marks a stream green
+- Scanner progress dialog refactored to `ValueNotifier` + `ValueListenableBuilder` (live updates)
+- Scanner max-count (1–100) and timeout (3–30 s) configurable in Settings + persisted
+- Startup grace window (`startupGraceMs`) configurable in Settings
+
+### v1.13.3 — Settings persistence + log rotation
+- Confirmed all settings use `INSERT … ON CONFLICT DO UPDATE` — survive restarts and updates
+- `SettingsService.maybeRotateLogOnVersionChange()` — clears log file on first boot of new version
+
+### v1.13.4 — fix15 + fix16
+- **fix15:** HTML/JSON/plain-text content-type fast-fail in stream scanner
+- **fix15:** HLS detection via URL substring `m3u8` + Content-Type (not just `.m3u8` extension)
+- **fix16:** `Player.clearCooldown(int?)` static method; called in `_maximize()` and `_swap()`
+  so overlay-promoted channels never hit a stale give-up cooldown
+- **fix16:** Terminal buffering states ("please wait", "Unable to connect") show "Go back" button
+- **fix16:** ExoPlayer one-shot → libmpv fallback on Source error / VideoError
+- **fix16:** Engine subscriptions refactored into re-callable `_subscribeEngineStreams()`
+- `_recentGiveUps` / `_giveUpCooldown` moved to `Player` widget (public static scope)
+
+---
+
+## v1.14 — Multi-view
+
+> Shipped as v1.14.0+56
+
+- `MultiViewLayout` enum (`none / oneByTwo / twoByTwo`) with `cellCount` and persistence
+- Visual layout picker dialog (`MultiViewPickerDialog`) accessible from Settings
+- `MultiViewScreen` — 1×2 `Row` or 2×2 `GridView`; waits for cell channel restore before rendering
+- `MultiViewCell` — independent `MpvEngine` per cell, generation token prevents open-race,
+  retry button on error, tap=focus, double-tap=full-screen, + button to pick channel
+- `ChannelPickerScreen` — standalone lightweight channel search, returns `Channel` via `Navigator.pop`
+- Cell assignments persisted as comma-separated IDs (`multiViewCells1x2` / `multiViewCells2x2`)
+- `MpvEngine.previewMode` — 32 MB buffer, 16 MB demuxer, forced `hwdec=no`
+- `Sql.getChannelById(int id)` — single-channel lookup by primary key
+- Grid icon in Home toolbar (visible only when layout ≠ none)
+- Settings tile "Multi-view layout" with short label (Off / 1×2 / 2×2)
+
+### Remaining multi-view phases
+
+| Phase | Scope | Status |
+|---|---|---|
+| **P5** | System `AudioSession` — request/release OS audio focus on cell focus change | Pending |
+| **P6** | EPG "now playing" label per cell + long-press menu (replace / close / promote) | Pending |
+| **P7** | PIP/overlay coexistence — close or hide overlay on multi-view entry | Pending |
+
+See [AGENTS.md](AGENTS.md) for full implementation notes on P5–P7.
+
+---
+
 ## Credits
 
 Fork of **[Fredolx/fred-tv-mobile](https://github.com/Fredolx/fred-tv-mobile)**. All upstream donation links, issue trackers, and copyright notices preserved in source.
