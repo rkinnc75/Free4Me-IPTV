@@ -1,7 +1,7 @@
 {
-  "latest": "1.14.0",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.14.0",
+  "latest": "1.14.1",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.14.1",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 New: Multi-view \u2014 watch 1\u00d72 (side-by-side) or 2\u00d72 (quad grid) live streams simultaneously. Enable in Settings \u2192 Multi-view layout, then tap the grid icon in the channel list toolbar.\n\u2022 New: Each multi-view cell independently plays, mutes, and reconnects. Tap a cell to give it audio focus. Double-tap to promote it to full-screen. Tap + to assign a channel to an empty cell.\n\u2022 New: Cell assignments persist across exits \u2014 the last channels you picked for each layout are restored on re-entry.\n\u2022 New: Multi-view cells use reduced buffers (32 MB each) and software decoding to avoid hardware surface conflicts on Android TV.\n\u2022 New: Channel picker for multi-view is a lightweight search screen \u2014 no modification to the main channel list."
+  "releaseNotes": "\u2022 Fix: 1\u00d72 multi-view cells now show video correctly. Previously the Row layout gave cells no width, so mpv had no surface to render on \u2014 audio played but the screen was black.\n\u2022 Fix: Long-press any playing multi-view cell to get a menu: \"Replace channel\", \"Full screen\", or \"Close cell\". Tap \"More\" on an errored cell for the same options. This unblocks a stuck cell without having to exit the screen.\n\u2022 Fix: Mini-player and picture-in-picture buttons are now hidden while multi-view is enabled. The floating overlay is stopped automatically when you enter the multi-view screen."
 }

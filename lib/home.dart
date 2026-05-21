@@ -8,6 +8,7 @@ import 'package:open_tv/backend/stream_scanner.dart';
 import 'package:open_tv/backend/utils.dart';
 import 'package:open_tv/models/multi_view_layout.dart';
 import 'package:open_tv/multi_view_screen.dart';
+import 'package:open_tv/player/overlay_player_controller.dart';
 import 'package:open_tv/bottom_nav.dart';
 import 'package:open_tv/channel_tile.dart';
 import 'package:open_tv/loading.dart';
@@ -175,6 +176,10 @@ class _HomeState extends State<Home> {
         SettingsService.cached ?? await SettingsService.getSettings();
     final sourceIds = widget.home.filters.sourceIds;
     if (!mounted || sourceIds == null || sourceIds.isEmpty) return;
+    // Close any active mini-player before entering multi-view — the overlay
+    // widget renders above all routes and would float on top of the grid.
+    await OverlayPlayerController.instance.stopOverlay();
+    if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => MultiViewScreen(

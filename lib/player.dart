@@ -13,6 +13,7 @@ import 'package:open_tv/models/channel_http_headers.dart';
 import 'package:open_tv/models/engine_type.dart';
 import 'package:open_tv/models/id_data.dart';
 import 'package:open_tv/models/media_type.dart';
+import 'package:open_tv/models/multi_view_layout.dart';
 import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/source.dart';
 import 'package:open_tv/player/cast_controller.dart';
@@ -849,7 +850,9 @@ class _PlayerState extends State<Player> {
                       icon: Icon(_castIcon, color: Colors.white, size: 28),
                       tooltip: _isCasting ? 'Stop casting' : 'Cast to TV',
                     ),
-                  if (_pipSupported)
+                  if (_pipSupported &&
+                      widget.settings.multiViewLayout ==
+                          MultiViewLayout.none)
                     IconButton(
                       onPressed: () => PipController.enterPip(),
                       icon: const Icon(
@@ -862,8 +865,11 @@ class _PlayerState extends State<Player> {
                 ],
               ),
             ),
-            // Bottom bar — mini-player button anchored to bottom-right
-            if (widget.channel.mediaType == MediaType.livestream)
+            // Bottom bar — mini-player button (hidden when multi-view is
+            // active; the overlay would float on top of the grid and serve
+            // no useful purpose).
+            if (widget.channel.mediaType == MediaType.livestream &&
+                widget.settings.multiViewLayout == MultiViewLayout.none)
               Align(
                 alignment: Alignment.bottomRight,
                 child: Padding(
@@ -969,7 +975,8 @@ class _PlayerState extends State<Player> {
             icon: Icon(_castIcon, color: Colors.white, size: 28),
             tooltip: _isCasting ? 'Stop casting' : 'Cast to TV',
           ),
-        if (_pipSupported)
+        if (_pipSupported &&
+            widget.settings.multiViewLayout == MultiViewLayout.none)
           IconButton(
             onPressed: () => PipController.enterPip(),
             icon: const Icon(
@@ -1003,8 +1010,9 @@ class _PlayerState extends State<Player> {
           ),
           onPressed: toggleZoom,
         ),
-        // Mini-player button — bottom-right, separated from system PiP (top-right)
-        if (widget.channel.mediaType == MediaType.livestream) ...[
+        // Mini-player button — hidden when multi-view is active.
+        if (widget.channel.mediaType == MediaType.livestream &&
+            widget.settings.multiViewLayout == MultiViewLayout.none) ...[
           const Spacer(),
           IconButton(
             onPressed: _minimizeToOverlay,

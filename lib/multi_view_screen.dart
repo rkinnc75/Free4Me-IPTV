@@ -120,9 +120,13 @@ class _MultiViewScreenState extends State<MultiViewScreen> {
       body: !_restored
           ? const Center(child: CircularProgressIndicator())
           : widget.layout == MultiViewLayout.oneByTwo
-              ? Row(
-                  children: _buildCells(),
-                )
+              // Row requires Expanded children so each cell has a bounded
+              // width — without it Stack(fit:expand) collapses to zero and
+              // mpv has no surface (audio-only).
+              ? Row(children: _buildRowCells())
+              // GridView.count already provides bounded constraints to each
+              // child via crossAxisCount + childAspectRatio. Expanded here
+              // would throw "Incorrect use of ParentDataWidget".
               : GridView.count(
                   crossAxisCount: 2,
                   childAspectRatio: 16 / 9,
@@ -130,14 +134,12 @@ class _MultiViewScreenState extends State<MultiViewScreen> {
                   crossAxisSpacing: 2,
                   padding: EdgeInsets.zero,
                   physics: const NeverScrollableScrollPhysics(),
-                  children: _buildCells(),
+                  children: _buildGridCells(),
                 ),
     );
   }
 
-  List<Widget> _buildCells() {
-    return List.generate(_cellCount, (i) {
-      return MultiViewCell(
+  Widget _buildCell(int i) => MultiViewCell(
         key: ValueKey('cell_$i'),
         channel: _channels[i],
         settings: widget.settings,
@@ -146,7 +148,19 @@ class _MultiViewScreenState extends State<MultiViewScreen> {
         isFocused: _focusedCell == i,
         onFocusTap: () => _setFocus(i),
         onChannelPicked: (ch) => _setChannel(i, ch),
+        onCloseCell: () => _closeCell(i),
       );
-    });
+
+  /// 1×2: cells go into a Row — each must be Expanded to get a bounded width.
+  List<Widget> _buildRowCells() =>
+      List.generate(_cellCount, (i) => Expanded(child: _buildCell(i)));
+
+  /// 2×2: cells go into a GridView — the grid provides constraints directly.
+  List<Widget> _buildGridCells() =>
+      List.generate(_cellCount, _buildCell);
+
+  void _closeCell(int index) {
+    setState(() => _channels[index] = null);
+    _persistChannels();
   }
 }

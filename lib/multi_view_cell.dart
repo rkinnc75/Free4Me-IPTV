@@ -29,6 +29,7 @@ class MultiViewCell extends StatefulWidget {
     required this.isFocused,
     required this.onFocusTap,
     required this.onChannelPicked,
+    required this.onCloseCell,
   });
 
   final Channel? channel;
@@ -41,6 +42,8 @@ class MultiViewCell extends StatefulWidget {
   final bool isFocused;
   final VoidCallback onFocusTap;
   final ValueChanged<Channel> onChannelPicked;
+  /// Called when the user chooses "Close cell" from the long-press menu.
+  final VoidCallback onCloseCell;
 
   @override
   State<MultiViewCell> createState() => _MultiViewCellState();
@@ -177,32 +180,45 @@ class _MultiViewCellState extends State<MultiViewCell> {
   }
 
   Widget _buildErrorCell() {
-    return Container(
-      color: const Color(0xFF111111),
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.broken_image_outlined,
-                color: Colors.red, size: 32),
-            const SizedBox(height: 8),
-            const Text(
-              'Stream unavailable',
-              style: TextStyle(color: Colors.white54, fontSize: 12),
-            ),
-            const SizedBox(height: 8),
-            TextButton.icon(
-              onPressed: () {
-                final ch = widget.channel;
-                if (ch != null) {
-                  _disposeEngine();
-                  _startEngine(ch);
-                }
-              },
-              icon: const Icon(Icons.refresh, size: 16),
-              label: const Text('Retry'),
-            ),
-          ],
+    return GestureDetector(
+      onLongPress: _showCellMenu,
+      child: Container(
+        color: const Color(0xFF111111),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.broken_image_outlined,
+                  color: Colors.red, size: 32),
+              const SizedBox(height: 8),
+              const Text(
+                'Stream unavailable',
+                style: TextStyle(color: Colors.white54, fontSize: 12),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextButton.icon(
+                    onPressed: () {
+                      final ch = widget.channel;
+                      if (ch != null) {
+                        _disposeEngine();
+                        _startEngine(ch);
+                      }
+                    },
+                    icon: const Icon(Icons.refresh, size: 16),
+                    label: const Text('Retry'),
+                  ),
+                  TextButton.icon(
+                    onPressed: _showCellMenu,
+                    icon: const Icon(Icons.more_vert, size: 16),
+                    label: const Text('More'),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -221,10 +237,49 @@ class _MultiViewCellState extends State<MultiViewCell> {
     );
   }
 
+  void _showCellMenu() {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.swap_horiz),
+              title: const Text('Replace channel'),
+              onTap: () {
+                Navigator.of(context).pop();
+                _pickChannel();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.open_in_full),
+              title: const Text('Full screen'),
+              onTap: () {
+                Navigator.of(context).pop();
+                _promoteToFullScreen();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.close, color: Colors.redAccent),
+              title: const Text('Close cell',
+                  style: TextStyle(color: Colors.redAccent)),
+              onTap: () {
+                Navigator.of(context).pop();
+                widget.onCloseCell();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildVideoCell() {
     return GestureDetector(
       onTap: widget.onFocusTap,
       onDoubleTap: _promoteToFullScreen,
+      onLongPress: _showCellMenu,
       child: Stack(
         fit: StackFit.expand,
         children: [

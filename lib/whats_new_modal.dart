@@ -7,6 +7,18 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.14.1': [
+    'Fix: 1×2 multi-view cells now show video correctly. Previously the '
+        'Row layout gave cells no width, so mpv had no surface to render '
+        'on — audio played but the screen was black.',
+    'Fix: Long-press any playing multi-view cell to get a menu: '
+        '"Replace channel", "Full screen", or "Close cell". Tap "More" '
+        'on an errored cell for the same options. This unblocks a stuck '
+        'cell without having to exit the screen.',
+    'Fix: Mini-player and picture-in-picture buttons are now hidden '
+        'while multi-view is enabled. The floating overlay is stopped '
+        'automatically when you enter the multi-view screen.',
+  ],
   '1.14.0': [
     'New: Multi-view — watch 1×2 (side-by-side) or 2×2 (quad grid) live '
         'streams simultaneously. Enable in Settings → Multi-view layout, '
