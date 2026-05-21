@@ -49,9 +49,8 @@ class _HomeState extends State<Home> {
   // Stream scanner state
   bool _isScanning = false;
   bool _scanCancelled = false;
-  int _scanDone = 0;
-  int _scanTotal = 0;
-  void Function(void Function())? _scanDialogSetState;
+  final ValueNotifier<({int done, int total})> _scanProgress =
+      ValueNotifier(const (done: 0, total: 0));
 
   @override
   void initState() {
@@ -157,78 +156,84 @@ class _HomeState extends State<Home> {
     _scrollController.dispose();
     searchController.dispose();
     _debounce?.cancel();
+    _scanProgress.dispose();
     super.dispose();
   }
 
   Future<void> _startScan() async {
     if (_isScanning || channels.isEmpty) return;
 
+    final settings =
+        SettingsService.cached ?? await SettingsService.getSettings();
+    if (!mounted) return;
+
+    final maxCount = settings.streamScanMaxCount.clamp(1, 100);
+    final timeout = Duration(
+      seconds: settings.streamScanTimeoutSecs.clamp(3, 60),
+    );
+    final initialTotal = channels.length.clamp(1, maxCount);
+
     // Clear prior results so the new scan is authoritative.
     StreamScanner.clearResults();
     _scanCancelled = false;
-    setState(() {
-      _isScanning = true;
-      _scanDone = 0;
-      _scanTotal = channels.length.clamp(1, 20);
-    });
+    _scanProgress.value = (done: 0, total: initialTotal);
+    setState(() => _isScanning = true);
 
-    // Show progress dialog with a cancel button.
-    if (!mounted) return;
+    // Show progress dialog with a cancel button. Uses a ValueListenableBuilder
+    // so progress updates regardless of whether the parent state rebuilds.
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => StatefulBuilder(
-        builder: (ctx, setSt) {
-          _scanDialogSetState = setSt;
-          return AlertDialog(
-            title: const Row(
-              children: [
-                Icon(Icons.radar),
-                SizedBox(width: 8),
-                Text('Scanning streams…'),
-              ],
-            ),
-            content: Column(
+      builder: (dCtx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.radar),
+            SizedBox(width: 8),
+            Text('Scanning streams…'),
+          ],
+        ),
+        content: ValueListenableBuilder<({int done, int total})>(
+          valueListenable: _scanProgress,
+          builder: (_, progress, _) {
+            final pct = progress.total > 0
+                ? progress.done / progress.total
+                : null;
+            return Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                LinearProgressIndicator(
-                  value: _scanTotal > 0 ? _scanDone / _scanTotal : null,
-                ),
+                LinearProgressIndicator(value: pct),
                 const SizedBox(height: 12),
-                Text('$_scanDone / $_scanTotal streams tested'),
+                Text('${progress.done} / ${progress.total} streams tested'),
               ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  _scanCancelled = true;
-                  Navigator.of(ctx).pop();
-                },
-                child: const Text('Cancel'),
-              ),
-            ],
-          );
-        },
+            );
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              _scanCancelled = true;
+              Navigator.of(dCtx).pop();
+            },
+            child: const Text('Cancel'),
+          ),
+        ],
       ),
-    ).then((_) => _scanDialogSetState = null);
+    );
 
     await StreamScanner.scan(
       channels: channels,
-      maxChannels: 20,
+      maxChannels: maxCount,
+      timeout: timeout,
       isCancelled: () => _scanCancelled,
       onProgress: (done, total) {
-        if (!mounted) return;
-        _scanDone = done;
-        _scanTotal = total;
-        // Rebuild the dialog so the progress bar/text updates. Falling back
-        // to setState ensures the green outlines on tiles refresh as well.
-        _scanDialogSetState?.call(() {});
-        setState(() {});
+        _scanProgress.value = (done: done, total: total);
+        // Trigger a parent rebuild so green outlines on tiles refresh as
+        // each result lands.
+        if (mounted) setState(() {});
       },
     );
 
     if (mounted) {
-      // Close the progress dialog if still open.
       if (!_scanCancelled) Navigator.of(context, rootNavigator: true).pop();
       setState(() => _isScanning = false);
     }

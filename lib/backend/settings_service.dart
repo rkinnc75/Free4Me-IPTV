@@ -40,6 +40,10 @@ const epgRefreshHourProp = "epgRefreshHour";
 const epgPastDaysProp = "epgPastDays";
 const epgForecastDaysProp = "epgForecastDays";
 
+// Stream scanner (v1.13.2)
+const streamScanMaxCountProp = "streamScanMaxCount";
+const streamScanTimeoutSecsProp = "streamScanTimeoutSecs";
+
 class SettingsService {
   /// Module-level cache. Loaded on first call; updated in-place on writes.
   /// Avoids repeated SQLite hits on every channel tap.
@@ -90,6 +94,8 @@ class SettingsService {
     var forcedEngine = settingsMap[forcedEngineProp];
     var stableThreshold = settingsMap[stableThresholdSecsProp];
     var startupGrace = settingsMap[startupGraceMsProp];
+    var scanMaxCount = settingsMap[streamScanMaxCountProp];
+    var scanTimeout = settingsMap[streamScanTimeoutSecsProp];
 
     if (view != null) {
       settings.defaultView = ViewType.values[int.parse(view)];
@@ -123,6 +129,12 @@ class SettingsService {
     }
     if (startupGrace != null) {
       settings.startupGraceMs = int.parse(startupGrace);
+    }
+    if (scanMaxCount != null) {
+      settings.streamScanMaxCount = int.parse(scanMaxCount);
+    }
+    if (scanTimeout != null) {
+      settings.streamScanTimeoutSecs = int.parse(scanTimeout);
     }
 
     return settings;
@@ -160,6 +172,10 @@ class SettingsService {
     settingsMap[stableThresholdSecsProp] =
         settings.stableThresholdSecs.toString();
     settingsMap[startupGraceMsProp] = settings.startupGraceMs.toString();
+    settingsMap[streamScanMaxCountProp] =
+        settings.streamScanMaxCount.toString();
+    settingsMap[streamScanTimeoutSecsProp] =
+        settings.streamScanTimeoutSecs.toString();
 
     await Sql.updateSettings(settingsMap);
     _cached = settings; // keep the in-memory copy in sync

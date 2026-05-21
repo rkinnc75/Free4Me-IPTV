@@ -61,6 +61,15 @@ class Settings {
   int epgPastDays;
   int epgForecastDays;
 
+  // --- Stream scanner (v1.13.2) ---
+  /// Maximum number of streams the radar scanner probes per run.
+  /// Default 20, range 1–100. Higher counts take longer.
+  int streamScanMaxCount;
+
+  /// Per-stream timeout (seconds) for the scanner to validate that a URL
+  /// is actually serving live media bytes. Default 8, range 3–30.
+  int streamScanTimeoutSecs;
+
   Settings({
     this.defaultView = ViewType.all,
     this.refreshOnStart = false,
@@ -86,6 +95,8 @@ class Settings {
     this.epgRefreshHour = 3,
     this.epgPastDays = 1,
     this.epgForecastDays = 7,
+    this.streamScanMaxCount = 20,
+    this.streamScanTimeoutSecs = 8,
   });
 
   List<MediaType> getMediaTypes() {

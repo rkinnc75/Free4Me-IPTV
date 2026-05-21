@@ -1028,6 +1028,53 @@ class _SettingsState extends State<SettingsView> {
                     },
                   ),
 
+                  // ── Stream scanner (radar) ────────────────────────────────
+                  _sectionHeader("Stream Scanner"),
+                  _bufferSlider(
+                    label: "Streams per scan",
+                    value: settings.streamScanMaxCount.toDouble(),
+                    min: 1,
+                    max: 100,
+                    divisions: 99,
+                    help: (
+                      title: 'Streams Per Scan',
+                      body:
+                          'Maximum number of visible channels the radar '
+                          'button probes per run. Each probe takes up to the '
+                          'scan timeout, so a count of 100 with an 8-second '
+                          'timeout can take ~13 minutes worst case. Default: '
+                          '20. Range: 1–100.',
+                    ),
+                    onChanged: (v) {
+                      setState(
+                        () => settings.streamScanMaxCount = v.round(),
+                      );
+                      updateSettings();
+                    },
+                  ),
+                  _bufferSlider(
+                    label: "Scan timeout (sec)",
+                    value: settings.streamScanTimeoutSecs.toDouble(),
+                    min: 3,
+                    max: 30,
+                    divisions: 27,
+                    help: (
+                      title: 'Scan Timeout (seconds)',
+                      body:
+                          'How long the scanner waits per stream to receive '
+                          'and validate the first ~16 KB of media bytes '
+                          '(MPEG-TS sync, HLS playlist, MP4 box). Lower = '
+                          'faster scans, more false negatives on slow CDNs. '
+                          'Default: 8 s. Range: 3–30 s.',
+                    ),
+                    onChanged: (v) {
+                      setState(
+                        () => settings.streamScanTimeoutSecs = v.round(),
+                      );
+                      updateSettings();
+                    },
+                  ),
+
                   // ── Hardware decode / pre-warm / engine ───────────────────
                   _switchTile(
                     label: "Hardware decoding",

@@ -7,6 +7,26 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.13.2': [
+    'Feature: Stream scanner now performs true media validation. Each '
+        'probe streams the first ~16 KB of bytes and verifies them against '
+        'real format signatures: MPEG-TS sync byte 0x47 every 188 bytes '
+        '(most IPTV livestreams), HLS playlists starting with #EXTM3U, '
+        'DASH manifests, and MP4/fMP4 ftyp/styp/moof box headers. Captive '
+        'portal pages, CDN error HTML, and auth redirects that returned '
+        'HTTP 200 OK are now correctly flagged as failed even though the '
+        'status code looked fine.',
+    'Feature: Two new sliders in Settings → Stream Scanner: '
+        '"Streams per scan" (1–100, default 20) and "Scan timeout" '
+        '(3–30 s, default 8 s). Tune these for your network and how '
+        'thoroughly you want to validate.',
+    'Fix: Scan progress dialog now updates reliably after every probe. '
+        'Replaced the captured StatefulBuilder.setState with a '
+        'ValueNotifier + ValueListenableBuilder so the dialog rebuilds on '
+        'its own progress events regardless of parent state timing.',
+    'Internal: scanner now sends a player-style User-Agent (Lavf/61.7.100) '
+        'so origins that gate on UA do not 403 the probe.',
+  ],
   '1.13.1': [
     'Fix: Stream scanner progress dialog now updates live. The radar scan '
         'previously showed "0 / N streams tested" until completion because '
