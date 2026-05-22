@@ -246,28 +246,34 @@ class _PlayerState extends State<Player> {
     _engineSubs.clear();
 
     _engineSubs.add(_engine.completedStream.listen((completed) {
-      if (completed && !_startupGrace) onDisconnect(reason: 'stream completed');
+      if (!completed || _startupGrace) return;
+      final delayMs = widget.settings.streamCompletedDelayMs;
+      if (delayMs > 0) {
+        Future.delayed(Duration(milliseconds: delayMs), () {
+          if (mounted && !exiting && !_isReconnecting) {
+            onDisconnect(reason: 'stream completed');
+          }
+        });
+      } else {
+        onDisconnect(reason: 'stream completed');
+      }
     }));
     _engineSubs.add(_engine.errorStream.listen((err) {
       AppLog.warn('Player: engine error — $err');
 
-      // Suppress the mpv seekability probe error during startup grace.
+      // Suppress the mpv seekability probe error unconditionally.
       // mpv probes seekability on every open() and MPEG-TS livestreams
-      // reject it with "Cannot seek in this stream." — the stream plays
-      // fine after this; only the reconnect it triggers is harmful.
-      // fix9 (force-seekable=no in _applyMpvOptions) and fix11A (extras)
-      // attempt to prevent the probe entirely; this guard is a zero-cost
-      // safety net in case any edge case lets the probe through.
+      // always reject it with "Cannot seek in this stream." — the stream
+      // plays fine regardless. This error is purely informational and
+      // should never trigger a reconnect at any point during playback.
       // mpv emits two messages on every seek rejection:
       //   1. "Cannot seek in this stream."
       //   2. "You can force it with '--force-seekable=yes'."
-      // Both arrive on errorStream. Only suppressing the first lets the
-      // second slip through to onDisconnect() and cause a reconnect.
-      if (_startupGrace &&
-          (err.contains('Cannot seek in this stream') ||
-              err.contains('force-seekable=yes'))) {
+      // Both arrive on errorStream — suppress both unconditionally.
+      if (err.contains('Cannot seek in this stream') ||
+          err.contains('force-seekable=yes')) {
         AppLog.info(
-          'Player: suppressed seek probe error during startup'
+          'Player: suppressed seek probe error'
           ' channel="${widget.channel.name}"',
         );
         return;
@@ -370,6 +376,9 @@ class _PlayerState extends State<Player> {
     if (!mounted || exiting || _isReconnecting) return;
     if (widget.channel.mediaType != MediaType.livestream) return;
 
+    // Set synchronously before any await so that a second onDisconnect call
+    // arriving in the same event-loop tick is rejected by the guard above.
+    _isReconnecting = true;
     _totalReconnectAttempts++;
     AppLog.warn(
       'Player: onDisconnect — attempt $_totalReconnectAttempts/$_maxReconnectAttempts'
@@ -403,7 +412,6 @@ class _PlayerState extends State<Player> {
       return;
     }
 
-    _isReconnecting = true;
     AppLog.info('Player: reconnect — $reason');
     if (mounted) setState(() => _bufferingState = 'Reconnecting...');
     await Future.delayed(const Duration(seconds: 1));

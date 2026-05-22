@@ -7,6 +7,29 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.15.0': [
+    'Fix: "Cannot seek in this stream" error now suppressed unconditionally '
+        '(not just during startup grace). Eliminates false reconnects on every '
+        'channel open for MPEG-TS livestreams.',
+    'Fix: Concurrent reconnect race condition — _isReconnecting flag is now '
+        'set synchronously before any await, so two simultaneous onDisconnect '
+        'calls can no longer both slip through the guard.',
+    'New: Stream-Ended Reconnect Delay (Settings → Buffering). Waits '
+        'up to 10 s before reconnecting when the stream signals it has ended — '
+        'gives IPTV providers time to re-establish TCP before triggering a '
+        'full reconnect. Default: 2 000 ms.',
+    'New: Mini-Player Demuxer Cache slider (Settings → Buffering). '
+        'Independently tune the forward buffer for the overlay / mini-player '
+        'stream. Default is auto-detected from device RAM.',
+    'New: Player Buffer Size slider (Settings → Buffering). Controls the '
+        'libmpv read-ahead buffer per player instance. Mini-player uses half '
+        'automatically. Default is auto-detected from device RAM.',
+    'New: DeviceMemory — reads /proc/meminfo on Android to detect total '
+        'RAM and set smart buffer defaults on first run. All buffer slider '
+        'maximums are now capped at 75 % of device RAM.',
+    'Updated: All settings help messages rewritten with ↑/↓ guidance, '
+        'real defaults, and device-specific context for Onn 4K / Shield.',
+  ],
   '1.14.2': [
     'Fix: Multi-view 1×2 and 2×2 now fill the screen correctly in both '
         'portrait and landscape. 1×2 switches between side-by-side (landscape) '

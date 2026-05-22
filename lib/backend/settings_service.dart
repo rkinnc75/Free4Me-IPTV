@@ -1,6 +1,7 @@
 import 'dart:collection';
 
 import 'package:open_tv/backend/app_logger.dart';
+import 'package:open_tv/backend/device_memory.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/models/engine_type.dart';
 import 'package:open_tv/models/multi_view_layout.dart';
@@ -51,6 +52,11 @@ const streamScanTimeoutSecsProp = "streamScanTimeoutSecs";
 const multiViewLayoutProp = "multiViewLayout";
 const multiViewCells1x2Prop = "multiViewCells1x2";
 const multiViewCells2x2Prop = "multiViewCells2x2";
+
+// Playback reliability (v1.15)
+const miniDemuxerMaxMBProp = "miniDemuxerMaxMB";
+const bufferSizeMBProp = "bufferSizeMB";
+const streamCompletedDelayMsProp = "streamCompletedDelayMs";
 
 class SettingsService {
   /// Module-level cache. Loaded on first call; updated in-place on writes.
@@ -107,6 +113,9 @@ class SettingsService {
     var mvLayout = settingsMap[multiViewLayoutProp];
     var mvCells1x2 = settingsMap[multiViewCells1x2Prop];
     var mvCells2x2 = settingsMap[multiViewCells2x2Prop];
+    var miniDemuxer = settingsMap[miniDemuxerMaxMBProp];
+    var bufferSize = settingsMap[bufferSizeMBProp];
+    var streamCompletedDelay = settingsMap[streamCompletedDelayMsProp];
 
     if (view != null) {
       settings.defaultView = ViewType.values[int.parse(view)];
@@ -153,6 +162,21 @@ class SettingsService {
     if (mvCells1x2 != null) settings.multiViewCells1x2 = mvCells1x2;
     if (mvCells2x2 != null) settings.multiViewCells2x2 = mvCells2x2;
 
+    // Playback reliability — fall back to RAM-aware defaults on first run.
+    if (miniDemuxer != null) {
+      settings.miniDemuxerMaxMB = int.parse(miniDemuxer);
+    } else {
+      settings.miniDemuxerMaxMB = DeviceMemory.defaultMiniDemuxerMb;
+    }
+    if (bufferSize != null) {
+      settings.bufferSizeMB = int.parse(bufferSize);
+    } else {
+      settings.bufferSizeMB = DeviceMemory.defaultBufferSizeMb;
+    }
+    if (streamCompletedDelay != null) {
+      settings.streamCompletedDelayMs = int.parse(streamCompletedDelay);
+    }
+
     return settings;
   }
 
@@ -195,6 +219,10 @@ class SettingsService {
     settingsMap[multiViewLayoutProp] = settings.multiViewLayout.toJson();
     settingsMap[multiViewCells1x2Prop] = settings.multiViewCells1x2;
     settingsMap[multiViewCells2x2Prop] = settings.multiViewCells2x2;
+    settingsMap[miniDemuxerMaxMBProp] = settings.miniDemuxerMaxMB.toString();
+    settingsMap[bufferSizeMBProp] = settings.bufferSizeMB.toString();
+    settingsMap[streamCompletedDelayMsProp] =
+        settings.streamCompletedDelayMs.toString();
 
     await Sql.updateSettings(settingsMap);
     _cached = settings; // keep the in-memory copy in sync

@@ -71,6 +71,23 @@ class Settings {
   /// is actually serving live media bytes. Default 8, range 3–30.
   int streamScanTimeoutSecs;
 
+  // --- Playback reliability (v1.15) ---
+  /// libmpv forward demuxer cache (MB) for the mini-player / overlay stream.
+  /// Independently tunable from liveDemuxerMaxMB.
+  /// Default is set from DeviceMemory.defaultMiniDemuxerMb at first run.
+  int miniDemuxerMaxMB;
+
+  /// libmpv bufferSize (MB) per player instance.
+  /// Mini-player automatically uses half this value.
+  /// Default is set from DeviceMemory.defaultBufferSizeMb at first run.
+  /// Requires app restart to take effect (bufferSize is set at construction).
+  int bufferSizeMB;
+
+  /// Milliseconds to wait before reconnecting after a "stream completed"
+  /// event. Gives the provider time to re-establish the TCP connection.
+  /// 0 = reconnect immediately. Default: 2000ms. Range: 0–10000ms.
+  int streamCompletedDelayMs;
+
   // --- Multi-view (v1.14) ---
   /// Which multi-view grid layout is active (or none).
   MultiViewLayout multiViewLayout;
@@ -109,6 +126,9 @@ class Settings {
     this.epgForecastDays = 7,
     this.streamScanMaxCount = 20,
     this.streamScanTimeoutSecs = 8,
+    this.miniDemuxerMaxMB = 32,
+    this.bufferSizeMB = 128,
+    this.streamCompletedDelayMs = 2000,
     this.multiViewLayout = MultiViewLayout.none,
     this.multiViewCells1x2 = ',',
     this.multiViewCells2x2 = ',,,',

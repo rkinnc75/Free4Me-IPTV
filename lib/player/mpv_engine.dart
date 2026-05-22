@@ -29,7 +29,10 @@ class MpvEngine implements PlayerEngine {
 
   late final mk.Player _player = mk.Player(
     configuration: mk.PlayerConfiguration(
-      bufferSize: previewMode ? 32 * 1024 * 1024 : 256 * 1024 * 1024,
+      // bufferSizeMB from settings; mini-player (previewMode) uses half.
+      bufferSize: previewMode
+          ? (settings.bufferSizeMB ~/ 2) * 1024 * 1024
+          : settings.bufferSizeMB * 1024 * 1024,
       logLevel: mk.MPVLogLevel.warn,
     ),
   );
@@ -261,13 +264,13 @@ class MpvEngine implements PlayerEngine {
         await np.setProperty('demuxer-max-back-bytes', '0');
       } else {
         await np.setProperty('cache-secs', s.liveCacheSecs.toString());
-        final liveMB = previewMode ? 16 : s.liveDemuxerMaxMB;
+        final liveMB = previewMode ? s.miniDemuxerMaxMB : s.liveDemuxerMaxMB;
         await np.setProperty('demuxer-max-bytes', '${liveMB}MiB');
         await np.setProperty('demuxer-max-back-bytes', '0');
       }
     } else {
       await np.setProperty('cache-secs', s.vodCacheSecs.toString());
-      final vodMB = previewMode ? 32 : s.vodDemuxerMaxMB;
+      final vodMB = previewMode ? s.miniDemuxerMaxMB * 2 : s.vodDemuxerMaxMB;
       await np.setProperty('demuxer-max-bytes', '${vodMB}MiB');
       await np.setProperty('demuxer-max-back-bytes', '64MiB');
     }

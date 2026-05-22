@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:open_tv/backend/app_logger.dart';
+import 'package:open_tv/backend/device_memory.dart';
 import 'package:open_tv/backend/epg_service.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
@@ -27,6 +28,10 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
   await Workmanager().initialize(callbackDispatcher);
+  // DeviceMemory must run before SettingsService.getSettings() so that
+  // first-run defaults (based on detected RAM) are available when settings
+  // are read and written for the first time.
+  await DeviceMemory.init();
   // Parallelize all cold-start awaits — settings loaded once and cached.
   final results = await Future.wait([
     Sql.hasSources(),
