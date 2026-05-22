@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/http_client.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
@@ -98,6 +99,7 @@ class _ChannelTileState extends State<ChannelTile> {
     final existing = _prewarmCache[id];
     if (existing != null && existing.expiresAt.isAfter(DateTime.now())) return;
 
+    AppLog.info('ChannelTile: prewarming channel="${widget.channel.name}"');
     // Fire-and-forget; failure is silent
     AppHttp.resolveRedirects(url).then((resolved) {
       if (resolved != null) {
@@ -207,6 +209,10 @@ class _ChannelTileState extends State<ChannelTile> {
   }
 
   Future<void> play() async {
+    AppLog.info(
+      'ChannelTile: play channel="${widget.channel.name}"'
+      ' prewarmed=${widget.channel.id != null && ChannelTile.prewarmedUrl(widget.channel.id!) != null}',
+    );
     if (widget.channel.mediaType == MediaType.group ||
         widget.channel.mediaType == MediaType.serie) {
       if (widget.channel.mediaType == MediaType.serie &&

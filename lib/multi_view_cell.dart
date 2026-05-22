@@ -24,6 +24,7 @@ import 'package:open_tv/widgets/now_next_strip.dart';
 class MultiViewCell extends StatefulWidget {
   const MultiViewCell({
     super.key,
+    required this.cellIndex,
     required this.channel,
     required this.settings,
     required this.source,
@@ -34,6 +35,8 @@ class MultiViewCell extends StatefulWidget {
     required this.onCloseCell,
   });
 
+  /// Zero-based index of this cell in the grid — used in log messages.
+  final int cellIndex;
   final Channel? channel;
   final Settings settings;
   final Source? source;
@@ -74,6 +77,11 @@ class _MultiViewCellState extends State<MultiViewCell> {
       _startEngine(widget.channel!);
     }
     if (widget.isFocused != old.isFocused) {
+      AppLog.info(
+        'MultiViewCell: focus → ${widget.isFocused ? "FOCUSED" : "muted"}'
+        ' cell=${widget.cellIndex}'
+        ' channel="${widget.channel?.name ?? 'empty'}"',
+      );
       _engine?.setVolume(widget.isFocused ? 1.0 : 0.0);
     }
   }
@@ -85,6 +93,11 @@ class _MultiViewCellState extends State<MultiViewCell> {
   }
 
   void _disposeEngine() {
+    AppLog.info(
+      'MultiViewCell: disposing engine'
+      ' cell=${widget.cellIndex}'
+      ' channel="${widget.channel?.name ?? 'empty'}"',
+    );
     _openGeneration++;
     final e = _engine;
     _engine = null;
@@ -96,6 +109,14 @@ class _MultiViewCellState extends State<MultiViewCell> {
 
   Future<void> _startEngine(Channel ch) async {
     final generation = ++_openGeneration;
+    AppLog.info(
+      'MultiViewCell: starting engine'
+      ' cell=${widget.cellIndex}'
+      ' channel="${ch.name}"'
+      ' url="${ch.url}"'
+      ' previewMode=true'
+      ' generation=$generation',
+    );
     if (mounted) setState(() { _loading = true; _error = false; });
 
     final engine = MpvEngine(
@@ -109,10 +130,55 @@ class _MultiViewCellState extends State<MultiViewCell> {
     // correct level.
     await engine.setVolume(widget.isFocused ? 1.0 : 0.0);
 
+    // Subscribe to engine streams for logging and auto-recovery.
+    engine.errorStream.listen((err) {
+      AppLog.warn(
+        'MultiViewCell: engine error'
+        ' cell=${widget.cellIndex}'
+        ' channel="${ch.name}"'
+        ' error="$err"',
+      );
+      if (mounted && generation == _openGeneration) {
+        setState(() { _error = true; _loading = false; });
+      }
+    });
+
+    engine.completedStream.listen((done) {
+      if (!done) return;
+      AppLog.info(
+        'MultiViewCell: stream completed'
+        ' cell=${widget.cellIndex}'
+        ' channel="${ch.name}"'
+        ' — retrying in 2s',
+      );
+      // Single silent retry after 2 s (matches streamCompletedDelayMs default).
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted && generation == _openGeneration && !_error) {
+          _disposeEngine();
+          _startEngine(ch);
+        }
+      });
+    });
+
+    engine.bufferingStream.listen((buffering) {
+      if (AppLog.enabled) {
+        AppLog.info(
+          'MultiViewCell: buffering=$buffering'
+          ' cell=${widget.cellIndex}'
+          ' channel="${ch.name}"',
+        );
+      }
+    });
+
     try {
       await engine.open(url: ch.url ?? '');
     } catch (err) {
-      AppLog.warn('MultiViewCell: open failed — $err — "${ch.name}"');
+      AppLog.warn(
+        'MultiViewCell: open() threw'
+        ' cell=${widget.cellIndex}'
+        ' channel="${ch.name}"'
+        ' error=$err',
+      );
       if (!mounted || generation != _openGeneration) {
         unawaited(engine.dispose());
         return;
@@ -123,10 +189,20 @@ class _MultiViewCellState extends State<MultiViewCell> {
     }
 
     if (!mounted || generation != _openGeneration) {
+      AppLog.info(
+        'MultiViewCell: open() stale — discarding'
+        ' cell=${widget.cellIndex}'
+        ' generation=$generation',
+      );
       unawaited(engine.dispose());
       return;
     }
 
+    AppLog.info(
+      'MultiViewCell: open() succeeded'
+      ' cell=${widget.cellIndex}'
+      ' channel="${ch.name}"',
+    );
     setState(() {
       _engine = engine;
       _loading = false;
@@ -146,6 +222,11 @@ class _MultiViewCellState extends State<MultiViewCell> {
   Future<void> _promoteToFullScreen() async {
     final ch = widget.channel;
     if (ch == null) return;
+    AppLog.info(
+      'MultiViewCell: promoting to full-screen'
+      ' cell=${widget.cellIndex}'
+      ' channel="${ch.name}"',
+    );
     // Clear any stale cooldown — the cell's active stream proves it's live.
     Player.clearCooldown(ch.id);
     await Navigator.of(context).push(
@@ -313,8 +394,8 @@ class _MultiViewCellState extends State<MultiViewCell> {
           ),
           if (hasEpg)
             NowNextStrip(
-              epgChannelId: epgId!,
-              sourceId: ch!.sourceId,
+              epgChannelId: epgId,
+              sourceId: ch.sourceId,
             ),
         ],
       ),

@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/models/channel.dart';
 import 'package:open_tv/models/channel_preserve.dart';
@@ -32,6 +33,7 @@ Future<void> getXtream(
     statements.add(Sql.wipeSource(source.id!));
   }
   source.urlOrigin = Uri.parse(source.url!).origin;
+  AppLog.info('Xtream: fetching source="${source.name}" url="${source.url}"');
   onProgress?.call('Fetching data from provider…');
   var results = await Future.wait([
     getXtreamHttpData(getLiveStreams, source),
@@ -42,10 +44,14 @@ Future<void> getXtream(
     getXtreamHttpData(getSeriesCategories, source),
   ]);
   int failCount = 0;
+  int liveCount = 0;
+  int movieCount = 0;
+  int seriesCount = 0;
   if (results[0] != null && results[1] != null) {
     try {
       final streams = processJsonList(results[0], XtreamStream.fromJson);
-      onProgress?.call('Loading ${streams.length} live channels…');
+      liveCount = streams.length;
+      onProgress?.call('Loading $liveCount live channels…');
       processXtream(
         statements,
         streams,
@@ -62,7 +68,8 @@ Future<void> getXtream(
   if (results[2] != null && results[3] != null) {
     try {
       final vods = processJsonList(results[2], XtreamStream.fromJson);
-      onProgress?.call('Loading ${vods.length} movies…');
+      movieCount = vods.length;
+      onProgress?.call('Loading $movieCount movies…');
       processXtream(
         statements,
         vods,
@@ -80,7 +87,8 @@ Future<void> getXtream(
   if (results[4] != null && results[5] != null) {
     try {
       final series = processJsonList(results[4], XtreamStream.fromJson);
-      onProgress?.call('Loading ${series.length} series…');
+      seriesCount = series.length;
+      onProgress?.call('Loading $seriesCount series…');
       processXtream(
         statements,
         series,
@@ -96,10 +104,18 @@ Future<void> getXtream(
   }
 
   if (failCount >= 3) {
+    AppLog.warn(
+      'Xtream: fetch failed source="${source.name}"'
+      ' error=all content types failed ($failCount/3)',
+    );
     throw Exception(
       "Failed to fetch source: all content types failed ($failCount/3)",
     );
   }
+  AppLog.info(
+    'Xtream: fetched source="${source.name}"'
+    ' live=$liveCount movies=$movieCount series=$seriesCount',
+  );
   statements.add(Sql.updateGroups());
   if (preserve != null) {
     statements.add(Sql.restorePreserve(preserve));

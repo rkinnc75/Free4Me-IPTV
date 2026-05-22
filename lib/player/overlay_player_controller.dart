@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/models/channel.dart';
 import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/source.dart';
@@ -39,6 +40,7 @@ class OverlayPlayerController extends ChangeNotifier {
   Source? get mainSource => _mainSource;
 
   void registerMain(Channel ch, Settings s, Source? src, PlayerEngine engine) {
+    AppLog.info('OverlayController: registerMain channel="${ch.name}"');
     _mainChannel = ch;
     _mainSettings = s;
     _mainSource = src;
@@ -51,7 +53,11 @@ class OverlayPlayerController extends ChangeNotifier {
   /// no-op — this prevents the old Player's [dispose] from wiping the new
   /// Player's registration.
   void unregisterMain([PlayerEngine? engine]) {
-    if (engine != null && _mainEngine != engine) return;
+    if (engine != null && _mainEngine != engine) {
+      AppLog.info('OverlayController: unregisterMain — stale engine, ignored');
+      return;
+    }
+    AppLog.info('OverlayController: unregisterMain');
     _mainChannel = null;
     _mainSettings = null;
     _mainSource = null;
@@ -61,6 +67,7 @@ class OverlayPlayerController extends ChangeNotifier {
   /// Mutes the currently active main player so audio doesn't bleed during
   /// the swap navigation transition.
   Future<void> muteMain() async {
+    AppLog.info('OverlayController: muteMain');
     await _mainEngine?.setVolume(0.0);
   }
 
@@ -68,6 +75,7 @@ class OverlayPlayerController extends ChangeNotifier {
 
   /// Start (or restart) the overlay for [ch].
   Future<void> startOverlay(Channel ch, Settings s, Source? src) async {
+    AppLog.info('OverlayController: startOverlay channel="${ch.name}"');
     await _disposeEngine();
     _channel = ch;
     _settings = s;
@@ -89,10 +97,12 @@ class OverlayPlayerController extends ChangeNotifier {
     notifyListeners();
 
     await engine.open(url: url);
+    AppLog.info('OverlayController: overlay open() succeeded channel="${ch.name}"');
   }
 
   /// Stop the overlay and release all resources.
   Future<void> stopOverlay() async {
+    AppLog.info('OverlayController: stopOverlay channel="${_channel?.name ?? 'none'}"');
     await _disposeEngine();
     _channel = null;
     _settings = null;
@@ -110,6 +120,7 @@ class OverlayPlayerController extends ChangeNotifier {
   /// Returns a snapshot of the current overlay state and disposes the engine,
   /// clearing the channel.  Returns null if no overlay is active.
   Future<({Channel ch, Settings s, Source? src})?> consumeOverlay() async {
+    AppLog.info('OverlayController: consumeOverlay channel="${_channel?.name ?? 'none'}"');
     final ch = _channel;
     final s = _settings;
     final src = _source;

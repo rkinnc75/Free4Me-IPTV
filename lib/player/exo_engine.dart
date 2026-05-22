@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/player/player_engine.dart';
 import 'package:video_player/video_player.dart';
 
@@ -43,6 +44,7 @@ class ExoEngine implements PlayerEngine {
     Duration? startPosition,
     Map<String, String>? headers,
   }) async {
+    AppLog.info('ExoEngine: open() url="$url"');
     await _controller?.dispose();
 
     _controller = VideoPlayerController.networkUrl(
@@ -51,6 +53,12 @@ class ExoEngine implements PlayerEngine {
     );
 
     await _controller!.initialize();
+
+    AppLog.info(
+      'ExoEngine: initialised'
+      ' duration=${_controller!.value.duration.inSeconds}s'
+      ' size=${_controller!.value.size}',
+    );
 
     if (startPosition != null && startPosition > Duration.zero) {
       await _controller!.seekTo(startPosition);
@@ -64,6 +72,7 @@ class ExoEngine implements PlayerEngine {
 
   @override
   Future<void> dispose() async {
+    AppLog.info('ExoEngine: dispose()');
     _stopPolling();
     _controller?.removeListener(_onValueChanged);
     await _controller?.dispose();
@@ -131,6 +140,7 @@ class ExoEngine implements PlayerEngine {
 
     // Error
     if (v.hasError) {
+      AppLog.warn('ExoEngine: error — "${v.errorDescription}"');
       _errorCtrl.add(v.errorDescription ?? 'ExoPlayer error');
     }
 
@@ -140,12 +150,14 @@ class ExoEngine implements PlayerEngine {
         v.isInitialized &&
         v.duration > Duration.zero &&
         v.position >= v.duration) {
+      AppLog.info('ExoEngine: stream completed');
       _completedCtrl.add(true);
     }
 
     // Buffering: video_player emits isBuffering directly
     if (v.isBuffering != _wasBuffering) {
       _wasBuffering = v.isBuffering;
+      if (AppLog.enabled) AppLog.info('ExoEngine: buffering=${v.isBuffering}');
       _bufferingCtrl.add(v.isBuffering);
     }
   }

@@ -104,6 +104,7 @@ class _MultiViewScreenState extends State<MultiViewScreen> {
 
   @override
   void dispose() {
+    AppLog.info('MultiViewScreen: disposing — layout=${widget.layout.name}');
     _interruptionSub?.cancel();
     _audioSession?.setActive(false).ignore();
     super.dispose();
@@ -116,6 +117,12 @@ class _MultiViewScreenState extends State<MultiViewScreen> {
         ? widget.settings.multiViewCells1x2
         : widget.settings.multiViewCells2x2;
 
+    AppLog.info(
+      'MultiViewScreen: restoring channels'
+      ' layout=${widget.layout.name}'
+      ' raw="$raw"',
+    );
+
     final parts = raw.split(',');
     final toFetch = <int, int>{}; // cellIndex → channelId
 
@@ -125,6 +132,7 @@ class _MultiViewScreenState extends State<MultiViewScreen> {
     }
 
     if (toFetch.isEmpty) {
+      AppLog.info('MultiViewScreen: no persisted channels to restore');
       if (mounted) setState(() => _restored = true);
       return;
     }
@@ -135,6 +143,10 @@ class _MultiViewScreenState extends State<MultiViewScreen> {
       if (ch != null) _channels[entry.key] = ch;
     }
 
+    AppLog.info(
+      'MultiViewScreen: restored'
+      ' ${_channels.where((c) => c != null).length}/$_cellCount cells',
+    );
     setState(() => _restored = true);
   }
 
@@ -152,6 +164,10 @@ class _MultiViewScreenState extends State<MultiViewScreen> {
   }
 
   void _setChannel(int index, Channel channel) {
+    AppLog.info(
+      'MultiViewScreen: cell $index assigned'
+      ' channel="${channel.name}"',
+    );
     setState(() => _channels[index] = channel);
     _persistChannels();
     // Give the new cell audio focus automatically.
@@ -160,6 +176,7 @@ class _MultiViewScreenState extends State<MultiViewScreen> {
 
   void _setFocus(int index) {
     if (_focusedCell == index) return;
+    AppLog.info('MultiViewScreen: focus → cell $index (was $_focusedCell)');
     setState(() => _focusedCell = index);
   }
 
@@ -224,6 +241,7 @@ class _MultiViewScreenState extends State<MultiViewScreen> {
 
   Widget _buildCell(int i) => MultiViewCell(
         key: ValueKey('cell_$i'),
+        cellIndex: i,
         channel: _channels[i],
         settings: widget.settings,
         source: widget.source,
@@ -244,6 +262,10 @@ class _MultiViewScreenState extends State<MultiViewScreen> {
       List.generate(_cellCount, _buildCell);
 
   void _closeCell(int index) {
+    AppLog.info(
+      'MultiViewScreen: cell $index closed'
+      ' was="${_channels[index]?.name ?? 'empty'}"',
+    );
     setState(() => _channels[index] = null);
     _persistChannels();
   }

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/sql.dart' show Sql, importBatchSize;
 import 'package:open_tv/backend/utils.dart';
 import 'package:open_tv/models/channel.dart';
@@ -104,6 +105,10 @@ Future<void> processM3U(
     tail.add(Sql.restorePreserve(preserve));
   }
   await Sql.commitWrite(tail, memory: memory);
+  AppLog.info(
+    'M3U: parsed source="${source.name}"'
+    ' channels=$channelCount',
+  );
 }
 
 void commitChannel(
@@ -196,9 +201,15 @@ Future<void> processM3UUrl(
   bool wipe, [
   void Function(String)? onProgress,
 ]) async {
+  AppLog.info('M3U: downloading source="${source.name}" url="${source.url}"');
   onProgress?.call('Downloading playlist…');
-  var path = await downloadM3U(source.url!);
-  await processM3U(source, wipe, path, onProgress);
+  try {
+    var path = await downloadM3U(source.url!);
+    await processM3U(source, wipe, path, onProgress);
+  } catch (e) {
+    AppLog.warn('M3U: download failed source="${source.name}" error=$e');
+    rethrow;
+  }
 }
 
 Future<String> downloadM3U(String urlStr) async {

@@ -177,6 +177,16 @@ class SettingsService {
       settings.streamCompletedDelayMs = int.parse(streamCompletedDelay);
     }
 
+    AppLog.info(
+      'Settings: loaded'
+      ' bufferSizeMB=${settings.bufferSizeMB}'
+      ' liveDemuxerMaxMB=${settings.liveDemuxerMaxMB}'
+      ' miniDemuxerMaxMB=${settings.miniDemuxerMaxMB}'
+      ' stableThresholdSecs=${settings.stableThresholdSecs}'
+      ' startupGraceMs=${settings.startupGraceMs}'
+      ' streamCompletedDelayMs=${settings.streamCompletedDelayMs}'
+      ' multiViewLayout=${settings.multiViewLayout.name}',
+    );
     return settings;
   }
 
@@ -226,6 +236,7 @@ class SettingsService {
 
     await Sql.updateSettings(settingsMap);
     _cached = settings; // keep the in-memory copy in sync
+    AppLog.info('Settings: saved');
   }
 
   static Future<void> updateLastSeenVersion() async {

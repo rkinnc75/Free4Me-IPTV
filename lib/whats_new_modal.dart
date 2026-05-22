@@ -7,6 +7,14 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.15.4': [
+    'Improvement: Comprehensive diagnostic logging added across all playback '
+        'subsystems (multi-view cells, ExoPlayer, MpvEngine, OverlayPlayer, '
+        'EnginePicker, M3U/Xtream sources, settings service). Every state '
+        'transition — engine open/close, buffering, errors, focus changes, '
+        'PIP mode — now appears in the debug log for instant remote diagnosis. '
+        'No behaviour changes; logging is gated by the debug-logging setting.',
+  ],
   '1.15.3': [
     'Improvement: Multi-view channel picker now sorts and groups channels '
         'into three labelled sections — Favourites (⭐ amber, top), '

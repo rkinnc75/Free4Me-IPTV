@@ -31,7 +31,14 @@ class DeviceMemory {
       AppLog.warn('DeviceMemory: could not read /proc/meminfo — $e');
     }
     if (totalMb == 0) totalMb = 2048; // safe fallback: assume 2 GB
-    AppLog.info('DeviceMemory: totalMb=$totalMb');
+    AppLog.info(
+      'DeviceMemory: totalMb=$totalMb'
+      ' defaultLiveDemuxer=${defaultLiveDemuxerMb}MB'
+      ' defaultMiniDemuxer=${defaultMiniDemuxerMb}MB'
+      ' defaultBufferSize=${defaultBufferSizeMb}MB'
+      ' maxLiveDemuxer=${maxLiveDemuxerMb}MB'
+      ' maxMiniDemuxer=${maxMiniDemuxerMb}MB',
+    );
   }
 
   // ── Per-device maximums ────────────────────────────────────────────────────

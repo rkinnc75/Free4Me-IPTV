@@ -1,7 +1,7 @@
 {
-  "latest": "1.15.3",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.15.3",
+  "latest": "1.15.4",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.15.4",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Improvement: Multi-view channel picker now sorts and groups channels into three labelled sections \u2014 Favourites (\u2b50 amber, top), Validated (\u2705 green, scan-confirmed streams), then All Channels. Each section is alphabetical. All pages are loaded so favourites beyond the first 36 channels are never hidden."
+  "releaseNotes": "\u2022 Improvement: Comprehensive diagnostic logging added across all playback subsystems (multi-view cells, ExoPlayer, MpvEngine, OverlayPlayer, EnginePicker, M3U/Xtream sources, settings service). Every state transition \u2014 engine open/close, buffering, errors, focus changes, PIP mode \u2014 now appears in the debug log for instant remote diagnosis. No behaviour changes; logging is gated by the debug-logging setting."
 }

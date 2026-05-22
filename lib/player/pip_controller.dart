@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+import 'package:open_tv/backend/app_logger.dart';
 
 /// Flutter-side bridge to the native PiP implementation in [MainActivity].
 ///
@@ -22,6 +23,7 @@ class PipController {
   /// Manually enter PiP mode. Returns false if unsupported.
   static Future<bool> enterPip() async {
     try {
+      AppLog.info('PipController: entering PIP');
       return await _channel.invokeMethod<bool>('enterPip') ?? false;
     } catch (_) {
       return false;
@@ -42,7 +44,13 @@ class PipController {
   static Stream<bool> get pipModeStream {
     _pipStream ??= _eventChannel
         .receiveBroadcastStream()
-        .map((event) => event as bool);
+        .map((event) => event as bool)
+        .map((inPip) {
+          AppLog.info(
+            inPip ? 'PipController: entering PIP' : 'PipController: exiting PIP',
+          );
+          return inPip;
+        });
     return _pipStream!;
   }
 }

@@ -79,6 +79,12 @@ class MpvEngine implements PlayerEngine {
     Duration? startPosition,
     Map<String, String>? headers,
   }) async {
+    AppLog.info(
+      'MpvEngine: open()'
+      ' url="$url"'
+      ' previewMode=$previewMode'
+      ' startPosition=${startPosition?.inSeconds}s',
+    );
     // Options must be applied via reapplyOptions() BEFORE calling open().
     // Calling _applyMpvOptions() here would set mpv properties on the
     // still-active previous stream, triggering a demuxer reset and seek
@@ -99,6 +105,7 @@ class MpvEngine implements PlayerEngine {
         extras: extras,
       ),
     );
+    AppLog.info('MpvEngine: open() command sent channel="${channel.name}"');
     if (fullscreenOnOpen) await _videoKey.currentState?.enterFullscreen();
   }
 
@@ -110,6 +117,11 @@ class MpvEngine implements PlayerEngine {
 
   @override
   Future<void> dispose() async {
+    AppLog.info(
+      'MpvEngine: dispose()'
+      ' channel="${channel.name}"'
+      ' previewMode=$previewMode',
+    );
     for (final s in _subs) {
       await s.cancel();
     }
@@ -274,6 +286,18 @@ class MpvEngine implements PlayerEngine {
       await np.setProperty('demuxer-max-bytes', '${vodMB}MiB');
       await np.setProperty('demuxer-max-back-bytes', '64MiB');
     }
+
+    final demuxerMB = channel.mediaType == MediaType.livestream
+        ? (previewMode ? s.miniDemuxerMaxMB : s.liveDemuxerMaxMB)
+        : (previewMode ? s.miniDemuxerMaxMB * 2 : s.vodDemuxerMaxMB);
+    AppLog.info(
+      'MpvEngine: options applied'
+      ' channel="${channel.name}"'
+      ' previewMode=$previewMode'
+      ' demuxerMB=$demuxerMB'
+      ' bufferSizeMB=${previewMode ? s.bufferSizeMB ~/ 2 : s.bufferSizeMB}'
+      ' lowLatency=${s.lowLatency}',
+    );
   }
 
   /// Re-apply options (e.g. after a reconnect that fetches fresh headers).
