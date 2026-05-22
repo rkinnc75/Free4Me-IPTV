@@ -1,7 +1,7 @@
 {
-  "latest": "1.15.2",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.15.2",
+  "latest": "1.15.3",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.15.3",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 New: Multi-view cells now show a \"Now / Next\" program guide strip at the bottom of each playing cell. Displays the current program title and the next programme with its start time for any channel that has EPG data. Cells without EPG data or non-live channels show just the channel name as before."
+  "releaseNotes": "\u2022 Improvement: Multi-view channel picker now sorts and groups channels into three labelled sections \u2014 Favourites (\u2b50 amber, top), Validated (\u2705 green, scan-confirmed streams), then All Channels. Each section is alphabetical. All pages are loaded so favourites beyond the first 36 channels are never hidden."
 }

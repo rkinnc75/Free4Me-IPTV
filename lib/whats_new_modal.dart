@@ -7,6 +7,13 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.15.3': [
+    'Improvement: Multi-view channel picker now sorts and groups channels '
+        'into three labelled sections — Favourites (⭐ amber, top), '
+        'Validated (✅ green, scan-confirmed streams), then All Channels. '
+        'Each section is alphabetical. All pages are loaded so favourites '
+        'beyond the first 36 channels are never hidden.',
+  ],
   '1.15.2': [
     'New: Multi-view cells now show a "Now / Next" program guide strip '
         'at the bottom of each playing cell. Displays the current program '
