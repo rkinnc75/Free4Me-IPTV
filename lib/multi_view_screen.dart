@@ -1,4 +1,8 @@
+import 'dart:async';
+
+import 'package:audio_session/audio_session.dart';
 import 'package:flutter/material.dart';
+import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/models/channel.dart';
@@ -36,11 +40,73 @@ class _MultiViewScreenState extends State<MultiViewScreen> {
   int _focusedCell = 0;
   bool _restored = false;
 
+  // Audio focus
+  AudioSession? _audioSession;
+  StreamSubscription<AudioInterruptionEvent>? _interruptionSub;
+  /// True while an audio interruption (call, Siri, etc.) has ducked us.
+  bool _interrupted = false;
+
   @override
   void initState() {
     super.initState();
     _channels = List.filled(_cellCount, null);
     _restoreChannels();
+    _initAudioSession();
+  }
+
+  /// Configure the audio session for video playback and subscribe to
+  /// interruption events. On an interruption start we mute all cells; on
+  /// interruption end we restore volume to the focused cell.
+  Future<void> _initAudioSession() async {
+    try {
+      final session = await AudioSession.instance;
+      await session.configure(const AudioSessionConfiguration(
+        avAudioSessionCategory: AVAudioSessionCategory.playback,
+        avAudioSessionCategoryOptions:
+            AVAudioSessionCategoryOptions.mixWithOthers,
+        avAudioSessionMode: AVAudioSessionMode.moviePlayback,
+        androidAudioAttributes: AndroidAudioAttributes(
+          contentType: AndroidAudioContentType.movie,
+          usage: AndroidAudioUsage.media,
+        ),
+        androidAudioFocusGainType: AndroidAudioFocusGainType.gain,
+        androidWillPauseWhenDucked: false,
+      ));
+      _audioSession = session;
+      await session.setActive(true);
+      AppLog.info('MultiViewScreen: audio session active');
+
+      _interruptionSub = session.interruptionEventStream.listen((event) {
+        if (event.begin) {
+          // Call, Siri, alarm — mute everything.
+          _interrupted = true;
+          AppLog.info(
+            'MultiViewScreen: audio interrupted (${event.type.name})'
+            ' — muting all cells',
+          );
+          if (mounted) setState(() {});
+        } else {
+          // Interruption over.
+          if (event.type == AudioInterruptionType.pause ||
+              event.type == AudioInterruptionType.unknown) {
+            _interrupted = false;
+            AppLog.info(
+              'MultiViewScreen: audio interruption ended — restoring focus',
+            );
+            if (mounted) setState(() {});
+          }
+        }
+      });
+    } catch (e) {
+      AppLog.warn('MultiViewScreen: audio session init failed — $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    _interruptionSub?.cancel();
+    _audioSession?.setActive(false).ignore();
+    super.dispose();
   }
 
   /// Restore persisted channel IDs for the current layout. The stored
@@ -162,7 +228,7 @@ class _MultiViewScreenState extends State<MultiViewScreen> {
         settings: widget.settings,
         source: widget.source,
         sourceIds: widget.sourceIds,
-        isFocused: _focusedCell == i,
+        isFocused: _focusedCell == i && !_interrupted,
         onFocusTap: () => _setFocus(i),
         onChannelPicked: (ch) => _setChannel(i, ch),
         onCloseCell: () => _closeCell(i),

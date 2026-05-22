@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:open_tv/backend/sql.dart';
+import 'package:open_tv/backend/stream_scanner.dart';
 import 'package:open_tv/models/channel.dart';
 import 'package:open_tv/models/filters.dart';
 import 'package:open_tv/models/media_type.dart';
@@ -98,20 +99,45 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
                   itemCount: _channels.length,
                   itemBuilder: (context, i) {
                     final ch = _channels[i];
+                    final scanOk = ch.id != null &&
+                        StreamScanner.results[ch.id] == true;
+                    Widget logo = ch.image != null
+                        ? SizedBox(
+                            width: 40,
+                            height: 40,
+                            child: CachedNetworkImage(
+                              imageUrl: ch.image!,
+                              fit: BoxFit.contain,
+                              errorWidget: (_, _, _) =>
+                                  const Icon(Icons.tv),
+                            ),
+                          )
+                        : const Icon(Icons.tv);
+                    if (scanOk) {
+                      logo = Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          logo,
+                          const Positioned(
+                            right: -4,
+                            bottom: -4,
+                            child: Icon(
+                              Icons.check_circle,
+                              color: Colors.greenAccent,
+                              size: 14,
+                            ),
+                          ),
+                        ],
+                      );
+                    }
                     return ListTile(
-                      leading: ch.image != null
-                          ? SizedBox(
-                              width: 40,
-                              height: 40,
-                              child: CachedNetworkImage(
-                                imageUrl: ch.image!,
-                                fit: BoxFit.contain,
-                                errorWidget: (_, _, _) =>
-                                    const Icon(Icons.tv),
-                              ),
-                            )
-                          : const Icon(Icons.tv),
-                      title: Text(ch.name),
+                      leading: logo,
+                      title: Text(
+                        ch.name,
+                        style: scanOk
+                            ? const TextStyle(color: Colors.greenAccent)
+                            : null,
+                      ),
                       subtitle: ch.group != null
                           ? Text(
                               ch.group!,

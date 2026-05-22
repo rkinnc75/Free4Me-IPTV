@@ -111,51 +111,29 @@ For the original feature plan and copy strings see [DEVELOPMENT-HANDBOOK.md](DEV
 
 ## Pending / next phases
 
-### Multi-view P5 — Audio focus coexistence
-**What's missing:** When a multi-view cell becomes the audio-focused cell, the OS audio
-focus is not requested. Background music or podcast apps keep playing simultaneously.
+### Multi-view P6 — EPG strip per cell
+**What's missing:** No program info in cells. The long-press menu (replace/close/fullscreen)
+is already implemented (v1.14.1). What remains is showing the current program title in each
+playing cell.
 
-**Files:** `lib/multi_view_screen.dart`, `lib/multi_view_cell.dart`  
-**Approach:** Use `audio_session` package. In `_MultiViewScreenState._setFocus`, request
-`AudioSessionType.playback`. On pause/dispose release focus. On audio-focus loss (incoming
-call), mute the focused cell instead of letting it fight.
-
-**Risk:** Low — additive change.
-
----
-
-### Multi-view P6 — EPG strip per cell + long-press menu
-**What's missing:** No program info in cells. No way to close an individual cell (reset to
-empty without exiting multi-view).
-
-**Overlay additions in `_buildVideoCell`:**
-- Bottom bar: current program title (from `Sql.getCurrentProgram(ch.id)`) in addition to
-  channel name.
-- Long-press → bottom sheet with:
-  - "Replace channel" (opens `ChannelPickerScreen`)
-  - "Close cell" (sets channel to null, resets cell)
-  - "Full screen" (same as double-tap)
+**Overlay addition in `_buildVideoCell` (lib/multi_view_cell.dart):**
+- Overlay bottom bar: current program title from `Sql.getCurrentProgram(ch.id)` next to the
+  channel name badge.
 
 **Files:** `lib/multi_view_cell.dart`, `lib/backend/sql.dart`  
 **Risk:** Low — additive.
 
 ---
 
-### Multi-view P7 — PIP/overlay coexistence
-**What's missing:** The floating mini-player (`OverlayPlayerWidget`) renders in a Stack
-above **all routes**, including `MultiViewScreen`. If the user has PIP active and opens
-multi-view, the overlay floats on top of the grid with no defined interaction.
+### ✅ Multi-view P5 — Audio focus coexistence (v1.15.1)
+Implemented: `audio_session` package, `AudioSession.instance` configured for video
+playback in `MultiViewScreen`. Interruption events (calls, Siri) mute all cells by
+flipping `_interrupted` flag; volume is restored when interruption ends.
 
-**Fix options (pick one):**
-1. **Close overlay on multi-view entry** (simplest): In `_openMultiView()` in `home.dart`,
-   call `OverlayPlayerController.instance.stopOverlay()` before pushing the route.
-2. **Hide overlay while multi-view is open**: Use `ValueNotifier<bool>` in
-   `OverlayPlayerController` (`isMultiViewActive`) and wrap `OverlayPlayerWidget` in a
-   `ValueListenableBuilder` that returns `SizedBox.shrink()` when true.
-
-**Files:** `lib/home.dart` (or `lib/multi_view_screen.dart`),
-`lib/player/overlay_player_controller.dart`, `lib/player/overlay_player_widget.dart`  
-**Risk:** Low — the simplest fix (option 1) is 2 lines.
+### ✅ Multi-view P7 — PIP/overlay coexistence (v1.14.1)
+Implemented: `OverlayPlayerController.instance.stopOverlay()` called in `_openMultiView()`
+before pushing `MultiViewScreen`. Mini-player buttons gated on
+`multiViewLayout == MultiViewLayout.none`.
 
 ---
 

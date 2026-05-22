@@ -7,6 +7,16 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.15.1': [
+    'New: Multi-view audio focus — the app now requests OS audio focus '
+        'when multi-view is open. Background music and podcast apps are '
+        'properly interrupted. Incoming calls, Siri, and alarms mute all '
+        'cells automatically and restore volume when the interruption ends.',
+    'Fix: Stream-scanner green highlight now appears in every view '
+        '(all channels, livestreams, movies, history) — not just while '
+        'the search box is active. Validated channels also show a green '
+        'check badge in the multi-view channel picker.',
+  ],
   '1.15.0': [
     'Fix: "Cannot seek in this stream" error now suppressed unconditionally '
         '(not just during startup grace). Eliminates false reconnects on every '
