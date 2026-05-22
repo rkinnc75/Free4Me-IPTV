@@ -98,7 +98,10 @@ class StreamScanner {
       final body = await _readPrefix(response.stream, 16 * 1024)
           .timeout(timeout, onTimeout: () => Uint8List(0));
       return _validateMediaPayload(body, isHls: isHls, isMp4: isMp4, isDash: isDash);
-    } catch (_) {
+    } catch (e) {
+      if (AppLog.enabled) {
+        AppLog.info('StreamScanner: probe failed url="$url" error=$e');
+      }
       return false;
     } finally {
       client.close();

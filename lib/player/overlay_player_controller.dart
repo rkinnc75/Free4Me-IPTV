@@ -89,6 +89,11 @@ class OverlayPlayerController extends ChangeNotifier {
       channel: ch,
       settings: s,
       fullscreenOnOpen: false,
+      // The overlay is always a small preview window, never full-screen.
+      // previewMode swaps in mini-buffer sizes and forces software decode,
+      // which avoids contending with the main player for the device's
+      // hardware decoder pool and shared bandwidth budget.
+      previewMode: true,
     );
     // Mute BEFORE open so the stream starts silent — avoids the window between
     // playback starting and a post-open setVolume call reaching the mpv queue.

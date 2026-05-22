@@ -1,3 +1,4 @@
+import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/models/channel.dart';
 import 'package:open_tv/models/program.dart';
 import 'package:open_tv/models/source.dart';
@@ -106,7 +107,11 @@ class CatchupUrl {
       if (parsed.scheme == 'http' || parsed.scheme == 'https') {
         return parsed.origin;
       }
-    } catch (_) {}
+    } catch (e) {
+      if (AppLog.enabled) {
+        AppLog.warn('CatchupUrl: failed to parse origin url="$url" error=$e');
+      }
+    }
     return null;
   }
 

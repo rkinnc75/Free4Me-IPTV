@@ -28,28 +28,39 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
   await Workmanager().initialize(callbackDispatcher);
-  // DeviceMemory must run before SettingsService.getSettings() so that
-  // first-run defaults (based on detected RAM) are available when settings
-  // are read and written for the first time.
+
+  // Cold-start order matters for log visibility: AppLog gates every call
+  // by a "debug logging" boolean that lives inside Settings, so we need
+  // settings BEFORE we can enable logging. Subsystems initialised before
+  // AppLog is enabled would otherwise silently drop their log lines.
+  //
+  //   1. Read settings (silently — AppLog still off).
+  //   2. Enable AppLog from the value we just read.
+  //   3. Initialise DeviceMemory — its log line now lands.
+  //   4. SettingsService.reload() so RAM-aware first-run defaults
+  //      computed via DeviceMemory replace the placeholders read in step 1.
+  //
+  // After step 4, every subsystem's startup log is visible and settings
+  // reflect the device's true RAM.
+  final earlySettings = await SettingsService.getSettings();
+  await AppLog.setEnabled(earlySettings.debugLogging);
   await DeviceMemory.init();
-  // Parallelize all cold-start awaits — settings loaded once and cached.
+  final settings = await SettingsService.reload();
+
+  // Parallelize the remaining cold-start awaits.
   final results = await Future.wait([
     Sql.hasSources(),
-    SettingsService.getSettings(),
     Utils.hasTouchScreen(),
     DeviceDetector.isTV(),
   ]);
-  final hasSources = results[0] as bool;
-  final settings = results[1] as Settings;
-  final hasTouchScreen = results[2] as bool;
-  final isTV = results[3] as bool;
-  await AppLog.setEnabled(settings.debugLogging);
+  final hasSources = results[0];
+  final hasTouchScreen = results[1];
+  final isTV = results[2];
   final packageInfo = await PackageInfo.fromPlatform();
   AppLog.info(
     'App started — version=${packageInfo.version}'
     ' build=${packageInfo.buildNumber}',
   );
-  // Ensure WorkManager registration matches the persisted epgAutoRefresh pref.
   unawaited(EpgService.scheduleBackgroundRefresh());
   runApp(
     MyApp(

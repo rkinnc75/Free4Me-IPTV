@@ -4,11 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/channel_picker_screen.dart';
 import 'package:open_tv/models/channel.dart';
+import 'package:open_tv/models/engine_type.dart';
 import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/source.dart';
 import 'package:open_tv/player.dart';
+import 'package:open_tv/player/engine_picker.dart';
+import 'package:open_tv/player/exo_engine.dart';
 import 'package:open_tv/player/mpv_engine.dart';
+import 'package:open_tv/player/player_engine.dart';
 import 'package:open_tv/widgets/now_next_strip.dart';
 
 /// A single cell in the multi-view grid.
@@ -55,13 +59,30 @@ class MultiViewCell extends StatefulWidget {
 }
 
 class _MultiViewCellState extends State<MultiViewCell> {
-  MpvEngine? _engine;
+  PlayerEngine? _engine;
   bool _error = false;
   bool _loading = false;
 
   /// Used to cancel an in-flight open() if the channel changes before it
   /// completes.
   int _openGeneration = 0;
+
+  /// Stream subscriptions held against the current engine. Tracked so we
+  /// can cancel them explicitly in [_disposeEngine] — relying solely on
+  /// engine.dispose() to close the underlying StreamControllers leaks
+  /// listeners if dispose() ever throws or is skipped.
+  final List<StreamSubscription<dynamic>> _engineSubs = [];
+
+  /// Per-cell transient retry counter. Resets to 0 on a fresh
+  /// [_startEngine] call and on 15 s of stable playback after an error.
+  int _transientRetries = 0;
+  static const int _maxTransientRetries = 3;
+  DateTime? _lastErrorAt;
+
+  /// Last buffering value emitted to the log — used to filter duplicate
+  /// `buffering=false` events that media_kit can re-emit immediately after
+  /// open() completes (Issue 6).
+  bool? _lastBufferingState;
 
   @override
   void initState() {
@@ -99,51 +120,136 @@ class _MultiViewCellState extends State<MultiViewCell> {
       ' channel="${widget.channel?.name ?? 'empty'}"',
     );
     _openGeneration++;
+    for (final s in _engineSubs) {
+      unawaited(s.cancel());
+    }
+    _engineSubs.clear();
     final e = _engine;
     _engine = null;
+    _lastBufferingState = null;
     if (e != null) {
-      // dispose() is async; we fire-and-forget since widget is gone.
-      unawaited(e.dispose());
+      // dispose() is async; we fire-and-forget since the widget is gone.
+      // Wrap with .catchError so a native dispose failure (rare but possible)
+      // is at least visible in the log instead of being silently swallowed.
+      unawaited(e.dispose().catchError((Object err) {
+        AppLog.warn(
+          'MultiViewCell: dispose error'
+          ' cell=${widget.cellIndex}'
+          ' error=$err',
+        );
+      }));
     }
+  }
+
+  /// Returns true if [err] looks like a transient network condition that
+  /// is worth retrying.
+  static bool _isTransientError(String err) {
+    return err.contains('0xffffff92') ||
+        err.contains('ffurl_read') ||
+        err.contains('Failed to recognize file format') ||
+        err.contains('Connection timed out') ||
+        err.contains('Connection reset') ||
+        err.contains('ETIMEDOUT');
+  }
+
+  /// Returns true if [err] is the benign "Cannot seek" probe that mpv
+  /// reports on non-seekable MPEG-TS livestreams. These are not real
+  /// failures and must never cause the cell to enter the error state.
+  static bool _isSeekProbeError(String err) {
+    return err.contains('Cannot seek in this stream') ||
+        err.contains('force-seekable=yes');
   }
 
   Future<void> _startEngine(Channel ch) async {
     final generation = ++_openGeneration;
+    _transientRetries = 0;
+    _lastErrorAt = null;
+    _lastBufferingState = null;
+
+    // Resolve which engine to use through the same picker the main player
+    // uses — so per-channel and per-source overrides are honoured here too.
+    final pickedType = EnginePicker.pick(
+      channel: ch,
+      settings: widget.settings,
+      source: widget.source,
+      url: ch.url,
+    );
     AppLog.info(
       'MultiViewCell: starting engine'
       ' cell=${widget.cellIndex}'
       ' channel="${ch.name}"'
-      ' url="${ch.url}"'
+      ' url="${ch.url ?? '<none>'}"'
+      ' engine=${pickedType.name}'
       ' previewMode=true'
       ' generation=$generation',
     );
     if (mounted) setState(() { _loading = true; _error = false; });
 
-    final engine = MpvEngine(
-      channel: ch,
-      settings: widget.settings,
-      fullscreenOnOpen: false,
-      previewMode: true,
-    );
+    PlayerEngine engine = pickedType == EngineType.exoplayer
+        ? ExoEngine()
+        : MpvEngine(
+            channel: ch,
+            settings: widget.settings,
+            fullscreenOnOpen: false,
+            previewMode: true,
+          );
 
-    // Set volume before open() so the first audio packet plays at the
-    // correct level.
+    // Volume first so the first audio packet plays at the correct level.
     await engine.setVolume(widget.isFocused ? 1.0 : 0.0);
 
-    // Subscribe to engine streams for logging and auto-recovery.
-    engine.errorStream.listen((err) {
+    // Subscribe to engine streams. Subscriptions are stored in
+    // [_engineSubs] so [_disposeEngine] can cancel them explicitly.
+    _engineSubs.add(engine.errorStream.listen((err) {
+      // 1. Seek probe — always suppress. mpv emits this when probing
+      //    seekability on non-seekable livestreams. It is not a failure.
+      if (_isSeekProbeError(err)) {
+        if (AppLog.enabled) {
+          AppLog.info(
+            'MultiViewCell: suppressed seek probe'
+            ' cell=${widget.cellIndex}'
+            ' channel="${ch.name}"',
+          );
+        }
+        return;
+      }
+
+      final transient = _isTransientError(err);
+      _lastErrorAt = DateTime.now();
+
       AppLog.warn(
         'MultiViewCell: engine error'
+        ' [${transient ? "transient" : "permanent"}]'
         ' cell=${widget.cellIndex}'
         ' channel="${ch.name}"'
+        ' retries=$_transientRetries/$_maxTransientRetries'
         ' error="$err"',
       );
-      if (mounted && generation == _openGeneration) {
-        setState(() { _error = true; _loading = false; });
-      }
-    });
 
-    engine.completedStream.listen((done) {
+      if (!mounted || generation != _openGeneration) return;
+
+      // 2. Transient — retry up to N times with a short delay.
+      if (transient && _transientRetries < _maxTransientRetries) {
+        _transientRetries++;
+        final attempt = _transientRetries;
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted && generation == _openGeneration) {
+            AppLog.info(
+              'MultiViewCell: retry $attempt/$_maxTransientRetries'
+              ' cell=${widget.cellIndex}'
+              ' channel="${ch.name}"',
+            );
+            _disposeEngine();
+            _startEngine(ch);
+          }
+        });
+        return;
+      }
+
+      // 3. Permanent or retries exhausted — surface the error UI.
+      setState(() { _error = true; _loading = false; });
+    }));
+
+    _engineSubs.add(engine.completedStream.listen((done) {
       if (!done) return;
       AppLog.info(
         'MultiViewCell: stream completed'
@@ -158,9 +264,21 @@ class _MultiViewCellState extends State<MultiViewCell> {
           _startEngine(ch);
         }
       });
-    });
+    }));
 
-    engine.bufferingStream.listen((buffering) {
+    _engineSubs.add(engine.bufferingStream.listen((buffering) {
+      // Reset the transient retry counter after 15 s of stable playback.
+      if (!buffering &&
+          _lastErrorAt != null &&
+          DateTime.now().difference(_lastErrorAt!).inSeconds > 15) {
+        _transientRetries = 0;
+        _lastErrorAt = null;
+      }
+
+      // Only log distinct state transitions to keep logs uncluttered when
+      // media_kit re-emits the same value.
+      if (buffering == _lastBufferingState) return;
+      _lastBufferingState = buffering;
       if (AppLog.enabled) {
         AppLog.info(
           'MultiViewCell: buffering=$buffering'
@@ -168,7 +286,7 @@ class _MultiViewCellState extends State<MultiViewCell> {
           ' channel="${ch.name}"',
         );
       }
-    });
+    }));
 
     try {
       await engine.open(url: ch.url ?? '');
@@ -180,11 +298,15 @@ class _MultiViewCellState extends State<MultiViewCell> {
         ' error=$err',
       );
       if (!mounted || generation != _openGeneration) {
-        unawaited(engine.dispose());
+        unawaited(engine.dispose().catchError((Object e) {
+          AppLog.warn('MultiViewCell: dispose error after stale open — $e');
+        }));
         return;
       }
       setState(() { _error = true; _loading = false; });
-      unawaited(engine.dispose());
+      unawaited(engine.dispose().catchError((Object e) {
+        AppLog.warn('MultiViewCell: dispose error after open() throw — $e');
+      }));
       return;
     }
 
@@ -194,7 +316,9 @@ class _MultiViewCellState extends State<MultiViewCell> {
         ' cell=${widget.cellIndex}'
         ' generation=$generation',
       );
-      unawaited(engine.dispose());
+      unawaited(engine.dispose().catchError((Object e) {
+        AppLog.warn('MultiViewCell: dispose error after stale open() — $e');
+      }));
       return;
     }
 

@@ -145,7 +145,8 @@ Future<dynamic> getXtreamHttpData(
     final response = await AppHttp.getWithRetry(url);
     if (response == null) return null;
     return jsonDecode(response.body);
-  } catch (_) {
+  } catch (e) {
+    AppLog.warn('Xtream: HTTP/JSON failed action="$action" error=$e');
     return null;
   }
 }
@@ -174,7 +175,14 @@ void processXtream(
     try {
       var channel = xtreamToChannel(live, source, mediaType, cname);
       statements.add(Sql.insertChannel(channel));
-    } catch (_) {}
+    } catch (e) {
+      if (AppLog.enabled) {
+        AppLog.warn(
+          'Xtream: skipped malformed stream'
+          ' streamId="${live.streamId}" name="${live.name}" error=$e',
+        );
+      }
+    }
   }
 }
 
@@ -279,7 +287,14 @@ Future<void> getEpisodes(Channel channel) async {
       statements.add(
         Sql.insertChannel(episodeToChannel(episode, source, seriesId)),
       );
-    } catch (_) {}
+    } catch (e) {
+      if (AppLog.enabled) {
+        AppLog.warn(
+          'Xtream: skipped malformed episode'
+          ' id="${episode.id}" title="${episode.title}" error=$e',
+        );
+      }
+    }
   }
   await Sql.commitWrite(statements);
 }

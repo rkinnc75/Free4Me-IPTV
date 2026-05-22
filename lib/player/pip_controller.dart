@@ -15,7 +15,10 @@ class PipController {
   static Future<bool> isSupported() async {
     try {
       return await _channel.invokeMethod<bool>('isSupported') ?? false;
-    } catch (_) {
+    } catch (e) {
+      if (AppLog.enabled) {
+        AppLog.info('PipController: isSupported failed — $e');
+      }
       return false;
     }
   }
@@ -25,7 +28,8 @@ class PipController {
     try {
       AppLog.info('PipController: entering PIP');
       return await _channel.invokeMethod<bool>('enterPip') ?? false;
-    } catch (_) {
+    } catch (e) {
+      AppLog.warn('PipController: enterPip failed — $e');
       return false;
     }
   }
@@ -36,7 +40,11 @@ class PipController {
   static Future<void> setPlaying(bool playing) async {
     try {
       await _channel.invokeMethod<void>('setPlaying', {'playing': playing});
-    } catch (_) {}
+    } catch (e) {
+      if (AppLog.enabled) {
+        AppLog.info('PipController: setPlaying failed — $e');
+      }
+    }
   }
 
   /// Stream of PiP mode changes. Emits `true` when entering PiP and

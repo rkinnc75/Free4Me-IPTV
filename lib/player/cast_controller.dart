@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+import 'package:open_tv/backend/app_logger.dart';
 
 /// Cast state as reported by the native Cast SDK.
 enum CastState {
@@ -31,7 +32,10 @@ class CastController {
       return result ?? false;
     } on MissingPluginException {
       return false;
-    } catch (_) {
+    } catch (e) {
+      if (AppLog.enabled) {
+        AppLog.info('CastController: isAvailable failed — $e');
+      }
       return false;
     }
   }
@@ -41,7 +45,10 @@ class CastController {
     try {
       final s = await _channel.invokeMethod<String>('getState');
       return _parseState(s);
-    } catch (_) {
+    } catch (e) {
+      if (AppLog.enabled) {
+        AppLog.info('CastController: getState failed — $e');
+      }
       return CastState.unavailable;
     }
   }
@@ -52,7 +59,9 @@ class CastController {
   static Future<void> showDevicePicker() async {
     try {
       await _channel.invokeMethod<void>('showDevicePicker');
-    } catch (_) {}
+    } catch (e) {
+      AppLog.warn('CastController: showDevicePicker failed — $e');
+    }
   }
 
   /// Load and begin casting [url] to the currently connected Chromecast.
@@ -77,7 +86,8 @@ class CastController {
     } on PlatformException catch (e) {
       if (e.code == 'NO_SESSION') return false;
       rethrow;
-    } catch (_) {
+    } catch (e) {
+      AppLog.warn('CastController: startCast failed — $e');
       return false;
     }
   }
@@ -86,7 +96,9 @@ class CastController {
   static Future<void> stopCast() async {
     try {
       await _channel.invokeMethod<void>('stopCast');
-    } catch (_) {}
+    } catch (e) {
+      AppLog.warn('CastController: stopCast failed — $e');
+    }
   }
 
   /// Current playback position on the receiver (milliseconds).
@@ -94,7 +106,10 @@ class CastController {
     try {
       final ms = await _channel.invokeMethod<int>('getPosition');
       return Duration(milliseconds: ms ?? 0);
-    } catch (_) {
+    } catch (e) {
+      if (AppLog.enabled) {
+        AppLog.info('CastController: getPosition failed — $e');
+      }
       return Duration.zero;
     }
   }

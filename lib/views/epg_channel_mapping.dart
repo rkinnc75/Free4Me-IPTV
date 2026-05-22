@@ -39,11 +39,13 @@ class _EpgChannelMappingViewState extends State<EpgChannelMappingView> {
         Sql.getLiveChannelsForMapping(widget.source.id!),
         Sql.getAvailableEpgIds(widget.source.id!),
       ]);
+      if (!mounted) return;
       setState(() {
         _channels = results[0] as List<Channel>;
         _epgIds = results[1] as List<(String, String)>;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() => _error = e.toString());
     }
   }
@@ -169,22 +171,22 @@ class _EpgChannelMappingViewState extends State<EpgChannelMappingView> {
 
   Future<void> _applyMapping(Channel ch, String epgChannelId) async {
     await Sql.setManualEpgOverride(ch.id!, epgChannelId);
+    if (!mounted) return;
     setState(() {
       // Update the in-memory channel so the tile updates instantly
       ch.epgChannelId = epgChannelId;
     });
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('"${ch.name}" → $epgChannelId'),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('"${ch.name}" → $epgChannelId'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   Future<void> _clearMapping(Channel ch) async {
     await Sql.setManualEpgOverride(ch.id!, null);
+    if (!mounted) return;
     setState(() => ch.epgChannelId = null);
   }
 }

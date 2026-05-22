@@ -49,6 +49,12 @@ class MpvEngine implements PlayerEngine {
 
   final List<StreamSubscription<dynamic>> _subs = [];
 
+  /// Idempotency guard. dispose() can fire multiple times in a multi-view
+  /// session because Flutter defers widget disposal — the second and later
+  /// calls would otherwise try to close already-closed StreamControllers
+  /// and dispose an already-disposed native mpv instance.
+  bool _disposed = false;
+
   MpvEngine({
     required this.channel,
     required this.settings,
@@ -83,7 +89,7 @@ class MpvEngine implements PlayerEngine {
       'MpvEngine: open()'
       ' url="$url"'
       ' previewMode=$previewMode'
-      ' startPosition=${startPosition?.inSeconds}s',
+      ' startPosition=${startPosition == null ? '<live>' : '${startPosition.inSeconds}s'}',
     );
     // Options must be applied via reapplyOptions() BEFORE calling open().
     // Calling _applyMpvOptions() here would set mpv properties on the
@@ -117,6 +123,16 @@ class MpvEngine implements PlayerEngine {
 
   @override
   Future<void> dispose() async {
+    if (_disposed) {
+      if (AppLog.enabled) {
+        AppLog.info(
+          'MpvEngine: dispose() called twice — ignoring'
+          ' channel="${channel.name}"',
+        );
+      }
+      return;
+    }
+    _disposed = true;
     AppLog.info(
       'MpvEngine: dispose()'
       ' channel="${channel.name}"'

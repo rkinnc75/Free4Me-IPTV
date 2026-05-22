@@ -617,6 +617,7 @@ class _PlayerState extends State<Player> {
       if (stop == true) {
         final resumePosition = await CastController.getPosition();
         await CastController.stopCast();
+        if (!mounted) return;
         setState(() {
           _isCasting = false;
           _castState = CastState.notConnected;
