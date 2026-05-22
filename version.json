@@ -1,7 +1,7 @@
 {
-  "latest": "1.15.1",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.15.1",
+  "latest": "1.15.2",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.15.2",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 New: Multi-view audio focus \u2014 the app now requests OS audio focus when multi-view is open. Background music and podcast apps are properly interrupted. Incoming calls, Siri, and alarms mute all cells automatically and restore volume when the interruption ends.\n\u2022 Fix: Stream-scanner green highlight now appears in every view (all channels, livestreams, movies, history) \u2014 not just while the search box is active. Validated channels also show a green check badge in the multi-view channel picker."
+  "releaseNotes": "\u2022 New: Multi-view cells now show a \"Now / Next\" program guide strip at the bottom of each playing cell. Displays the current program title and the next programme with its start time for any channel that has EPG data. Cells without EPG data or non-live channels show just the channel name as before."
 }

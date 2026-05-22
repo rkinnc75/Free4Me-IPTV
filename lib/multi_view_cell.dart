@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/channel_picker_screen.dart';
 import 'package:open_tv/models/channel.dart';
+import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/source.dart';
 import 'package:open_tv/player.dart';
 import 'package:open_tv/player/mpv_engine.dart';
+import 'package:open_tv/widgets/now_next_strip.dart';
 
 /// A single cell in the multi-view grid.
 ///
@@ -275,6 +277,50 @@ class _MultiViewCellState extends State<MultiViewCell> {
     );
   }
 
+  /// Translucent info bar pinned to the bottom of a playing cell.
+  /// Shows channel name and, when EPG data is available, a now/next strip.
+  Widget _buildInfoBar() {
+    final ch = widget.channel;
+    final epgId = ch?.epgChannelId;
+    final hasEpg = ch != null &&
+        ch.mediaType == MediaType.livestream &&
+        epgId != null &&
+        epgId.isNotEmpty;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(6, 3, 6, 4),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.bottomCenter,
+          end: Alignment.topCenter,
+          colors: [Colors.black87, Colors.transparent],
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            ch?.name ?? '',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          if (hasEpg)
+            NowNextStrip(
+              epgChannelId: epgId!,
+              sourceId: ch!.sourceId,
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildVideoCell() {
     return GestureDetector(
       onTap: widget.onFocusTap,
@@ -298,25 +344,12 @@ class _MultiViewCellState extends State<MultiViewCell> {
               ),
             ),
 
-          // Channel name badge — bottom left
+          // Info bar — bottom: channel name + EPG now/next strip
           Positioned(
-            left: 8,
-            bottom: 8,
-            child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.black54,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                widget.channel?.name ?? '',
-                style:
-                    const TextStyle(color: Colors.white, fontSize: 11),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: _buildInfoBar(),
           ),
 
           // Volume icon — top right

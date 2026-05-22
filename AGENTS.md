@@ -111,17 +111,10 @@ For the original feature plan and copy strings see [DEVELOPMENT-HANDBOOK.md](DEV
 
 ## Pending / next phases
 
-### Multi-view P6 — EPG strip per cell
-**What's missing:** No program info in cells. The long-press menu (replace/close/fullscreen)
-is already implemented (v1.14.1). What remains is showing the current program title in each
-playing cell.
-
-**Overlay addition in `_buildVideoCell` (lib/multi_view_cell.dart):**
-- Overlay bottom bar: current program title from `Sql.getCurrentProgram(ch.id)` next to the
-  channel name badge.
-
-**Files:** `lib/multi_view_cell.dart`, `lib/backend/sql.dart`  
-**Risk:** Low — additive.
+### ✅ Multi-view P6 — EPG strip per cell (v1.15.2)
+Implemented: `_buildInfoBar()` in `MultiViewCell` renders a gradient bottom bar with
+channel name + `NowNextStrip` (existing widget, reused). Shows "▶ Now: title  •  Next HH:MM: title"
+for livestreams that have EPG data. Silent for cells without EPG or non-livestream channels.
 
 ---
 

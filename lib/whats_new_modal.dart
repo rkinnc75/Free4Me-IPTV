@@ -7,6 +7,13 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.15.2': [
+    'New: Multi-view cells now show a "Now / Next" program guide strip '
+        'at the bottom of each playing cell. Displays the current program '
+        'title and the next programme with its start time for any channel '
+        'that has EPG data. Cells without EPG data or non-live channels '
+        'show just the channel name as before.',
+  ],
   '1.15.1': [
     'New: Multi-view audio focus — the app now requests OS audio focus '
         'when multi-view is open. Background music and podcast apps are '
