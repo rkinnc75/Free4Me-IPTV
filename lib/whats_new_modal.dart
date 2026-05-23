@@ -7,6 +7,17 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.15.7': [
+    'Fix: "Optimise for this device" no longer resets your library view, '
+        'show/hide preferences, force-TV-mode, or EPG settings — those '
+        'are personal preferences with no relationship to device tuning. '
+        'Only buffer, cache, timing, and decoder fields change now. '
+        '"Reset to defaults" still resets everything (except sources, '
+        'debug-logging, and multi-view session state).',
+    'Cleanup: Optimise dialog now uses the canonical multi-view layout '
+        'labels ("Disabled" / "1×2 Side by side" / "2×2 Quad grid") '
+        'instead of the abbreviated forms.',
+  ],
   '1.15.6': [
     'Fix: Multi-view cells now apply the same mpv runtime options the '
         'full-screen player does (cache-secs, network-timeout, demuxer '

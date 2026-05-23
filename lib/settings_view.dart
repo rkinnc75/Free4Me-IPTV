@@ -697,23 +697,26 @@ class _SettingsState extends State<SettingsView> {
     );
   }
 
-  /// Human-readable label for a [MultiViewLayout] value, used in the
-  /// optimise-settings confirmation dialog.
-  String _layoutLabel(MultiViewLayout l) => switch (l) {
-        MultiViewLayout.none => 'Off',
-        MultiViewLayout.oneByTwo => '1×2',
-        MultiViewLayout.twoByTwo => '2×2',
-      };
-
-  /// Shared confirmation + apply flow for both reset actions. [builder]
-  /// produces the fresh Settings instance; this method preserves
-  /// session-state fields the user wouldn't expect a "reset" to clobber
-  /// (debug-logging toggle, multi-view layout, channel assignments) and
-  /// persists the result.
+  /// Shared confirmation + apply flow for both reset actions.
+  ///
+  /// [builder] produces the fresh [Settings] instance.
+  ///
+  /// The following session-state fields are ALWAYS preserved across both
+  /// actions because the user wouldn't expect a "reset" to clobber them:
+  ///   - `debugLogging`
+  ///   - `multiViewLayout`, `multiViewCells1x2`, `multiViewCells2x2`
+  ///
+  /// When [preserveLibraryPreferences] is true (used by the Optimise
+  /// action), these additional fields are preserved because they are
+  /// personal library preferences with no relationship to device tuning:
+  ///   - `defaultView`, `refreshOnStart`, `forceTVMode`
+  ///   - `showLivestreams`, `showMovies`, `showSeries`
+  ///   - All EPG settings
   Future<void> _confirmAndResetSettings({
     required String title,
     required String body,
     required Settings Function() builder,
+    bool preserveLibraryPreferences = false,
   }) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -734,12 +737,26 @@ class _SettingsState extends State<SettingsView> {
     );
     if (confirmed != true || !mounted) return;
 
-    // Build the fresh Settings, then copy back session-state fields.
     final fresh = builder()
       ..debugLogging = settings.debugLogging
       ..multiViewLayout = settings.multiViewLayout
       ..multiViewCells1x2 = settings.multiViewCells1x2
       ..multiViewCells2x2 = settings.multiViewCells2x2;
+
+    if (preserveLibraryPreferences) {
+      fresh
+        ..defaultView = settings.defaultView
+        ..refreshOnStart = settings.refreshOnStart
+        ..forceTVMode = settings.forceTVMode
+        ..showLivestreams = settings.showLivestreams
+        ..showMovies = settings.showMovies
+        ..showSeries = settings.showSeries
+        ..epgAutoRefresh = settings.epgAutoRefresh
+        ..epgRefreshHours = settings.epgRefreshHours
+        ..epgRefreshHour = settings.epgRefreshHour
+        ..epgPastDays = settings.epgPastDays
+        ..epgForecastDays = settings.epgForecastDays;
+    }
 
     setState(() => settings = fresh);
     await updateSettings();
@@ -1861,16 +1878,19 @@ class _SettingsState extends State<SettingsView> {
                             '  • Detected RAM: ${DeviceMemory.totalMb} MB\n'
                             '  • Form factor: ${isTV ? "TV" : "phone/tablet"}\n'
                             '  • Multi-view layout: '
-                            '${_layoutLabel(settings.multiViewLayout)}\n\n'
-                            'Your sources, credentials, debug-logging '
-                            'toggle, and multi-view channel assignments '
-                            'are preserved.\n\n'
+                            '${settings.multiViewLayout.label}\n\n'
+                            'Only buffer / cache / timing / decoder '
+                            'settings change. Your library view, EPG, '
+                            'show/hide preferences, sources, credentials, '
+                            'debug-logging toggle, and multi-view channel '
+                            'assignments are all preserved.\n\n'
                             'Some changes (buffer size) take effect on '
                             'the next app launch.',
                         builder: () => Settings.optimisedFor(
                           isTV: isTV,
                           layout: settings.multiViewLayout,
                         ),
+                        preserveLibraryPreferences: true,
                       );
                     },
                   ),
