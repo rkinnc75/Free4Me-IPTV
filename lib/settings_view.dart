@@ -758,16 +758,29 @@ class _SettingsState extends State<SettingsView> {
         ..epgForecastDays = settings.epgForecastDays;
     }
 
+    // Only `bufferSizeMB` is baked into `PlayerConfiguration` at MpvEngine
+    // construction (lib/player/mpv_engine.dart), so it is the one field
+    // that genuinely requires an app restart to take effect. The demuxer-MB
+    // and cache-secs fields are re-applied via `reapplyOptions()` on the
+    // next stream open. Choose the snackbar copy accordingly so users
+    // aren't told to restart when nothing restart-bound changed.
+    final restartNeeded = fresh.bufferSizeMB != settings.bufferSizeMB;
+
     setState(() => settings = fresh);
     await updateSettings();
 
     if (!mounted) return;
-    AppLog.info('Settings: reset applied — $title');
+    AppLog.info(
+      'Settings: reset applied — $title'
+      ' bufferSizeChanged=$restartNeeded',
+    );
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
+      SnackBar(
         content: Text(
-          'Settings updated. Restart the app for buffer-size changes '
-          'to take full effect.',
+          restartNeeded
+              ? 'Settings updated. Restart the app for buffer-size changes '
+                  'to take full effect.'
+              : 'Settings updated.',
         ),
       ),
     );

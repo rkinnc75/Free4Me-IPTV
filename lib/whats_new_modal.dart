@@ -7,6 +7,20 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.15.8': [
+    'Fix: End-of-stream is signalled by mpv on two channels at once '
+        '(an "End of file" error and a "completed" event). Multi-view '
+        'used to schedule a retry from both, burning a transient-retry '
+        'slot on every legitimate stream cycle. Both paths now share '
+        'one retry; the budget is preserved for real network issues.',
+    'Polish: "Reset to defaults" and "Optimise for this device" only '
+        'tell you to restart the app when the buffer size actually '
+        'changed. Other buffer-related fields (demuxer caps, cache '
+        'seconds) take effect on the next stream open and never needed '
+        'a restart message in the first place.',
+    'Cleanup: Pre-existing camelCase lint in the multi-source channel '
+        'picker fixed (no behavior change).',
+  ],
   '1.15.7': [
     'Fix: "Optimise for this device" no longer resets your library view, '
         'show/hide preferences, force-TV-mode, or EPG settings — those '

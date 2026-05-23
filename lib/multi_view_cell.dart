@@ -98,6 +98,15 @@ class _MultiViewCellState extends State<MultiViewCell> {
   /// open() completes (Issue 6).
   bool? _lastBufferingState;
 
+  /// Set when an EOF-driven retry has been scheduled for the current
+  /// engine generation. End-of-stream surfaces in BOTH `errorStream`
+  /// (as "End of file") and `completedStream` (as `done == true`) for
+  /// the same event — without this flag, both listeners would schedule
+  /// a retry, and the second would burn a transient-retry budget slot
+  /// before being short-circuited by the generation token. The flag is
+  /// reset whenever the engine is (re)started or disposed.
+  bool _eofRetryScheduled = false;
+
   @override
   void initState() {
     super.initState();
@@ -142,6 +151,7 @@ class _MultiViewCellState extends State<MultiViewCell> {
     _engine = null;
     _lastBufferingState = null;
     _lastTransientIncrementAt = null;
+    _eofRetryScheduled = false;
     if (e != null) {
       // dispose() is async; we fire-and-forget since the widget is gone.
       // Wrap with .catchError so a native dispose failure (rare but possible)
@@ -213,6 +223,7 @@ class _MultiViewCellState extends State<MultiViewCell> {
     _lastErrorAt = null;
     _lastBufferingState = null;
     _lastTransientIncrementAt = null;
+    _eofRetryScheduled = false;
 
     // Resolve which engine to use through the same picker the main player
     // uses — so per-channel and per-source overrides are honoured here too.
@@ -309,6 +320,30 @@ class _MultiViewCellState extends State<MultiViewCell> {
 
       if (!mounted || generation != _openGeneration) return;
 
+      // 1b. End-of-stream surfaces in BOTH errorStream ("End of file")
+      //     and completedStream (`done == true`) for the same event.
+      //     Whichever listener fires first schedules the retry and sets
+      //     [_eofRetryScheduled]; the other suppresses to avoid burning
+      //     a transient-retry budget slot on a duplicate signal.
+      if (err.contains('End of file')) {
+        if (_eofRetryScheduled) return;
+        _eofRetryScheduled = true;
+        final delayMs = widget.settings.streamCompletedDelayMs;
+        AppLog.info(
+          'MultiViewCell: EOF via errorStream'
+          ' cell=${widget.cellIndex}'
+          ' channel="${ch.name}"'
+          ' — retrying in ${delayMs}ms',
+        );
+        Future.delayed(Duration(milliseconds: delayMs), () {
+          if (mounted && generation == _openGeneration && !_error) {
+            _disposeEngine();
+            _startEngine(ch);
+          }
+        });
+        return;
+      }
+
       // 2. Transient — retry up to N times with a short delay.
       if (transient && _transientRetries < _maxTransientRetries) {
         // mpv routinely emits two transient errors in the same event
@@ -354,6 +389,10 @@ class _MultiViewCellState extends State<MultiViewCell> {
 
     _engineSubs.add(engine.completedStream.listen((done) {
       if (!done) return;
+      // De-duplicate with the errorStream EOF branch — same event, two
+      // signals. First listener through schedules the retry.
+      if (_eofRetryScheduled) return;
+      _eofRetryScheduled = true;
       final delayMs = widget.settings.streamCompletedDelayMs;
       AppLog.info(
         'MultiViewCell: stream completed'

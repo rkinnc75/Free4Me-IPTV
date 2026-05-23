@@ -65,15 +65,15 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
     final all = <Channel>[];
     var page = 1;
     while (true) {
-      final page_results = await Sql.search(Filters(
+      final pageResults = await Sql.search(Filters(
         query: query.isEmpty ? null : query,
         sourceIds: widget.sourceIds,
         mediaTypes: [MediaType.livestream],
         viewType: ViewType.all,
         page: page,
       ));
-      all.addAll(page_results);
-      if (page_results.length < pageSize) break;
+      all.addAll(pageResults);
+      if (pageResults.length < pageSize) break;
       page++;
     }
     all.sort(_pickSort);

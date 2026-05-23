@@ -9,7 +9,7 @@ For the original feature plan and copy strings see [DEVELOPMENT-HANDBOOK.md](DEV
 
 | Item | Value |
 |---|---|
-| Latest release | **v1.14.0+56** |
+| Latest release | **v1.15.8+67** (refer to git tags for absolute current state — this line is not auto-updated by the release script) |
 | GitHub releases | https://github.com/rkinnc75/Free4Me-IPTV/releases |
 | `flutter analyze` | **0 issues** |
 | Build script | `bash scripts/build_and_release.sh` (bumps tag, builds APK, creates GH release) |
