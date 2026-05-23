@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_form_builder/flutter_form_builder.dart';
 import 'package:form_builder_validators/form_builder_validators.dart';
 import 'package:open_tv/backend/epg_service.dart';
+import 'package:open_tv/backend/settings_io.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/backend/utils.dart';
 import 'package:open_tv/correction_modal.dart';
@@ -308,6 +309,32 @@ class _SetupState extends State<Setup> {
     );
   }
 
+  /// Import a backup file from the welcome screen. If the import
+  /// produces at least one source, skip the rest of the wizard and
+  /// jump straight to Home. Otherwise stay on the welcome screen so
+  /// the user can fall back to adding a source manually.
+  ///
+  /// SettingsIo.importFromFile() handles the file picker, schema
+  /// validation, the confirm dialog, and persistence. We just react
+  /// to its outcome.
+  Future<void> _importBackup() async {
+    final imported = await SettingsIo.importFromFile(context);
+    if (!mounted || !imported) return;
+
+    // Kick off the background refresh so channels populate and any
+    // staged channel-attribute restores (favorites / last-watched)
+    // get applied via Utils.refreshSource → SettingsIo.applyPendingPreserves.
+    // ignore: unawaited_futures
+    Utils.refreshAllSources();
+
+    // Only navigate forward if the import actually populated a source.
+    final sources = await Sql.getSources();
+    if (!mounted) return;
+    if (sources.isNotEmpty) {
+      navigateToHome();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -439,7 +466,37 @@ class _SetupState extends State<Setup> {
         return getPage(
           "Welcome to Free4Me-IPTV",
           "Let's set up your ${widget.showAppBar ? "new" : "first"} source",
-          null,
+          // Only show the import-backup affordance on first-run setup
+          // (showAppBar=false). When Setup is opened from Settings →
+          // Add Source, the user already has Settings → Backup &
+          // Restore available; offering it here would be redundant.
+          widget.showAppBar
+              ? null
+              : [
+                  const SizedBox(height: 32),
+                  Text(
+                    'Already have a backup file?',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withValues(alpha: 0.7),
+                        ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  FilledButton.tonalIcon(
+                    onPressed: _isFinishing ? null : _importBackup,
+                    icon: const Icon(Icons.download_for_offline),
+                    label: const Text('Import settings backup'),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 16,
+                      ),
+                    ),
+                  ),
+                ],
         );
       case Steps.sourceType:
         return getPage(

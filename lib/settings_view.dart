@@ -1846,8 +1846,16 @@ class _SettingsState extends State<SettingsView> {
                       "Restore sources and settings from a backup",
                     ),
                     onTap: () async {
-                      await SettingsIo.importFromFile(context);
+                      final imported =
+                          await SettingsIo.importFromFile(context);
                       await initAsync(); // Reload UI after import
+                      if (imported) {
+                        // Fire-and-forget refresh so channels populate and
+                        // any staged channel-attribute restores get applied
+                        // (see SettingsIo.applyPendingPreserves).
+                        // ignore: unawaited_futures
+                        Utils.refreshAllSources();
+                      }
                     },
                   ),
 

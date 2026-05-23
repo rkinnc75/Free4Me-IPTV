@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:open_tv/backend/m3u.dart';
+import 'package:open_tv/backend/settings_io.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/backend/xtream.dart';
 import 'package:open_tv/memory.dart';
@@ -26,6 +27,11 @@ class Utils {
   static Future<void> refreshSource(Source source) async {
     refreshedSeries.clear();
     await processSource(source, true);
+    // After channels are populated, apply any favorites and last-
+    // watched timestamps that an imported backup staged for this
+    // source (see fix28.2 / SettingsIo.applyPendingPreserves). No-op
+    // if no preserve list is pending.
+    await SettingsIo.applyPendingPreserves(source.name);
   }
 
   static Future<void> processSource(

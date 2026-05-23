@@ -170,6 +170,14 @@ class _MultiViewScreenState extends State<MultiViewScreen> {
     );
     setState(() => _channels[index] = channel);
     _persistChannels();
+    // Record in watch history. Only fires for explicit user picks;
+    // auto-restore of saved layouts on app launch uses a different
+    // path (constructor / _restoreSavedCells) that bypasses this
+    // setter, so restored channels don't get spurious timestamp
+    // bumps.
+    if (channel.id != null) {
+      unawaited(Sql.addToHistory(channel.id!));
+    }
     // Give the new cell audio focus automatically.
     if (_focusedCell != index) setState(() => _focusedCell = index);
   }

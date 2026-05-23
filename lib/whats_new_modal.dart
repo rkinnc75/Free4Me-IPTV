@@ -7,6 +7,27 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.16.1': [
+    'New: First-run Setup now has an "Import settings backup" button on '
+        'the welcome screen. Restoring a backup on a clean install no '
+        'longer requires adding a throwaway source first.',
+    'Fix: Backup export/import now round-trips your favorites and last-'
+        'watched timestamps. Backup files also carry 9 settings fields '
+        'that previously reverted to defaults on every restore '
+        '(startup grace, mini demuxer cap, buffer size, stream completed '
+        'delay, stream scanner thresholds, multi-view layout, and saved '
+        'multi-view cell assignments). Backup schema bumped v2 → v3; '
+        'v2 backups still import successfully.',
+    'Fix: Channels you watch from multi-view (by picking a cell channel '
+        'or by promoting a cell to full-screen) now appear in the Recent '
+        'view. Previously only Home tile taps were recorded.',
+    'Fix: Promoting a multi-view cell to full-screen (long-press → Full '
+        'screen, or double-tap) used to leave the cell\'s player engine '
+        'attached to the same .ts URL the full-screen Player was '
+        'opening. The provider rejected the duplicate read and the '
+        'promotion failed permanently. The cell engine is now disposed '
+        'before the Player opens, and restored on return.',
+  ],
   '1.16.0': [
     'Maintenance: No functional changes. Starts a fresh 1.16.x minor '
         'version line now that the automated release pipeline is '

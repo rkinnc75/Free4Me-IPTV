@@ -503,8 +503,32 @@ class _MultiViewCellState extends State<MultiViewCell> {
       ' cell=${widget.cellIndex}'
       ' channel="${ch.name}"',
     );
-    // Clear any stale cooldown — the cell's active stream proves it's live.
+    // Clear any stale cooldown — the cell's active stream proves
+    // it's live.
     Player.clearCooldown(ch.id);
+
+    // Record in watch history (part 28.3 / fix26). Mirrors the
+    // channel_tile.dart:249 tap-to-play path that's the only other
+    // place a user actively chooses a channel.
+    if (ch.id != null) {
+      unawaited(Sql.addToHistory(ch.id!));
+    }
+
+    // CRITICAL: dispose the cell's engine BEFORE pushing the full-
+    // screen Player. Both engines would otherwise try to read the
+    // same .ts URL from the same provider credentials, and the
+    // provider rejects the duplicate read with "Failed to open"
+    // (see fix28.4 evidence in free4me_log_1779565841465.txt at
+    // 15:47:53–15:47:54). Without this, every long-press → Full
+    // screen and every double-tap fails permanently.
+    //
+    // The cell falls through to _buildLoadingCell() during the
+    // promotion (no _engine, _loading true). After the Player pops,
+    // we restart the cell so the user gets video back when they
+    // return to multi-view.
+    _disposeEngine();
+    setState(() => _loading = true);
+
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => Player(
@@ -514,6 +538,16 @@ class _MultiViewCellState extends State<MultiViewCell> {
         ),
       ),
     );
+
+    // Returned from full-screen. Re-open the cell with whatever
+    // channel it currently holds. (If the user channel-zapped
+    // inside the Player, that changed the Player's channel state,
+    // not the cell's.)
+    if (!mounted) return;
+    final current = widget.channel;
+    if (current != null) {
+      _startEngine(current);
+    }
   }
 
   @override

@@ -6,7 +6,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
+import 'package:open_tv/models/channel_preserve.dart';
 import 'package:open_tv/models/engine_type.dart';
+import 'package:open_tv/models/multi_view_layout.dart';
 import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/source.dart';
 import 'package:open_tv/models/source_type.dart';
@@ -14,9 +16,19 @@ import 'package:open_tv/models/view_type.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
-const int _schemaVersion = 2;
+const int _schemaVersion = 3;
 
 class SettingsIo {
+  /// Channel-attribute restores staged by importFromFile, keyed by
+  /// source name. Consumed by applyPendingPreserves once channel
+  /// rows are populated by the first source refresh.
+  ///
+  /// In-memory only — if the app is killed before refresh runs, the
+  /// entries are lost (the backup file itself is still on disk so
+  /// the user can re-import). Persisting to SQLite is possible but
+  /// adds schema-migration work; not worth it for a rare edge case.
+  static final Map<String, List<ChannelPreserve>> _pendingPreserves = {};
+
   /// Export all sources + settings to a JSON file chosen by the user.
   /// [includeCredentials] controls whether Xtream username/password are written.
   static Future<void> exportToFile(
@@ -27,12 +39,34 @@ class SettingsIo {
     final settings = await SettingsService.getSettings();
     final sources = await Sql.getSources();
 
+    // For each source, capture the per-channel attributes worth
+    // round-tripping (favorite flag + last-watched timestamp). Keyed
+    // by channel name — restorePreserve matches on (name, source_id)
+    // after a refresh repopulates the channel table.
+    final sourcesPayload = <Map<String, dynamic>>[];
+    for (final s in sources) {
+      final base = _sourceToMap(s, includeCredentials);
+      if (s.id != null) {
+        final preserve = await Sql.getChannelsPreserve(s.id!);
+        if (preserve.isNotEmpty) {
+          base['preserve'] = preserve
+              .map((p) => {
+                    'name': p.name,
+                    if (p.favorite != null) 'favorite': p.favorite,
+                    if (p.lastWatched != null) 'lastWatched': p.lastWatched,
+                  })
+              .toList();
+        }
+      }
+      sourcesPayload.add(base);
+    }
+
     final payload = jsonEncode({
       'schemaVersion': _schemaVersion,
       'exportedAt': DateTime.now().toUtc().toIso8601String(),
       'appVersion': packageInfo.version,
       'settings': _settingsToMap(settings),
-      'sources': sources.map((s) => _sourceToMap(s, includeCredentials)).toList(),
+      'sources': sourcesPayload,
     });
 
     final dir = await getTemporaryDirectory();
@@ -55,13 +89,20 @@ class SettingsIo {
   }
 
   /// Import settings and sources from a user-selected JSON file.
-  static Future<void> importFromFile(BuildContext context) async {
+  /// Returns `true` if the payload was successfully applied; `false`
+  /// on user cancel, parse failure, or version mismatch. Callers are
+  /// expected to fire `Utils.refreshAllSources()` themselves when the
+  /// return value is true — kept here as a separate call so this
+  /// module doesn't have to import `utils.dart` (which would create
+  /// an import cycle, since utils.dart imports this module for
+  /// `applyPendingPreserves`).
+  static Future<bool> importFromFile(BuildContext context) async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['json'],
       withData: true,
     );
-    if (result == null || result.files.single.bytes == null) return;
+    if (result == null || result.files.single.bytes == null) return false;
 
     final raw = utf8.decode(result.files.single.bytes!);
     final Map<String, dynamic> payload;
@@ -76,7 +117,7 @@ class SettingsIo {
           ),
         );
       }
-      return;
+      return false;
     }
 
     final version = payload['schemaVersion'] as int? ?? 0;
@@ -92,7 +133,7 @@ class SettingsIo {
           ),
         );
       }
-      return;
+      return false;
     }
 
     // Show confirmation before applying.
@@ -118,7 +159,7 @@ class SettingsIo {
           ],
         ),
       );
-      if (confirmed != true) return;
+      if (confirmed != true) return false;
     }
 
     try {
@@ -144,14 +185,39 @@ class SettingsIo {
             defaultEngine: EngineType.fromJson(map['defaultEngine'] as String?),
           );
           await Sql.commitWrite([Sql.getOrCreateSourceByName(source)]);
+
+          // Stage favorites / last-watched for re-application after the
+          // first refresh populates channels for this source. Keyed by
+          // source name because IDs differ between export and import
+          // databases; names are the only stable identifier across the
+          // boundary.
+          final preserveRaw = map['preserve'] as List<dynamic>?;
+          if (preserveRaw != null && preserveRaw.isNotEmpty) {
+            _pendingPreserves[source.name] = preserveRaw
+                .map((p) {
+                  final m = p as Map<String, dynamic>;
+                  return ChannelPreserve(
+                    name: m['name'] as String,
+                    favorite: m['favorite'] as int?,
+                    lastWatched: m['lastWatched'] as int?,
+                  );
+                })
+                .toList();
+          }
         }
       }
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Backup imported successfully')),
+          const SnackBar(
+            content: Text(
+              'Backup imported. Refreshing channels in the background…',
+            ),
+            duration: Duration(seconds: 4),
+          ),
         );
       }
+      return true;
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -161,7 +227,38 @@ class SettingsIo {
           ),
         );
       }
+      return false;
     }
+  }
+
+  /// Apply any pending channel-attribute restores for [sourceName]
+  /// that were staged by a recent importFromFile call. Safe to call
+  /// repeatedly; the entry is consumed and cleared on first
+  /// successful match. No-op if nothing is pending.
+  ///
+  /// Called from Utils.refreshSource after channels are populated.
+  static Future<void> applyPendingPreserves(String sourceName) async {
+    final preserve = _pendingPreserves.remove(sourceName);
+    if (preserve == null || preserve.isEmpty) return;
+
+    final sources = await Sql.getSources();
+    Source? source;
+    for (final s in sources) {
+      if (s.name == sourceName) {
+        source = s;
+        break;
+      }
+    }
+    if (source == null || source.id == null) {
+      // Source was deleted between import and refresh — drop the
+      // staged preserves silently.
+      return;
+    }
+
+    await Sql.commitWrite(
+      [Sql.restorePreserve(preserve)],
+      memory: {'sourceId': source.id!.toString()},
+    );
   }
 
   static Map<String, dynamic> _settingsToMap(Settings s) => {
@@ -182,17 +279,30 @@ class SettingsIo {
         'bufferingWatchdogSecs': s.bufferingWatchdogSecs,
         'stableThresholdSecs': s.stableThresholdSecs,
         'forcedEngine': s.forcedEngine.toJson(),
-        // EPG & debug (added schema v2)
+        // EPG & debug (schema v2)
         'debugLogging': s.debugLogging,
         'epgAutoRefresh': s.epgAutoRefresh,
         'epgRefreshHours': s.epgRefreshHours,
         'epgRefreshHour': s.epgRefreshHour,
         'epgPastDays': s.epgPastDays,
         'epgForecastDays': s.epgForecastDays,
+        // Schema v3 additions:
+        'startupGraceMs': s.startupGraceMs,
+        'miniDemuxerMaxMB': s.miniDemuxerMaxMB,
+        'bufferSizeMB': s.bufferSizeMB,
+        'streamCompletedDelayMs': s.streamCompletedDelayMs,
+        'streamScanMaxCount': s.streamScanMaxCount,
+        'streamScanTimeoutSecs': s.streamScanTimeoutSecs,
+        'multiViewLayout': s.multiViewLayout.toJson(),
+        'multiViewCells1x2': s.multiViewCells1x2,
+        'multiViewCells2x2': s.multiViewCells2x2,
       };
 
   static Settings _settingsFromMap(Map<String, dynamic> m) {
-    return Settings(
+    // Construct with v2 fields first, then overlay v3 additions.
+    // Missing v3 fields silently fall back to constructor defaults,
+    // which matches user expectation when restoring a v2 backup.
+    final s = Settings(
       defaultView: ViewType.values[m['defaultView'] as int? ?? 0],
       refreshOnStart: m['refreshOnStart'] as bool? ?? false,
       showLivestreams: m['showLivestreams'] as bool? ?? true,
@@ -212,11 +322,36 @@ class SettingsIo {
       forcedEngine: EngineType.fromJson(m['forcedEngine'] as String?),
       debugLogging: m['debugLogging'] as bool? ?? false,
       epgAutoRefresh: m['epgAutoRefresh'] as bool? ?? true,
-      epgRefreshHours: m['epgRefreshHours'] as int? ?? 12,
+      epgRefreshHours: m['epgRefreshHours'] as int? ?? 24,
       epgRefreshHour: m['epgRefreshHour'] as int? ?? 3,
       epgPastDays: m['epgPastDays'] as int? ?? 1,
       epgForecastDays: m['epgForecastDays'] as int? ?? 7,
     );
+
+    // v3 overlay — only assign if present in the payload.
+    if (m['startupGraceMs'] is int) s.startupGraceMs = m['startupGraceMs'];
+    if (m['miniDemuxerMaxMB'] is int) s.miniDemuxerMaxMB = m['miniDemuxerMaxMB'];
+    if (m['bufferSizeMB'] is int) s.bufferSizeMB = m['bufferSizeMB'];
+    if (m['streamCompletedDelayMs'] is int) {
+      s.streamCompletedDelayMs = m['streamCompletedDelayMs'];
+    }
+    if (m['streamScanMaxCount'] is int) {
+      s.streamScanMaxCount = m['streamScanMaxCount'];
+    }
+    if (m['streamScanTimeoutSecs'] is int) {
+      s.streamScanTimeoutSecs = m['streamScanTimeoutSecs'];
+    }
+    if (m['multiViewLayout'] is String) {
+      s.multiViewLayout = MultiViewLayout.fromJson(m['multiViewLayout']);
+    }
+    if (m['multiViewCells1x2'] is String) {
+      s.multiViewCells1x2 = m['multiViewCells1x2'];
+    }
+    if (m['multiViewCells2x2'] is String) {
+      s.multiViewCells2x2 = m['multiViewCells2x2'];
+    }
+
+    return s;
   }
 
   /// Save an arbitrary text string to a user-chosen file location.
