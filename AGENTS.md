@@ -1,7 +1,12 @@
 # AGENTS.md — Free4Me-IPTV AI Session Guide
 
-**Read this first.** Every new agent session should start here.  
-For the original feature plan and copy strings see [DEVELOPMENT-HANDBOOK.md](DEVELOPMENT-HANDBOOK.md).
+**Read this first.** Every new agent session should start here.
+
+Related docs:
+- [`CLAUDE-WORKFLOW.md`](CLAUDE-WORKFLOW.md) — how Claude ships releases (mobile vs Cowork vs Cursor; CI pipeline; bootstrap state; failure recovery).
+- [`BUILD-ENV.md`](BUILD-ENV.md) — host-Mac build environment that CI mirrors.
+- [`AGENT-HANDOFF-v1.15.7.md`](AGENT-HANDOFF-v1.15.7.md) — codebase patterns + invariants captured at the v1.15.7 boundary.
+- [`DEVELOPMENT-HANDBOOK.md`](DEVELOPMENT-HANDBOOK.md) — original feature plan and copy strings.
 
 ---
 
@@ -9,14 +14,14 @@ For the original feature plan and copy strings see [DEVELOPMENT-HANDBOOK.md](DEV
 
 | Item | Value |
 |---|---|
-| Latest release | **v1.15.8+67** (refer to git tags for absolute current state — this line is not auto-updated by the release script) |
+| Latest release | **v1.16.0+69** (refer to git tags for absolute current state — this line is not auto-updated by the release script) |
 | GitHub releases | https://github.com/rkinnc75/Free4Me-IPTV/releases |
 | `flutter analyze` | **0 issues** |
-| Build script | `bash scripts/build_and_release.sh` (bumps tag, builds APK, creates GH release) |
-| Flutter SDK | `/Users/builder/tools/flutter/bin` |
+| Release pipelines | Automated: tag push → `.github/workflows/release.yml`. Manual: `bash scripts/build_and_release.sh` from a Mac. See `CLAUDE-WORKFLOW.md`. |
+| Flutter SDK (host Mac) | `/Users/builder/tools/flutter/bin` |
 | Dart package name | `open_tv` (intentional — do not rename) |
 | Android package ID | `me.free4me.iptv` |
-| Signing | debug key |
+| Signing | debug key (shared between local Mac and CI via `DEBUG_KEYSTORE_B64` secret) |
 
 ---
 
