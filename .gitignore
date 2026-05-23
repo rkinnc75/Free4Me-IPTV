@@ -153,3 +153,6 @@ app.*.symbols
 # More from Fred
 android/app/.cxx
 *.apk
+
+# Local PAT used by the sandbox agent for HTTPS push. Never commit.
+.github-token

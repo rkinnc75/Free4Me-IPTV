@@ -1,0 +1,280 @@
+# =============================================================================
+# Free4Me-IPTV release pipeline
+#
+# Triggered by pushing a `v*` tag (e.g. `v1.15.9`). The companion local script
+# `scripts/build_and_release.sh` continues to work for hands-on releases from
+# a Mac; this workflow is the unattended equivalent.
+#
+# Pre-tag checklist (also documented in DEVELOPMENT-HANDBOOK.md):
+#   1. Bump `version: X.Y.Z+N` in `pubspec.yaml`.
+#   2. Add a `'X.Y.Z': [...]` entry at the TOP of the `_changelog` map in
+#      `lib/whats_new_modal.dart`.
+#   3. Run `python3 scripts/update_version_json.py` to refresh `version.json`.
+#   4. Commit everything to `main`.
+#   5. Push tag `vX.Y.Z` matching `pubspec.yaml`.
+#
+# The workflow verifies the tag matches `pubspec.yaml` and verifies
+# `version.json` is up to date (the in-app update checker fetches it via
+# raw.githubusercontent.com/.../main/version.json, so it MUST be on `main`
+# before the GitHub release goes live).
+#
+# Secrets consumed:
+#   * DEBUG_KEYSTORE_B64 — base64 of the Mac's `~/.android/debug.keystore`.
+#     Restored so CI-built APKs have the same SHA fingerprint as the local
+#     Mac builds and existing user installs can update cleanly. See
+#     BUILD-ENV.md §4. If missing, CI will warn and use its own debug key
+#     (users would need to uninstall/reinstall once).
+#
+# Environment baseline (matches BUILD-ENV.md):
+#   * Flutter 3.44.0 stable
+#   * Java 21 Temurin (Mac uses JBR 21 — Temurin is the GH-Actions-friendly
+#     OpenJDK 21 substitute)
+#   * Android SDK platform 36 + build-tools 36.0.0 + NDK 27.0.12077973
+#   * Gradle 8.14 (from android/gradle/wrapper)
+#   * AGP 8.13.2 + Kotlin 2.2.20 (from android/settings.gradle)
+# =============================================================================
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'If true, build but do not create the GitHub release.'
+        required: false
+        default: 'false'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    name: Build APK and publish release
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      # ─── 1. Checkout ────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Full history so the version.json freshness check can compare
+          # against previous commits.
+          fetch-depth: 0
+
+      # ─── 2. Read VERSION / TAG / APK_NAME from pubspec.yaml ─────────────
+      - name: Resolve version from pubspec.yaml
+        id: ver
+        run: |
+          set -euo pipefail
+          VERSION=$(grep '^version:' pubspec.yaml | head -1 \
+            | awk '{print $2}' | cut -d+ -f1)
+          if [[ -z "$VERSION" ]]; then
+            echo "::error::Could not read version from pubspec.yaml"
+            exit 1
+          fi
+          TAG="v${VERSION}"
+          APK_NAME="Free4Me-IPTV-${VERSION}-arm64.apk"
+          {
+            echo "version=$VERSION"
+            echo "tag=$TAG"
+            echo "apk_name=$APK_NAME"
+          } >> "$GITHUB_OUTPUT"
+          echo "Resolved: version=$VERSION  tag=$TAG  apk=$APK_NAME"
+
+      # ─── 3. Sanity check: pushed tag matches pubspec.yaml ───────────────
+      - name: Verify tag matches pubspec.yaml
+        if: github.event_name == 'push'
+        run: |
+          set -euo pipefail
+          PUSHED_TAG="${GITHUB_REF#refs/tags/}"
+          EXPECTED_TAG="${{ steps.ver.outputs.tag }}"
+          if [[ "$PUSHED_TAG" != "$EXPECTED_TAG" ]]; then
+            echo "::error::Pushed tag '$PUSHED_TAG' does not match" \
+                 "pubspec.yaml version '$EXPECTED_TAG'."
+            echo "::error::Bump pubspec.yaml first, commit, then tag."
+            exit 1
+          fi
+          echo "Tag/pubspec match: $PUSHED_TAG"
+
+      # ─── 4. Sanity check: version.json is up to date with the tag ──────
+      - name: Verify version.json is up to date
+        run: |
+          set -euo pipefail
+          python3 scripts/update_version_json.py
+          if ! git diff --quiet version.json; then
+            echo "::error::version.json on the tagged commit is stale."
+            echo "::error::Run 'python3 scripts/update_version_json.py'" \
+                 "locally, commit, re-tag, and push again."
+            git --no-pager diff version.json
+            exit 1
+          fi
+          echo "version.json is current."
+
+      # ─── 5. Toolchain ───────────────────────────────────────────────────
+      - name: Set up Java 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Flutter (matches host Mac)
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.0'
+          channel: stable
+          cache: true
+
+      - name: Set up Android SDK + NDK
+        uses: android-actions/setup-android@v3
+        with:
+          # `platforms;android-36` + `build-tools;36.0.0` match the
+          # `compileSdk = 36` declared in android/app/build.gradle. NDK
+          # version pinned to the AGP 8.13.2 default; jni plugin asks for
+          # 28.2 but the build accepts the warning (matches host
+          # behaviour in BUILD-ENV.md §5a).
+          packages: 'platforms;android-36 build-tools;36.0.0 ndk;27.0.12077973'
+          accept-android-sdk-licenses: true
+
+      # ─── 6. Restore the Mac's debug keystore so APKs share fingerprint ─
+      - name: Restore debug.keystore from secret (preserves user updates)
+        env:
+          DEBUG_KEYSTORE_B64: ${{ secrets.DEBUG_KEYSTORE_B64 }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.android"
+          if [[ -n "${DEBUG_KEYSTORE_B64:-}" ]]; then
+            printf '%s' "$DEBUG_KEYSTORE_B64" \
+              | base64 -d > "$HOME/.android/debug.keystore"
+            chmod 600 "$HOME/.android/debug.keystore"
+            echo "Restored debug.keystore. Fingerprint:"
+            keytool -list -v \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android \
+              -alias androiddebugkey 2>/dev/null \
+              | grep -iE 'sha[0-9]+:' || true
+          else
+            echo "::warning::DEBUG_KEYSTORE_B64 secret is not set."
+            echo "::warning::CI will generate its own debug keystore;" \
+                 "the APK will have a different signing fingerprint than" \
+                 "your local Mac builds, and existing user installs will" \
+                 "NOT be able to update over the top — they will see" \
+                 "'App not installed'. See BUILD-ENV.md §4."
+          fi
+
+      # ─── 7. Resolve Pub packages ────────────────────────────────────────
+      - name: flutter pub get
+        run: flutter pub get
+
+      # ─── 8. flutter analyze (advisory — matches host behaviour) ────────
+      - name: flutter analyze (advisory)
+        run: |
+          set +e
+          flutter analyze --no-fatal-infos
+          rc=$?
+          if [[ $rc -ne 0 ]]; then
+            echo "::warning::flutter analyze reported issues (advisory only)."
+          fi
+          exit 0
+
+      # ─── 9. Build the release APK ──────────────────────────────────────
+      - name: flutter build apk --release
+        env:
+          # Cap the Gradle daemon to 2GB so we don't crash the runner.
+          # `android/gradle.properties` declares 3GB which is sized for a
+          # 32GB Mac; GitHub-hosted ubuntu-latest has 7-16GB total.
+          GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx2G -XX:MaxMetaspaceSize=512m'
+        run: flutter build apk --release
+
+      # ─── 10. Rename APK to the release convention ──────────────────────
+      - name: Stage APK with release naming
+        id: apk
+        run: |
+          set -euo pipefail
+          src='build/app/outputs/flutter-apk/app-release.apk'
+          dst="${{ steps.ver.outputs.apk_name }}"
+          if [[ ! -s "$src" ]]; then
+            echo "::error::APK missing at $src"
+            ls -la build/app/outputs/flutter-apk/ || true
+            exit 1
+          fi
+          cp "$src" "$dst"
+          ls -lh "$dst"
+          {
+            echo "path=$dst"
+            echo "size_bytes=$(stat -c%s "$dst")"
+          } >> "$GITHUB_OUTPUT"
+
+      # ─── 11. Build release notes from version.json.releaseNotes ────────
+      - name: Compose release notes from version.json
+        id: notes
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' > /tmp/notes.md
+          import json, pathlib
+          data = json.loads(pathlib.Path("version.json").read_text(encoding="utf-8"))
+          version = data.get("latest", "")
+          notes = data.get("releaseNotes", "")
+          print(f"## Free4Me-IPTV v{version}\n")
+          print("Install by sideloading the APK on your Android TV device.\n")
+          print("### Changes\n")
+          print(notes)
+          print("")
+          print("---")
+          print("Built by [.github/workflows/release.yml]"
+                "(.github/workflows/release.yml). See "
+                "[DEVELOPMENT-HANDBOOK.md]"
+                "(https://github.com/rkinnc75/Free4Me-IPTV/blob/main/"
+                "DEVELOPMENT-HANDBOOK.md) for the full feature roadmap.")
+          PY
+          echo "--- Generated notes ---"
+          cat /tmp/notes.md
+
+      # ─── 12. Create or update the GitHub release (idempotent) ──────────
+      - name: Create or update GitHub release
+        if: github.event_name == 'push' || inputs.dry_run != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG='${{ steps.ver.outputs.tag }}'
+          APK='${{ steps.apk.outputs.path }}'
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; uploading APK (clobber)..."
+            gh release upload "$TAG" "$APK" --clobber
+            gh release edit "$TAG" --notes-file /tmp/notes.md
+          else
+            echo "Creating release $TAG..."
+            gh release create "$TAG" "$APK" \
+              --title "$TAG" \
+              --notes-file /tmp/notes.md
+          fi
+
+          echo ""
+          echo "Done. Release live at:"
+          echo "  https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
+
+      # ─── 13. Dry-run summary ───────────────────────────────────────────
+      - name: Dry-run summary (skipped release)
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run == 'true'
+        run: |
+          echo "Dry run requested via workflow_dispatch."
+          echo "APK built at: ${{ steps.apk.outputs.path }}"
+          echo "Size: ${{ steps.apk.outputs.size_bytes }} bytes"
+          echo "No GitHub release was created."
+
+      # ─── 14. Upload APK as workflow artifact for inspection ────────────
+      - name: Upload APK as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.ver.outputs.apk_name }}
+          path: ${{ steps.apk.outputs.path }}
+          retention-days: 14
