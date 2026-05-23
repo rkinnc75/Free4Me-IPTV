@@ -1,38 +1,24 @@
-# =============================================================================
-# Free4Me-IPTV release pipeline
+# Free4Me-IPTV release pipeline. Toolchain pinned to match BUILD-ENV.md
+# (Flutter 3.44.0, Java 21 Temurin, Android SDK 36, NDK 27.0.12077973).
+# `scripts/build_and_release.sh` remains supported for hands-on Mac
+# releases; this workflow is the unattended equivalent.
 #
-# Triggered by pushing a `v*` tag (e.g. `v1.15.9`). The companion local script
-# `scripts/build_and_release.sh` continues to work for hands-on releases from
-# a Mac; this workflow is the unattended equivalent.
-#
-# Pre-tag checklist (also documented in DEVELOPMENT-HANDBOOK.md):
+# Pre-tag checklist:
 #   1. Bump `version: X.Y.Z+N` in `pubspec.yaml`.
-#   2. Add a `'X.Y.Z': [...]` entry at the TOP of the `_changelog` map in
+#   2. Add a `'X.Y.Z': [...]` entry at the TOP of `_changelog` in
 #      `lib/whats_new_modal.dart`.
 #   3. Run `python3 scripts/update_version_json.py` to refresh `version.json`.
-#   4. Commit everything to `main`.
-#   5. Push tag `vX.Y.Z` matching `pubspec.yaml`.
+#   4. Commit, push to `main`, then push tag `vX.Y.Z`.
 #
-# The workflow verifies the tag matches `pubspec.yaml` and verifies
-# `version.json` is up to date (the in-app update checker fetches it via
-# raw.githubusercontent.com/.../main/version.json, so it MUST be on `main`
-# before the GitHub release goes live).
+# version.json MUST be on `main` before the tag — the in-app update
+# checker fetches it from `raw.githubusercontent.com/.../main/version.json`.
+# The "Verify version.json is up to date" step enforces this.
 #
-# Secrets consumed:
+# Secrets:
 #   * DEBUG_KEYSTORE_B64 — base64 of the Mac's `~/.android/debug.keystore`.
-#     Restored so CI-built APKs have the same SHA fingerprint as the local
-#     Mac builds and existing user installs can update cleanly. See
-#     BUILD-ENV.md §4. If missing, CI will warn and use its own debug key
-#     (users would need to uninstall/reinstall once).
-#
-# Environment baseline (matches BUILD-ENV.md):
-#   * Flutter 3.44.0 stable
-#   * Java 21 Temurin (Mac uses JBR 21 — Temurin is the GH-Actions-friendly
-#     OpenJDK 21 substitute)
-#   * Android SDK platform 36 + build-tools 36.0.0 + NDK 27.0.12077973
-#   * Gradle 8.14 (from android/gradle/wrapper)
-#   * AGP 8.13.2 + Kotlin 2.2.20 (from android/settings.gradle)
-# =============================================================================
+#     Restored so CI APKs match the SHA fingerprint of local Mac builds
+#     and existing user installs update cleanly. Without it, the runner
+#     generates its own key and existing users see "App not installed".
 
 name: Release
 
@@ -61,15 +47,12 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      # ─── 1. Checkout ────────────────────────────────────────────────────
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # Full history so the version.json freshness check can compare
-          # against previous commits.
+          # Needed by the version.json freshness check.
           fetch-depth: 0
 
-      # ─── 2. Read VERSION / TAG / APK_NAME from pubspec.yaml ─────────────
       - name: Resolve version from pubspec.yaml
         id: ver
         run: |
@@ -89,7 +72,6 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "Resolved: version=$VERSION  tag=$TAG  apk=$APK_NAME"
 
-      # ─── 3. Sanity check: pushed tag matches pubspec.yaml ───────────────
       - name: Verify tag matches pubspec.yaml
         if: github.event_name == 'push'
         run: |
@@ -104,7 +86,6 @@ jobs:
           fi
           echo "Tag/pubspec match: $PUSHED_TAG"
 
-      # ─── 4. Sanity check: version.json is up to date with the tag ──────
       - name: Verify version.json is up to date
         run: |
           set -euo pipefail
@@ -118,14 +99,13 @@ jobs:
           fi
           echo "version.json is current."
 
-      # ─── 5. Toolchain ───────────────────────────────────────────────────
       - name: Set up Java 21 (Temurin)
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
 
-      - name: Set up Flutter (matches host Mac)
+      - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.44.0'
@@ -135,15 +115,9 @@ jobs:
       - name: Set up Android SDK + NDK
         uses: android-actions/setup-android@v3
         with:
-          # `platforms;android-36` + `build-tools;36.0.0` match the
-          # `compileSdk = 36` declared in android/app/build.gradle. NDK
-          # version pinned to the AGP 8.13.2 default; jni plugin asks for
-          # 28.2 but the build accepts the warning (matches host
-          # behaviour in BUILD-ENV.md §5a).
           packages: 'platforms;android-36 build-tools;36.0.0 ndk;27.0.12077973'
           accept-android-sdk-licenses: true
 
-      # ─── 6. Restore the Mac's debug keystore so APKs share fingerprint ─
       - name: Restore debug.keystore from secret (preserves user updates)
         env:
           DEBUG_KEYSTORE_B64: ${{ secrets.DEBUG_KEYSTORE_B64 }}
@@ -169,11 +143,9 @@ jobs:
                  "'App not installed'. See BUILD-ENV.md §4."
           fi
 
-      # ─── 7. Resolve Pub packages ────────────────────────────────────────
       - name: flutter pub get
         run: flutter pub get
 
-      # ─── 8. flutter analyze (advisory — matches host behaviour) ────────
       - name: flutter analyze (advisory)
         run: |
           set +e
@@ -184,16 +156,13 @@ jobs:
           fi
           exit 0
 
-      # ─── 9. Build the release APK ──────────────────────────────────────
       - name: flutter build apk --release
         env:
-          # Cap the Gradle daemon to 2GB so we don't crash the runner.
-          # `android/gradle.properties` declares 3GB which is sized for a
-          # 32GB Mac; GitHub-hosted ubuntu-latest has 7-16GB total.
+          # android/gradle.properties sizes the daemon for a 32G Mac; cap
+          # to 2G here so we stay comfortably under the runner's RAM.
           GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx2G -XX:MaxMetaspaceSize=512m'
         run: flutter build apk --release
 
-      # ─── 10. Rename APK to the release convention ──────────────────────
       - name: Stage APK with release naming
         id: apk
         run: |
@@ -212,7 +181,6 @@ jobs:
             echo "size_bytes=$(stat -c%s "$dst")"
           } >> "$GITHUB_OUTPUT"
 
-      # ─── 11. Build release notes from version.json.releaseNotes ────────
       - name: Compose release notes from version.json
         id: notes
         run: |
@@ -237,7 +205,6 @@ jobs:
           echo "--- Generated notes ---"
           cat /tmp/notes.md
 
-      # ─── 12. Create or update the GitHub release (idempotent) ──────────
       - name: Create or update GitHub release
         if: github.event_name == 'push' || inputs.dry_run != 'true'
         env:
@@ -262,7 +229,6 @@ jobs:
           echo "Done. Release live at:"
           echo "  https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
 
-      # ─── 13. Dry-run summary ───────────────────────────────────────────
       - name: Dry-run summary (skipped release)
         if: github.event_name == 'workflow_dispatch' && inputs.dry_run == 'true'
         run: |
@@ -271,7 +237,6 @@ jobs:
           echo "Size: ${{ steps.apk.outputs.size_bytes }} bytes"
           echo "No GitHub release was created."
 
-      # ─── 14. Upload APK as workflow artifact for inspection ────────────
       - name: Upload APK as workflow artifact
         uses: actions/upload-artifact@v4
         with:
