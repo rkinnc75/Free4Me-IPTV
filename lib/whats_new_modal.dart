@@ -7,6 +7,11 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.16.0': [
+    'Maintenance: No functional changes. Starts a fresh 1.16.x minor '
+        'version line now that the automated release pipeline is '
+        'documented end-to-end in CLAUDE-WORKFLOW.md.',
+  ],
   '1.15.9': [
     'Build: First release shipped from the new automated GitHub Actions '
         'pipeline driven by Claude. No functional changes in the app. The '

@@ -1,7 +1,7 @@
 {
-  "latest": "1.15.9",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.15.9",
+  "latest": "1.16.0",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.16.0",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Build: First release shipped from the new automated GitHub Actions pipeline driven by Claude. No functional changes in the app. The debug signing key carries over from the previous local-Mac builds, so updates from v1.15.8 install cleanly with no need to uninstall."
+  "releaseNotes": "\u2022 Maintenance: No functional changes. Starts a fresh 1.16.x minor version line now that the automated release pipeline is documented end-to-end in CLAUDE-WORKFLOW.md."
 }
