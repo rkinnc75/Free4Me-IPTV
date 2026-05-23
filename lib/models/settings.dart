@@ -1,3 +1,4 @@
+import 'package:open_tv/backend/device_memory.dart';
 import 'package:open_tv/models/engine_type.dart';
 import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/multi_view_layout.dart';
@@ -140,5 +141,77 @@ class Settings {
       if (showMovies) MediaType.movie,
       if (showSeries) MediaType.serie,
     ];
+  }
+
+  /// Returns a fresh [Settings] instance with all fields at their hardcoded
+  /// defaults.
+  ///
+  /// Callers that drive a "reset" UX should preserve session-state fields
+  /// (debug-logging toggle, multi-view layout, cell assignments) by copying
+  /// them back from the user's current Settings before persisting — this
+  /// factory itself does not branch on user state.
+  factory Settings.defaults() => Settings();
+
+  /// Returns a [Settings] instance with values recommended for the current
+  /// device.
+  ///
+  /// [isTV] should come from `DeviceDetector.isTV()` and [layout] is the
+  /// user's currently selected [MultiViewLayout]. The TV branches assume
+  /// wired networking and slower mediacodec init (Tegra/older chipsets);
+  /// the phone branches assume Wi-Fi and faster recovery. The 2×2 layout
+  /// trims the per-cell mini demuxer cap to keep RAM headroom for four
+  /// concurrent decoders.
+  ///
+  /// `DeviceMemory.init()` MUST have been called before invoking this.
+  factory Settings.optimisedFor({
+    required bool isTV,
+    required MultiViewLayout layout,
+  }) {
+    final s = Settings();
+
+    // Buffer / demuxer — DeviceMemory provides per-RAM defaults.
+    s.bufferSizeMB = DeviceMemory.defaultBufferSizeMb;
+    s.liveDemuxerMaxMB = DeviceMemory.defaultLiveDemuxerMb;
+    s.vodDemuxerMaxMB = DeviceMemory.defaultLiveDemuxerMb + 64;
+    s.miniDemuxerMaxMB = switch (layout) {
+      MultiViewLayout.twoByTwo =>
+          (DeviceMemory.defaultMiniDemuxerMb * 0.75).round().clamp(16, 256),
+      _ => DeviceMemory.defaultMiniDemuxerMb,
+    };
+
+    // Cache seconds — TVs benefit from a longer read-ahead on wired
+    // networks; phones recover faster from Wi-Fi handoffs with a smaller
+    // cache.
+    s.liveCacheSecs = isTV ? 45 : 30;
+    s.vodCacheSecs = 60;
+
+    // Retry / reconnect timing.
+    s.openTimeoutSecs = isTV ? 20 : 12;
+    s.bufferingWatchdogSecs = isTV ? 15 : 10;
+    s.stableThresholdSecs = 15;
+    s.startupGraceMs = isTV ? 1500 : 800;
+    s.streamCompletedDelayMs = 2000;
+
+    // Hardware decode is always recommended; the engine code routes TV
+    // hardware to mediacodec-copy and preview cells to software decode
+    // automatically (handled inside MpvEngine._applyMpvOptions).
+    s.hwDecode = true;
+
+    // Pre-warm — TVs benefit (D-pad-driven focus changes are deliberate);
+    // phones less so (touch scrolling sweeps focus rapidly).
+    s.preWarmOnFocus = isTV;
+
+    // Stream scanner — TVs scan fewer streams with a longer per-stream
+    // timeout; phones the opposite.
+    s.streamScanMaxCount = isTV ? 15 : 20;
+    s.streamScanTimeoutSecs = isTV ? 10 : 8;
+
+    s.forcedEngine = EngineType.auto;
+
+    // Low-latency mode disables back-buffer and tightens cache; on shaky
+    // providers it produces more disconnects than it prevents.
+    s.lowLatency = false;
+
+    return s;
   }
 }

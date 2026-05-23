@@ -7,6 +7,43 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.15.6': [
+    'Fix: Multi-view cells now apply the same mpv runtime options the '
+        'full-screen player does (cache-secs, network-timeout, demuxer '
+        'caps). Cells were silently running on libmpv stock defaults, '
+        'which provoked premature server disconnects and the cascading '
+        '"stream completed → retry → permanent error" pattern.',
+    'Fix: Multi-view cells now send the per-channel HTTP headers (User-'
+        'Agent, Referer, Origin) the M3U source declared. Some provider '
+        'edges and WAFs treat unfamiliar UAs aggressively, which was a '
+        'major contributor to multi-view connection cycling.',
+    'Fix: Permanent multi-view errors now dispose the engine immediately. '
+        'Previously a failed cell could orphan its TCP connection for 10+ '
+        'minutes, silently consuming a slot in the provider\'s '
+        'connection budget and breaking subsequent retries.',
+    'Fix: Duplicate transient errors emitted by mpv in the same event '
+        'tick (e.g. ECONNRESET + read failure) are now debounced so a '
+        'single TCP reset burns one retry slot instead of two.',
+    'Fix: Duplicate permanent errors no longer double-fire setState or '
+        'double-dispose the engine.',
+    'Improvement: Multi-view transient retry budget raised from 3 to 5; '
+        'channels surviving provider edge-cycling get more headroom. The '
+        '15-second stable-playback counter still resets the budget, so '
+        'truly-dead channels still hit the error UI in ~15 seconds.',
+    'Improvement: Multi-view transient classifier now matches more '
+        '"recoverable" mpv errors — Failed to open, Error decoding '
+        'audio/video, Could not open codec, End of file, HTTP 5xx — that '
+        'were previously sent straight to the permanent branch despite '
+        'mpv itself treating them as recoverable.',
+    'Improvement: Cells now honour the user\'s "stream completed delay" '
+        'setting; previously the value was hardcoded at 2 seconds.',
+    'New: Settings → Reset section. "Reset settings to defaults" '
+        'restores hardcoded defaults; "Optimise for this device" computes '
+        'recommended values based on detected RAM, TV-vs-phone form '
+        'factor, and current multi-view layout. Both preserve sources, '
+        'credentials, debug-logging toggle, and multi-view channel '
+        'assignments.',
+  ],
   '1.15.5': [
     'Fix: Multi-view overlay now uses preview-mode buffers and software '
         'decode, eliminating the bandwidth and hardware-decoder contention '

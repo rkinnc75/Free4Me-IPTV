@@ -2,8 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:open_tv/backend/app_logger.dart';
+import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/channel_picker_screen.dart';
 import 'package:open_tv/models/channel.dart';
+import 'package:open_tv/models/channel_http_headers.dart';
 import 'package:open_tv/models/engine_type.dart';
 import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/settings.dart';
@@ -76,8 +78,20 @@ class _MultiViewCellState extends State<MultiViewCell> {
   /// Per-cell transient retry counter. Resets to 0 on a fresh
   /// [_startEngine] call and on 15 s of stable playback after an error.
   int _transientRetries = 0;
-  static const int _maxTransientRetries = 3;
+
+  /// Per-cell transient retry budget. Five attempts at a 3-second cadence
+  /// gives a healthy stream up to 15 s of recovery time during provider
+  /// edge cycling. The 15-second stable-playback counter (see
+  /// bufferingStream listener) still resets the count to zero, so a
+  /// truly-dead channel still hits the error UI promptly.
+  static const int _maxTransientRetries = 5;
   DateTime? _lastErrorAt;
+
+  /// Timestamp of the last transient-retry counter increment. Used to
+  /// debounce duplicate burst errors (mpv routinely emits ECONNRESET
+  /// twice in the same event tick — without this, a single TCP reset
+  /// burns two retries).
+  DateTime? _lastTransientIncrementAt;
 
   /// Last buffering value emitted to the log — used to filter duplicate
   /// `buffering=false` events that media_kit can re-emit immediately after
@@ -127,6 +141,7 @@ class _MultiViewCellState extends State<MultiViewCell> {
     final e = _engine;
     _engine = null;
     _lastBufferingState = null;
+    _lastTransientIncrementAt = null;
     if (e != null) {
       // dispose() is async; we fire-and-forget since the widget is gone.
       // Wrap with .catchError so a native dispose failure (rare but possible)
@@ -141,15 +156,47 @@ class _MultiViewCellState extends State<MultiViewCell> {
     }
   }
 
-  /// Returns true if [err] looks like a transient network condition that
-  /// is worth retrying.
+  /// Returns true if [err] looks like a transient condition worth retrying.
+  ///
+  /// Multi-view cells routinely see all of these resolve on a single retry
+  /// — they fire when the provider's edge cycles a connection, a codec
+  /// race loses during concurrent opens, or mpv hits a brief decoder
+  /// hiccup mid-stream. Treating these as permanent in the cell is
+  /// stricter than mpv itself: mpv emits "Error decoding audio." and then
+  /// continues playback; mpv emits "Failed to open" and then on the next
+  /// `open()` succeeds. The cell aligns with mpv's view here.
+  ///
+  /// Truly-dead channels still hit the error UI within ~15 s once the
+  /// transient retry budget is exhausted (see [_maxTransientRetries]).
   static bool _isTransientError(String err) {
-    return err.contains('0xffffff92') ||
-        err.contains('ffurl_read') ||
-        err.contains('Failed to recognize file format') ||
+    return
+        // Network-layer
+        err.contains('0xffffff92') ||        // ETIMEDOUT (FFmpeg)
+        err.contains('0xffffff99') ||        // ECONNRESET (FFmpeg)
+        err.contains('ffurl_read') ||        // any FFmpeg URL read failure
+        err.contains('ETIMEDOUT') ||
         err.contains('Connection timed out') ||
         err.contains('Connection reset') ||
-        err.contains('ETIMEDOUT');
+        // Format/codec/open patterns that look final but recover on retry
+        err.contains('Failed to recognize file format') ||
+        err.contains('Failed to open') ||
+        err.contains('Error decoding audio') ||
+        err.contains('Error decoding video') ||
+        err.contains('Could not open codec') ||
+        err.contains('End of file') ||
+        // HTTP-layer transient (5xx). Match conservatively so 4xx (auth /
+        // permanent) doesn't slip in by accident.
+        err.contains('HTTP error 5') ||
+        err.contains('Server returned 5');
+  }
+
+  /// Decodes the `ignoreSSL` text column (string '1' / 'true' / null) into
+  /// a bool. Mirrors the same helper in `lib/player.dart` so cells and the
+  /// full-screen player interpret the value identically.
+  static bool _ignoreSslFromHeaders(ChannelHttpHeaders? headers) {
+    final v = headers?.ignoreSSL;
+    if (v == null) return false;
+    return v == '1' || v.toLowerCase() == 'true';
   }
 
   /// Returns true if [err] is the benign "Cannot seek" probe that mpv
@@ -165,6 +212,7 @@ class _MultiViewCellState extends State<MultiViewCell> {
     _transientRetries = 0;
     _lastErrorAt = null;
     _lastBufferingState = null;
+    _lastTransientIncrementAt = null;
 
     // Resolve which engine to use through the same picker the main player
     // uses — so per-channel and per-source overrides are honoured here too.
@@ -194,7 +242,41 @@ class _MultiViewCellState extends State<MultiViewCell> {
             previewMode: true,
           );
 
-    // Volume first so the first audio packet plays at the correct level.
+    // Pull channel HTTP headers once and reuse below for both
+    // reapplyOptions() (ignoreSsl) and open() (UA/Referer/Origin).
+    // Without these the cell hits the provider with mpv's generic UA,
+    // which some edges treat aggressively (shorter keepalive, faster idle
+    // disconnect). See fix20.md for evidence.
+    final channelId = ch.id;
+    final ChannelHttpHeaders? chHeaders =
+        channelId != null ? await Sql.getChannelHeaders(channelId) : null;
+    if (!mounted || generation != _openGeneration) {
+      unawaited(engine.dispose().catchError((Object e) {
+        AppLog.warn('MultiViewCell: dispose error after stale headers — $e');
+      }));
+      return;
+    }
+
+    // Apply mpv runtime options BEFORE open(), matching the full-screen
+    // Player at lib/player.dart. Without this the cell runs on mpv stock
+    // defaults (cache-secs=10, no network-timeout, default UA) instead of
+    // the app-tuned values (liveCacheSecs=45, network-timeout=30,
+    // miniDemuxerMaxMB for the demuxer cap, etc.).
+    if (engine is MpvEngine) {
+      await engine.reapplyOptions(
+        url: ch.url ?? '',
+        ignoreSsl: _ignoreSslFromHeaders(chHeaders),
+      );
+      if (!mounted || generation != _openGeneration) {
+        unawaited(engine.dispose().catchError((Object e) {
+          AppLog.warn('MultiViewCell: dispose error after stale opts — $e');
+        }));
+        return;
+      }
+    }
+
+    // Volume after options, before open(). First audio packet then plays
+    // at the correct level with the correct mpv config in place.
     await engine.setVolume(widget.isFocused ? 1.0 : 0.0);
 
     // Subscribe to engine streams. Subscriptions are stored in
@@ -229,6 +311,15 @@ class _MultiViewCellState extends State<MultiViewCell> {
 
       // 2. Transient — retry up to N times with a short delay.
       if (transient && _transientRetries < _maxTransientRetries) {
+        // mpv routinely emits two transient errors in the same event
+        // tick (e.g. ECONNRESET + the subsequent read failure). Debounce
+        // so a single network event doesn't burn two retries.
+        final now = DateTime.now();
+        if (_lastTransientIncrementAt != null &&
+            now.difference(_lastTransientIncrementAt!).inMilliseconds < 500) {
+          return; // duplicate burst, already counted
+        }
+        _lastTransientIncrementAt = now;
         _transientRetries++;
         final attempt = _transientRetries;
         Future.delayed(const Duration(seconds: 3), () {
@@ -245,20 +336,34 @@ class _MultiViewCellState extends State<MultiViewCell> {
         return;
       }
 
-      // 3. Permanent or retries exhausted — surface the error UI.
+      // 3. Permanent or retries exhausted — surface the error UI AND
+      //    dispose the engine. Without disposal, the failed engine keeps
+      //    its TCP connection open and continues emitting buffering,
+      //    seek-probe, and completed events into the subscriptions until
+      //    the user manually intervenes (sometimes 10+ minutes later).
+      //    With a 4-connection provider account, two leaked cells silently
+      //    consume half the budget and break further retries.
+      //
+      //    mpv can also emit the same permanent error twice in a frame
+      //    (observed: "Could not open codec." fired twice from cell 2).
+      //    Guard so we only dispose / setState once.
+      if (_error) return;
       setState(() { _error = true; _loading = false; });
+      _disposeEngine();
     }));
 
     _engineSubs.add(engine.completedStream.listen((done) {
       if (!done) return;
+      final delayMs = widget.settings.streamCompletedDelayMs;
       AppLog.info(
         'MultiViewCell: stream completed'
         ' cell=${widget.cellIndex}'
         ' channel="${ch.name}"'
-        ' — retrying in 2s',
+        ' — retrying in ${delayMs}ms',
       );
-      // Single silent retry after 2 s (matches streamCompletedDelayMs default).
-      Future.delayed(const Duration(seconds: 2), () {
+      // Single silent retry — honours the user's streamCompletedDelayMs
+      // setting (same as full-screen Player).
+      Future.delayed(Duration(milliseconds: delayMs), () {
         if (mounted && generation == _openGeneration && !_error) {
           _disposeEngine();
           _startEngine(ch);
@@ -288,8 +393,16 @@ class _MultiViewCellState extends State<MultiViewCell> {
       }
     }));
 
+    final httpHeaders = chHeaders == null
+        ? null
+        : <String, String>{
+            if (chHeaders.referrer != null) 'Referer': chHeaders.referrer!,
+            if (chHeaders.httpOrigin != null) 'Origin': chHeaders.httpOrigin!,
+            if (chHeaders.userAgent != null) 'User-Agent': chHeaders.userAgent!,
+          };
+
     try {
-      await engine.open(url: ch.url ?? '');
+      await engine.open(url: ch.url ?? '', headers: httpHeaders);
     } catch (err) {
       AppLog.warn(
         'MultiViewCell: open() threw'

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/device_memory.dart';
+import 'package:open_tv/models/device_detector.dart';
 import 'package:open_tv/models/engine_type.dart';
 import 'package:open_tv/models/multi_view_layout.dart';
 import 'package:open_tv/multi_view_picker_dialog.dart';
@@ -693,6 +694,65 @@ class _SettingsState extends State<SettingsView> {
     await Error.tryAsyncNoLoading(
       () async => await SettingsService.updateSettings(settings),
       context,
+    );
+  }
+
+  /// Human-readable label for a [MultiViewLayout] value, used in the
+  /// optimise-settings confirmation dialog.
+  String _layoutLabel(MultiViewLayout l) => switch (l) {
+        MultiViewLayout.none => 'Off',
+        MultiViewLayout.oneByTwo => '1×2',
+        MultiViewLayout.twoByTwo => '2×2',
+      };
+
+  /// Shared confirmation + apply flow for both reset actions. [builder]
+  /// produces the fresh Settings instance; this method preserves
+  /// session-state fields the user wouldn't expect a "reset" to clobber
+  /// (debug-logging toggle, multi-view layout, channel assignments) and
+  /// persists the result.
+  Future<void> _confirmAndResetSettings({
+    required String title,
+    required String body,
+    required Settings Function() builder,
+  }) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(title),
+        content: SingleChildScrollView(child: Text(body)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Apply'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    // Build the fresh Settings, then copy back session-state fields.
+    final fresh = builder()
+      ..debugLogging = settings.debugLogging
+      ..multiViewLayout = settings.multiViewLayout
+      ..multiViewCells1x2 = settings.multiViewCells1x2
+      ..multiViewCells2x2 = settings.multiViewCells2x2;
+
+    setState(() => settings = fresh);
+    await updateSettings();
+
+    if (!mounted) return;
+    AppLog.info('Settings: reset applied — $title');
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Settings updated. Restart the app for buffer-size changes '
+          'to take full effect.',
+        ),
+      ),
     );
   }
 
@@ -1758,6 +1818,60 @@ class _SettingsState extends State<SettingsView> {
                     onTap: () async {
                       await SettingsIo.importFromFile(context);
                       await initAsync(); // Reload UI after import
+                    },
+                  ),
+
+                  const Divider(),
+
+                  // ── Reset ─────────────────────────────────────────────────
+                  _sectionHeader("Reset"),
+                  ListTile(
+                    leading: const Icon(Icons.refresh),
+                    title: const Text("Reset settings to defaults"),
+                    subtitle: const Text(
+                      "Restore the hardcoded defaults. Preserves sources, "
+                      "debug-logging toggle, and any active multi-view "
+                      "channel layout.",
+                    ),
+                    onTap: () => _confirmAndResetSettings(
+                      title: 'Reset to defaults?',
+                      body: 'This restores every tunable setting to its '
+                          'hardcoded default. Your sources, credentials, '
+                          'debug-logging toggle, and multi-view channel '
+                          'assignments are preserved.\n\n'
+                          'Some changes (buffer size) take effect on the '
+                          'next app launch.',
+                      builder: () => Settings.defaults(),
+                    ),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.auto_fix_high),
+                    title: const Text("Optimise for this device"),
+                    subtitle: const Text(
+                      "Calculate the best values for your device's RAM, "
+                      "form factor, and current multi-view layout.",
+                    ),
+                    onTap: () async {
+                      final isTV = await DeviceDetector.isTV();
+                      if (!mounted) return;
+                      _confirmAndResetSettings(
+                        title: 'Optimise for this device?',
+                        body: 'This computes recommended values for your '
+                            'device based on:\n\n'
+                            '  • Detected RAM: ${DeviceMemory.totalMb} MB\n'
+                            '  • Form factor: ${isTV ? "TV" : "phone/tablet"}\n'
+                            '  • Multi-view layout: '
+                            '${_layoutLabel(settings.multiViewLayout)}\n\n'
+                            'Your sources, credentials, debug-logging '
+                            'toggle, and multi-view channel assignments '
+                            'are preserved.\n\n'
+                            'Some changes (buffer size) take effect on '
+                            'the next app launch.',
+                        builder: () => Settings.optimisedFor(
+                          isTV: isTV,
+                          layout: settings.multiViewLayout,
+                        ),
+                      );
                     },
                   ),
 
