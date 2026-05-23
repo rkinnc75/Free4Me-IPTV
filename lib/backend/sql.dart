@@ -628,17 +628,39 @@ class Sql {
   }
 
   /// Write matched/manual EPG channel IDs back to the channels table.
+  ///
+  /// Uses a chunked `UPDATE … FROM (VALUES …)` so a 10k-entry map costs
+  /// ~50 statements instead of 10k single-row UPDATEs. Requires SQLite
+  /// 3.33+ (UPDATE-FROM); sqlite_async ships its own sqlite3 well past
+  /// that version.
   static Future<void> setChannelEpgIds(
     Map<int, String> channelIdToEpgId,
   ) async {
     if (channelIdToEpgId.isEmpty) return;
-    var db = await DbFactory.db;
+    // SQLite limits a single statement to 999 bind parameters; 2 params
+    // per row → chunks of 200 stay well under that.
+    const chunkSize = 200;
+    final entries = channelIdToEpgId.entries.toList(growable: false);
+    final db = await DbFactory.db;
     await db.writeTransaction((tx) async {
-      for (final entry in channelIdToEpgId.entries) {
-        await tx.execute(
-          'UPDATE channels SET epg_channel_id = ? WHERE id = ?',
-          [entry.value, entry.key],
-        );
+      for (var offset = 0; offset < entries.length; offset += chunkSize) {
+        final end = offset + chunkSize > entries.length
+            ? entries.length
+            : offset + chunkSize;
+        final chunk = entries.sublist(offset, end);
+        final placeholders = List.filled(chunk.length, '(?,?)').join(',');
+        final params = <Object?>[];
+        for (final e in chunk) {
+          params
+            ..add(e.key)
+            ..add(e.value);
+        }
+        await tx.execute('''
+          UPDATE channels
+             SET epg_channel_id = _data.epg
+            FROM (VALUES $placeholders) AS _data(id, epg)
+           WHERE channels.id = _data.id
+        ''', params);
       }
     });
   }
@@ -655,6 +677,12 @@ class Sql {
   /// Insert a batch of programs using multi-row VALUES clauses for performance.
   /// SQLite supports up to 999 parameters per statement; with 8 columns we use
   /// chunks of 100 rows (800 params) to stay well within the limit.
+  ///
+  /// Idempotent: on conflict against the v8 unique index
+  /// `(source_id, epg_channel_id, start_utc)` we update the mutable metadata
+  /// (title / description / category / stop_utc / episode_num). This lets
+  /// EPG refresh skip the upfront DELETE and just upsert — repeating programs
+  /// stay put and live-sport overruns get the new stop_utc.
   static Future<void> insertProgramsBatch(
     List<Program> programs,
   ) async {
@@ -685,13 +713,34 @@ class Sql {
           ]);
         }
         await tx.execute('''
-          INSERT OR IGNORE INTO programmes
+          INSERT INTO programmes
             (epg_channel_id, source_id, title, description, category,
              start_utc, stop_utc, episode_num)
           VALUES $placeholders
+          ON CONFLICT(source_id, epg_channel_id, start_utc) DO UPDATE SET
+            title       = excluded.title,
+            description = excluded.description,
+            category    = excluded.category,
+            stop_utc    = excluded.stop_utc,
+            episode_num = excluded.episode_num
         ''', params);
       }
     });
+  }
+
+  /// Garbage-collect EPG programs that ended before [windowStartEpoch].
+  /// Called after a successful XMLTV parse to keep the `programmes` table
+  /// bounded to the configured EPG window without wiping rows the parse
+  /// just rewrote.
+  static Future<void> deleteStalePrograms(
+    int sourceId,
+    int windowStartEpoch,
+  ) async {
+    final db = await DbFactory.db;
+    await db.execute(
+      'DELETE FROM programmes WHERE source_id = ? AND stop_utc < ?',
+      [sourceId, windowStartEpoch],
+    );
   }
 
   /// Returns [now, next] programs for a channel, or null entries if none.

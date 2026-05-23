@@ -7,6 +7,24 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.16.2': [
+    'Speed: EPG refresh is substantially faster. Five separate changes '
+        'work together — a larger channel-match batch (cuts isolate '
+        'overhead 6×), batched UPDATE of matched EPG IDs (one statement '
+        'per 200 channels instead of one per channel), concurrent refresh '
+        'across multiple EPG sources, an inverted token index in the '
+        'channel matcher (skips EPG entries with no token overlap up '
+        'front), and idempotent program inserts so a successful refresh '
+        'no longer wipes the existing guide before re-inserting it.',
+    'Reliability: If an EPG download fails mid-stream, the previously '
+        'imported guide is now preserved instead of leaving an empty '
+        'guide until the next successful refresh. Old entries outside '
+        'the configured EPG window are garbage-collected after each '
+        'successful refresh instead.',
+    'Schema: New unique index on programmes(source_id, epg_channel_id, '
+        'start_utc) added in a one-time migration. Existing duplicate '
+        'rows are deduped before the index is created.',
+  ],
   '1.16.1': [
     'New: First-run Setup now has an "Import settings backup" button on '
         'the welcome screen. Restoring a backup on a clean install no '

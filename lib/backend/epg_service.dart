@@ -19,9 +19,12 @@ import 'package:workmanager/workmanager.dart';
 ) =>
     EpgMatcher.matchWithReport(args.$1, args.$2);
 
-// How many channels to process per isolate invocation. Smaller = more frequent
-// progress updates; larger = less overhead. 300 is a good balance.
-const _matchBatchSize = 300;
+// How many channels to process per isolate invocation. `compute()` spawns a
+// fresh isolate AND deep-copies the channelMap across the boundary for every
+// call, so larger batches mean fewer spawns and fewer Map copies. At 2000,
+// a 90k-channel source produces ~45 batches — still plenty of progress
+// granularity for the UI.
+const _matchBatchSize = 2000;
 
 /// Task name registered with WorkManager for background EPG refresh.
 const epgBackgroundTask = 'epg_refresh';
@@ -65,13 +68,29 @@ class EpgService {
   }
 
   /// Refresh EPG for all sources that have an EPG URL configured.
+  ///
+  /// Sources run in chunks of [maxConcurrent] (default 2) so two providers
+  /// can download in parallel — HTTP fetches don't fight each other and the
+  /// SQLite writer naturally serializes the DB-write phase. Matches the
+  /// `Utils.refreshAllSources` cadence so we don't surprise providers with
+  /// burst traffic.
   static Future<void> refreshAllSources({bool background = false}) async {
-    final sources = await Sql.getSources();
-    for (final source in sources) {
-      if (!source.enabled) continue;
-      final epgUrl = resolveEpgUrl(source);
-      if (epgUrl == null) continue;
-      await refreshSource(source, epgUrl: epgUrl, background: background);
+    final eligible = (await Sql.getSources())
+        .where((s) => s.enabled && resolveEpgUrl(s) != null)
+        .toList(growable: false);
+    const maxConcurrent = 2;
+    for (var i = 0; i < eligible.length; i += maxConcurrent) {
+      final end = i + maxConcurrent > eligible.length
+          ? eligible.length
+          : i + maxConcurrent;
+      final chunk = eligible.sublist(i, end);
+      await Future.wait(chunk.map(
+        (s) => refreshSource(
+          s,
+          epgUrl: resolveEpgUrl(s),
+          background: background,
+        ),
+      ));
     }
   }
 
@@ -98,8 +117,10 @@ class EpgService {
     int inserted = 0;
     AppLog.info('EPG: downloading "${source.name}" — $url');
     try {
-      await Sql.deleteProgramsForSource(source.id!);
-
+      // Idempotent insert path (fix29.5): no upfront wipe. The schema-v8
+      // unique index on (source_id, epg_channel_id, start_utc) turns the
+      // batch insert into an upsert so a mid-stream failure leaves the
+      // previous EPG intact instead of emptying the table.
       final channelMap = await XmltvParser.parse(
         url: url,
         sourceId: source.id!,
@@ -111,6 +132,10 @@ class EpgService {
         },
         onProgress: onProgress,
       );
+
+      // GC rows whose stop time is before the configured window so the
+      // table stays bounded across refreshes.
+      await Sql.deleteStalePrograms(source.id!, windowStart);
 
       AppLog.info(
           'EPG: downloaded "${source.name}" — $inserted programs');

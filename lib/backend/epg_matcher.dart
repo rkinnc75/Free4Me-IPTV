@@ -89,6 +89,25 @@ class EpgMatcher {
       if (stripped != epgId) byStrippedId[stripped] = epgId;
     }
 
+    // Inverted token index: token → list of EPG indices whose token set
+    // contains it. Built once per call and used by tier 5 (token-superset)
+    // and tier 7 (Jaccard) to narrow their candidate set from "all EPG
+    // entries" to "EPG entries sharing at least one token with the channel".
+    //
+    // Correctness note: any EPG entry with zero token overlap with the
+    // channel cannot pass tier 5 (subset check requires every EPG token to
+    // appear in the channel's tokens — impossible when the EPG token set
+    // is non-empty and shares nothing with the channel) AND scores 0 in
+    // tier 7 Jaccard. So narrowing to the union of postings lists for the
+    // channel's tokens is a strict superset of every candidate that could
+    // possibly match, which makes the optimization a no-op on results.
+    final tokenIndex = <String, List<int>>{};
+    for (var i = 0; i < epgTokens.length; i++) {
+      for (final t in epgTokens[i]) {
+        (tokenIndex[t] ??= <int>[]).add(i);
+      }
+    }
+
     final result = <int, String>{};
     final counts = <MatchTier, int>{};
     final unmatched = <String>[];
@@ -144,12 +163,18 @@ class EpgMatcher {
       // 5. Token-superset: channel name contains every word of an EPG name.
       // Pick the entry with the MOST tokens (most specific). Skip if there's
       // a tie at the most-specific level.
+      //
+      // Candidates come from the inverted index: union of postings lists for
+      // each channel token. Any EPG entry not in this union has zero tokens
+      // in common with the channel and cannot pass the subset check (its
+      // token set is non-empty and shares nothing with the channel).
       final chTokens = _tokens(normName);
       if (chTokens.isNotEmpty) {
+        final candidates = _candidatesFor(chTokens, tokenIndex);
         String? bestId;
         int bestEpgSize = 0;
         int bestCount = 0;
-        for (var i = 0; i < epgTokens.length; i++) {
+        for (final i in candidates) {
           final epgT = epgTokens[i];
           if (epgT.isEmpty || epgT.length > chTokens.length) continue;
           if (!epgT.every(chTokens.contains)) continue;
@@ -201,11 +226,17 @@ class EpgMatcher {
       }
 
       // 7. Jaccard fallback — keep best score above threshold. Skip on ties.
+      //
+      // Same candidate narrowing as tier 5: any EPG entry with zero token
+      // overlap scores Jaccard = 0 and would have been skipped by the
+      // `inter == 0` early-out anyway. Iterating the inverted-index union
+      // produces the identical set of (score > 0) candidates.
       if (chTokens.isNotEmpty) {
+        final candidates = _candidatesFor(chTokens, tokenIndex);
         String? bestId;
         double bestScore = 0;
         int bestCount = 0;
-        for (var i = 0; i < epgTokens.length; i++) {
+        for (final i in candidates) {
           final epgT = epgTokens[i];
           if (epgT.isEmpty) continue;
           final inter = chTokens.intersection(epgT).length;
@@ -327,4 +358,23 @@ class EpgMatcher {
 
   static String _stripRegionalSuffix(String id) =>
       id.replaceFirst(_regionalSuffix, '');
+
+  /// Returns the unique EPG indices whose token sets share at least one
+  /// token with [chTokens], using the prebuilt inverted [tokenIndex].
+  ///
+  /// Used by tiers 5 and 7 to skip EPG entries that have zero token overlap
+  /// with the channel — those entries cannot match either tier (see the
+  /// correctness notes at each call site).
+  static Iterable<int> _candidatesFor(
+    Set<String> chTokens,
+    Map<String, List<int>> tokenIndex,
+  ) {
+    final seen = <int>{};
+    for (final t in chTokens) {
+      final postings = tokenIndex[t];
+      if (postings == null) continue;
+      seen.addAll(postings);
+    }
+    return seen;
+  }
 }

@@ -229,6 +229,23 @@ class DbFactory {
         await tx.execute(
           'ALTER TABLE sources ADD COLUMN default_engine TEXT;',
         );
+      }))
+      // v1.16.2: Make program inserts idempotent (fix29.5).
+      // Adds a UNIQUE constraint on (source_id, epg_channel_id, start_utc)
+      // so EPG refresh can upsert instead of wipe-and-rewrite. The dedupe
+      // step is defensive — prior versions used `INSERT OR IGNORE` against
+      // no constraint, so equal-key duplicates may exist in the wild.
+      ..add(SqliteMigration(8, (tx) async {
+        await tx.execute('''
+          DELETE FROM programmes WHERE id NOT IN (
+            SELECT MIN(id) FROM programmes
+            GROUP BY source_id, epg_channel_id, start_utc
+          );
+        ''');
+        await tx.execute('''
+          CREATE UNIQUE INDEX idx_programs_unique
+            ON programmes(source_id, epg_channel_id, start_utc);
+        ''');
       }));
     await migrations.migrate(db);
     return db;
