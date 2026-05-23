@@ -1,7 +1,7 @@
 {
-  "latest": "1.15.8",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.15.8",
+  "latest": "1.15.9",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.15.9",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: End-of-stream is signalled by mpv on two channels at once (an \"End of file\" error and a \"completed\" event). Multi-view used to schedule a retry from both, burning a transient-retry slot on every legitimate stream cycle. Both paths now share one retry; the budget is preserved for real network issues.\n\u2022 Polish: \"Reset to defaults\" and \"Optimise for this device\" only tell you to restart the app when the buffer size actually changed. Other buffer-related fields (demuxer caps, cache seconds) take effect on the next stream open and never needed a restart message in the first place.\n\u2022 Cleanup: Pre-existing camelCase lint in the multi-source channel picker fixed (no behavior change)."
+  "releaseNotes": "\u2022 Build: First release shipped from the new automated GitHub Actions pipeline driven by Claude. No functional changes in the app. The debug signing key carries over from the previous local-Mac builds, so updates from v1.15.8 install cleanly with no need to uninstall."
 }

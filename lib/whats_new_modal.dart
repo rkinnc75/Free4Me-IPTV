@@ -7,6 +7,13 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.15.9': [
+    'Build: First release shipped from the new automated GitHub Actions '
+        'pipeline driven by Claude. No functional changes in the app. The '
+        'debug signing key carries over from the previous local-Mac '
+        'builds, so updates from v1.15.8 install cleanly with no need to '
+        'uninstall.',
+  ],
   '1.15.8': [
     'Fix: End-of-stream is signalled by mpv on two channels at once '
         '(an "End of file" error and a "completed" event). Multi-view '
