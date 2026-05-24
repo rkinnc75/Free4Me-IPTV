@@ -14,14 +14,14 @@ Related docs:
 
 | Item | Value |
 |---|---|
-| Latest release | **v1.17.2+75** (refer to git tags for absolute current state — this line is not auto-updated by the release script) |
+| Latest release | **v1.17.3+76** (refer to git tags for absolute current state — this line is not auto-updated by the release script) |
 | GitHub releases | https://github.com/rkinnc75/Free4Me-IPTV/releases |
 | `flutter analyze` | **0 issues** |
 | Release pipelines | Automated: tag push → `.github/workflows/release.yml`. Manual: `bash scripts/build_and_release.sh` from a Mac. See `CLAUDE-WORKFLOW.md`. |
 | Flutter SDK (host Mac) | `/Users/builder/tools/flutter/bin` |
 | Dart package name | `open_tv` (intentional — do not rename) |
 | Android package ID | `me.free4me.iptv` |
-| Signing | debug key (shared between local Mac and CI via `DEBUG_KEYSTORE_B64` secret) |
+| Signing | release keystore — alias `free4me-iptv` (fix31, v1.17.0+). See `BUILD-ENV.md §4`. |
 
 ---
 
@@ -220,5 +220,5 @@ Example: `PO-11412 Add multi-view grid layout`
 - Android package ID `me.free4me.iptv`
 - Upstream Fredolx credit/donation links
 - Default EPG window (1 day past, 7 days forward)
-- Debug signing
+- Release signing identity (alias `free4me-iptv`, fingerprint in `BUILD-ENV.md §4`) — any change forces every existing user to uninstall before updating
 - Buffer slider ranges in Settings
