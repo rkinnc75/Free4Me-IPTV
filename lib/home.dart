@@ -41,6 +41,13 @@ class Home extends StatefulWidget {
 
 class _HomeState extends State<Home> {
   Timer? _debounce;
+  // fix29-2 diagnostics — track the typing burst so we can correlate
+  // keystroke rate with perceived search latency. Reset whenever the
+  // debounce actually fires (i.e. user has stopped typing).
+  DateTime? _firstKeystrokeAt;
+  DateTime? _lastKeystrokeAt;
+  int _keystrokeCountInBurst = 0;
+  int _searchInvocation = 0; // monotonic; correlates debounce → SQL → setState lines
   bool reachedMax = false;
   List<Channel> channels = [];
   late final TextEditingController searchController = TextEditingController();
@@ -133,10 +140,16 @@ class _HomeState extends State<Home> {
     } else {
       widget.home.filters.page = 1;
     }
+
+    // fix29-2 diagnostics — every load gets a monotonic id so the
+    // keystroke / debounce / SQL / setState lines can be correlated.
+    final inv = ++_searchInvocation;
+    final loadStart = DateTime.now();
+
     if (AppLog.enabled) {
       final f = widget.home.filters;
       AppLog.info(
-        'Home.load: view=${viewTypeToString(f.viewType)} '
+        'Home.load[$inv]: view=${viewTypeToString(f.viewType)} '
         'page=${f.page} more=$more '
         'sources=${f.sourceIds?.length ?? "null"} '
         'mediaTypes=${f.mediaTypes?.map((m) => m.name).join(",") ?? "null"} '
@@ -145,12 +158,32 @@ class _HomeState extends State<Home> {
       );
     }
     await Error.tryAsyncNoLoading(() async {
-      final results = await Sql.search(widget.home.filters);
+      final searchStart = DateTime.now();
+      final results =
+          await Sql.search(widget.home.filters, invocation: inv);
+      final searchElapsed =
+          DateTime.now().difference(searchStart).inMilliseconds;
       if (AppLog.enabled) {
-        AppLog.info('Home.load: got ${results.length} results '
-            'for ${viewTypeToString(widget.home.filters.viewType)}');
+        AppLog.info(
+          'Home.load[$inv]: got ${results.length} results in ${searchElapsed}ms'
+          ' for ${viewTypeToString(widget.home.filters.viewType)}',
+        );
       }
       if (!mounted) return;
+
+      // Drop late results from a superseded query. If a newer load()
+      // has started, don't clobber its results with ours.
+      if (inv != _searchInvocation && !more) {
+        if (AppLog.enabled) {
+          AppLog.info(
+            'Home.load[$inv]: SUPERSEDED — current=$_searchInvocation,'
+            ' dropping ${results.length} stale results',
+          );
+        }
+        return;
+      }
+
+      final setStateStart = DateTime.now();
       setState(() {
         if (!more) {
           channels = results;
@@ -159,6 +192,26 @@ class _HomeState extends State<Home> {
         }
         reachedMax = results.length < pageSize;
       });
+
+      if (AppLog.enabled) {
+        // Use a post-frame callback to measure the time from setState
+        // to the first frame after the new tiles are actually painted.
+        // This catches any heavy work in build/layout/paint that the
+        // user perceives as "search is slow."
+        final setStateSync =
+            DateTime.now().difference(setStateStart).inMilliseconds;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final totalElapsed =
+              DateTime.now().difference(loadStart).inMilliseconds;
+          AppLog.info(
+            'Home.load[$inv]: rendered'
+            ' setState=${setStateSync}ms'
+            ' total=${totalElapsed}ms'
+            ' (search=${searchElapsed}ms,'
+            ' rest=${totalElapsed - searchElapsed}ms)',
+          );
+        });
+      }
     }, context);
   }
 
@@ -378,11 +431,65 @@ class _HomeState extends State<Home> {
                               ),
                               controller: searchController,
                               onChanged: (query) {
+                                // fix29-2 diagnostics — record keystroke arrival
+                                // relative to the burst so we can see how long the
+                                // user has been typing before the debounce fires,
+                                // and how stale the on-screen results are.
+                                final now = DateTime.now();
+                                if (AppLog.enabled) {
+                                  final firstAt = _firstKeystrokeAt ??= now;
+                                  final sinceFirst =
+                                      now.difference(firstAt).inMilliseconds;
+                                  final sincePrev = _lastKeystrokeAt == null
+                                      ? 0
+                                      : now
+                                          .difference(_lastKeystrokeAt!)
+                                          .inMilliseconds;
+                                  _keystrokeCountInBurst++;
+                                  AppLog.info(
+                                    'Search.keystroke: chars=${query.length}'
+                                    ' burst=$_keystrokeCountInBurst'
+                                    ' sinceFirst=${sinceFirst}ms'
+                                    ' sincePrev=${sincePrev}ms'
+                                    ' query="$query"',
+                                  );
+                                }
+                                _lastKeystrokeAt = now;
+
                                 _debounce?.cancel();
+                                // 200 ms (was 500 ms — fix29-2). Short enough
+                                // that a fast typist sees results update mid-word;
+                                // long enough that a single typing burst doesn't
+                                // fire ~4 queries per character.
+                                final scheduledFor = now.add(
+                                  const Duration(milliseconds: 200),
+                                );
                                 _debounce = Timer(
-                                  const Duration(milliseconds: 500),
+                                  const Duration(milliseconds: 200),
                                   () {
                                     if (!mounted) return;
+                                    if (AppLog.enabled) {
+                                      final firedAt = DateTime.now();
+                                      final scheduledLatency = firedAt
+                                          .difference(scheduledFor)
+                                          .inMilliseconds;
+                                      final burstDuration =
+                                          _firstKeystrokeAt == null
+                                              ? 0
+                                              : firedAt
+                                                  .difference(_firstKeystrokeAt!)
+                                                  .inMilliseconds;
+                                      AppLog.info(
+                                        'Search.debounce-fired:'
+                                        ' keystrokes=$_keystrokeCountInBurst'
+                                        ' burstDuration=${burstDuration}ms'
+                                        ' scheduledLatency=${scheduledLatency}ms'
+                                        ' query="$query"',
+                                      );
+                                    }
+                                    // Reset burst tracking now that we're firing.
+                                    _firstKeystrokeAt = null;
+                                    _keystrokeCountInBurst = 0;
                                     widget.home.filters.query = query;
                                     load(false);
                                   },

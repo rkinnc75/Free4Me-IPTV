@@ -100,6 +100,15 @@ class Settings {
   /// Persisted channel IDs for the 2×2 layout (4 cells).
   String multiViewCells2x2;
 
+  /// When `true`, opening the multi-view screen restores the channels
+  /// from the last session for the current layout. When `false`, the
+  /// screen opens with all cells empty (ready for the user to assign).
+  ///
+  /// Default `true` to preserve historical behaviour. Channel IDs are
+  /// still persisted regardless — flipping this back to `true` will
+  /// restore the channels that were active before the toggle.
+  bool multiViewAutoRestoreChannels;
+
   Settings({
     this.defaultView = ViewType.all,
     this.refreshOnStart = false,
@@ -133,6 +142,7 @@ class Settings {
     this.multiViewLayout = MultiViewLayout.none,
     this.multiViewCells1x2 = ',',
     this.multiViewCells2x2 = ',,,',
+    this.multiViewAutoRestoreChannels = true,
   });
 
   List<MediaType> getMediaTypes() {
@@ -207,6 +217,7 @@ class Settings {
     s.streamScanTimeoutSecs = isTV ? 10 : 8;
 
     s.forcedEngine = EngineType.auto;
+    s.multiViewAutoRestoreChannels = true; // safe default (fix30)
 
     // Low-latency mode disables back-buffer and tightens cache; on shaky
     // providers it produces more disconnects than it prevents.

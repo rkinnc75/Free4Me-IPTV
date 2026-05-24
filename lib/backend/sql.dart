@@ -1,5 +1,6 @@
 import 'dart:collection';
 
+import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/db_factory.dart';
 import 'package:open_tv/models/channel.dart';
 import 'package:open_tv/models/engine_type.dart';
@@ -190,7 +191,12 @@ class Sql {
 
   // FIX (Tier 4, #8): use FTS5 when the user has typed a search query.
   // Leading-wildcard LIKE forced a full-table scan; trigram FTS is index-backed.
-  static Future<List<Channel>> search(Filters filters) async {
+  //
+  /// [invocation] is an opaque correlation id passed through to log lines so
+  /// the caller can tie search timing to its own load id (fix29-2).
+  /// Safe to pass 0 if not correlating.
+  static Future<List<Channel>> search(Filters filters,
+      {int invocation = 0}) async {
     if (filters.viewType == ViewType.categories &&
         filters.groupId == null &&
         filters.seriesId == null) {
@@ -205,6 +211,7 @@ class Sql {
     final useFts = rawQuery.isNotEmpty;
 
     String sqlQuery;
+    String branch = 'no-query'; // fix29-2 diagnostic
     List<Object> params = [];
 
     if (useFts) {
@@ -234,6 +241,9 @@ class Sql {
         if (shortTerms.isNotEmpty) {
           sqlQuery += '\nAND (${shortTerms.map((_) => 'c.name LIKE ?').join(' AND ')})';
           params.addAll(shortTerms.map((t) => '%$t%'));
+          branch = 'fts+like'; // long + short terms; rare
+        } else {
+          branch = 'fts'; // long terms only; the common ≥3-char case
         }
       } else {
         // All terms are too short for trigram; fall back to LIKE.
@@ -245,6 +255,7 @@ class Sql {
             AND url IS NOT NULL
         ''';
         params.addAll(shortTerms.map((t) => '%$t%'));
+        branch = 'like-only'; // all terms shorter than trigram width
       }
       params.addAll(mediaTypes);
       params.addAll(filters.sourceIds!);
@@ -277,8 +288,32 @@ class Sql {
     sqlQuery += "\nLIMIT ?, ?";
     params.add(offset);
     params.add(pageSize);
+
+    // fix29-2 diagnostic — split SQL execution from row mapping so the
+    // log can tell us which is the bottleneck.
+    final sqlStart = DateTime.now();
     var results = await db.getAll(sqlQuery, params);
-    return results.map(rowToChannel).toList();
+    final sqlElapsed = DateTime.now().difference(sqlStart).inMilliseconds;
+
+    final mapStart = DateTime.now();
+    final mapped = results.map(rowToChannel).toList();
+    final mapElapsed = DateTime.now().difference(mapStart).inMilliseconds;
+
+    if (AppLog.enabled) {
+      final truncatedQuery = rawQuery.length > 40
+          ? '${rawQuery.substring(0, 40)}…'
+          : rawQuery;
+      AppLog.info(
+        'Sql.search[$invocation]: branch=$branch'
+        ' rows=${results.length}'
+        ' sql=${sqlElapsed}ms'
+        ' map=${mapElapsed}ms'
+        ' params=${params.length}'
+        ' query="$truncatedQuery"',
+      );
+    }
+
+    return mapped;
   }
 
   static Channel rowToChannel(Row row) {

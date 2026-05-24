@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/models/channel_preserve.dart';
@@ -38,6 +39,15 @@ class SettingsIo {
     final packageInfo = await PackageInfo.fromPlatform();
     final settings = await SettingsService.getSettings();
     final sources = await Sql.getSources();
+
+    AppLog.info(
+      'SettingsIo.export: schema=$_schemaVersion'
+      ' sources=${sources.length}'
+      ' multiViewLayout=${settings.multiViewLayout.name}'
+      ' multiViewCells1x2="${settings.multiViewCells1x2}"'
+      ' multiViewCells2x2="${settings.multiViewCells2x2}"'
+      ' multiViewAutoRestoreChannels=${settings.multiViewAutoRestoreChannels}',
+    );
 
     // For each source, capture the per-channel attributes worth
     // round-tripping (favorite flag + last-watched timestamp). Keyed
@@ -164,9 +174,25 @@ class SettingsIo {
 
     try {
       if (payload['settings'] != null) {
-        final settings = _settingsFromMap(
-          payload['settings'] as Map<String, dynamic>,
+        final rawSettings = payload['settings'] as Map<String, dynamic>;
+        final settings = _settingsFromMap(rawSettings);
+
+        // fix30 diagnostic — log what arrived in the payload alongside
+        // what _settingsFromMap produced. If a v2 backup is imported,
+        // the multi-view fields are absent from rawSettings and the
+        // resulting settings hold constructor defaults. That's expected
+        // and not a bug — the old backup simply doesn't carry that data.
+        AppLog.info(
+          'SettingsIo.import: schemaVersion=${payload['schemaVersion']}'
+          ' appVersion=${payload['appVersion']}'
+          ' payload-has-multiViewLayout=${rawSettings.containsKey('multiViewLayout')}'
+          ' payload-multiViewLayout=${rawSettings['multiViewLayout']}'
+          ' parsed-multiViewLayout=${settings.multiViewLayout.name}'
+          ' parsed-cells1x2="${settings.multiViewCells1x2}"'
+          ' parsed-cells2x2="${settings.multiViewCells2x2}"'
+          ' parsed-autoRestore=${settings.multiViewAutoRestoreChannels}',
         );
+
         await SettingsService.updateSettings(settings);
       }
 
@@ -296,6 +322,7 @@ class SettingsIo {
         'multiViewLayout': s.multiViewLayout.toJson(),
         'multiViewCells1x2': s.multiViewCells1x2,
         'multiViewCells2x2': s.multiViewCells2x2,
+        'multiViewAutoRestoreChannels': s.multiViewAutoRestoreChannels,
       };
 
   static Settings _settingsFromMap(Map<String, dynamic> m) {
@@ -349,6 +376,9 @@ class SettingsIo {
     }
     if (m['multiViewCells2x2'] is String) {
       s.multiViewCells2x2 = m['multiViewCells2x2'];
+    }
+    if (m['multiViewAutoRestoreChannels'] is bool) {
+      s.multiViewAutoRestoreChannels = m['multiViewAutoRestoreChannels'];
     }
 
     return s;

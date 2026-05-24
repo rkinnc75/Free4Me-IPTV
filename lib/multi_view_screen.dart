@@ -113,6 +113,19 @@ class _MultiViewScreenState extends State<MultiViewScreen> {
   /// Restore persisted channel IDs for the current layout. The stored
   /// string is comma-separated IDs (empty entry = empty cell).
   Future<void> _restoreChannels() async {
+    // Honour the auto-restore opt-out (fix30). When off, open with all
+    // cells empty. The persisted channel IDs in multiViewCells1x2 /
+    // multiViewCells2x2 are NOT cleared — flipping the setting back
+    // on restores them on the next entry.
+    if (!widget.settings.multiViewAutoRestoreChannels) {
+      AppLog.info(
+        'MultiViewScreen: auto-restore disabled — opening with empty cells'
+        ' layout=${widget.layout.name}',
+      );
+      if (mounted) setState(() => _restored = true);
+      return;
+    }
+
     final raw = widget.layout == MultiViewLayout.oneByTwo
         ? widget.settings.multiViewCells1x2
         : widget.settings.multiViewCells2x2;

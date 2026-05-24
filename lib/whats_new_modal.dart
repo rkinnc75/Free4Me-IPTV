@@ -7,6 +7,26 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.16.3': [
+    'Speed: Search-as-you-type now feels responsive on long queries. '
+        'The debounce dropped from 500 ms to 200 ms, so results update '
+        'mid-word as a fast typist keeps going. A generation-counter '
+        'guard drops stale results from superseded queries so a slow '
+        'page won\'t clobber a faster newer one.',
+    'New: "Restore last channels on open" toggle in Settings, under '
+        'the multi-view layout picker. When OFF, multi-view opens with '
+        'all cells empty (ready to assign). When ON (default), the last '
+        'channels per layout come back as before. Your picks are still '
+        'persisted either way — flipping the toggle back on restores '
+        'them on the next open.',
+    'Debug: Added end-to-end diagnostic logging across the search '
+        'pipeline (keystroke → debounce → SQL → render) and around '
+        'settings persistence (load / save / export / import). All '
+        'gated on debug-logging — zero overhead when off. The import '
+        'log line says which fields the backup carried, which makes '
+        'old-backup diagnoses immediate (e.g. v2 backups predate '
+        'multi-view export support).',
+  ],
   '1.16.2': [
     'Speed: EPG refresh is substantially faster. Five separate changes '
         'work together — a larger channel-match batch (cuts isolate '

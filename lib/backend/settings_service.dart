@@ -52,6 +52,8 @@ const streamScanTimeoutSecsProp = "streamScanTimeoutSecs";
 const multiViewLayoutProp = "multiViewLayout";
 const multiViewCells1x2Prop = "multiViewCells1x2";
 const multiViewCells2x2Prop = "multiViewCells2x2";
+// v1.16.3 (fix30): auto-restore opt-out
+const multiViewAutoRestoreChannelsProp = "multiViewAutoRestoreChannels";
 
 // Playback reliability (v1.15)
 const miniDemuxerMaxMBProp = "miniDemuxerMaxMB";
@@ -113,6 +115,7 @@ class SettingsService {
     var mvLayout = settingsMap[multiViewLayoutProp];
     var mvCells1x2 = settingsMap[multiViewCells1x2Prop];
     var mvCells2x2 = settingsMap[multiViewCells2x2Prop];
+    var mvAutoRestore = settingsMap[multiViewAutoRestoreChannelsProp];
     var miniDemuxer = settingsMap[miniDemuxerMaxMBProp];
     var bufferSize = settingsMap[bufferSizeMBProp];
     var streamCompletedDelay = settingsMap[streamCompletedDelayMsProp];
@@ -161,6 +164,9 @@ class SettingsService {
     }
     if (mvCells1x2 != null) settings.multiViewCells1x2 = mvCells1x2;
     if (mvCells2x2 != null) settings.multiViewCells2x2 = mvCells2x2;
+    if (mvAutoRestore != null) {
+      settings.multiViewAutoRestoreChannels = int.parse(mvAutoRestore) == 1;
+    }
 
     // Playback reliability — fall back to RAM-aware defaults on first run.
     if (miniDemuxer != null) {
@@ -185,7 +191,10 @@ class SettingsService {
       ' stableThresholdSecs=${settings.stableThresholdSecs}'
       ' startupGraceMs=${settings.startupGraceMs}'
       ' streamCompletedDelayMs=${settings.streamCompletedDelayMs}'
-      ' multiViewLayout=${settings.multiViewLayout.name}',
+      ' multiViewLayout=${settings.multiViewLayout.name}'
+      ' multiViewCells1x2="${settings.multiViewCells1x2}"'
+      ' multiViewCells2x2="${settings.multiViewCells2x2}"'
+      ' multiViewAutoRestoreChannels=${settings.multiViewAutoRestoreChannels}',
     );
     return settings;
   }
@@ -229,6 +238,8 @@ class SettingsService {
     settingsMap[multiViewLayoutProp] = settings.multiViewLayout.toJson();
     settingsMap[multiViewCells1x2Prop] = settings.multiViewCells1x2;
     settingsMap[multiViewCells2x2Prop] = settings.multiViewCells2x2;
+    settingsMap[multiViewAutoRestoreChannelsProp] =
+        (settings.multiViewAutoRestoreChannels ? 1 : 0).toString();
     settingsMap[miniDemuxerMaxMBProp] = settings.miniDemuxerMaxMB.toString();
     settingsMap[bufferSizeMBProp] = settings.bufferSizeMB.toString();
     settingsMap[streamCompletedDelayMsProp] =
@@ -236,7 +247,13 @@ class SettingsService {
 
     await Sql.updateSettings(settingsMap);
     _cached = settings; // keep the in-memory copy in sync
-    AppLog.info('Settings: saved');
+    AppLog.info(
+      'Settings: saved'
+      ' multiViewLayout=${settings.multiViewLayout.name}'
+      ' multiViewCells1x2="${settings.multiViewCells1x2}"'
+      ' multiViewCells2x2="${settings.multiViewCells2x2}"'
+      ' multiViewAutoRestoreChannels=${settings.multiViewAutoRestoreChannels}',
+    );
   }
 
   static Future<void> updateLastSeenVersion() async {

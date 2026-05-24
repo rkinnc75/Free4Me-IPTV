@@ -1431,6 +1431,36 @@ class _SettingsState extends State<SettingsView> {
                   ),
                   _engineSelectionTile(settings),
                   _multiViewTile(settings),
+                  SwitchListTile(
+                    title: Row(
+                      children: [
+                        const Expanded(
+                          child: Text('Restore last channels on open'),
+                        ),
+                        const SizedBox(width: 4),
+                        _helpIcon(
+                          title: 'Auto-restore channels',
+                          body:
+                              'When ON, opening multi-view brings back the channels '
+                              'you had loaded the last time you used the current '
+                              'layout — exactly as you left them.\n\n'
+                              'When OFF, multi-view opens with all cells empty; tap '
+                              'each "+" to pick a channel.\n\n'
+                              'Your last picks are remembered in either case — '
+                              'turning this back ON restores them on the next open.',
+                        ),
+                      ],
+                    ),
+                    value: settings.multiViewAutoRestoreChannels,
+                    onChanged: settings.multiViewLayout == MultiViewLayout.none
+                        ? null // greyed when multi-view itself is off
+                        : (v) {
+                            setState(
+                              () => settings.multiViewAutoRestoreChannels = v,
+                            );
+                            updateSettings();
+                          },
+                  ),
 
                   const Divider(),
 
