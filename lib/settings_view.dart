@@ -31,6 +31,7 @@ import 'package:open_tv/error.dart';
 import 'package:open_tv/setup.dart';
 import 'package:open_tv/whats_new_modal.dart';
 import 'package:open_tv/widgets/setting_help_dialog.dart';
+import 'package:open_tv/widgets/sources_refresh_dialog.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -1878,14 +1879,18 @@ class _SettingsState extends State<SettingsView> {
                     onTap: () async {
                       final imported =
                           await SettingsIo.importFromFile(context);
-                      await initAsync(); // Reload UI after import
+                      if (!context.mounted) return;
                       if (imported) {
-                        // Fire-and-forget refresh so channels populate and
-                        // any staged channel-attribute restores get applied
-                        // (see SettingsIo.applyPendingPreserves).
-                        // ignore: unawaited_futures
-                        Utils.refreshAllSources();
+                        // fix33: block on a progress-dialog refresh so
+                        // the Settings UI doesn't end up showing partial
+                        // post-import state. Channel-attribute restores
+                        // (favorites / last-watched) get applied via the
+                        // SettingsIo.applyPendingPreserves hook from
+                        // fix28 while the dialog is up.
+                        await showSourcesRefreshDialog(context);
                       }
+                      if (!context.mounted) return;
+                      await initAsync(); // Reload UI after import
                     },
                   ),
 

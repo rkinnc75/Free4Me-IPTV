@@ -184,9 +184,12 @@ jobs:
 
       - name: flutter build apk --release
         env:
-          # android/gradle.properties sizes the daemon for a 32G Mac; cap
-          # to 2G here so we stay comfortably under the runner's RAM.
-          GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx2G -XX:MaxMetaspaceSize=512m'
+          # ubuntu-latest runners have 7 GB RAM. Earlier 2G cap caused
+          # an OOM in media_kit_libs_android_video's JNI-libs copy task
+          # (libmpv .so files for 4 ABIs are big). 5G gives plenty of
+          # headroom for both Gradle and the Kotlin daemon while still
+          # leaving room for the OS + the runner agent.
+          GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx5G -XX:MaxMetaspaceSize=1G'
         run: flutter build apk --release
 
       - name: Stage APK with release naming

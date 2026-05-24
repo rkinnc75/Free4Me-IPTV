@@ -233,16 +233,10 @@ class SettingsIo {
         }
       }
 
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Backup imported. Refreshing channels in the background…',
-            ),
-            duration: Duration(seconds: 4),
-          ),
-        );
-      }
+      // fix33: callers are responsible for showing post-import
+      // feedback (the new showSourcesRefreshDialog supersedes the
+      // old "Refreshing in the background…" snackbar — the dialog
+      // is what the user actually sees during refresh).
       return true;
     } catch (e) {
       if (context.mounted) {

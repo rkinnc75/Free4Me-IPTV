@@ -10,6 +10,7 @@ import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/backend/utils.dart';
 import 'package:open_tv/correction_modal.dart';
 import 'package:open_tv/home.dart';
+import 'package:open_tv/widgets/sources_refresh_dialog.dart';
 import 'package:open_tv/models/filters.dart';
 import 'package:open_tv/models/home_manager.dart';
 import 'package:open_tv/models/source.dart';
@@ -310,9 +311,11 @@ class _SetupState extends State<Setup> {
   }
 
   /// Import a backup file from the welcome screen. If the import
-  /// produces at least one source, skip the rest of the wizard and
-  /// jump straight to Home. Otherwise stay on the welcome screen so
-  /// the user can fall back to adding a source manually.
+  /// produces at least one source, block on a refresh of all enabled
+  /// sources with a progress dialog (fix33), then jump straight to
+  /// Home with channels actually loaded. Otherwise stay on the
+  /// welcome screen so the user can fall back to adding a source
+  /// manually.
   ///
   /// SettingsIo.importFromFile() handles the file picker, schema
   /// validation, the confirm dialog, and persistence. We just react
@@ -321,18 +324,24 @@ class _SetupState extends State<Setup> {
     final imported = await SettingsIo.importFromFile(context);
     if (!mounted || !imported) return;
 
-    // Kick off the background refresh so channels populate and any
-    // staged channel-attribute restores (favorites / last-watched)
-    // get applied via Utils.refreshSource → SettingsIo.applyPendingPreserves.
-    // ignore: unawaited_futures
-    Utils.refreshAllSources();
-
-    // Only navigate forward if the import actually populated a source.
+    // Bail early if the import produced no sources (e.g. settings-only
+    // backup). No point showing a refresh dialog with nothing to do.
     final sources = await Sql.getSources();
     if (!mounted) return;
-    if (sources.isNotEmpty) {
-      navigateToHome();
-    }
+    if (sources.isEmpty) return;
+
+    // Block on a full refresh of all enabled sources with a progress
+    // dialog. The user lands on Home only after channels are actually
+    // loaded — no more "empty Home screen while the refresh runs in
+    // the background" experience.
+    //
+    // Channel-attribute restores (favorites / last-watched from the
+    // backup) are applied inside Utils.refreshSource via the
+    // SettingsIo.applyPendingPreserves hook from fix28.
+    await showSourcesRefreshDialog(context);
+
+    if (!mounted) return;
+    navigateToHome();
   }
 
   @override

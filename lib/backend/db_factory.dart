@@ -1,3 +1,4 @@
+import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/utils.dart';
 import 'package:sqlite_async/sqlite_async.dart';
 
@@ -248,6 +249,17 @@ class DbFactory {
         ''');
       }));
     await migrations.migrate(db);
+
+    // fix40 diagnostic — log which SQLite is actually loaded so any
+    // future "syntax error" or feature-gating bug report comes with
+    // the version attached. Cheap one-shot at first DB open.
+    try {
+      final row = await db.get('SELECT sqlite_version();');
+      AppLog.info('Sqlite: runtime version=${row.columnAt(0)}');
+    } catch (_) {
+      // Non-fatal; the rest of the app still works without the log line.
+    }
+
     return db;
   }
 

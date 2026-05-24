@@ -664,10 +664,15 @@ class Sql {
 
   /// Write matched/manual EPG channel IDs back to the channels table.
   ///
-  /// Uses a chunked `UPDATE … FROM (VALUES …)` so a 10k-entry map costs
-  /// ~50 statements instead of 10k single-row UPDATEs. Requires SQLite
-  /// 3.33+ (UPDATE-FROM); sqlite_async ships its own sqlite3 well past
-  /// that version.
+  /// Uses a chunked CTE-based UPDATE so a 10k-entry map costs ~50
+  /// statements instead of 10k single-row UPDATEs.
+  ///
+  /// The earlier `UPDATE … FROM (VALUES …) AS _data(id, epg)` form
+  /// required SQLite 3.39+ (for the derived-table column-alias-list
+  /// syntax) and produced "syntax error near '('" on devices whose
+  /// loaded sqlite is older — see fix40.md. The CTE-based form below
+  /// works on SQLite 3.8.3+ (2014), which covers every plausible
+  /// runtime including the system sqlite on older Android.
   static Future<void> setChannelEpgIds(
     Map<int, String> channelIdToEpgId,
   ) async {
@@ -683,6 +688,11 @@ class Sql {
             ? entries.length
             : offset + chunkSize;
         final chunk = entries.sublist(offset, end);
+
+        // Build a CTE that names its columns INSIDE the WITH clause —
+        // the universally-supported way to alias derived-table columns
+        //   WITH _data(id, epg) AS (VALUES (?,?), …)
+        // The UPDATE then references _data.id / _data.epg normally.
         final placeholders = List.filled(chunk.length, '(?,?)').join(',');
         final params = <Object?>[];
         for (final e in chunk) {
@@ -691,10 +701,12 @@ class Sql {
             ..add(e.value);
         }
         await tx.execute('''
+          WITH _data(id, epg) AS (VALUES $placeholders)
           UPDATE channels
-             SET epg_channel_id = _data.epg
-            FROM (VALUES $placeholders) AS _data(id, epg)
-           WHERE channels.id = _data.id
+             SET epg_channel_id = (
+               SELECT epg FROM _data WHERE _data.id = channels.id
+             )
+           WHERE id IN (SELECT id FROM _data)
         ''', params);
       }
     });

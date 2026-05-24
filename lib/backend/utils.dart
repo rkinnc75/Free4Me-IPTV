@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/m3u.dart';
 import 'package:open_tv/backend/settings_io.dart';
 import 'package:open_tv/backend/sql.dart';
@@ -24,9 +25,12 @@ class Utils {
     return join(tempDir, fileName);
   }
 
-  static Future<void> refreshSource(Source source) async {
+  static Future<void> refreshSource(
+    Source source, {
+    void Function(String)? onProgress,
+  }) async {
     refreshedSeries.clear();
-    await processSource(source, true);
+    await processSource(source, true, onProgress);
     // After channels are populated, apply any favorites and last-
     // watched timestamps that an imported backup staged for this
     // source (see fix28.2 / SettingsIo.applyPendingPreserves). No-op
@@ -52,12 +56,59 @@ class Utils {
     }
   }
 
-  static Future<void> refreshAllSources() async {
-    final sources = await Sql.getSources();
-    const maxConcurrent = 2;
-    for (var i = 0; i < sources.length; i += maxConcurrent) {
-      final chunk = sources.skip(i).take(maxConcurrent);
-      await Future.wait(chunk.map(refreshSource));
+  /// Refresh every enabled source's M3U / Xtream channel list.
+  ///
+  /// Disabled sources are skipped — same rule as
+  /// [EpgService.refreshAllSources] and the per-source EPG actions in
+  /// Settings. The single-source [refreshSource] is unaffected; callers
+  /// who explicitly target a disabled source (e.g. Settings → Sources
+  /// per-row refresh) still bypass the filter, which is correct — that
+  /// action is an explicit user override.
+  ///
+  /// [onSourceStart] fires once per source as it begins, with the
+  /// source's 1-based index and the total count. Use it to drive a
+  /// progress UI. Omit for fire-and-forget.
+  ///
+  /// [onSourceStatus] forwards per-source status strings from the
+  /// underlying M3U / Xtream fetchers (e.g. "downloaded 12000
+  /// channels"). The same callback gets called for whichever source
+  /// is currently being refreshed.
+  ///
+  /// When [onSourceStart] is null, sources refresh 2-at-a-time for
+  /// speed (the original behaviour). When non-null, the loop runs
+  /// sequentially so the dialog's "Source X of N" stays honest.
+  static Future<void> refreshAllSources({
+    void Function(int index, int total, Source source)? onSourceStart,
+    void Function(Source source, String status)? onSourceStatus,
+  }) async {
+    final enabled = (await Sql.getSources())
+        .where((s) => s.enabled)
+        .toList(growable: false);
+    AppLog.info(
+      'Utils.refreshAllSources: ${enabled.length} enabled source(s)'
+      ' (${enabled.map((s) => s.name).join(", ")})',
+    );
+
+    if (onSourceStart != null) {
+      for (var i = 0; i < enabled.length; i++) {
+        final s = enabled[i];
+        onSourceStart(i + 1, enabled.length, s);
+        await refreshSource(
+          s,
+          onProgress: onSourceStatus == null
+              ? null
+              : (msg) => onSourceStatus(s, msg),
+        );
+      }
+    } else {
+      const maxConcurrent = 2;
+      for (var i = 0; i < enabled.length; i += maxConcurrent) {
+        final end = i + maxConcurrent > enabled.length
+            ? enabled.length
+            : i + maxConcurrent;
+        final chunk = enabled.sublist(i, end);
+        await Future.wait(chunk.map(refreshSource));
+      }
     }
   }
 

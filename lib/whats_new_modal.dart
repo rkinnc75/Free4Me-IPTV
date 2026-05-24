@@ -7,6 +7,31 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.17.1': [
+    'Important: this update bundles the keystore migration that was '
+        'meant to ship as v1.17.0 (the v1.17.0 build failed on the '
+        'server). The one-time uninstall described in v1.17.0 still '
+        'applies — back up first via Settings → Backup & Restore → '
+        'Export, then uninstall and install v1.17.1, then tap "Import '
+        'settings backup" on the Setup welcome screen.',
+    'UX: After importing a backup, the app now waits with a clear '
+        '"Loading channels…" progress dialog until every enabled '
+        'source has finished refreshing. You land on Home with '
+        'channels already populated instead of an empty screen with '
+        'a silent background refresh.',
+    'Fix: EPG refresh ("Refresh EPG now" in Settings) could fail '
+        'with "syntax error near \'(\'" on devices whose loaded '
+        'SQLite was older than 3.39. The bulk EPG-channel write-back '
+        'now uses a CTE-based UPDATE that works on every SQLite '
+        'version from 3.8.3 onward.',
+    'Fix: When you trigger "Refresh all sources" (or refresh-on-start '
+        'or post-import refresh), disabled sources are now correctly '
+        'skipped. Previously disabled sources got refreshed anyway, '
+        'wasting time and bandwidth.',
+    'Debug: A one-shot "Sqlite: runtime version=…" log line is now '
+        'emitted at app start so future SQLite-related issues can be '
+        'diagnosed without guessing at which library is loaded.',
+  ],
   '1.17.0': [
     'Important: this update requires a one-time uninstall. The app '
         'now ships with a dedicated release signing identity (replacing '
