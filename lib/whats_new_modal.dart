@@ -7,6 +7,10 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.17.2': [
+    'Maintenance: declares NDK 28.2 explicitly in build.gradle to silence '
+        'the jni version-mismatch build warning. No app-visible changes.',
+  ],
   '1.17.1': [
     'Important: this update bundles the keystore migration that was '
         'meant to ship as v1.17.0 (the v1.17.0 build failed on the '

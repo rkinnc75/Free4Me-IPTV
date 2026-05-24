@@ -1,5 +1,5 @@
 # Free4Me-IPTV release pipeline. Toolchain pinned to match BUILD-ENV.md
-# (Flutter 3.44.0, Java 21 Temurin, Android SDK 36, NDK 27.0.12077973).
+# (Flutter 3.44.0, Java 21 Temurin, Android SDK 36, NDK 28.2.13676358).
 # `scripts/build_and_release.sh` remains supported for hands-on Mac
 # releases; this workflow is the unattended equivalent.
 #
@@ -124,7 +124,7 @@ jobs:
       - name: Set up Android SDK + NDK
         uses: android-actions/setup-android@v3
         with:
-          packages: 'platforms;android-36 build-tools;36.0.0 ndk;27.0.12077973'
+          packages: 'platforms;android-36 build-tools;36.0.0 ndk;28.2.13676358'
           accept-android-sdk-licenses: true
 
       - name: Restore release keystore + key.properties from secrets
