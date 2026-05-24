@@ -14,11 +14,20 @@
 # checker fetches it from `raw.githubusercontent.com/.../main/version.json`.
 # The "Verify version.json is up to date" step enforces this.
 #
-# Secrets:
-#   * DEBUG_KEYSTORE_B64 — base64 of the Mac's `~/.android/debug.keystore`.
-#     Restored so CI APKs match the SHA fingerprint of local Mac builds
-#     and existing user installs update cleanly. Without it, the runner
-#     generates its own key and existing users see "App not installed".
+# Secrets (fix31 — release keystore migration, v1.17.0+):
+#   * RELEASE_KEYSTORE_B64       — base64 of `android/app/release.keystore`.
+#   * RELEASE_KEYSTORE_PASSWORD  — keystore password.
+#   * RELEASE_KEY_ALIAS          — key alias (`free4me-iptv` by default).
+#   * RELEASE_KEY_PASSWORD       — key password (PKCS12: same as store pwd).
+#
+# Together these reconstruct `android/key.properties` + the keystore file
+# so `flutter build apk --release` signs with the project's stable release
+# identity. The fingerprint never changes across releases or build machines,
+# so updates install cleanly on top of any prior install indefinitely.
+#
+# If any secret is missing the workflow FAILS FAST rather than silently
+# falling back to a debug-signed APK (which would re-introduce the v1.16.x
+# "uninstall to update" pain).
 
 name: Release
 
@@ -118,30 +127,47 @@ jobs:
           packages: 'platforms;android-36 build-tools;36.0.0 ndk;27.0.12077973'
           accept-android-sdk-licenses: true
 
-      - name: Restore debug.keystore from secret (preserves user updates)
+      - name: Restore release keystore + key.properties from secrets
         env:
-          DEBUG_KEYSTORE_B64: ${{ secrets.DEBUG_KEYSTORE_B64 }}
+          RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          mkdir -p "$HOME/.android"
-          if [[ -n "${DEBUG_KEYSTORE_B64:-}" ]]; then
-            printf '%s' "$DEBUG_KEYSTORE_B64" \
-              | base64 -d > "$HOME/.android/debug.keystore"
-            chmod 600 "$HOME/.android/debug.keystore"
-            echo "Restored debug.keystore. Fingerprint:"
-            keytool -list -v \
-              -keystore "$HOME/.android/debug.keystore" \
-              -storepass android \
-              -alias androiddebugkey 2>/dev/null \
-              | grep -iE 'sha[0-9]+:' || true
-          else
-            echo "::warning::DEBUG_KEYSTORE_B64 secret is not set."
-            echo "::warning::CI will generate its own debug keystore;" \
-                 "the APK will have a different signing fingerprint than" \
-                 "your local Mac builds, and existing user installs will" \
-                 "NOT be able to update over the top — they will see" \
-                 "'App not installed'. See BUILD-ENV.md §4."
+          if [[ -z "${RELEASE_KEYSTORE_B64:-}" \
+             || -z "${RELEASE_KEYSTORE_PASSWORD:-}" \
+             || -z "${RELEASE_KEY_ALIAS:-}" \
+             || -z "${RELEASE_KEY_PASSWORD:-}" ]]; then
+            echo "::error::One or more RELEASE_KEYSTORE_* secrets are missing."
+            echo "::error::Set them at" \
+                 "https://github.com/${GITHUB_REPOSITORY}/settings/secrets/actions"
+            echo "::error::See fix31.md / CLAUDE-WORKFLOW.md."
+            exit 1
           fi
+
+          mkdir -p android/app
+          printf '%s' "$RELEASE_KEYSTORE_B64" \
+            | base64 -d > android/app/release.keystore
+          chmod 600 android/app/release.keystore
+
+          # Use printf (not heredoc) so the YAML indent in this run: block
+          # doesn't leak into key.properties — Gradle won't parse a line
+          # like "          storeFile=…".
+          {
+            printf 'storeFile=release.keystore\n'
+            printf 'storePassword=%s\n' "$RELEASE_KEYSTORE_PASSWORD"
+            printf 'keyAlias=%s\n'      "$RELEASE_KEY_ALIAS"
+            printf 'keyPassword=%s\n'   "$RELEASE_KEY_PASSWORD"
+          } > android/key.properties
+          chmod 600 android/key.properties
+
+          echo "Release keystore restored. Fingerprint:"
+          keytool -list -v \
+            -keystore android/app/release.keystore \
+            -storepass "$RELEASE_KEYSTORE_PASSWORD" \
+            -alias "$RELEASE_KEY_ALIAS" 2>/dev/null \
+            | grep -iE 'sha[0-9-]+:' || true
 
       - name: flutter pub get
         run: flutter pub get

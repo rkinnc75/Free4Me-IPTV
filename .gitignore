@@ -156,3 +156,6 @@ android/app/.cxx
 
 # Local PAT used by the sandbox agent for HTTPS push. Never commit.
 .github-token
+
+# Release keystore secrets (fix31). Never commit.
+.release-keystore-secrets

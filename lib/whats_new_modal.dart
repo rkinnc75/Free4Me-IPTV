@@ -7,6 +7,22 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.17.0': [
+    'Important: this update requires a one-time uninstall. The app '
+        'now ships with a dedicated release signing identity (replacing '
+        'the brittle debug-keystore approach used through v1.16.x) so '
+        'every future update installs cleanly without uninstalling. '
+        'Android requires that signing identity to match across updates, '
+        'which is why the v1.16.x → v1.17.0 transition needs a fresh '
+        'install — but it\'s the last one you\'ll have to do.',
+    'Before uninstalling: open Settings → Backup & Restore → Export, '
+        'and save the JSON somewhere safe (Drive, Files, etc.). After '
+        'installing v1.17.0, the Setup welcome screen has an "Import '
+        'settings backup" button that brings your sources, favorites, '
+        'last-watched, multi-view layout, and the rest back in one tap.',
+    'Maintenance: No other functional changes. v1.17.x picks up from '
+        'where v1.16.3 left off.',
+  ],
   '1.16.3': [
     'Speed: Search-as-you-type now feels responsive on long queries. '
         'The debounce dropped from 500 ms to 200 ms, so results update '

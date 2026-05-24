@@ -6,6 +6,22 @@ plugins {
     id "dev.flutter.flutter-gradle-plugin"
 }
 
+// fix31: dedicated release keystore.
+//
+// `android/key.properties` is gitignored and lives only on machines that are
+// authorized to ship releases (the user's Mac, the GitHub Actions runner
+// after the workflow restores it from RELEASE_KEYSTORE_B64). When present,
+// release builds sign with `android/app/release.keystore`. When absent
+// (fresh checkout, contributor's machine), release builds fall back to the
+// debug keystore so `flutter run --release` still works locally — those
+// builds just can't be shipped as updates to existing users.
+def keystorePropertiesFile = rootProject.file("key.properties")
+def keystoreProperties = new Properties()
+def hasReleaseKeystore = keystorePropertiesFile.exists()
+if (hasReleaseKeystore) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace = "me.free4me.iptv"
     compileSdk = 36
@@ -18,7 +34,7 @@ android {
     kotlinOptions {
         jvmTarget = '11'
     }
-    
+
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "me.free4me.iptv"
@@ -30,11 +46,25 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (hasReleaseKeystore) {
+            release {
+                keyAlias = keystoreProperties['keyAlias']
+                keyPassword = keystoreProperties['keyPassword']
+                storeFile = file(keystoreProperties['storeFile'])
+                storePassword = keystoreProperties['storePassword']
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.debug
+            // Use the dedicated release keystore when configured. Otherwise
+            // sign with debug so unconfigured checkouts can still produce a
+            // runnable release APK (e.g. `flutter run --release` locally) —
+            // those builds are not safe to distribute as updates to existing
+            // installs.
+            signingConfig = hasReleaseKeystore ? signingConfigs.release : signingConfigs.debug
         }
     }
 }

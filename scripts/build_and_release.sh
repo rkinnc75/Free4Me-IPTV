@@ -48,9 +48,41 @@ if ! ssh-add -l &>/dev/null; then
   fi
 fi
 
-#  3. Build release APK 
+#  3. Build release APK
 echo " Building release APK"
 export PATH="$PATH:/Users/builder/tools/flutter/bin"
+
+# fix31 preflight — Mac builds MUST sign with the project's release keystore.
+# If key.properties is missing, the build would silently fall back to the
+# debug keystore (per android/app/build.gradle) and ship an APK that no
+# existing user can install over the top. Better to fail before the build.
+if [[ ! -f "$REPO_DIR/android/key.properties" ]]; then
+  cat >&2 <<'WARN'
+
+ERROR: android/key.properties is missing. Without it, this build would
+       be signed with the debug keystore and existing users would have
+       to uninstall before updating.
+
+       Restore your local copy from the .release-keystore-secrets backup
+       (or from your password manager). The file should contain:
+
+           storeFile=release.keystore
+           storePassword=<RELEASE_KEYSTORE_PASSWORD>
+           keyAlias=<RELEASE_KEY_ALIAS>
+           keyPassword=<RELEASE_KEY_PASSWORD>
+
+       And android/app/release.keystore must exist alongside it.
+       See CLAUDE-WORKFLOW.md (fix31 section).
+
+WARN
+  exit 1
+fi
+if [[ ! -f "$REPO_DIR/android/app/release.keystore" ]]; then
+  echo "ERROR: android/app/release.keystore is missing." >&2
+  echo "       Decode RELEASE_KEYSTORE_B64 into it. See CLAUDE-WORKFLOW.md." >&2
+  exit 1
+fi
+
 flutter build apk --release
 
 APK_SRC="$REPO_DIR/build/app/outputs/flutter-apk/app-release.apk"

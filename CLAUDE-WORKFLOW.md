@@ -187,10 +187,17 @@ Don't re-do these unless they break.
    pinned to match `BUILD-ENV.md`.
 2. **`scripts/update_version_json.py`** — standalone extraction of the
    inline Python from `scripts/build_and_release.sh`. Idempotent.
-3. **Repo secret `DEBUG_KEYSTORE_B64`** — base64 of the Mac's
-   `~/.android/debug.keystore`. CI restores it before
-   `flutter build apk` so APKs share the local Mac fingerprint.
-   Without it, existing user installs see "App not installed" on update.
+3. **Repo secrets `RELEASE_KEYSTORE_*`** (4 secrets, fix31 / v1.17.0+):
+   - `RELEASE_KEYSTORE_B64` — base64 of `android/app/release.keystore`.
+   - `RELEASE_KEYSTORE_PASSWORD` — keystore password.
+   - `RELEASE_KEY_ALIAS` — `free4me-iptv`.
+   - `RELEASE_KEY_PASSWORD` — same as `RELEASE_KEYSTORE_PASSWORD` (PKCS12).
+
+   CI's "Restore release keystore" step reconstructs both the keystore
+   file and `android/key.properties` from these. Without them the
+   workflow **fails fast** rather than silently signing with debug.
+   See `fix31.md` for the full story; through v1.16.3 we used a single
+   `DEBUG_KEYSTORE_B64` secret which proved too brittle.
 4. **Repo setting**: Settings → Actions → General → **Workflow
    permissions = "Read and write permissions"**. Required for
    `gh release create` and asset upload.
@@ -230,10 +237,17 @@ If any of these are lost, §7 has the recovery steps.
 - CI fails in "Verify version.json is up to date" with a diff in the log.
 - Fix: `python3 scripts/update_version_json.py`, commit, retag.
 
-### `DEBUG_KEYSTORE_B64` missing
-- CI emits `::warning::DEBUG_KEYSTORE_B64 secret is not set` and ships an APK signed with a different key.
-- Existing user installs see "App not installed" on update.
-- Fix: regenerate the secret (§7b) and re-run the workflow.
+### `RELEASE_KEYSTORE_*` secret missing
+- CI fails fast in the "Restore release keystore" step with a clear
+  `::error::` line — it deliberately refuses to fall back to a debug
+  signing config because that would re-introduce the v1.16.x update
+  break.
+- Fix: regenerate the missing secret from the `.release-keystore-secrets`
+  backup file on the Mac (§7b) and re-run the workflow.
+
+### Existing user can't install v1.17.0 over v1.16.x
+- Expected. v1.17.0 is the keystore migration; one final uninstall is
+  required. After v1.17.0 the fingerprint is stable forever.
 
 ### PAT expired
 - `git push` from Cowork returns `403` or `401`.
@@ -261,16 +275,28 @@ If any of these are lost, §7 has the recovery steps.
    ```
 8. Next Cowork session: Claude reads `.github-token` and uses it on push.
 
-### 7b. Recreate `DEBUG_KEYSTORE_B64`
+### 7b. Recreate the `RELEASE_KEYSTORE_*` secrets
 
-On the Mac:
+The canonical source of truth is `.release-keystore-secrets` at the
+repo root on the Mac (gitignored, `chmod 600`). It contains all four
+values already formatted as `KEY=VALUE` lines.
 
 ```bash
-base64 -i ~/.android/debug.keystore | pbcopy
+cat /Users/builder/git/free4me-iptv/.release-keystore-secrets
 ```
 
 Then https://github.com/rkinnc75/Free4Me-IPTV/settings/secrets/actions →
-**New repository secret** → name `DEBUG_KEYSTORE_B64` → paste → Save.
+for each line, **New repository secret** → name = the key → paste the
+value → Save. The four names are exactly:
+
+- `RELEASE_KEYSTORE_B64`
+- `RELEASE_KEYSTORE_PASSWORD`
+- `RELEASE_KEY_ALIAS`
+- `RELEASE_KEY_PASSWORD`
+
+If `.release-keystore-secrets` is also lost: the same data lives in
+your offline backup (password manager / encrypted USB). If that's
+gone too, see fix31.md §"Recovery if the keystore is lost".
 
 ### 7c. Confirm repo Actions permissions
 
