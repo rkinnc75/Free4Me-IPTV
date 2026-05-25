@@ -1,7 +1,7 @@
 {
-  "latest": "1.17.3",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.17.3",
+  "latest": "1.17.4",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.17.4",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Maintenance: corrects stale session-guide references left over from the debug-signing era (fix31/v1.17.0 migrated to the release keystore). No app-visible changes."
+  "releaseNotes": "\u2022 Maintenance: audited KGP (Kotlin Gradle Plugin) deprecation warnings. Upgrade of device_info_plus, file_picker, and package_info_plus is blocked by a win32 ^5/^6 ecosystem split; pin comments added to pubspec.yaml. No app-visible changes."
 }

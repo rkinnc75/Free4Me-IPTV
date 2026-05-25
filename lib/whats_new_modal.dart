@@ -7,6 +7,12 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.17.4': [
+    'Maintenance: audited KGP (Kotlin Gradle Plugin) deprecation warnings. '
+        'Upgrade of device_info_plus, file_picker, and package_info_plus is '
+        'blocked by a win32 ^5/^6 ecosystem split; pin comments added to '
+        'pubspec.yaml. No app-visible changes.',
+  ],
   '1.17.3': [
     'Maintenance: corrects stale session-guide references left over from '
         'the debug-signing era (fix31/v1.17.0 migrated to the release '
