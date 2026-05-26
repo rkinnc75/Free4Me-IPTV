@@ -152,6 +152,12 @@ class EpgService {
       // table stays bounded across refreshes.
       await Sql.deleteStalePrograms(source.id!, windowStart);
 
+      // Checkpoint again after deleteStalePrograms. The stale-program
+      // DELETE can remove tens of thousands of rows (121k outside-window
+      // for Emjay), inflating the WAL as much as the original insert.
+      // Without this second flush, searches after EPG refresh block for
+      // 60–120s waiting for the automatic checkpoint (see fix52.md).
+      await Sql.checkpointAndTruncateWal();
       AppLog.info(
           'EPG: downloaded "${source.name}" — $inserted programs');
       await Sql.upsertEpgRefreshLog(source.id!, inserted, null);
