@@ -253,6 +253,14 @@ class EpgService {
     );
     if (merged.isNotEmpty) {
       await Sql.setChannelEpgIds(merged);
+      // Checkpoint the WAL after writing EPG assignments. Each UPDATE
+      // triggers the channels_au FTS trigger (delete + insert on
+      // channels_fts), so 14k assignments = ~42k WAL writes. Without
+      // this checkpoint the WAL blocks all search reads for 60–130s
+      // after matchChannels returns (same root cause as the programme
+      // insert — see fix52.md). The progress dialog is still showing
+      // at this point so the user doesn't see the flush time.
+      await Sql.checkpointAndTruncateWal();
     }
 
     final report = MatchReport(
