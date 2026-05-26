@@ -891,15 +891,15 @@ class Sql {
   static Future<void> checkpointAndTruncateWal() async {
     final db = await DbFactory.db;
     try {
-      // PASSIVE checkpoint as a diagnostic read — returns (busy, log, ckpt).
-      // log = total WAL frames currently present.
-      final info = await db.get('PRAGMA wal_checkpoint(PASSIVE)');
-      final pages = info.columnAt(1) as int;
-      final mb = (pages * 4096 / 1024 / 1024).toStringAsFixed(1);
-      AppLog.info(
-        'Sql.checkpoint: WAL has $pages pages (~${mb}MB)'
-        ' — starting TRUNCATE',
-      );
+      final rows = await db.getAll('PRAGMA wal_checkpoint(PASSIVE)');
+      if (rows.isNotEmpty) {
+        final pages = rows.first.columnAt(1) as int;
+        final mb = (pages * 4096 / 1024 / 1024).toStringAsFixed(1);
+        AppLog.info(
+          'Sql.checkpoint: WAL has $pages pages (~${mb}MB)'
+          ' — starting TRUNCATE',
+        );
+      }
     } catch (_) {
       AppLog.info('Sql.checkpoint: WAL size unknown — starting TRUNCATE');
     }
