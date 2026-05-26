@@ -30,6 +30,12 @@ Future<void> getXtream(
   statements.add(Sql.getOrCreateSourceByName(source));
   if (wipe) {
     preserve = await Sql.getChannelsPreserve(source.id!);
+    AppLog.info(
+      'Xtream: preserve captured — source="${source.name}"'
+      ' epg=${preserve.where((p) => p.epgChannelId != null).length}'
+      ' favorites=${preserve.where((p) => p.favorite == 1).length}'
+      ' total=${preserve.length}',
+    );
     statements.add(Sql.wipeSource(source.id!));
   }
   source.urlOrigin = Uri.parse(source.url!).origin;

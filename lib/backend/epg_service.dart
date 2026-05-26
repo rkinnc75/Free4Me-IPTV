@@ -185,7 +185,9 @@ class EpgService {
     AppLog.info(
       'EPG: matching ${toMatch.length} channels'
       ' (${forceAll ? "full re-match" : "unmatched only"})'
-      ' for "${source.name}"',
+      ' for "${source.name}"'
+      ' channelMap=${channelMap.length}'
+      ' manualOverrides=${manualOverrides.length}',
     );
 
     if (toMatch.isEmpty) {
@@ -229,6 +231,11 @@ class EpgService {
     }
 
     final merged = {...allMatched, ...manualOverrides};
+    AppLog.info(
+      'EPG: matchChannels write: merged=${merged.length}'
+      ' (matched=${allMatched.length}'
+      ' + manualOverrides=${manualOverrides.length})',
+    );
     if (merged.isNotEmpty) {
       await Sql.setChannelEpgIds(merged);
     }

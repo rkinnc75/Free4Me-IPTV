@@ -556,14 +556,18 @@ class Sql {
   static Future<void> Function(SqliteWriteContext, Map<String, String>)
       wipeSource(int sourceId) {
     return (SqliteWriteContext tx, Map<String, String> memory) async {
+      final countRow = await tx.getOptional(
+        'SELECT COUNT(*) FROM channels WHERE source_id = ?', [sourceId]);
+      final before = countRow?.columnAt(0) ?? 0;
       await tx.execute('''
-        DELETE FROM channels 
-        WHERE source_id = ? 
+        DELETE FROM channels
+        WHERE source_id = ?
       ''', [sourceId]);
       await tx.execute('''
         DELETE FROM groups
         WHERE source_id = ?
       ''', [sourceId]);
+      AppLog.info('Sql.wipeSource: sourceId=$sourceId deleted $before channels');
     };
   }
 
@@ -662,35 +666,85 @@ class Sql {
     ''');
   }
 
+  /// Capture per-channel attributes that must survive a source wipe:
+  /// favorites, watch history, EPG assignments, and manual EPG overrides.
+  ///
+  /// fix50: extended to include epg_channel_id and epg_manual_override.
+  /// Before this fix, every source refresh erased all EPG matches,
+  /// requiring a full re-match after every M3U/Xtream reload.
   static Future<List<ChannelPreserve>> getChannelsPreserve(int sourceId) async {
     var db = await DbFactory.db;
     var results = await db.getAll('''
-      SELECT name, favorite, last_watched
+      SELECT name, favorite, last_watched, epg_channel_id, epg_manual_override
       FROM channels
-      WHERE (favorite = 1 OR last_watched IS NOT NULL) AND source_id = ?
+      WHERE source_id = ?
+        AND (
+          favorite = 1
+          OR last_watched IS NOT NULL
+          OR epg_channel_id IS NOT NULL
+          OR epg_manual_override IS NOT NULL
+        )
     ''', [sourceId]);
-    return results.map(rowToChannelPreserve).toList();
+    final preserve = results.map(rowToChannelPreserve).toList();
+    AppLog.info(
+      'Sql.getChannelsPreserve: sourceId=$sourceId'
+      ' total=${preserve.length}'
+      ' favorites=${preserve.where((p) => p.favorite == 1).length}'
+      ' lastWatched=${preserve.where((p) => p.lastWatched != null).length}'
+      ' epgMatched=${preserve.where((p) => p.epgChannelId != null).length}'
+      ' epgManual=${preserve.where((p) => p.epgManualOverride != null).length}',
+    );
+    return preserve;
   }
 
   static ChannelPreserve rowToChannelPreserve(Row row) {
     return ChannelPreserve(
-        name: row.columnAt(0),
-        favorite: row.columnAt(1),
-        lastWatched: row.columnAt(2));
+      name: row.columnAt(0),
+      favorite: row.columnAt(1),
+      lastWatched: row.columnAt(2),
+      epgChannelId: row.columnAt(3) as String?,
+      epgManualOverride: row.columnAt(4) as String?,
+    );
   }
 
+  /// Restore per-channel attributes after a wipe+re-import.
+  ///
+  /// fix50: extended to also restore epg_channel_id and epg_manual_override.
+  /// epg_channel_id is only restored if the fresh import left it null (COALESCE
+  /// preserves a fresher value from the M3U/Xtream itself). Manual overrides
+  /// always win — the user explicitly pinned them.
   static Future<void> Function(SqliteWriteContext, Map<String, String>)
       restorePreserve(List<ChannelPreserve> preserve) {
     return (SqliteWriteContext tx, Map<String, String> memory) async {
       final sourceId = int.parse(memory['sourceId']!);
+      int restoredEpg = 0;
+      int restoredManual = 0;
       for (var channel in preserve) {
         await tx.execute('''
           UPDATE channels
-          SET favorite = ?, last_watched = ?
+          SET favorite            = ?,
+              last_watched        = ?,
+              epg_channel_id      = COALESCE(epg_channel_id, ?),
+              epg_manual_override = COALESCE(?, epg_manual_override)
           WHERE name = ?
           AND source_id = ?
-        ''', [channel.favorite, channel.lastWatched, channel.name, sourceId]);
+        ''', [
+          channel.favorite,
+          channel.lastWatched,
+          channel.epgChannelId,
+          channel.epgManualOverride,
+          channel.name,
+          sourceId,
+        ]);
+        if (channel.epgChannelId != null) restoredEpg++;
+        if (channel.epgManualOverride != null) restoredManual++;
       }
+      AppLog.info(
+        'Sql.restorePreserve: sourceId=$sourceId'
+        ' total=${preserve.length}'
+        ' epgRestored=$restoredEpg'
+        ' manualRestored=$restoredManual',
+      );
     };
   }
 
@@ -753,6 +807,8 @@ class Sql {
         ''', params);
       }
     });
+    AppLog.info(
+        'Sql.setChannelEpgIds: wrote ${channelIdToEpgId.length} EPG assignments');
   }
 
   /// Delete all programs for a source before re-importing.

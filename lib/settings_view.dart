@@ -454,6 +454,13 @@ class _SettingsState extends State<SettingsView> {
     final results = <String>[];
 
     bool dialogOpen = true;
+    // fix50.D: clear any stale setSt from a previous dialog before opening
+    // a new one. After a dialog closes, _refreshSetState still holds its
+    // disposed widget's setSt. Calling it throws "Null check operator used
+    // on a null value" inside Flutter's State.setState (_element! is null
+    // after dispose), crashing the for-loop and leaving the next dialog
+    // frozen at "Starting…" forever.
+    _refreshSetState = null;
     showDialog(
       context: ctx,
       barrierDismissible: false,
@@ -529,8 +536,15 @@ class _SettingsState extends State<SettingsView> {
           source,
           epgUrl: url,
           onProgress: (p) {
-            sourceInserted = p.programsInserted;
-            programs = p.programsInserted;
+            // fix50.C: only update program count during download phase.
+            // matchChannels fires onProgress with programsInserted: 0
+            // (it doesn't insert programs). Without this guard the
+            // match-phase callbacks overwrite sourceInserted with 0,
+            // producing a false "0 programs loaded" warning.
+            if (!p.isMatching) {
+              sourceInserted = p.programsInserted;
+              programs = p.programsInserted;
+            }
 
             if (p.isMatching) {
               matchDone = p.matchingChannelsDone;
@@ -621,6 +635,7 @@ class _SettingsState extends State<SettingsView> {
     int matchDone = 0;
     int matchTotal = 0;
     bool dialogOpen = true;
+    _refreshSetState = null; // fix50.D — clear stale disposed-dialog reference
 
     showDialog(
       context: ctx,

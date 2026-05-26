@@ -42,6 +42,12 @@ Future<void> processM3U(
   source.id = sourceId;
   if (wipe) {
     preserve = await Sql.getChannelsPreserve(sourceId);
+    AppLog.info(
+      'M3U: preserve captured — source="${source.name}"'
+      ' epg=${preserve.where((p) => p.epgChannelId != null).length}'
+      ' favorites=${preserve.where((p) => p.favorite == 1).length}'
+      ' total=${preserve.length}',
+    );
     await Sql.commitWrite([Sql.wipeSource(sourceId)], memory: memory);
   }
 
@@ -109,6 +115,12 @@ Future<void> processM3U(
     'M3U: parsed source="${source.name}"'
     ' channels=$channelCount',
   );
+  if (preserve != null) {
+    AppLog.info(
+      'M3U: preserve restored — source="${source.name}"'
+      ' channels=$channelCount',
+    );
+  }
 }
 
 void commitChannel(

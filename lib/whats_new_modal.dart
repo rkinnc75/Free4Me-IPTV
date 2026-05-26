@@ -7,6 +7,17 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.17.7': [
+    'Fix: EPG channel assignments (the "which EPG feed entry matches '
+        'this channel" link) are now preserved when you refresh a source. '
+        'Previously every source refresh erased all EPG matches, requiring '
+        'a full re-match afterwards.',
+    'Fix: "Refresh EPG now" incorrectly showed a "0 programs loaded" '
+        'warning even when hundreds of thousands of programs were loaded '
+        'successfully.',
+    'Fix: "Re-match all channels" could stall at "Starting…" immediately '
+        'after running "Refresh EPG now" in the same session.',
+  ],
   '1.17.6': [
     'Maintenance: flutter analyze now blocks the release build if it '
         'finds errors. Previously the check was advisory-only. No '
