@@ -167,25 +167,68 @@ class Sql {
   static Future<void> Function(SqliteWriteContext, Map<String, String>)
       getOrCreateSourceByName(Source source) {
     return (SqliteWriteContext tx, Map<String, String> memory) async {
-      var sourceId = (await tx.getOptional(
-              "SELECT id FROM sources WHERE name = ?", [source.name]))
-          ?.columnAt(0);
-      if (sourceId != null) {
-        memory['sourceId'] = sourceId.toString();
-        return;
+      // fix48: use SELECT-then-INSERT-or-UPDATE so that backup imports
+      // correctly write `enabled` and `default_engine` instead of always
+      // inheriting the column defaults (enabled=1, default_engine=NULL).
+      //
+      // INSERT OR REPLACE was rejected because AUTOINCREMENT assigns a new
+      // id on each replace, which would orphan rows in `channels` that
+      // reference `sources.id` via the source_id FK. The SELECT-first
+      // pattern preserves the existing id while updating all other fields.
+      final existing = await tx.getOptional(
+        "SELECT id FROM sources WHERE name = ?",
+        [source.name],
+      );
+
+      if (existing != null) {
+        // Source already exists — update all editable fields so a
+        // re-import correctly applies the backup's values (especially
+        // `enabled` and `default_engine`). The id is preserved, so
+        // channel FK references are unaffected.
+        final id = existing.columnAt(0);
+        await tx.execute('''
+              UPDATE sources
+                 SET source_type    = ?,
+                     url            = ?,
+                     username       = ?,
+                     password       = ?,
+                     epg_url        = ?,
+                     enabled        = ?,
+                     default_engine = ?
+               WHERE id = ?
+            ''', [
+          source.sourceType.index,
+          source.url,
+          source.username,
+          source.password,
+          source.epgUrl,
+          source.enabled ? 1 : 0,
+          source.defaultEngine?.toJson(),
+          id,
+        ]);
+        memory['sourceId'] = id.toString();
+      } else {
+        // New source — INSERT with all fields including enabled and
+        // default_engine. Previously these were omitted, so every imported
+        // source was created enabled regardless of the backup value (fix48).
+        await tx.execute('''
+              INSERT INTO sources
+                (name, source_type, url, username, password, epg_url,
+                 enabled, default_engine)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+            ''', [
+          source.name,
+          source.sourceType.index,
+          source.url,
+          source.username,
+          source.password,
+          source.epgUrl,
+          source.enabled ? 1 : 0,
+          source.defaultEngine?.toJson(),
+        ]);
+        memory['sourceId'] =
+            (await tx.get("SELECT last_insert_rowid();")).columnAt(0).toString();
       }
-      await tx.execute('''
-            INSERT INTO sources (name, source_type, url, username, password, epg_url) VALUES (?, ?, ?, ?, ?, ?);
-          ''', [
-        source.name,
-        source.sourceType.index,
-        source.url,
-        source.username,
-        source.password,
-        source.epgUrl,
-      ]);
-      memory['sourceId'] =
-          (await tx.get("SELECT last_insert_rowid();")).columnAt(0).toString();
     };
   }
 

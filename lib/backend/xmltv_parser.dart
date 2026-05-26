@@ -91,7 +91,30 @@ class XmltvParser {
     // the body but *leaves the Content-Encoding header on the response* —
     // so trusting the header double-decodes and throws "FormatException:
     // Filter error, bad data" on the already-plain XML stream.
-    Stream<List<int>> byteStream = await _maybeUngzip(response.stream);
+    //
+    // Apply a per-chunk body timeout matching the M3U parser (m3u.dart:234).
+    // The connection-establishment timeout on AppHttp.sendStreaming only
+    // covers receiving the response headers — once the body stream opens,
+    // there is no watchdog. A CDN that stalls mid-body would otherwise
+    // leave the parser in `await for` indefinitely (fix46).
+    //
+    // `onTimeout` closes the stream (rather than erroring) so the `await
+    // for` loop exits cleanly and control falls through to flushBatch().
+    // `downloadAndParseEpg` returns a partial channelMap; the match step
+    // runs on whatever arrived before the stall — partial data is better
+    // than a permanent hang requiring force-close.
+    Stream<List<int>> byteStream = await _maybeUngzip(
+      response.stream.timeout(
+        const Duration(seconds: 60),
+        onTimeout: (sink) {
+          AppLog.warn(
+            'XMLTV: body stream stalled — no data for 60 s, closing'
+            ' (partial result will be used)',
+          );
+          sink.close();
+        },
+      ),
+    );
 
     final channelMap = <String, String>{}; // epg-id → display-name
     final batch = <Program>[];

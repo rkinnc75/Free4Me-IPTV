@@ -7,6 +7,20 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.17.5': [
+    'Fix: "Re-match all channels" could hang forever at '
+        '"Downloading & parsing…" if the EPG server stalled mid-stream. '
+        'A 60-second per-chunk watchdog now closes the stalled stream '
+        'and completes the match on whatever data arrived — the dialog '
+        'always finishes instead of requiring a force-close.',
+    'Fix: after a fresh install + backup import, sources that were '
+        'disabled in the backup were incorrectly created as enabled. '
+        'Disabled sources now stay disabled after import.',
+    'Improvement: the sources-refresh dialog no longer risks getting '
+        'stuck at "Preparing…" on fast devices due to a startup race '
+        'condition. EPG refresh and re-match operations now write '
+        'detailed progress to the debug log.',
+  ],
   '1.17.4': [
     'Maintenance: audited KGP (Kotlin Gradle Plugin) deprecation warnings. '
         'Upgrade of device_info_plus, file_picker, and package_info_plus is '

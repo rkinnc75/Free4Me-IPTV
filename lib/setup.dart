@@ -4,6 +4,7 @@ import 'package:animations/animations.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_form_builder/flutter_form_builder.dart';
 import 'package:form_builder_validators/form_builder_validators.dart';
+import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/epg_service.dart';
 import 'package:open_tv/backend/settings_io.dart';
 import 'package:open_tv/backend/sql.dart';
@@ -321,14 +322,34 @@ class _SetupState extends State<Setup> {
   /// validation, the confirm dialog, and persistence. We just react
   /// to its outcome.
   Future<void> _importBackup() async {
+    AppLog.info('Setup: import backup — started');
+
     final imported = await SettingsIo.importFromFile(context);
-    if (!mounted || !imported) return;
+    if (!mounted) return;
+    if (!imported) {
+      AppLog.info('Setup: import backup — cancelled or failed, staying on welcome');
+      return;
+    }
+
+    AppLog.info('Setup: import backup — file accepted, checking sources');
 
     // Bail early if the import produced no sources (e.g. settings-only
     // backup). No point showing a refresh dialog with nothing to do.
     final sources = await Sql.getSources();
     if (!mounted) return;
-    if (sources.isEmpty) return;
+
+    if (sources.isEmpty) {
+      AppLog.info('Setup: import backup — no sources in backup, staying on welcome');
+      return;
+    }
+
+    final enabledCount = sources.where((s) => s.enabled).length;
+    AppLog.info(
+      'Setup: import backup — ${sources.length} sources imported'
+      ' ($enabledCount enabled):'
+      ' ${sources.map((s) => '"${s.name}"(${s.enabled ? "on" : "off"})').join(", ")}',
+    );
+    AppLog.info('Setup: import backup — launching source refresh dialog');
 
     // Block on a full refresh of all enabled sources with a progress
     // dialog. The user lands on Home only after channels are actually
@@ -341,6 +362,7 @@ class _SetupState extends State<Setup> {
     await showSourcesRefreshDialog(context);
 
     if (!mounted) return;
+    AppLog.info('Setup: import backup — refresh dialog complete, navigating to Home');
     navigateToHome();
   }
 

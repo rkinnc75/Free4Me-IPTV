@@ -1,21 +1,32 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/utils.dart';
 import 'package:open_tv/models/source.dart';
 
-/// Show a modal progress dialog while [Utils.refreshAllSources] runs.
+/// Show a modal progress dialog while [Utils.refreshAllSources] runs,
+/// then resolve after the user taps OK on the final summary.
 ///
-/// The dialog is non-dismissible during the refresh — that's the whole
-/// point: callers use this helper when they specifically want to block
-/// on the refresh so subsequent UI can rely on data being present
-/// (e.g. the post-import flow from Setup, so the user doesn't land on
-/// an empty Home screen while sources are still loading).
+/// The dialog is non-dismissible during the refresh so the caller can
+/// rely on the channel table being populated when it returns.
 ///
-/// Resolves after the user has tapped OK on the final summary.
-/// Errors during the refresh are caught and surfaced as a "Refresh
-/// failed" title with the error message in the body.
+/// ## Fix 44 — race condition
+/// The previous implementation used a `late` variable to capture the
+/// `StatefulBuilder`'s setState function. Because `showDialog` returns
+/// its Future synchronously (before the dialog widget builds), and
+/// because the refresh work starts immediately in a fire-and-forget
+/// IIFE, the late variable could be accessed before it was assigned,
+/// producing a `LateInitializationError` that killed the IIFE silently
+/// and left the dialog stuck at "Preparing…" with no way to dismiss it.
+///
+/// The fix: a `Completer<void>` that the `StatefulBuilder` completes on
+/// its first build. The refresh work awaits the completer before
+/// touching any state, so it is guaranteed to run after the dialog is
+/// mounted and the setState reference is valid.
 Future<void> showSourcesRefreshDialog(BuildContext context) async {
+  AppLog.info('SourcesRefreshDialog: showing');
+
   String title = 'Loading channels…';
   String status = 'Preparing…';
   int sourceIndex = 0;
@@ -23,19 +34,22 @@ Future<void> showSourcesRefreshDialog(BuildContext context) async {
   bool done = false;
   Object? error;
 
-  // Captured inside the builder; used by the outer refresh loop.
+  // Resolved by the StatefulBuilder on its first build.
+  // The refresh IIFE awaits this before calling setSt.
+  final dialogReady = Completer<void>();
   late void Function(void Function()) setSt;
 
-  // Kick off the dialog. We deliberately do NOT await here — we need
-  // setSt to be captured first, then drive the refresh, and finally
-  // await the dialog Future at the bottom so the caller blocks until
-  // the user dismisses.
   final dialogClosed = showDialog<void>(
     context: context,
     barrierDismissible: false,
     builder: (_) => StatefulBuilder(
       builder: (sCtx, s) {
         setSt = s;
+        // Complete exactly once — subsequent rebuilds are no-ops.
+        if (!dialogReady.isCompleted) {
+          dialogReady.complete();
+          AppLog.info('SourcesRefreshDialog: dialog built — ready');
+        }
         return PopScope(
           canPop: done,
           child: AlertDialog(
@@ -70,7 +84,10 @@ Future<void> showSourcesRefreshDialog(BuildContext context) async {
             actions: done
                 ? [
                     FilledButton(
-                      onPressed: () => Navigator.pop(sCtx),
+                      onPressed: () {
+                        AppLog.info('SourcesRefreshDialog: user dismissed');
+                        Navigator.pop(sCtx);
+                      },
                       child: const Text('OK'),
                     ),
                   ]
@@ -81,13 +98,21 @@ Future<void> showSourcesRefreshDialog(BuildContext context) async {
     ),
   );
 
-  // Drive the refresh in the background. The IIFE+unawaited pattern
-  // starts the work without blocking here so the dialog frame above
-  // gets a chance to mount and capture setSt.
+  // Drive the refresh after the dialog is guaranteed to be mounted.
+  // Using unawaited + IIFE so we can await dialogClosed at the bottom
+  // (the call resolves once the user taps OK).
   unawaited(() async {
+    // Wait for the dialog to build and capture setSt.
+    await dialogReady.future;
+    AppLog.info('SourcesRefreshDialog: starting refresh');
+
     try {
       await Utils.refreshAllSources(
-        onSourceStart: (i, total, Source source) {
+        onSourceStart: (int i, int total, Source source) {
+          AppLog.info(
+            'SourcesRefreshDialog: source $i/$total'
+            ' "${source.name}" starting',
+          );
           setSt(() {
             sourceIndex = i;
             sourceTotal = total;
@@ -95,17 +120,27 @@ Future<void> showSourcesRefreshDialog(BuildContext context) async {
           });
         },
         onSourceStatus: (Source source, String msg) {
+          if (AppLog.enabled) {
+            AppLog.info(
+              'SourcesRefreshDialog: "${source.name}"'
+              ' — ${msg.length > 80 ? "${msg.substring(0, 80)}…" : msg}',
+            );
+          }
           setSt(() {
-            // Trim very long status strings so the dialog doesn't
-            // jump in size on every update.
             status = '${source.name}: '
                 '${msg.length > 60 ? "${msg.substring(0, 60)}…" : msg}';
           });
         },
       );
-    } catch (e) {
+      AppLog.info(
+        'SourcesRefreshDialog: refresh complete'
+        ' — $sourceTotal source(s) done',
+      );
+    } catch (e, st) {
       error = e;
+      AppLog.warn('SourcesRefreshDialog: refresh error — $e\n$st');
     }
+
     setSt(() {
       done = true;
       if (error != null) {
@@ -114,6 +149,7 @@ Future<void> showSourcesRefreshDialog(BuildContext context) async {
       } else if (sourceTotal == 0) {
         title = 'Nothing to refresh';
         status = 'No enabled sources were found.';
+        AppLog.info('SourcesRefreshDialog: no enabled sources');
       } else {
         title = 'Loaded';
         status = sourceTotal == 1
@@ -123,7 +159,6 @@ Future<void> showSourcesRefreshDialog(BuildContext context) async {
     });
   }());
 
-  // Resolves when the user taps OK (or back-button after we set
-  // canPop=true via done=true).
   await dialogClosed;
+  AppLog.info('SourcesRefreshDialog: dialog closed');
 }

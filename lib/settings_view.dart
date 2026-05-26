@@ -435,6 +435,18 @@ class _SettingsState extends State<SettingsView> {
   /// Shows a live progress dialog while refreshing all EPG sources, then
   /// displays a summary of results.
   Future<void> _runEpgRefresh(BuildContext ctx) async {
+    final enabledWithEpg = sources.where((s) {
+      if (!s.enabled) return false;
+      final hasManualUrl = s.epgUrl?.isNotEmpty == true;
+      final isXtream = s.sourceType == SourceType.xtream;
+      return hasManualUrl || isXtream;
+    }).toList();
+
+    AppLog.info(
+      'EpgRefresh: starting — ${enabledWithEpg.length} eligible source(s):'
+      ' ${enabledWithEpg.map((s) => '"${s.name}"').join(", ")}',
+    );
+
     String status = 'Starting…';
     int programs = 0;
     int matchDone = 0;
@@ -502,8 +514,11 @@ class _SettingsState extends State<SettingsView> {
       final url = hasManualUrl ? source.epgUrl : null;
       matchDone = 0;
       matchTotal = 0;
+      programs = 0;
       status = 'Preparing "${source.name}"…';
       _updateRefreshDialog(status);
+
+      AppLog.info('EpgRefresh: source "${source.name}" — starting');
 
       int sourceInserted = 0;
       int sourceMatchedChannels = 0;
@@ -534,11 +549,20 @@ class _SettingsState extends State<SettingsView> {
           },
         );
         if (sourceInserted == 0) {
+          AppLog.warn(
+            'EpgRefresh: source "${source.name}" — 0 programs loaded'
+            ' (check EPG URL / server / date window)',
+          );
           results.add(
             '⚠ ${source.name}: refresh completed but 0 programs loaded '
             '(check EPG URL, server response, or date window)',
           );
         } else {
+          AppLog.info(
+            'EpgRefresh: source "${source.name}" — done'
+            ' programs=$sourceInserted'
+            ' matched=$sourceMatchedChannels/$sourceTotalChannels',
+          );
           final matchSuffix = sourceTotalChannels > 0
               ? ' · $sourceMatchedChannels/$sourceTotalChannels channels matched'
               : '';
@@ -546,11 +570,17 @@ class _SettingsState extends State<SettingsView> {
             '✓ ${source.name}: $sourceInserted programs$matchSuffix',
           );
         }
-      } catch (e) {
+      } catch (e, st) {
         sourceError = e.toString();
+        AppLog.warn('EpgRefresh: source "${source.name}" — ERROR: $e\n$st');
         results.add('✗ ${source.name}: $sourceError');
       }
     }
+
+    AppLog.info(
+      'EpgRefresh: complete — ${results.length} source(s) processed\n'
+      '${results.join("\n")}',
+    );
   
     if (dialogOpen && ctx.mounted) Navigator.of(ctx, rootNavigator: true).pop();
 
@@ -577,6 +607,16 @@ class _SettingsState extends State<SettingsView> {
   /// Force a full EPG re-match for all sources (forceRematch=true).
   /// Only runs the matching step — does NOT re-download the XMLTV feed.
   Future<void> _runEpgRematch(BuildContext ctx) async {
+    final eligibleSources = sources.where((s) {
+      if (!s.enabled) return false;
+      return EpgService.resolveEpgUrl(s) != null;
+    }).toList();
+
+    AppLog.info(
+      'EpgRematch: starting — ${eligibleSources.length} eligible source(s):'
+      ' ${eligibleSources.map((s) => '"${s.name}"').join(", ")}',
+    );
+
     String status = 'Starting…';
     int matchDone = 0;
     int matchTotal = 0;
@@ -629,6 +669,8 @@ class _SettingsState extends State<SettingsView> {
       matchDone = 0;
       matchTotal = 0;
 
+      AppLog.info('EpgRematch: source "${source.name}" — downloading EPG');
+
       try {
         // Download fresh XMLTV to get the latest channelMap, then force-match.
         final channelMap = await EpgService.downloadAndParseEpg(
@@ -640,9 +682,15 @@ class _SettingsState extends State<SettingsView> {
           },
         );
         if (channelMap == null) {
+          AppLog.warn('EpgRematch: source "${source.name}" — download returned null');
           results.add('⚠ ${source.name}: failed to download EPG');
           continue;
         }
+        AppLog.info(
+          'EpgRematch: source "${source.name}" — EPG downloaded'
+          ' (${channelMap.length} channel entries),'
+          ' starting force-match',
+        );
         await EpgService.matchChannels(
           source,
           channelMap,
@@ -654,12 +702,22 @@ class _SettingsState extends State<SettingsView> {
             _updateRefreshDialog(status);
           },
         );
+        AppLog.info(
+          'EpgRematch: source "${source.name}" — force-match done'
+          ' $matchDone/$matchTotal',
+        );
         results.add('✓ ${source.name}: re-match complete'
             '${matchTotal > 0 ? " ($matchDone/$matchTotal)" : ""}');
-      } catch (e) {
+      } catch (e, st) {
+        AppLog.warn('EpgRematch: source "${source.name}" — ERROR: $e\n$st');
         results.add('✗ ${source.name}: $e');
       }
     }
+
+    AppLog.info(
+      'EpgRematch: complete — ${results.length} source(s) processed\n'
+      '${results.join("\n")}',
+    );
 
     if (dialogOpen && ctx.mounted) Navigator.of(ctx, rootNavigator: true).pop();
     if (!ctx.mounted) return;

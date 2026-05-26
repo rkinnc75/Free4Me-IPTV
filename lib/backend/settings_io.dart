@@ -212,6 +212,14 @@ class SettingsIo {
           );
           await Sql.commitWrite([Sql.getOrCreateSourceByName(source)]);
 
+          // fix48.2: log the enabled state so the log confirms what was written.
+          AppLog.info(
+            'SettingsIo.import: source "${source.name}"'
+            ' enabled=${source.enabled}'
+            ' type=${source.sourceType.name}'
+            ' engine=${source.defaultEngine?.toJson() ?? "auto"}',
+          );
+
           // Stage favorites / last-watched for re-application after the
           // first refresh populates channels for this source. Keyed by
           // source name because IDs differ between export and import
