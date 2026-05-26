@@ -172,15 +172,8 @@ jobs:
       - name: flutter pub get
         run: flutter pub get
 
-      - name: flutter analyze (advisory)
-        run: |
-          set +e
-          flutter analyze --no-fatal-infos
-          rc=$?
-          if [[ $rc -ne 0 ]]; then
-            echo "::warning::flutter analyze reported issues (advisory only)."
-          fi
-          exit 0
+      - name: flutter analyze
+        run: flutter analyze --no-fatal-infos
 
       - name: flutter build apk --release
         env:

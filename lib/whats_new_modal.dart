@@ -7,6 +7,11 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.17.6': [
+    'Maintenance: flutter analyze now blocks the release build if it '
+        'finds errors. Previously the check was advisory-only. No '
+        'app-visible changes.',
+  ],
   '1.17.5': [
     'Fix: "Re-match all channels" could hang forever at '
         '"Downloading & parsing…" if the EPG server stalled mid-stream. '

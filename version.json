@@ -1,7 +1,7 @@
 {
-  "latest": "1.17.5",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.17.5",
+  "latest": "1.17.6",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.17.6",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: \"Re-match all channels\" could hang forever at \"Downloading & parsing\u2026\" if the EPG server stalled mid-stream. A 60-second per-chunk watchdog now closes the stalled stream and completes the match on whatever data arrived \u2014 the dialog always finishes instead of requiring a force-close.\n\u2022 Fix: after a fresh install + backup import, sources that were disabled in the backup were incorrectly created as enabled. Disabled sources now stay disabled after import.\n\u2022 Improvement: the sources-refresh dialog no longer risks getting stuck at \"Preparing\u2026\" on fast devices due to a startup race condition. EPG refresh and re-match operations now write detailed progress to the debug log."
+  "releaseNotes": "\u2022 Maintenance: flutter analyze now blocks the release build if it finds errors. Previously the check was advisory-only. No app-visible changes."
 }
