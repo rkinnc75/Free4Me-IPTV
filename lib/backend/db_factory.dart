@@ -260,6 +260,13 @@ class DbFactory {
       // Non-fatal; the rest of the app still works without the log line.
     }
 
+    // Raise WAL auto-checkpoint from 1000 pages (4MB) to 8000 pages
+    // (32MB). This prevents fragmented automatic checkpoints during
+    // large batch inserts (EPG programme loading). The explicit
+    // Sql.checkpointAndTruncateWal() call in epg_service.dart handles
+    // the full flush after each EPG download. See fix52.md.
+    await db.execute('PRAGMA wal_autocheckpoint = 8000');
+
     return db;
   }
 

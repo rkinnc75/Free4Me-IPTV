@@ -875,6 +875,40 @@ class Sql {
   }
 
   /// Garbage-collect EPG programs that ended before [windowStartEpoch].
+  /// Force a full WAL checkpoint and truncate the WAL file to zero.
+  ///
+  /// Call after large batch writes (e.g. EPG programme inserts) to prevent
+  /// SQLite's automatic PASSIVE checkpoint from running concurrently with UI
+  /// reads. An unmanaged checkpoint on a 100MB+ WAL blocks all read queries
+  /// for 90–150 seconds on phone flash (fix52).
+  ///
+  /// TRUNCATE mode: waits for all active readers, flushes the entire WAL to
+  /// the main DB file, then truncates the WAL file to 0 bytes. Subsequent
+  /// writes start with a clean WAL.
+  ///
+  /// Uses db.execute (not writeTransaction) — PRAGMA wal_checkpoint must run
+  /// outside a transaction.
+  static Future<void> checkpointAndTruncateWal() async {
+    final db = await DbFactory.db;
+    try {
+      // PASSIVE checkpoint as a diagnostic read — returns (busy, log, ckpt).
+      // log = total WAL frames currently present.
+      final info = await db.get('PRAGMA wal_checkpoint(PASSIVE)');
+      final pages = info.columnAt(1) as int;
+      final mb = (pages * 4096 / 1024 / 1024).toStringAsFixed(1);
+      AppLog.info(
+        'Sql.checkpoint: WAL has $pages pages (~${mb}MB)'
+        ' — starting TRUNCATE',
+      );
+    } catch (_) {
+      AppLog.info('Sql.checkpoint: WAL size unknown — starting TRUNCATE');
+    }
+    final t = DateTime.now();
+    await db.execute('PRAGMA wal_checkpoint(TRUNCATE)');
+    final ms = DateTime.now().difference(t).inMilliseconds;
+    AppLog.info('Sql.checkpoint: WAL truncated in ${ms}ms');
+  }
+
   /// Called after a successful XMLTV parse to keep the `programmes` table
   /// bounded to the configured EPG window without wiping rows the parse
   /// just rewrote.

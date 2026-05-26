@@ -133,6 +133,21 @@ class EpgService {
         onProgress: onProgress,
       );
 
+      // Force a WAL checkpoint before returning to the caller. Without
+      // this, SQLite's automatic PASSIVE checkpoint runs concurrently
+      // with the user's first searches after EPG completes. For a large
+      // source (100k+ programs → ~100MB WAL), this checkpoint takes
+      // 90–150 seconds on phone flash and blocks every read query during
+      // that time (see fix52.md, free4me_log_1779765900144.txt).
+      //
+      // Running the checkpoint here while the progress dialog is still
+      // visible hides the cost entirely.
+      onProgress?.call(XmltvProgress(
+        programsInserted: inserted,
+        statusMessage: 'Optimising database…',
+      ));
+      await Sql.checkpointAndTruncateWal();
+
       // GC rows whose stop time is before the configured window so the
       // table stays bounded across refreshes.
       await Sql.deleteStalePrograms(source.id!, windowStart);

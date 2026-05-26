@@ -2074,11 +2074,16 @@ class _SettingsState extends State<SettingsView> {
                       Row(
                         children: [
                           IconButton(
-                            onPressed: () async => await Error.tryAsync(
-                              () async => await Utils.refreshAllSources(),
-                              context,
-                              "Successfully refreshed all sources",
-                            ),
+                            onPressed: () async {
+                              // Show the full progress dialog instead of the
+                              // plain spinner. The dialog shows per-source
+                              // status, a progress bar, and a summary on
+                              // completion. (fix52 / point 5)
+                              await showSourcesRefreshDialog(context);
+                              // Reload the sources list in case names or
+                              // counts changed.
+                              if (mounted) await reloadSources();
+                            },
                             icon: const Icon(Icons.refresh),
                           ),
                           IconButton(

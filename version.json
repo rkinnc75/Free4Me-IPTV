@@ -1,7 +1,7 @@
 {
-  "latest": "1.17.7",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.17.7",
+  "latest": "1.17.8",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.17.8",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: EPG channel assignments (the \"which EPG feed entry matches this channel\" link) are now preserved when you refresh a source. Previously every source refresh erased all EPG matches, requiring a full re-match afterwards.\n\u2022 Fix: \"Refresh EPG now\" incorrectly showed a \"0 programs loaded\" warning even when hundreds of thousands of programs were loaded successfully.\n\u2022 Fix: \"Re-match all channels\" could stall at \"Starting\u2026\" immediately after running \"Refresh EPG now\" in the same session."
+  "releaseNotes": "\u2022 Fix: after a large EPG refresh (100k+ programs), searches could stall for 90\u2013150 seconds while SQLite flushed its write-ahead log. The flush now runs while the \"Optimising database\u2026\" progress message is visible \u2014 searches are fast immediately after.\n\u2022 Improvement: the \"Refresh on start\" flow and the Settings \"Refresh all sources\" button now show the same per-source progress dialog as the backup import \u2014 instead of a plain spinner with no text.\n\u2022 Visual: each bottom navigation tab now has its own colour \u2014 blue, purple, amber, green, and red-orange for All, Categories, Favorites, History, and Settings respectively."
 }

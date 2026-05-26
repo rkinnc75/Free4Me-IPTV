@@ -22,6 +22,7 @@ import 'package:open_tv/models/node_type.dart';
 import 'package:open_tv/models/view_type.dart';
 import 'package:open_tv/error.dart';
 import 'package:open_tv/whats_new_modal.dart';
+import 'package:open_tv/widgets/sources_refresh_dialog.dart';
 
 class Home extends StatefulWidget {
   final HomeManager home;
@@ -103,19 +104,16 @@ class _HomeState extends State<Home> {
     }
 
     if (!mounted || !widget.refresh) return;
-    await Error.tryAsyncNoLoading(
-      () async {
-        if (mounted) {
-          setState(() => blockSettings = true);
-        }
-        await Utils.refreshAllSources();
-        if (mounted) await load(false);
-      },
-      context,
-      true,
-      "Refreshed all sources",
-    );
-    if (mounted) setState(() => blockSettings = false);
+    // Show the same progress dialog used by the backup import flow.
+    // Previously this ran behind tryAsyncNoLoading with no visible
+    // feedback — the user saw an empty grid for up to 60 seconds with
+    // no indication that loading was in progress. (fix52 / point 4)
+    if (mounted) setState(() => blockSettings = true);
+    await showSourcesRefreshDialog(context);
+    if (mounted) {
+      setState(() => blockSettings = false);
+      await load(false);
+    }
   }
 
   Future<void> showWhatsNew(String version) async {

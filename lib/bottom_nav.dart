@@ -2,6 +2,25 @@ import 'package:flutter/material.dart';
 import 'package:open_tv/models/view_type.dart';
 import 'package:open_tv/settings_view.dart';
 
+// Per-item colors matching the design screenshot.
+const _navColors = [
+  Color(0xFF4E9FE5), // All — blue
+  Color(0xFF9B59D9), // Categories — purple
+  Color(0xFFF0B429), // Favorites — amber
+  Color(0xFF4CAF78), // History — green
+  Color(0xFFE8624A), // Settings — red-orange
+];
+
+const _navIcons = [
+  Icons.list,
+  Icons.dashboard,
+  Icons.star,
+  Icons.history,
+  Icons.settings,
+];
+
+const _navLabels = ['All', 'Categories', 'Favorites', 'History', 'Settings'];
+
 class BottomNav extends StatefulWidget {
   final Function(ViewType) updateViewMode;
   final ViewType startingView;
@@ -23,14 +42,7 @@ class _BottomNavState extends State<BottomNav> {
   @override
   void initState() {
     super.initState();
-    setState(() {
-      _selectedIndex = widget.startingView.index;
-    });
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
+    _selectedIndex = widget.startingView.index;
   }
 
   void onBarTapped(int index) {
@@ -42,9 +54,7 @@ class _BottomNavState extends State<BottomNav> {
       );
       return;
     }
-    setState(() {
-      _selectedIndex = index;
-    });
+    setState(() => _selectedIndex = index);
     if (_selectedIndex == ViewType.settings.index) {
       Navigator.pushAndRemoveUntil(
         context,
@@ -52,8 +62,8 @@ class _BottomNavState extends State<BottomNav> {
           pageBuilder: (_, _, _) => const SettingsView(),
           transitionDuration: Duration.zero,
           reverseTransitionDuration: Duration.zero,
-          transitionsBuilder: (context, animation, secondaryAnimation, child) =>
-              child,
+          transitionsBuilder:
+              (context, animation, secondaryAnimation, child) => child,
         ),
         (route) => false,
       );
@@ -74,19 +84,54 @@ class _BottomNavState extends State<BottomNav> {
           ),
         ),
       ),
-      child: NavigationBar(
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.list), label: 'All'),
-          NavigationDestination(
-            icon: Icon(Icons.dashboard),
-            label: 'Categories',
-          ),
-          NavigationDestination(icon: Icon(Icons.star), label: 'Favorites'),
-          NavigationDestination(icon: Icon(Icons.history), label: "History"),
-          NavigationDestination(icon: Icon(Icons.settings), label: 'Settings'),
-        ],
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: onBarTapped,
+      // Match the height NavigationBar uses at its default size.
+      height: 80,
+      child: Row(
+        children: List.generate(_navLabels.length, (i) {
+          final color = _navColors[i];
+          final selected = _selectedIndex == i;
+          return Expanded(
+            child: InkWell(
+              onTap: () => onBarTapped(i),
+              borderRadius: BorderRadius.circular(16),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Selected pill — same shape as Material 3 NavigationBar.
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeInOut,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? color.withValues(alpha: 0.18)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Icon(
+                      _navIcons[i],
+                      color: color,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _navLabels[i],
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 12,
+                      fontWeight:
+                          selected ? FontWeight.w600 : FontWeight.normal,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }),
       ),
     );
   }

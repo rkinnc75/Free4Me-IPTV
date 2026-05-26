@@ -7,6 +7,20 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.17.8': [
+    'Fix: after a large EPG refresh (100k+ programs), searches could '
+        'stall for 90–150 seconds while SQLite flushed its write-ahead '
+        'log. The flush now runs while the "Optimising database…" '
+        'progress message is visible — searches are fast immediately '
+        'after.',
+    'Improvement: the "Refresh on start" flow and the Settings '
+        '"Refresh all sources" button now show the same per-source '
+        'progress dialog as the backup import — instead of a plain '
+        'spinner with no text.',
+    'Visual: each bottom navigation tab now has its own colour — '
+        'blue, purple, amber, green, and red-orange for All, '
+        'Categories, Favorites, History, and Settings respectively.',
+  ],
   '1.17.7': [
     'Fix: EPG channel assignments (the "which EPG feed entry matches '
         'this channel" link) are now preserved when you refresh a source. '
