@@ -545,6 +545,8 @@ class Sql {
   }
 
   static Future<void> deleteSource(int sourceId) async {
+    // Clean up EPG data in epg.sqlite first (cross-file FK can't cascade).
+    await deleteEpgForSource(sourceId);
     var db = await DbFactory.db;
     await db.writeTransaction((tx) async {
       await tx.execute("DELETE FROM channels WHERE source_id = ?", [sourceId]);
@@ -813,11 +815,26 @@ class Sql {
 
   /// Delete all programs for a source before re-importing.
   static Future<void> deleteProgramsForSource(int sourceId) async {
-    var db = await DbFactory.db;
+    final db = await EpgDbFactory.db;
     await db.execute(
       'DELETE FROM programmes WHERE source_id = ?',
       [sourceId],
     );
+  }
+
+  /// Delete all EPG data for a source from epg.sqlite.
+  /// Call this when deleting a source from db.sqlite, since the cross-file
+  /// FK cannot cascade automatically. See fix56.md.
+  static Future<void> deleteEpgForSource(int sourceId) async {
+    final db = await EpgDbFactory.db;
+    await db.writeTransaction((tx) async {
+      await tx.execute(
+          'DELETE FROM programmes WHERE source_id = ?', [sourceId]);
+      await tx.execute(
+          'DELETE FROM epg_refresh_log WHERE source_id = ?', [sourceId]);
+    });
+    AppLog.info(
+        'Sql.deleteEpgForSource: removed EPG data for source $sourceId');
   }
 
   /// Insert a batch of programs using multi-row VALUES clauses for performance.
@@ -834,7 +851,7 @@ class Sql {
   ) async {
     if (programs.isEmpty) return;
     const chunkSize = 100;
-    var db = await DbFactory.db;
+    final db = await EpgDbFactory.db;
     await db.writeTransaction((tx) async {
       for (var offset = 0; offset < programs.length; offset += chunkSize) {
         final chunk = programs.sublist(
@@ -889,24 +906,33 @@ class Sql {
   /// Uses db.execute (not writeTransaction) — PRAGMA wal_checkpoint must run
   /// outside a transaction.
   static Future<void> checkpointAndTruncateWal() async {
-    final db = await DbFactory.db;
-    try {
-      final rows = await db.getAll('PRAGMA wal_checkpoint(PASSIVE)');
-      if (rows.isNotEmpty) {
-        final pages = rows.first.columnAt(1) as int;
-        final mb = (pages * 4096 / 1024 / 1024).toStringAsFixed(1);
+    // Checkpoint both databases — epg.sqlite is where the large writes
+    // happen; db.sqlite may also have pending WAL from channel updates.
+    for (final entry in [
+      ('epg.sqlite', await EpgDbFactory.db),
+      ('db.sqlite', await DbFactory.db),
+    ]) {
+      final label = entry.$1;
+      final db = entry.$2;
+      try {
+        final rows = await db.getAll('PRAGMA wal_checkpoint(PASSIVE)');
+        if (rows.isNotEmpty) {
+          final pages = rows.first.columnAt(1) as int;
+          final mb = (pages * 4096 / 1024 / 1024).toStringAsFixed(1);
+          AppLog.info(
+            'Sql.checkpoint [$label]: WAL has $pages pages (~${mb}MB)'
+            ' — starting TRUNCATE',
+          );
+        }
+      } catch (_) {
         AppLog.info(
-          'Sql.checkpoint: WAL has $pages pages (~${mb}MB)'
-          ' — starting TRUNCATE',
-        );
+            'Sql.checkpoint [$label]: WAL size unknown — starting TRUNCATE');
       }
-    } catch (_) {
-      AppLog.info('Sql.checkpoint: WAL size unknown — starting TRUNCATE');
+      final t = DateTime.now();
+      await db.execute('PRAGMA wal_checkpoint(TRUNCATE)');
+      final ms = DateTime.now().difference(t).inMilliseconds;
+      AppLog.info('Sql.checkpoint [$label]: WAL truncated in ${ms}ms');
     }
-    final t = DateTime.now();
-    await db.execute('PRAGMA wal_checkpoint(TRUNCATE)');
-    final ms = DateTime.now().difference(t).inMilliseconds;
-    AppLog.info('Sql.checkpoint: WAL truncated in ${ms}ms');
   }
 
   /// Called after a successful XMLTV parse to keep the `programmes` table
@@ -916,7 +942,7 @@ class Sql {
     int sourceId,
     int windowStartEpoch,
   ) async {
-    final db = await DbFactory.db;
+    final db = await EpgDbFactory.db;
     await db.execute(
       'DELETE FROM programmes WHERE source_id = ? AND stop_utc < ?',
       [sourceId, windowStartEpoch],
@@ -929,7 +955,7 @@ class Sql {
     int sourceId,
   ) async {
     final nowEpoch = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    var db = await DbFactory.db;
+    final db = await EpgDbFactory.db;
     final rows = await db.getAll('''
       SELECT id, epg_channel_id, source_id, title, description, category,
              start_utc, stop_utc, episode_num
@@ -959,7 +985,7 @@ class Sql {
     int windowStartEpoch,
     int windowEndEpoch,
   ) async {
-    var db = await DbFactory.db;
+    final db = await EpgDbFactory.db;
     final rows = await db.getAll('''
       SELECT id, epg_channel_id, source_id, title, description, category,
              start_utc, stop_utc, episode_num
@@ -994,7 +1020,7 @@ class Sql {
     String? lastError,
   ) async {
     final nowEpoch = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    var db = await DbFactory.db;
+    final db = await EpgDbFactory.db;
     await db.execute('''
       INSERT INTO epg_refresh_log (source_id, last_refreshed_utc, programmes_loaded, last_error)
       VALUES (?, ?, ?, ?)
@@ -1007,7 +1033,7 @@ class Sql {
 
   /// Returns the last refresh log for a source, or null if never refreshed.
   static Future<Map<String, dynamic>?> getEpgRefreshLog(int sourceId) async {
-    var db = await DbFactory.db;
+    final db = await EpgDbFactory.db;
     final row = await db.getOptional('''
       SELECT last_refreshed_utc, programmes_loaded, last_error
       FROM epg_refresh_log WHERE source_id = ?
@@ -1066,7 +1092,7 @@ class Sql {
   static Future<List<(String, String)>> getAvailableEpgIds(
     int sourceId,
   ) async {
-    var db = await DbFactory.db;
+    final db = await EpgDbFactory.db;
     final rows = await db.getAll('''
       SELECT epg_channel_id,
              (SELECT title FROM programmes p2

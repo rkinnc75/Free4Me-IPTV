@@ -1,7 +1,7 @@
 {
-  "latest": "1.17.8",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.17.8",
+  "latest": "1.17.9",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.17.9",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: after a large EPG refresh (100k+ programs), searches could stall for 90\u2013150 seconds while SQLite flushed its write-ahead log. The flush now runs while the \"Optimising database\u2026\" progress message is visible \u2014 searches are fast immediately after.\n\u2022 Improvement: the \"Refresh on start\" flow and the Settings \"Refresh all sources\" button now show the same per-source progress dialog as the backup import \u2014 instead of a plain spinner with no text.\n\u2022 Visual: each bottom navigation tab now has its own colour \u2014 blue, purple, amber, green, and red-orange for All, Categories, Favorites, History, and Settings respectively."
+  "releaseNotes": "\u2022 Fix: on very large sources (600k+ EPG programmes), channel searches could still stall for 30+ seconds while SQLite checkpointed a 1GB write-ahead log \u2014 even after the fix in 1.17.8. EPG programme data is now stored in a separate database file (epg.sqlite), so its write-ahead log never blocks the channel-search database. Searches stay fast throughout any EPG refresh."
 }

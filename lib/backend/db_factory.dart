@@ -247,6 +247,19 @@ class DbFactory {
           CREATE UNIQUE INDEX idx_programs_unique
             ON programmes(source_id, epg_channel_id, start_utc);
         ''');
+      }))
+      // fix56: programmes and epg_refresh_log moved to epg.sqlite so that
+      // large EPG WAL writes don't block channel-search reads in db.sqlite.
+      // Drop the old tables to reclaim space. EPG data is intentionally
+      // lost — the next "Refresh EPG now" repopulates epg.sqlite.
+      ..add(SqliteMigration(9, (tx) async {
+        await tx.execute('DROP TABLE IF EXISTS programmes;');
+        await tx.execute('DROP TABLE IF EXISTS epg_refresh_log;');
+        // Indexes are dropped automatically with the table, but include
+        // explicit drops defensively in case of schema divergence.
+        await tx.execute('DROP INDEX IF EXISTS idx_programs_channel_time;');
+        await tx.execute('DROP INDEX IF EXISTS idx_programs_time_range;');
+        await tx.execute('DROP INDEX IF EXISTS idx_programs_unique;');
       }));
     await migrations.migrate(db);
 
@@ -265,6 +278,83 @@ class DbFactory {
     // large batch inserts (EPG programme loading). The explicit
     // Sql.checkpointAndTruncateWal() call in epg_service.dart handles
     // the full flush after each EPG download. See fix52.md.
+    await db.execute('PRAGMA wal_autocheckpoint = 8000');
+
+    return db;
+  }
+
+  static Future<SqliteDatabase> get db async {
+    _db ??= await _createDB();
+    return _db!;
+  }
+}
+
+/// Manages the EPG-specific SQLite database (`epg.sqlite`).
+///
+/// Lives in a separate file from `db.sqlite` so that large EPG writes
+/// (600k+ programme inserts, 800k+ stale-row deletes) never inflate the
+/// WAL that channel-search reads must traverse. SQLite WAL contention is
+/// per-file; two separate SqliteDatabase instances have independent WALs.
+///
+/// Schema: `programmes` and `epg_refresh_log` tables only.
+/// The `sources` FK from these tables references `db.sqlite`, but SQLite
+/// cross-file FK enforcement is not supported — we enforce referential
+/// integrity at the application layer (Sql.deleteEpgForSource is called
+/// from Sql.deleteSource). See fix56.md.
+class EpgDbFactory {
+  static SqliteDatabase? _db;
+
+  static Future<SqliteDatabase> _createDB() async {
+    final db = SqliteDatabase(path: '${await Utils.appDir}/epg.sqlite');
+    final migrations = SqliteMigrations()
+      ..add(SqliteMigration(1, (tx) async {
+        // Programme guide — identical schema to the programmes table in
+        // db.sqlite migration v5. source_id is a logical FK; no FOREIGN KEY
+        // constraint because cross-file FK enforcement is not supported.
+        await tx.execute('''
+          CREATE TABLE programmes (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            epg_channel_id TEXT NOT NULL,
+            source_id   INTEGER NOT NULL,
+            title       TEXT NOT NULL,
+            description TEXT,
+            category    TEXT,
+            start_utc   INTEGER NOT NULL,
+            stop_utc    INTEGER NOT NULL,
+            episode_num TEXT
+          );
+        ''');
+        await tx.execute('''
+          CREATE INDEX idx_programs_channel_time
+            ON programmes(epg_channel_id, source_id, start_utc);
+        ''');
+        await tx.execute('''
+          CREATE INDEX idx_programs_time_range
+            ON programmes(source_id, start_utc, stop_utc);
+        ''');
+        // Unique constraint built in from the start — no de-duplication
+        // migration needed since epg.sqlite starts clean.
+        await tx.execute('''
+          CREATE UNIQUE INDEX idx_programs_unique
+            ON programmes(source_id, epg_channel_id, start_utc);
+        ''');
+        // EPG refresh audit log — identical schema to epg_refresh_log in
+        // db.sqlite migration v5 minus the cross-file FK.
+        await tx.execute('''
+          CREATE TABLE epg_refresh_log (
+            source_id          INTEGER PRIMARY KEY,
+            last_refreshed_utc INTEGER NOT NULL,
+            programmes_loaded  INTEGER NOT NULL,
+            last_error         TEXT
+          );
+        ''');
+      }));
+    await migrations.migrate(db);
+
+    AppLog.info('EpgDb: opened epg.sqlite');
+
+    // Same WAL tuning as db.sqlite — raise auto-checkpoint threshold so
+    // the explicit Sql.checkpointAndTruncateWal() calls control flushing.
     await db.execute('PRAGMA wal_autocheckpoint = 8000');
 
     return db;

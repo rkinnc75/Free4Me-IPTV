@@ -7,6 +7,15 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.17.9': [
+    'Fix: on very large sources (600k+ EPG programmes), channel '
+        'searches could still stall for 30+ seconds while SQLite '
+        'checkpointed a 1GB write-ahead log — even after the fix in '
+        '1.17.8. EPG programme data is now stored in a separate database '
+        'file (epg.sqlite), so its write-ahead log never blocks the '
+        'channel-search database. Searches stay fast throughout any EPG '
+        'refresh.',
+  ],
   '1.17.8': [
     'Fix: after a large EPG refresh (100k+ programs), searches could '
         'stall for 90–150 seconds while SQLite flushed its write-ahead '
