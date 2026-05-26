@@ -84,54 +84,64 @@ class _BottomNavState extends State<BottomNav> {
           ),
         ),
       ),
-      // Match the height NavigationBar uses at its default size.
-      height: 80,
-      child: Row(
-        children: List.generate(_navLabels.length, (i) {
-          final color = _navColors[i];
-          final selected = _selectedIndex == i;
-          return Expanded(
-            child: InkWell(
-              onTap: () => onBarTapped(i),
-              borderRadius: BorderRadius.circular(16),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Selected pill — same shape as Material 3 NavigationBar.
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    curve: Curves.easeInOut,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: selected
-                          ? color.withValues(alpha: 0.18)
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Icon(
-                      _navIcons[i],
-                      color: color,
-                      size: 24,
-                    ),
+      // SafeArea(top: false) adds bottom padding for the Android gesture
+      // navigation bar so the nav items sit above it rather than behind it.
+      // The Container's background extends behind the gesture bar to avoid
+      // a black gap. SizedBox fixes the content height independently of the
+      // system inset padding.
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 80,
+          child: Row(
+            children: List.generate(_navLabels.length, (i) {
+              final color = _navColors[i];
+              final selected = _selectedIndex == i;
+              return Expanded(
+                child: InkWell(
+                  onTap: () => onBarTapped(i),
+                  borderRadius: BorderRadius.circular(16),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      // Selected pill — same shape as Material 3 NavigationBar.
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeInOut,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: selected
+                              ? color.withAlpha(46) // ~18% opacity
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Icon(
+                          _navIcons[i],
+                          color: color,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _navLabels[i],
+                        style: TextStyle(
+                          color: color,
+                          fontSize: 12,
+                          fontWeight: selected
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _navLabels[i],
-                    style: TextStyle(
-                      color: color,
-                      fontSize: 12,
-                      fontWeight:
-                          selected ? FontWeight.w600 : FontWeight.normal,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }),
+                ),
+              );
+            }),
+          ),
+        ),
       ),
     );
   }
