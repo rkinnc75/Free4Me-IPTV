@@ -36,6 +36,10 @@ Future<void> processM3U(
   path ??= source.url;
   List<ChannelPreserve>? preserve;
   final memory = <String, String>{};
+  AppLog.info(
+    'M3U: processing source="${source.name}"'
+    ' wipe=$wipe path="${path ?? source.url}"',
+  );
   onProgress?.call('Connecting…');
   await Sql.commitWrite([Sql.getOrCreateSourceByName(source)], memory: memory);
   final sourceId = int.parse(memory['sourceId']!);

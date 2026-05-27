@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:open_tv/backend/app_logger.dart';
@@ -369,13 +371,8 @@ class _SettingsState extends State<SettingsView> {
                 child: IconButton(
                   icon: const Icon(Icons.refresh),
                   onPressed: () async {
-                    await Error.tryAsync(
-                      () async {
-                        await Utils.refreshSource(source);
-                      },
-                      context,
-                      "Source has been refreshed successfully",
-                    );
+                    await _refreshSingleSource(source);
+                    if (mounted) await reloadSources();
                   },
                 ),
               ),
@@ -430,6 +427,83 @@ class _SettingsState extends State<SettingsView> {
       context,
     );
     if (mounted) setState(() {});
+  }
+
+  /// Refresh a single Xtream source with a live progress dialog.
+  /// Uses the Completer pattern so the async callback can drive the
+  /// StatefulBuilder dialog — same approach as showSourcesRefreshDialog.
+  Future<void> _refreshSingleSource(Source source) async {
+    AppLog.info('Settings: refresh single source "${source.name}"');
+
+    String status = 'Connecting…';
+    bool done = false;
+    String? errorMsg;
+
+    final dialogReady = Completer<void>();
+    late void Function(void Function()) setSt;
+
+    final dialogClosed = showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => StatefulBuilder(
+        builder: (sCtx, s) {
+          setSt = s;
+          if (!dialogReady.isCompleted) dialogReady.complete();
+          return PopScope(
+            canPop: done,
+            child: AlertDialog(
+              title: Text('Refreshing "${source.name}"…'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (!done) const LinearProgressIndicator(),
+                  const SizedBox(height: 12),
+                  Text(
+                    status,
+                    style: Theme.of(sCtx).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+              actions: done
+                  ? [
+                      FilledButton(
+                        onPressed: () => Navigator.pop(sCtx),
+                        child: const Text('OK'),
+                      ),
+                    ]
+                  : null,
+            ),
+          );
+        },
+      ),
+    );
+
+    unawaited(() async {
+      await dialogReady.future;
+      try {
+        await Utils.refreshSource(
+          source,
+          onProgress: (msg) => setSt(() {
+            status = msg.length > 60 ? '${msg.substring(0, 60)}…' : msg;
+          }),
+        );
+        AppLog.info('Settings: refresh "${source.name}" — done');
+        setSt(() {
+          done = true;
+          status = 'Refresh complete.';
+        });
+      } catch (e, st) {
+        errorMsg = e.toString();
+        AppLog.warn('Settings: refresh "${source.name}" — ERROR: $e\n$st');
+        setSt(() {
+          done = true;
+          status = 'Error: $errorMsg';
+        });
+      }
+    }());
+
+    await dialogClosed;
   }
 
   /// Shows a live progress dialog while refreshing all EPG sources, then
@@ -1158,32 +1232,76 @@ class _SettingsState extends State<SettingsView> {
                     onTap: () async => await _showDefaultViewDialog(context),
                   ),
 
-                  // ── Force TV mode ────────────────────────────────────────
-                  _switchTile(
-                    label: "Force TV Mode",
-                    value: settings.forceTVMode,
-                    help: _helpForceTvMode,
-                    onChanged: (v) {
-                      setState(() => settings.forceTVMode = v);
-                      updateSettings();
-                    },
-                  ),
-
-                  // ── Low latency ──────────────────────────────────────────
-                  _switchTile(
-                    label: "Low latency livestreams",
-                    value: settings.lowLatency,
-                    help: _helpLowLatency,
-                    onChanged: (v) {
-                      setState(() => settings.lowLatency = v);
-                      updateSettings();
-                    },
+                  // ── Playback ─────────────────────────────────────────────
+                  ExpansionTile(
+                    key: const PageStorageKey('playback'),
+                    leading: const Icon(Icons.play_circle_outline),
+                    title: Text(
+                      'Playback',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+                    childrenPadding: EdgeInsets.zero,
+                    initiallyExpanded: false,
+                    children: [
+                      _switchTile(
+                        label: "Force TV Mode",
+                        value: settings.forceTVMode,
+                        help: _helpForceTvMode,
+                        onChanged: (v) {
+                          setState(() => settings.forceTVMode = v);
+                          updateSettings();
+                        },
+                      ),
+                      _switchTile(
+                        label: "Low latency livestreams",
+                        value: settings.lowLatency,
+                        help: _helpLowLatency,
+                        onChanged: (v) {
+                          setState(() => settings.lowLatency = v);
+                          updateSettings();
+                        },
+                      ),
+                      _switchTile(
+                        label: "Hardware decoding",
+                        value: settings.hwDecode,
+                        help: _helpHwDecode,
+                        onChanged: (v) {
+                          setState(() => settings.hwDecode = v);
+                          updateSettings();
+                        },
+                      ),
+                      _switchTile(
+                        label: "Pre-warm streams on focus",
+                        value: settings.preWarmOnFocus,
+                        help: _helpPreWarm,
+                        onChanged: (v) {
+                          setState(() => settings.preWarmOnFocus = v);
+                          updateSettings();
+                        },
+                      ),
+                      _engineSelectionTile(settings),
+                    ],
                   ),
 
                   const Divider(),
 
-                  // ── Buffering section ─────────────────────────────────────
-                  _sectionHeader("Buffering (Android TV)"),
+                  // ── Buffering ─────────────────────────────────────────────
+                  ExpansionTile(
+                    key: const PageStorageKey('buffering'),
+                    leading: const Icon(Icons.tune),
+                    title: Text(
+                      'Buffering',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+                    childrenPadding: EdgeInsets.zero,
+                    initiallyExpanded: false,
+                    children: [
 
                   _bufferSlider(
                     label: "Livestream cache (seconds)",
@@ -1415,171 +1533,194 @@ class _SettingsState extends State<SettingsView> {
                           '(original behaviour).\n\n'
                           'Default: 2000 ms (2 seconds). Range: 0–10 000 ms.',
                     ),
-                    onChanged: (v) {
-                      setState(
-                        () => settings.streamCompletedDelayMs = v.round(),
-                      );
-                      updateSettings();
-                    },
+                      onChanged: (v) {
+                        setState(
+                          () => settings.streamCompletedDelayMs = v.round(),
+                        );
+                        updateSettings();
+                      },
+                    ),
+                    ],
                   ),
 
-                  // ── Stream scanner (radar) ────────────────────────────────
-                  _sectionHeader("Stream Scanner"),
-                  _bufferSlider(
-                    label: "Streams per scan",
-                    value: settings.streamScanMaxCount.toDouble(),
-                    min: 1,
-                    max: 100,
-                    divisions: 99,
-                    help: (
-                      title: 'Streams Per Scan',
-                      body:
-                          'Maximum number of visible channels the radar button '
-                          'probes in a single scan run.\n\n'
-                          '↑ Raising — tests more channels per run. Scan time '
-                          'increases proportionally '
-                          '(count × timeout per stream). '
-                          '100 streams at 8 s timeout = up to ~13 minutes '
-                          'worst-case.\n\n'
-                          '↓ Lowering — faster scan. The scanner always tests '
-                          'channels in the order they appear on screen, so '
-                          'put your favourites first.\n\n'
-                          'Green border = valid MPEG-TS or HLS confirmed. '
-                          'Default: 20. Range: 1–100.',
+                  // ── Multi-view ────────────────────────────────────────────
+                  ExpansionTile(
+                    key: const PageStorageKey('multiview'),
+                    leading: const Icon(Icons.grid_view),
+                    title: Text(
+                      'Multi-view',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                    onChanged: (v) {
-                      setState(
-                        () => settings.streamScanMaxCount = v.round(),
-                      );
-                      updateSettings();
-                    },
-                  ),
-                  _bufferSlider(
-                    label: "Scan timeout (sec)",
-                    value: settings.streamScanTimeoutSecs.toDouble(),
-                    min: 3,
-                    max: 30,
-                    divisions: 27,
-                    help: (
-                      title: 'Scan Timeout (seconds)',
-                      body:
-                          'How long the scanner waits per stream to receive '
-                          'and validate the first media bytes (MPEG-TS sync '
-                          'bytes at 0, 188, 376; or "#EXTM3U" for HLS).\n\n'
-                          '↑ Raising — gives slow CDNs and geographically '
-                          'distant servers more time to respond. Reduces false '
-                          'negatives. Increases total scan time '
-                          'proportionally.\n\n'
-                          '↓ Lowering — faster scans. May produce false '
-                          'negatives on slow or international streams.\n\n'
-                          '8 s covers most IPTV providers. Only increase if '
-                          'you see streams your player can open but the scanner '
-                          'marks as failed. Default: 8 s. Range: 3–30 s.',
-                    ),
-                    onChanged: (v) {
-                      setState(
-                        () => settings.streamScanTimeoutSecs = v.round(),
-                      );
-                      updateSettings();
-                    },
-                  ),
-
-                  // ── Hardware decode / pre-warm / engine ───────────────────
-                  _switchTile(
-                    label: "Hardware decoding",
-                    value: settings.hwDecode,
-                    help: _helpHwDecode,
-                    onChanged: (v) {
-                      setState(() => settings.hwDecode = v);
-                      updateSettings();
-                    },
-                  ),
-                  _switchTile(
-                    label: "Pre-warm streams on focus",
-                    value: settings.preWarmOnFocus,
-                    help: _helpPreWarm,
-                    onChanged: (v) {
-                      setState(() => settings.preWarmOnFocus = v);
-                      updateSettings();
-                    },
-                  ),
-                  _engineSelectionTile(settings),
-                  _multiViewTile(settings),
-                  SwitchListTile(
-                    title: Row(
-                      children: [
-                        const Expanded(
-                          child: Text('Restore last channels on open'),
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+                    childrenPadding: EdgeInsets.zero,
+                    initiallyExpanded: false,
+                    children: [
+                      _multiViewTile(settings),
+                      SwitchListTile(
+                        title: Row(
+                          children: [
+                            const Expanded(
+                              child: Text('Restore last channels on open'),
+                            ),
+                            const SizedBox(width: 4),
+                            _helpIcon(
+                              title: 'Auto-restore channels',
+                              body:
+                                  'When ON, opening multi-view brings back the channels '
+                                  'you had loaded the last time you used the current '
+                                  'layout — exactly as you left them.\n\n'
+                                  'When OFF, multi-view opens with all cells empty; tap '
+                                  'each "+" to pick a channel.\n\n'
+                                  'Your last picks are remembered in either case — '
+                                  'turning this back ON restores them on the next open.',
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 4),
-                        _helpIcon(
-                          title: 'Auto-restore channels',
-                          body:
-                              'When ON, opening multi-view brings back the channels '
-                              'you had loaded the last time you used the current '
-                              'layout — exactly as you left them.\n\n'
-                              'When OFF, multi-view opens with all cells empty; tap '
-                              'each "+" to pick a channel.\n\n'
-                              'Your last picks are remembered in either case — '
-                              'turning this back ON restores them on the next open.',
-                        ),
-                      ],
-                    ),
-                    value: settings.multiViewAutoRestoreChannels,
-                    onChanged: settings.multiViewLayout == MultiViewLayout.none
-                        ? null // greyed when multi-view itself is off
-                        : (v) {
-                            setState(
-                              () => settings.multiViewAutoRestoreChannels = v,
-                            );
-                            updateSettings();
-                          },
+                        value: settings.multiViewAutoRestoreChannels,
+                        onChanged: settings.multiViewLayout == MultiViewLayout.none
+                            ? null // greyed when multi-view itself is off
+                            : (v) {
+                                setState(
+                                  () => settings.multiViewAutoRestoreChannels = v,
+                                );
+                                updateSettings();
+                              },
+                      ),
+                    ],
                   ),
 
                   const Divider(),
 
-                  // ── Content visibility ────────────────────────────────────
-                  _switchTile(
-                    label: "Refresh sources on start",
-                    value: settings.refreshOnStart,
-                    help: _helpRefreshOnStart,
-                    onChanged: (v) {
-                      setState(() => settings.refreshOnStart = v);
-                      updateSettings();
-                    },
-                  ),
-                  _switchTile(
-                    label: "Show livestreams",
-                    value: settings.showLivestreams,
-                    help: _helpShowLivestreams,
-                    onChanged: (v) {
-                      setState(() => settings.showLivestreams = v);
-                      updateSettings();
-                    },
-                  ),
-                  _switchTile(
-                    label: "Show movies",
-                    value: settings.showMovies,
-                    help: _helpShowMovies,
-                    onChanged: (v) {
-                      setState(() => settings.showMovies = v);
-                      updateSettings();
-                    },
-                  ),
-                  _switchTile(
-                    label: "Show series",
-                    value: settings.showSeries,
-                    help: _helpShowSeries,
-                    onChanged: (v) {
-                      setState(() => settings.showSeries = v);
-                      updateSettings();
-                    },
+                  // ── Content ───────────────────────────────────────────────
+                  ExpansionTile(
+                    key: const PageStorageKey('content'),
+                    leading: const Icon(Icons.filter_list),
+                    title: Text(
+                      'Content',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+                    childrenPadding: EdgeInsets.zero,
+                    initiallyExpanded: false,
+                    children: [
+                      _switchTile(
+                        label: "Refresh sources on start",
+                        value: settings.refreshOnStart,
+                        help: _helpRefreshOnStart,
+                        onChanged: (v) {
+                          setState(() => settings.refreshOnStart = v);
+                          updateSettings();
+                        },
+                      ),
+                      _switchTile(
+                        label: "Show livestreams",
+                        value: settings.showLivestreams,
+                        help: _helpShowLivestreams,
+                        onChanged: (v) {
+                          setState(() => settings.showLivestreams = v);
+                          updateSettings();
+                        },
+                      ),
+                      _switchTile(
+                        label: "Show movies",
+                        value: settings.showMovies,
+                        help: _helpShowMovies,
+                        onChanged: (v) {
+                          setState(() => settings.showMovies = v);
+                          updateSettings();
+                        },
+                      ),
+                      _switchTile(
+                        label: "Show series",
+                        value: settings.showSeries,
+                        help: _helpShowSeries,
+                        onChanged: (v) {
+                          setState(() => settings.showSeries = v);
+                          updateSettings();
+                        },
+                      ),
+                      // Stream scanner
+                      _bufferSlider(
+                        label: "Streams per scan",
+                        value: settings.streamScanMaxCount.toDouble(),
+                        min: 1,
+                        max: 100,
+                        divisions: 99,
+                        help: (
+                          title: 'Streams Per Scan',
+                          body:
+                              'Maximum number of visible channels the radar button '
+                              'probes in a single scan run.\n\n'
+                              '↑ Raising — tests more channels per run. Scan time '
+                              'increases proportionally '
+                              '(count × timeout per stream). '
+                              '100 streams at 8 s timeout = up to ~13 minutes '
+                              'worst-case.\n\n'
+                              '↓ Lowering — faster scan. The scanner always tests '
+                              'channels in the order they appear on screen, so '
+                              'put your favourites first.\n\n'
+                              'Green border = valid MPEG-TS or HLS confirmed. '
+                              'Default: 20. Range: 1–100.',
+                        ),
+                        onChanged: (v) {
+                          setState(
+                            () => settings.streamScanMaxCount = v.round(),
+                          );
+                          updateSettings();
+                        },
+                      ),
+                      _bufferSlider(
+                        label: "Scan timeout (sec)",
+                        value: settings.streamScanTimeoutSecs.toDouble(),
+                        min: 3,
+                        max: 30,
+                        divisions: 27,
+                        help: (
+                          title: 'Scan Timeout (seconds)',
+                          body:
+                              'How long the scanner waits per stream to receive '
+                              'and validate the first media bytes (MPEG-TS sync '
+                              'bytes at 0, 188, 376; or "#EXTM3U" for HLS).\n\n'
+                              '↑ Raising — gives slow CDNs and geographically '
+                              'distant servers more time to respond. Reduces false '
+                              'negatives. Increases total scan time '
+                              'proportionally.\n\n'
+                              '↓ Lowering — faster scans. May produce false '
+                              'negatives on slow or international streams.\n\n'
+                              '8 s covers most IPTV providers. Only increase if '
+                              'you see streams your player can open but the scanner '
+                              'marks as failed. Default: 8 s. Range: 3–30 s.',
+                        ),
+                        onChanged: (v) {
+                          setState(
+                            () => settings.streamScanTimeoutSecs = v.round(),
+                          );
+                          updateSettings();
+                        },
+                      ),
+                    ],
                   ),
 
                   const Divider(),
 
                   // ── EPG ───────────────────────────────────────────────────
-                  _sectionHeader("EPG / Program Guide"),
+                  ExpansionTile(
+                    key: const PageStorageKey('epg'),
+                    leading: const Icon(Icons.calendar_month),
+                    title: Text(
+                      'EPG / Program Guide',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+                    childrenPadding: EdgeInsets.zero,
+                    initiallyExpanded: false,
+                    children: [
                   ...sources.map(
                     (source) => ListTile(
                       leading: Icon(
@@ -1832,6 +1973,8 @@ class _SettingsState extends State<SettingsView> {
                           ),
                         ),
                       ),
+                    ],
+                  ),
 
                   const Divider(),
 

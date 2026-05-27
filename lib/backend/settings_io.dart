@@ -64,6 +64,11 @@ class SettingsIo {
                     'name': p.name,
                     if (p.favorite != null) 'favorite': p.favorite,
                     if (p.lastWatched != null) 'lastWatched': p.lastWatched,
+                    // fix58.3: also export EPG assignments so restore-from-backup
+                    // preserves matched channel IDs across source refresh.
+                    if (p.epgChannelId != null) 'epgChannelId': p.epgChannelId,
+                    if (p.epgManualOverride != null)
+                      'epgManualOverride': p.epgManualOverride,
                   })
               .toList();
         }
@@ -227,16 +232,26 @@ class SettingsIo {
           // boundary.
           final preserveRaw = map['preserve'] as List<dynamic>?;
           if (preserveRaw != null && preserveRaw.isNotEmpty) {
-            _pendingPreserves[source.name] = preserveRaw
+            final preserveList = preserveRaw
                 .map((p) {
                   final m = p as Map<String, dynamic>;
                   return ChannelPreserve(
                     name: m['name'] as String,
                     favorite: m['favorite'] as int?,
                     lastWatched: m['lastWatched'] as int?,
+                    // fix58.3: read EPG assignments written by updated export.
+                    epgChannelId: m['epgChannelId'] as String?,
+                    epgManualOverride: m['epgManualOverride'] as String?,
                   );
                 })
                 .toList();
+            _pendingPreserves[source.name] = preserveList;
+            AppLog.info(
+              'SettingsIo.import: staged preserves for "${source.name}"'
+              ' total=${preserveList.length}'
+              ' epg=${preserveList.where((p) => p.epgChannelId != null).length}'
+              ' favorites=${preserveList.where((p) => p.favorite == 1).length}',
+            );
           }
         }
       }
@@ -267,7 +282,13 @@ class SettingsIo {
   /// Called from Utils.refreshSource after channels are populated.
   static Future<void> applyPendingPreserves(String sourceName) async {
     final preserve = _pendingPreserves.remove(sourceName);
-    if (preserve == null || preserve.isEmpty) return;
+    if (preserve == null || preserve.isEmpty) {
+      AppLog.info(
+        'SettingsIo.applyPendingPreserves: no staged preserves'
+        ' for "$sourceName" — skipping',
+      );
+      return;
+    }
 
     final sources = await Sql.getSources();
     Source? source;
@@ -278,14 +299,25 @@ class SettingsIo {
       }
     }
     if (source == null || source.id == null) {
-      // Source was deleted between import and refresh — drop the
-      // staged preserves silently.
+      AppLog.warn(
+        'SettingsIo.applyPendingPreserves: source "$sourceName" not found'
+        ' in DB — dropping ${preserve.length} staged preserves',
+      );
       return;
     }
 
+    AppLog.info(
+      'SettingsIo.applyPendingPreserves: applying ${preserve.length}'
+      ' preserves to "$sourceName" (sourceId=${source.id})'
+      ' epg=${preserve.where((p) => p.epgChannelId != null).length}'
+      ' favorites=${preserve.where((p) => p.favorite == 1).length}',
+    );
     await Sql.commitWrite(
       [Sql.restorePreserve(preserve)],
       memory: {'sourceId': source.id!.toString()},
+    );
+    AppLog.info(
+      'SettingsIo.applyPendingPreserves: done for "$sourceName"',
     );
   }
 

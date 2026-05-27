@@ -7,6 +7,18 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.18.0': [
+    'Settings: collapsible groups (Playback, Buffering, Multi-view, '
+        'Content, EPG) reduce scrolling — all sections start collapsed '
+        'and expand on tap.',
+    'Settings: refreshing an Xtream source now shows a live progress '
+        'dialog instead of a plain spinner.',
+    'Fix: backup export now includes matched EPG channel IDs, so a '
+        'restore-from-backup followed by a source refresh preserves all '
+        'EPG assignments without a full re-match.',
+    'Diagnostics: improved logging for backup import/restore and M3U '
+        'processing to make post-restore EPG flow traceable in the log.',
+  ],
   '1.17.9': [
     'Fix: on very large sources (600k+ EPG programmes), channel '
         'searches could still stall for 30+ seconds while SQLite '

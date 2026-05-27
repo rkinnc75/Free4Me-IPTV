@@ -14,7 +14,7 @@ Related docs:
 
 | Item | Value |
 |---|---|
-| Latest release | **v1.17.9+82** (refer to git tags for absolute current state — this line is not auto-updated by the release script) |
+| Latest release | **v1.18.0+83** (refer to git tags for absolute current state — this line is not auto-updated by the release script) |
 | GitHub releases | https://github.com/rkinnc75/Free4Me-IPTV/releases |
 | `flutter analyze` | **0 issues** |
 | Release pipelines | Automated: tag push → `.github/workflows/release.yml`. Manual: `bash scripts/build_and_release.sh` from a Mac. See `CLAUDE-WORKFLOW.md`. |
