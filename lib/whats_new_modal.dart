@@ -7,6 +7,21 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.18.1': [
+    'Fix: importing a credential-safe backup (exported without '
+        'username/password) no longer wipes existing Xtream source '
+        'credentials — they are now preserved via COALESCE.',
+    'Fix: restoring a manual EPG channel override from backup now correctly '
+        'updates the EPG lookup ID so the guide immediately reflects the '
+        'pinned assignment.',
+    'Fix: EPG refresh on an empty or timed-out server response no longer '
+        'hangs the progress dialog indefinitely.',
+    'Fix: stale EPG row cleanup now runs before the WAL checkpoint so '
+        'both writes are flushed in a single pass, reducing the chance of '
+        'a post-refresh search stall.',
+    'Fix: upgrading from an old schema with a large EPG table no longer '
+        'performs an expensive dedupe at startup before discarding the table.',
+  ],
   '1.18.0': [
     'Settings: collapsible groups (Playback, Buffering, Multi-view, '
         'Content, EPG) reduce scrolling — all sections start collapsed '

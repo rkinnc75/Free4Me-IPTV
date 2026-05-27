@@ -257,6 +257,14 @@ class XmltvParser {
         }
       },
       onDone: () {
+        // fix51-A: complete the Completer before closing the controller so
+        // an empty body or a timeout-closed stream never leaves the caller
+        // awaiting _maybeUngzip() forever. An empty controller.stream is a
+        // valid (zero-program) result; the XML parser will emit no events
+        // and downloadAndParseEpg will log inserted=0 and surface normally.
+        if (!completer.isCompleted) {
+          completer.complete(controller.stream);
+        }
         controller.close();
         sub.cancel();
       },

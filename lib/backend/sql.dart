@@ -186,12 +186,16 @@ class Sql {
         // `enabled` and `default_engine`). The id is preserved, so
         // channel FK references are unaffected.
         final id = existing.columnAt(0);
+        // fix51-B: use COALESCE for username/password so a credential-safe
+        // backup (exported with includeCredentials=false, meaning both fields
+        // are null) never overwrites an already-configured Xtream source's
+        // stored credentials. Non-null values from the backup still win.
         await tx.execute('''
               UPDATE sources
                  SET source_type    = ?,
                      url            = ?,
-                     username       = ?,
-                     password       = ?,
+                     username       = COALESCE(?, username),
+                     password       = COALESCE(?, password),
                      epg_url        = ?,
                      enabled        = ?,
                      default_engine = ?
@@ -712,9 +716,14 @@ class Sql {
   /// Restore per-channel attributes after a wipe+re-import.
   ///
   /// fix50: extended to also restore epg_channel_id and epg_manual_override.
-  /// epg_channel_id is only restored if the fresh import left it null (COALESCE
-  /// preserves a fresher value from the M3U/Xtream itself). Manual overrides
-  /// always win — the user explicitly pinned them.
+  /// fix51-D: when a manual override is present, write it to BOTH
+  /// epg_manual_override AND epg_channel_id so that the guide lookup (which
+  /// reads epg_channel_id) immediately reflects the user's explicit pin.
+  /// Without this, the override was stored in epg_manual_override but
+  /// epg_channel_id kept whatever the fresh M3U/Xtream import wrote, making
+  /// the override appear set but have no effect on the EPG display.
+  /// For non-manual restores, epg_channel_id uses COALESCE so a fresher
+  /// value from the import is preserved.
   static Future<void> Function(SqliteWriteContext, Map<String, String>)
       restorePreserve(List<ChannelPreserve> preserve) {
     return (SqliteWriteContext tx, Map<String, String> memory) async {
@@ -722,24 +731,45 @@ class Sql {
       int restoredEpg = 0;
       int restoredManual = 0;
       for (var channel in preserve) {
-        await tx.execute('''
-          UPDATE channels
-          SET favorite            = ?,
-              last_watched        = ?,
-              epg_channel_id      = COALESCE(epg_channel_id, ?),
-              epg_manual_override = COALESCE(?, epg_manual_override)
-          WHERE name = ?
-          AND source_id = ?
-        ''', [
-          channel.favorite,
-          channel.lastWatched,
-          channel.epgChannelId,
-          channel.epgManualOverride,
-          channel.name,
-          sourceId,
-        ]);
-        if (channel.epgChannelId != null) restoredEpg++;
-        if (channel.epgManualOverride != null) restoredManual++;
+        if (channel.epgManualOverride != null) {
+          // Manual override: both columns get the pinned value unconditionally.
+          await tx.execute('''
+            UPDATE channels
+            SET favorite            = ?,
+                last_watched        = ?,
+                epg_channel_id      = ?,
+                epg_manual_override = ?
+            WHERE name = ?
+            AND source_id = ?
+          ''', [
+            channel.favorite,
+            channel.lastWatched,
+            channel.epgManualOverride,
+            channel.epgManualOverride,
+            channel.name,
+            sourceId,
+          ]);
+          restoredManual++;
+        } else {
+          // Auto-matched EPG: only fill epg_channel_id if the fresh import
+          // left it null (COALESCE preserves a fresher value from M3U/Xtream).
+          await tx.execute('''
+            UPDATE channels
+            SET favorite            = ?,
+                last_watched        = ?,
+                epg_channel_id      = COALESCE(epg_channel_id, ?),
+                epg_manual_override = NULL
+            WHERE name = ?
+            AND source_id = ?
+          ''', [
+            channel.favorite,
+            channel.lastWatched,
+            channel.epgChannelId,
+            channel.name,
+            sourceId,
+          ]);
+          if (channel.epgChannelId != null) restoredEpg++;
+        }
       }
       AppLog.info(
         'Sql.restorePreserve: sourceId=$sourceId'

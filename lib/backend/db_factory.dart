@@ -231,22 +231,20 @@ class DbFactory {
           'ALTER TABLE sources ADD COLUMN default_engine TEXT;',
         );
       }))
-      // v1.16.2: Make program inserts idempotent (fix29.5).
-      // Adds a UNIQUE constraint on (source_id, epg_channel_id, start_utc)
-      // so EPG refresh can upsert instead of wipe-and-rewrite. The dedupe
-      // step is defensive — prior versions used `INSERT OR IGNORE` against
-      // no constraint, so equal-key duplicates may exist in the wild.
+      // v1.16.2 original intent: dedupe programmes + add unique index (fix29.5).
+      // fix51-C: migration 9 immediately drops programmes/epg_refresh_log, so
+      // users upgrading from schema 7 with a large EPG table (600k+ rows) were
+      // paying the full dedupe+index cost at startup only to discard the table
+      // moments later. Replaced with the same DROP statements migration 9 runs,
+      // making both migrations safe no-ops when the table is already gone.
+      // Devices already on schema 8→9 are unaffected — DROP IF EXISTS is
+      // idempotent.
       ..add(SqliteMigration(8, (tx) async {
-        await tx.execute('''
-          DELETE FROM programmes WHERE id NOT IN (
-            SELECT MIN(id) FROM programmes
-            GROUP BY source_id, epg_channel_id, start_utc
-          );
-        ''');
-        await tx.execute('''
-          CREATE UNIQUE INDEX idx_programs_unique
-            ON programmes(source_id, epg_channel_id, start_utc);
-        ''');
+        await tx.execute('DROP TABLE IF EXISTS programmes;');
+        await tx.execute('DROP TABLE IF EXISTS epg_refresh_log;');
+        await tx.execute('DROP INDEX IF EXISTS idx_programs_channel_time;');
+        await tx.execute('DROP INDEX IF EXISTS idx_programs_time_range;');
+        await tx.execute('DROP INDEX IF EXISTS idx_programs_unique;');
       }))
       // fix56: programmes and epg_refresh_log moved to epg.sqlite so that
       // large EPG WAL writes don't block channel-search reads in db.sqlite.

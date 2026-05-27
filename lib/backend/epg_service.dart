@@ -142,22 +142,19 @@ class EpgService {
       //
       // Running the checkpoint here while the progress dialog is still
       // visible hides the cost entirely.
+      // fix51-E: delete stale rows BEFORE the checkpoint so the single
+      // explicit flush covers both the fresh inserts and the stale deletes.
+      // Previously deleteStalePrograms ran after the checkpoint, creating a
+      // fresh WAL that could reintroduce an auto-checkpoint stall on the
+      // next UI read. Order: insert → delete stale → show progress → checkpoint.
+      await Sql.deleteStalePrograms(source.id!, windowStart);
+
       onProgress?.call(XmltvProgress(
         programsInserted: inserted,
         statusMessage: 'Optimising database…',
       ));
       await Sql.checkpointAndTruncateWal();
 
-      // GC rows whose stop time is before the configured window so the
-      // table stays bounded across refreshes.
-      await Sql.deleteStalePrograms(source.id!, windowStart);
-
-      // Checkpoint again after deleteStalePrograms. The stale-program
-      // DELETE can remove tens of thousands of rows (121k outside-window
-      // for Emjay), inflating the WAL as much as the original insert.
-      // Without this second flush, searches after EPG refresh block for
-      // 60–120s waiting for the automatic checkpoint (see fix52.md).
-      await Sql.checkpointAndTruncateWal();
       AppLog.info(
           'EPG: downloaded "${source.name}" — $inserted programs');
       await Sql.upsertEpgRefreshLog(source.id!, inserted, null);
@@ -259,14 +256,6 @@ class EpgService {
     );
     if (merged.isNotEmpty) {
       await Sql.setChannelEpgIds(merged);
-      // Checkpoint the WAL after writing EPG assignments. Each UPDATE
-      // triggers the channels_au FTS trigger (delete + insert on
-      // channels_fts), so 14k assignments = ~42k WAL writes. Without
-      // this checkpoint the WAL blocks all search reads for 60–130s
-      // after matchChannels returns (same root cause as the programme
-      // insert — see fix52.md). The progress dialog is still showing
-      // at this point so the user doesn't see the flush time.
-      await Sql.checkpointAndTruncateWal();
     }
 
     final report = MatchReport(

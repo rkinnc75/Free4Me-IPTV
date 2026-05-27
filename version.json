@@ -1,7 +1,7 @@
 {
-  "latest": "1.18.0",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.18.0",
+  "latest": "1.18.1",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.18.1",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Settings: collapsible groups (Playback, Buffering, Multi-view, Content, EPG) reduce scrolling \u2014 all sections start collapsed and expand on tap.\n\u2022 Settings: refreshing an Xtream source now shows a live progress dialog instead of a plain spinner.\n\u2022 Fix: backup export now includes matched EPG channel IDs, so a restore-from-backup followed by a source refresh preserves all EPG assignments without a full re-match.\n\u2022 Diagnostics: improved logging for backup import/restore and M3U processing to make post-restore EPG flow traceable in the log."
+  "releaseNotes": "\u2022 Fix: importing a credential-safe backup (exported without username/password) no longer wipes existing Xtream source credentials \u2014 they are now preserved via COALESCE.\n\u2022 Fix: restoring a manual EPG channel override from backup now correctly updates the EPG lookup ID so the guide immediately reflects the pinned assignment.\n\u2022 Fix: EPG refresh on an empty or timed-out server response no longer hangs the progress dialog indefinitely.\n\u2022 Fix: stale EPG row cleanup now runs before the WAL checkpoint so both writes are flushed in a single pass, reducing the chance of a post-refresh search stall.\n\u2022 Fix: upgrading from an old schema with a large EPG table no longer performs an expensive dedupe at startup before discarding the table."
 }
