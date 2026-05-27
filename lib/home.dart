@@ -616,13 +616,18 @@ class _HomeState extends State<Home> {
               onContentTypeChanged: (filter) async {
                 final s = SettingsService.cached;
                 if (s == null) return;
+                // Update in-memory state immediately so getMediaTypes()
+                // returns the correct filter before the DB write completes.
                 s.contentTypeFilter = filter;
-                await SettingsService.updateSettings(s);
                 if (!mounted) return;
                 setState(() {
                   widget.home.filters.mediaTypes = s.getMediaTypes();
                 });
+                // Reload the channel list with the new filter immediately.
                 await load(false);
+                // Persist to DB after the UI has already updated.
+                // User sees the new content without waiting for the write.
+                if (mounted) await SettingsService.updateSettings(s);
               },
             )
           : null,

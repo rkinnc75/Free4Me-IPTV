@@ -14,10 +14,10 @@ Related docs:
 
 | Item | Value |
 |---|---|
-| Latest release | **v1.18.3+86** (refer to git tags for absolute current state — this line is not auto-updated by the release script) |
+| Latest release | **v1.18.4+87** (refer to git tags for absolute current state — this line is not auto-updated by the release script) |
 | GitHub releases | https://github.com/rkinnc75/Free4Me-IPTV/releases |
 | `flutter analyze` | **0 issues** |
-| Release pipelines | Automated: tag push → `.github/workflows/release.yml`. Manual: `bash scripts/build_and_release.sh` from a Mac. See `CLAUDE-WORKFLOW.md`. |
+| Release pipelines | **Tag push (`vX.Y.Z`) triggers CI** → `.github/workflows/release.yml`. Commits to `main` alone do NOT build. Manual: `bash scripts/build_and_release.sh` (handles tag automatically). Cowork/Claude: must push commit AND tag separately. See `CLAUDE-WORKFLOW.md` and `fix49.md`. |
 | Flutter SDK (host Mac) | `/Users/builder/tools/flutter/bin` |
 | Dart package name | `open_tv` (intentional — do not rename) |
 | Android package ID | `me.free4me.iptv` |
@@ -183,7 +183,19 @@ bash scripts/build_and_release.sh
 1. `flutter analyze` → 0 issues
 2. Bump `version: X.Y.Z+N` in `pubspec.yaml`
 3. Add changelog entry to `lib/whats_new_modal.dart` (`_changelog` map, newest key first)
-4. `bash scripts/build_and_release.sh`
+4. Commit and push to `main`
+5. **Push the `vX.Y.Z` tag** — this is what triggers the Release workflow:
+   ```bash
+   # Mac / manual path (script handles both steps):
+   bash scripts/build_and_release.sh
+
+   # Cowork / Claude path (must do both explicitly):
+   git push origin main
+   git push origin vX.Y.Z
+   ```
+   ⚠️ **Pushing commits without the tag does NOT trigger a build.**
+   The Release workflow only fires on `push: tags: - 'v*'`.
+   If CI never starts, the tag was not pushed.
 
 **Commit message convention (rule: git_commits.mdc):**  
 `PO-XXXXX Verb Subject` — imperative, ≤72 chars, Jira key required (except docs/tests).  

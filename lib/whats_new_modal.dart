@@ -7,6 +7,13 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.18.4': [
+    'Fix: tapping the content-type filter tab (All → Live → Movies → Series) '
+        'now correctly reloads the channel list immediately — the grid no '
+        'longer stays frozen on all types after a tap.',
+    'Fix: filter change is reflected in the channel grid before the database '
+        'write completes, so every tap feels instant.',
+  ],
   '1.18.3': [
     'New: tap the All tab to cycle content types — All → Live → Movies → '
         'Series → All. Search runs against only the selected type, making '

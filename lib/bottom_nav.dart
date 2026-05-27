@@ -182,8 +182,17 @@ class _BottomNavState extends State<BottomNav> {
                 selected: _selectedIndex == ViewType.all.index,
                 onTap: () {
                   setState(() => _selectedIndex = ViewType.all.index);
+                  // Cycle the content type filter.
                   _onFilterTap();
-                  widget.updateViewMode(ViewType.all);
+                  // Only navigate if we're not already on the All view.
+                  // When already on All, onContentTypeChanged handles the
+                  // filter update and reload in place — no navigation needed.
+                  // Navigating would create a new Home before the new
+                  // contentTypeFilter is persisted, causing the new Home to
+                  // read the stale filter value and show the wrong content.
+                  if (widget.startingView != ViewType.all) {
+                    widget.updateViewMode(ViewType.all);
+                  }
                 },
               ),
               // ── Fixed tabs ─────────────────────────────────────────────
