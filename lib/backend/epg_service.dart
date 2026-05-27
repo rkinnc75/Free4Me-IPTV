@@ -256,6 +256,7 @@ class EpgService {
     );
     if (merged.isNotEmpty) {
       await Sql.setChannelEpgIds(merged);
+      await Sql.checkpointAndTruncateWal();
     }
 
     final report = MatchReport(
