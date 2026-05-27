@@ -66,6 +66,9 @@ const contentTypeFilterProp = "contentTypeFilter";
 // Search method (fix68)
 const searchMethodProp = "searchMethod";
 
+// Safe mode (fix70)
+const safeModeProp = "safeMode";
+
 class SettingsService {
   /// Module-level cache. Loaded on first call; updated in-place on writes.
   /// Avoids repeated SQLite hits on every channel tap.
@@ -197,6 +200,10 @@ class SettingsService {
           SearchMethod.ftsAnd;
     }
 
+    // Safe mode (fix70)
+    final sm70 = settingsMap[safeModeProp];
+    if (sm70 != null) settings.safeMode = int.parse(sm70) == 1;
+
     // Content-type filter (fix62)
     final ctfRaw = settingsMap[contentTypeFilterProp];
     if (ctfRaw != null) {
@@ -273,6 +280,7 @@ class SettingsService {
     settingsMap[contentTypeFilterProp] =
         settings.contentTypeFilter.index.toString();
     settingsMap[searchMethodProp] = settings.searchMethod.index.toString();
+    settingsMap[safeModeProp] = (settings.safeMode ? 1 : 0).toString();
 
     await Sql.updateSettings(settingsMap);
     _cached = settings; // keep the in-memory copy in sync

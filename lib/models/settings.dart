@@ -147,6 +147,11 @@ class Settings {
   /// queries, same index as the original trigram method.
   SearchMethod searchMethod;
 
+  // --- Safe mode (fix70) ---
+  /// When true, channels and categories whose name or group name contains
+  /// any term from [safeModeBlocklist] are excluded from all views.
+  bool safeMode;
+
   Settings({
     this.defaultView = ViewType.all,
     this.refreshOnStart = false,
@@ -183,6 +188,7 @@ class Settings {
     this.multiViewAutoRestoreChannels = true,
     this.contentTypeFilter = ContentTypeFilter.all,
     this.searchMethod = SearchMethod.ftsAnd,
+    this.safeMode = false,
   });
 
   /// Returns the [MediaType] list for the current content-type filter.
@@ -308,3 +314,16 @@ class Settings {
     return s;
   }
 }
+
+/// Terms matched case-insensitively against channel group_name and name
+/// to identify adult content when safeMode is enabled (fix70).
+///
+/// Imported by sql.dart, channel_search_cache.dart, and settings_view.dart
+/// so all filtering uses a single source of truth.
+const safeModeBlocklist = [
+  'xxx',
+  '18+',
+  'erotic',
+  'porn',
+  'x-rated',
+];

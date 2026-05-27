@@ -364,6 +364,8 @@ class SettingsIo {
         'multiViewCells2x2': s.multiViewCells2x2,
         'multiViewAutoRestoreChannels': s.multiViewAutoRestoreChannels,
         'contentTypeFilter': s.contentTypeFilter.index,
+        'searchMethod': s.searchMethod.index,
+        'safeMode': s.safeMode,
       };
 
   static Settings _settingsFromMap(Map<String, dynamic> m) {
@@ -430,6 +432,12 @@ class SettingsIo {
       s.contentTypeFilter =
           available.contains(parsed) ? parsed : ContentTypeFilter.all;
     }
+    if (m['searchMethod'] is int) {
+      s.searchMethod = SearchMethod.values
+              .elementAtOrNull(m['searchMethod'] as int) ??
+          SearchMethod.ftsAnd;
+    }
+    if (m['safeMode'] is bool) s.safeMode = m['safeMode'];
 
     return s;
   }
