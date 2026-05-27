@@ -688,3 +688,23 @@ preserves. No rematch needed.
   backup are silently `null` even when the backup JSON contains them.
 - **Total code change:** ~80 lines for fix58.1, ~60 lines for fix58.2,
   ~50 lines for fix58.3 (Part 4 logging). No new dependencies.
+
+---
+
+## Follow-up WAL checkpoint fixes (fix60, fix62)
+
+Two additional `checkpointAndTruncateWal()` calls were added after
+fix58 shipped, covering batch writes that were still leaving unflushed
+WAL pages on exit:
+
+- **fix60** — `SettingsIo.applyPendingPreserves` (`settings_io.dart`):
+  checkpoint after the `restorePreserve` batch write so that EPG/
+  favourite data written during backup restore is flushed before the
+  user navigates to the home screen.
+
+- **fix62** — `EpgService.matchChannels` (`epg_service.dart`):
+  checkpoint after `setChannelEpgIds` so the 14k+ FTS trigger writes
+  (one per matched channel) are flushed immediately after matching
+  completes, not lazily on the next read query.
+
+See fix60.md and fix62.md for the individual runbooks.
