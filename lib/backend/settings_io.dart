@@ -316,6 +316,7 @@ class SettingsIo {
       [Sql.restorePreserve(preserve)],
       memory: {'sourceId': source.id!.toString()},
     );
+    await Sql.checkpointAndTruncateWal();
     AppLog.info(
       'SettingsIo.applyPendingPreserves: done for "$sourceName"',
     );
