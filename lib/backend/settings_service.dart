@@ -60,6 +60,9 @@ const miniDemuxerMaxMBProp = "miniDemuxerMaxMB";
 const bufferSizeMBProp = "bufferSizeMB";
 const streamCompletedDelayMsProp = "streamCompletedDelayMs";
 
+// Content-type filter (fix62)
+const contentTypeFilterProp = "contentTypeFilter";
+
 class SettingsService {
   /// Module-level cache. Loaded on first call; updated in-place on writes.
   /// Avoids repeated SQLite hits on every channel tap.
@@ -183,6 +186,18 @@ class SettingsService {
       settings.streamCompletedDelayMs = int.parse(streamCompletedDelay);
     }
 
+    // Content-type filter (fix62)
+    final ctfRaw = settingsMap[contentTypeFilterProp];
+    if (ctfRaw != null) {
+      final idx = int.tryParse(ctfRaw) ?? 0;
+      final parsed = ContentTypeFilter.values.elementAtOrNull(idx)
+          ?? ContentTypeFilter.all;
+      // Validate: if the saved filter's type has since been disabled, reset.
+      final available = settings.availableContentFilters();
+      settings.contentTypeFilter =
+          available.contains(parsed) ? parsed : ContentTypeFilter.all;
+    }
+
     AppLog.info(
       'Settings: loaded'
       ' bufferSizeMB=${settings.bufferSizeMB}'
@@ -244,6 +259,8 @@ class SettingsService {
     settingsMap[bufferSizeMBProp] = settings.bufferSizeMB.toString();
     settingsMap[streamCompletedDelayMsProp] =
         settings.streamCompletedDelayMs.toString();
+    settingsMap[contentTypeFilterProp] =
+        settings.contentTypeFilter.index.toString();
 
     await Sql.updateSettings(settingsMap);
     _cached = settings; // keep the in-memory copy in sync

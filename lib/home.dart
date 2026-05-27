@@ -18,6 +18,7 @@ import 'package:open_tv/models/home_manager.dart';
 import 'package:open_tv/models/no_push_animation_material_page_route.dart';
 import 'package:open_tv/models/node.dart';
 import 'package:open_tv/models/node_type.dart';
+import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/view_type.dart';
 import 'package:open_tv/error.dart';
 import 'package:open_tv/whats_new_modal.dart';
@@ -608,6 +609,21 @@ class _HomeState extends State<Home> {
               startingView: getStartingView(),
               blockSettings: blockSettings,
               updateViewMode: updateViewMode,
+              settings: SettingsService.cached ?? Settings(),
+              contentTypeFilter:
+                  SettingsService.cached?.contentTypeFilter ??
+                  ContentTypeFilter.all,
+              onContentTypeChanged: (filter) async {
+                final s = SettingsService.cached;
+                if (s == null) return;
+                s.contentTypeFilter = filter;
+                await SettingsService.updateSettings(s);
+                if (!mounted) return;
+                setState(() {
+                  widget.home.filters.mediaTypes = s.getMediaTypes();
+                });
+                await load(false);
+              },
             )
           : null,
       floatingActionButton: IgnorePointer(

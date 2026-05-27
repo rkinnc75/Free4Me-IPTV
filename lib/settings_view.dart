@@ -1621,7 +1621,26 @@ class _SettingsState extends State<SettingsView> {
                         value: settings.showLivestreams,
                         help: _helpShowLivestreams,
                         onChanged: (v) {
-                          setState(() => settings.showLivestreams = v);
+                          if (!v &&
+                              !settings.showMovies &&
+                              !settings.showSeries) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                    'At least one content type must be enabled.'),
+                              ),
+                            );
+                            return;
+                          }
+                          setState(() {
+                            settings.showLivestreams = v;
+                            if (!settings
+                                .availableContentFilters()
+                                .contains(settings.contentTypeFilter)) {
+                              settings.contentTypeFilter =
+                                  ContentTypeFilter.all;
+                            }
+                          });
                           updateSettings();
                         },
                       ),
@@ -1630,7 +1649,26 @@ class _SettingsState extends State<SettingsView> {
                         value: settings.showMovies,
                         help: _helpShowMovies,
                         onChanged: (v) {
-                          setState(() => settings.showMovies = v);
+                          if (!v &&
+                              !settings.showLivestreams &&
+                              !settings.showSeries) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                    'At least one content type must be enabled.'),
+                              ),
+                            );
+                            return;
+                          }
+                          setState(() {
+                            settings.showMovies = v;
+                            if (!settings
+                                .availableContentFilters()
+                                .contains(settings.contentTypeFilter)) {
+                              settings.contentTypeFilter =
+                                  ContentTypeFilter.all;
+                            }
+                          });
                           updateSettings();
                         },
                       ),
@@ -1639,7 +1677,26 @@ class _SettingsState extends State<SettingsView> {
                         value: settings.showSeries,
                         help: _helpShowSeries,
                         onChanged: (v) {
-                          setState(() => settings.showSeries = v);
+                          if (!v &&
+                              !settings.showLivestreams &&
+                              !settings.showMovies) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                    'At least one content type must be enabled.'),
+                              ),
+                            );
+                            return;
+                          }
+                          setState(() {
+                            settings.showSeries = v;
+                            if (!settings
+                                .availableContentFilters()
+                                .contains(settings.contentTypeFilter)) {
+                              settings.contentTypeFilter =
+                                  ContentTypeFilter.all;
+                            }
+                          });
                           updateSettings();
                         },
                       ),
@@ -2256,6 +2313,9 @@ class _SettingsState extends State<SettingsView> {
           ? BottomNav(
               updateViewMode: updateView,
               startingView: ViewType.settings,
+              settings: settings,
+              contentTypeFilter: settings.contentTypeFilter,
+              onContentTypeChanged: (_) {}, // no-op in Settings view
             )
           : null,
     );

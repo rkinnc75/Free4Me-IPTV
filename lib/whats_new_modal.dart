@@ -7,6 +7,19 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.18.3': [
+    'New: tap the All tab to cycle content types — All → Live → Movies → '
+        'Series → All. Search runs against only the selected type, making '
+        'large multi-type sources (250k+ channels) instantly snappy.',
+    'Fix: selecting a content-type filter persists across app restarts and '
+        'is preserved in backup/restore.',
+    'Fix: disabling a content type in Settings while its filter is active '
+        'automatically resets the filter to All.',
+    'Fix: turning off all three content types in Settings is now blocked '
+        'with a snackbar — at least one must remain enabled.',
+    'Fix: debug log is now activated immediately when a backup with '
+        'debugLogging=true is imported on a fresh install.',
+  ],
   '1.18.2': [
     'Fix: typing 1–2 characters in the search box no longer triggers '
         'a full-table scan — the query is skipped until at least 3 characters '

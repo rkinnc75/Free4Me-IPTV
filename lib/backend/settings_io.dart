@@ -199,6 +199,11 @@ class SettingsIo {
         );
 
         await SettingsService.updateSettings(settings);
+        // fix60.3: activate the logger immediately so the rest of
+        // the import session is captured. Without this, a fresh
+        // install that imports a backup with debugLogging=true
+        // produces an empty log file for the entire first session.
+        await AppLog.setEnabled(settings.debugLogging);
       }
 
       if (payload['sources'] != null) {
@@ -358,6 +363,7 @@ class SettingsIo {
         'multiViewCells1x2': s.multiViewCells1x2,
         'multiViewCells2x2': s.multiViewCells2x2,
         'multiViewAutoRestoreChannels': s.multiViewAutoRestoreChannels,
+        'contentTypeFilter': s.contentTypeFilter.index,
       };
 
   static Settings _settingsFromMap(Map<String, dynamic> m) {
@@ -414,6 +420,15 @@ class SettingsIo {
     }
     if (m['multiViewAutoRestoreChannels'] is bool) {
       s.multiViewAutoRestoreChannels = m['multiViewAutoRestoreChannels'];
+    }
+    if (m['contentTypeFilter'] is int) {
+      final idx = m['contentTypeFilter'] as int;
+      final parsed = ContentTypeFilter.values.elementAtOrNull(idx)
+          ?? ContentTypeFilter.all;
+      // Validate against enabled content types.
+      final available = s.availableContentFilters();
+      s.contentTypeFilter =
+          available.contains(parsed) ? parsed : ContentTypeFilter.all;
     }
 
     return s;

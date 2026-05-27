@@ -1,7 +1,7 @@
 {
-  "latest": "1.18.2",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.18.2",
+  "latest": "1.18.3",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.18.3",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: typing 1\u20132 characters in the search box no longer triggers a full-table scan \u2014 the query is skipped until at least 3 characters are entered, keeping the UI responsive on large sources.\n\u2022 Fix: a stale search result page loading after you started a new search could no longer append its rows to the new result list.\n\u2022 Fix: search state is now snapshotted at query time so a concurrent search cannot corrupt the page number of an in-flight request."
+  "releaseNotes": "\u2022 New: tap the All tab to cycle content types \u2014 All \u2192 Live \u2192 Movies \u2192 Series \u2192 All. Search runs against only the selected type, making large multi-type sources (250k+ channels) instantly snappy.\n\u2022 Fix: selecting a content-type filter persists across app restarts and is preserved in backup/restore.\n\u2022 Fix: disabling a content type in Settings while its filter is active automatically resets the filter to All.\n\u2022 Fix: turning off all three content types in Settings is now blocked with a snackbar \u2014 at least one must remain enabled.\n\u2022 Fix: debug log is now activated immediately when a backup with debugLogging=true is imported on a fresh install."
 }

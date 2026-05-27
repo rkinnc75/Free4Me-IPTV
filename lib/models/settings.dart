@@ -4,6 +4,11 @@ import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/multi_view_layout.dart';
 import 'package:open_tv/models/view_type.dart';
 
+/// Content-type filter for the All tab in the bottom navigation bar.
+/// Cycles through states so the user can quickly limit searches to a
+/// single content type without going into Settings.
+enum ContentTypeFilter { all, live, movies, series }
+
 class Settings {
   ViewType defaultView;
   bool refreshOnStart;
@@ -109,6 +114,12 @@ class Settings {
   /// restore the channels that were active before the toggle.
   bool multiViewAutoRestoreChannels;
 
+  // --- Content-type filter (fix62) ---
+  /// Active content-type filter for the All tab. Persisted so the user's
+  /// preferred filter (e.g. Live-only on a large multi-type source) survives
+  /// app restarts. Defaults to [ContentTypeFilter.all].
+  ContentTypeFilter contentTypeFilter;
+
   Settings({
     this.defaultView = ViewType.all,
     this.refreshOnStart = false,
@@ -143,14 +154,57 @@ class Settings {
     this.multiViewCells1x2 = ',',
     this.multiViewCells2x2 = ',,,',
     this.multiViewAutoRestoreChannels = true,
+    this.contentTypeFilter = ContentTypeFilter.all,
   });
 
+  /// Returns the [MediaType] list for the current content-type filter.
+  /// When a specific filter is active (Live/Movies/Series), returns only
+  /// that type — provided its show-toggle is enabled. Falls back to all
+  /// enabled types if the filtered type has been toggled off.
   List<MediaType> getMediaTypes() {
+    switch (contentTypeFilter) {
+      case ContentTypeFilter.live:
+        if (showLivestreams) return [MediaType.livestream];
+        break;
+      case ContentTypeFilter.movies:
+        if (showMovies) return [MediaType.movie];
+        break;
+      case ContentTypeFilter.series:
+        if (showSeries) return [MediaType.serie];
+        break;
+      case ContentTypeFilter.all:
+        break;
+    }
     return [
       if (showLivestreams) MediaType.livestream,
       if (showMovies) MediaType.movie,
       if (showSeries) MediaType.serie,
     ];
+  }
+
+  /// Content-type filter states available given the current show-toggles.
+  /// All is included only when more than one type is enabled (so there's
+  /// something to contrast against). Used by BottomNav to build the cycle.
+  List<ContentTypeFilter> availableContentFilters() {
+    final enabledCount = (showLivestreams ? 1 : 0) +
+        (showMovies ? 1 : 0) +
+        (showSeries ? 1 : 0);
+    return [
+      if (enabledCount > 1) ContentTypeFilter.all,
+      if (showLivestreams) ContentTypeFilter.live,
+      if (showMovies) ContentTypeFilter.movies,
+      if (showSeries) ContentTypeFilter.series,
+    ];
+  }
+
+  /// Returns the next filter in the cycle, wrapping around.
+  ContentTypeFilter nextContentFilter() {
+    final available = availableContentFilters();
+    if (available.length <= 1) {
+      return available.isEmpty ? ContentTypeFilter.all : available.first;
+    }
+    final idx = available.indexOf(contentTypeFilter);
+    return available[(idx + 1) % available.length];
   }
 
   /// Returns a fresh [Settings] instance with all fields at their hardcoded
