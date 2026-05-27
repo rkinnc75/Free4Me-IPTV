@@ -293,16 +293,18 @@ class Sql {
           branch = 'fts'; // long terms only; the common ≥3-char case
         }
       } else {
-        // All terms are too short for trigram; fall back to LIKE.
-        sqlQuery = '''
-          SELECT * FROM channels c
-          WHERE (${shortTerms.map((_) => 'name LIKE ?').join(' AND ')})
-            AND media_type IN (${generatePlaceholders(mediaTypes.length)})
-            AND source_id IN (${generatePlaceholders(filters.sourceIds!.length)})
-            AND url IS NOT NULL
-        ''';
-        params.addAll(shortTerms.map((t) => '%$t%'));
-        branch = 'like-only'; // all terms shorter than trigram width
+        // fix53: all terms are too short for the trigram index (< 3 chars).
+        // A leading-wildcard LIKE scan here forces a full-table read that can
+        // take 2–5 seconds on a 90k-channel source. The result set would be
+        // enormous and unhelpful anyway. Return early with an empty list so
+        // the UI stays snappy; the user hasn't typed a meaningful query yet.
+        if (AppLog.enabled) {
+          AppLog.info(
+            'Sql.search[$invocation]: branch=short-skip'
+            ' query="$rawQuery" — all terms < 3 chars, skipping scan',
+          );
+        }
+        return [];
       }
       params.addAll(mediaTypes);
       params.addAll(filters.sourceIds!);
@@ -416,6 +418,20 @@ class Sql {
   }
 
   static Future<List<Channel>> searchGroup(Filters filters) async {
+    // fix53: skip the full-table LIKE scan when every keyword is < 3 chars.
+    final rawGroupQuery = (filters.query ?? "").trim();
+    if (rawGroupQuery.isNotEmpty) {
+      final groupTerms = filters.useKeywords
+          ? rawGroupQuery.split(RegExp(r'\s+')).where((t) => t.isNotEmpty)
+          : [rawGroupQuery];
+      if (groupTerms.every((t) => t.length < 3)) {
+        AppLog.info(
+          'Sql.searchGroup: branch=short-skip'
+          ' query="$rawGroupQuery" — all terms < 3 chars, skipping scan',
+        );
+        return [];
+      }
+    }
     var db = await DbFactory.db;
     var offset = filters.page * pageSize - pageSize;
     var query = filters.query ?? "";

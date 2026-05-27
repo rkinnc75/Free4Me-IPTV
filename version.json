@@ -1,7 +1,7 @@
 {
-  "latest": "1.18.1",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.18.1",
+  "latest": "1.18.2",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.18.2",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: importing a credential-safe backup (exported without username/password) no longer wipes existing Xtream source credentials \u2014 they are now preserved via COALESCE.\n\u2022 Fix: restoring a manual EPG channel override from backup now correctly updates the EPG lookup ID so the guide immediately reflects the pinned assignment.\n\u2022 Fix: EPG refresh on an empty or timed-out server response no longer hangs the progress dialog indefinitely.\n\u2022 Fix: stale EPG row cleanup now runs before the WAL checkpoint so both writes are flushed in a single pass, reducing the chance of a post-refresh search stall.\n\u2022 Fix: upgrading from an old schema with a large EPG table no longer performs an expensive dedupe at startup before discarding the table."
+  "releaseNotes": "\u2022 Fix: typing 1\u20132 characters in the search box no longer triggers a full-table scan \u2014 the query is skipped until at least 3 characters are entered, keeping the UI responsive on large sources.\n\u2022 Fix: a stale search result page loading after you started a new search could no longer append its rows to the new result list.\n\u2022 Fix: search state is now snapshotted at query time so a concurrent search cannot corrupt the page number of an in-flight request."
 }

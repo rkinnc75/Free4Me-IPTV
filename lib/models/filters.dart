@@ -21,4 +21,17 @@ class Filters {
     this.groupId,
     this.useKeywords = false,
   });
+
+  /// Returns a shallow copy of this [Filters] with all fields cloned.
+  /// Lists are copied so mutations to the original don't affect the snapshot.
+  Filters copy() => Filters(
+        query: query,
+        sourceIds: sourceIds != null ? List.of(sourceIds!) : null,
+        mediaTypes: mediaTypes != null ? List.of(mediaTypes!) : null,
+        viewType: viewType,
+        page: page,
+        seriesId: seriesId,
+        groupId: groupId,
+        useKeywords: useKeywords,
+      );
 }

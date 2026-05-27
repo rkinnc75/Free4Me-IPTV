@@ -7,6 +7,15 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.18.2': [
+    'Fix: typing 1–2 characters in the search box no longer triggers '
+        'a full-table scan — the query is skipped until at least 3 characters '
+        'are entered, keeping the UI responsive on large sources.',
+    'Fix: a stale search result page loading after you started a new search '
+        'could no longer append its rows to the new result list.',
+    'Fix: search state is now snapshotted at query time so a concurrent '
+        'search cannot corrupt the page number of an in-flight request.',
+  ],
   '1.18.1': [
     'Fix: importing a credential-safe backup (exported without '
         'username/password) no longer wipes existing Xtream source '

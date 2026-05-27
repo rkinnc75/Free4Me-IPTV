@@ -138,13 +138,18 @@ class _HomeState extends State<Home> {
       widget.home.filters.page = 1;
     }
 
+    // fix53: snapshot the filters immediately after mutation so that a
+    // concurrent load() that modifies widget.home.filters.page (or any
+    // other field) mid-flight doesn't corrupt the query we're about to run.
+    final snapshot = widget.home.filters.copy();
+
     // fix29-2 diagnostics — every load gets a monotonic id so the
     // keystroke / debounce / SQL / setState lines can be correlated.
     final inv = ++_searchInvocation;
     final loadStart = DateTime.now();
 
     if (AppLog.enabled) {
-      final f = widget.home.filters;
+      final f = snapshot;
       AppLog.info(
         'Home.load[$inv]: view=${viewTypeToString(f.viewType)} '
         'page=${f.page} more=$more '
@@ -157,24 +162,26 @@ class _HomeState extends State<Home> {
     await Error.tryAsyncNoLoading(() async {
       final searchStart = DateTime.now();
       final results =
-          await Sql.search(widget.home.filters, invocation: inv);
+          await Sql.search(snapshot, invocation: inv);
       final searchElapsed =
           DateTime.now().difference(searchStart).inMilliseconds;
       if (AppLog.enabled) {
         AppLog.info(
           'Home.load[$inv]: got ${results.length} results in ${searchElapsed}ms'
-          ' for ${viewTypeToString(widget.home.filters.viewType)}',
+          ' for ${viewTypeToString(snapshot.viewType)}',
         );
       }
       if (!mounted) return;
 
       // Drop late results from a superseded query. If a newer load()
-      // has started, don't clobber its results with ours.
-      if (inv != _searchInvocation && !more) {
+      // has started, don't clobber its results with ours — including
+      // stale pagination (fix53: removed && !more so pagination can't
+      // append out-of-order to a newer search's result list).
+      if (inv != _searchInvocation) {
         if (AppLog.enabled) {
           AppLog.info(
             'Home.load[$inv]: SUPERSEDED — current=$_searchInvocation,'
-            ' dropping ${results.length} stale results',
+            ' dropping ${results.length} stale results (more=$more)',
           );
         }
         return;
