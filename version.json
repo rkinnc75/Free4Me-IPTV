@@ -3,5 +3,5 @@
   "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.18.4",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "• Fix: tapping the content-type filter tab (All → Live → Movies → Series) now correctly reloads the channel list immediately without navigating away.\n• Fix: filter change is reflected in the UI before the database write completes, so the channel grid updates instantly on every tap."
+  "releaseNotes": "\u2022 Fix: tapping the content-type filter tab (All \u2192 Live \u2192 Movies \u2192 Series) now correctly reloads the channel list immediately \u2014 the grid no longer stays frozen on all types after a tap.\n\u2022 Fix: filter change is reflected in the channel grid before the database write completes, so every tap feels instant."
 }
