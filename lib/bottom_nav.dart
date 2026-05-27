@@ -181,16 +181,20 @@ class _BottomNavState extends State<BottomNav> {
                 label: filterLabel,
                 selected: _selectedIndex == ViewType.all.index,
                 onTap: () {
+                  // fix76: use _selectedIndex (runtime state) not
+                  // widget.startingView (construction-time) to decide
+                  // whether to navigate or cycle the filter.
+                  // startingView never updates after BottomNav is built,
+                  // so it was always the view at construction — wrong after
+                  // any navigation.
+                  final alreadyOnAll = _selectedIndex == ViewType.all.index;
                   setState(() => _selectedIndex = ViewType.all.index);
-                  // Cycle the content type filter.
-                  _onFilterTap();
-                  // Only navigate if we're not already on the All view.
-                  // When already on All, onContentTypeChanged handles the
-                  // filter update and reload in place — no navigation needed.
-                  // Navigating would create a new Home before the new
-                  // contentTypeFilter is persisted, causing the new Home to
-                  // read the stale filter value and show the wrong content.
-                  if (widget.startingView != ViewType.all) {
+                  if (alreadyOnAll) {
+                    // Already on All — cycle content type filter in place.
+                    // onContentTypeChanged handles the reload; no navigation.
+                    _onFilterTap();
+                  } else {
+                    // Coming from another tab — navigate to All without cycling.
                     widget.updateViewMode(ViewType.all);
                   }
                 },

@@ -7,6 +7,17 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.18.9': [
+    'Fix: long-pressing a channel to favorite it no longer jumps the scroll '
+        'position back to the top of the list.',
+    'Fix: tapping the All tab from Favorites or History now navigates to All '
+        'without also cycling the content filter. The filter only cycles when '
+        'you are already on the All tab.',
+    'Multi-view channel picker now uses your chosen search method and safe mode '
+        'setting — faster searches and adult channels are filtered when safe '
+        'mode is on. Results are sorted favorites+validated → favorites '
+        '→ validated → alphabetical.',
+  ],
   '1.18.8': [
     'Fix: tapping History or Favorites with Safe mode enabled no longer crashes '
         'with a SQL syntax error — the ORDER BY clause was incorrectly placed '

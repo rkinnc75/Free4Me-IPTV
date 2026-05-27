@@ -217,6 +217,14 @@ class _HomeState extends State<Home> {
       }
 
       final setStateStart = DateTime.now();
+      // fix76: preserve scroll position across non-more loads.
+      // Replacing `channels` with a new list causes SliverGrid to
+      // rebuild and ScrollController to reset to offset 0. Save and
+      // restore the offset so a favorite toggle or filter change
+      // doesn't jump the user back to the top.
+      final savedOffset = (!more && _scrollController.hasClients)
+          ? _scrollController.offset
+          : null;
       setState(() {
         if (!more) {
           channels = results;
@@ -225,6 +233,14 @@ class _HomeState extends State<Home> {
         }
         reachedMax = results.length < pageSize;
       });
+      if (savedOffset != null && _scrollController.hasClients) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scrollController.hasClients) {
+            final maxExtent = _scrollController.position.maxScrollExtent;
+            _scrollController.jumpTo(savedOffset.clamp(0.0, maxExtent));
+          }
+        });
+      }
 
       if (AppLog.enabled) {
         // Use a post-frame callback to measure the time from setState

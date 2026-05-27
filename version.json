@@ -1,7 +1,7 @@
 {
-  "latest": "1.18.8",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.18.8",
+  "latest": "1.18.9",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.18.9",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: tapping History or Favorites with Safe mode enabled no longer crashes with a SQL syntax error \u2014 the ORDER BY clause was incorrectly placed before the Safe mode AND conditions.\n\u2022 Search results are now sorted \u2014 favorites first, then recently watched, then alphabetical. This order is consistent across FTS, LIKE Scan, and In-Memory search.\n\u2022 Stream Scanner results now persist across app restarts. A previously validated channel (green indicator) will still show as validated after relaunching the app, and survives source refresh.\n\u2022 Settings \u2192 Reset: new \"Clear stream validation\" option resets all scan results so channels appear unvalidated until rescanned.\n\u2022 Settings \u2192 Content: \"Default view\" setting moved into the Content section where it logically belongs."
+  "releaseNotes": "\u2022 Fix: long-pressing a channel to favorite it no longer jumps the scroll position back to the top of the list.\n\u2022 Fix: tapping the All tab from Favorites or History now navigates to All without also cycling the content filter. The filter only cycles when you are already on the All tab.\n\u2022 Multi-view channel picker now uses your chosen search method and safe mode setting \u2014 faster searches and adult channels are filtered when safe mode is on. Results are sorted favorites+validated \u2192 favorites \u2192 validated \u2192 alphabetical."
 }

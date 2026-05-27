@@ -2,20 +2,28 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/backend/stream_scanner.dart';
 import 'package:open_tv/models/channel.dart';
 import 'package:open_tv/models/filters.dart';
 import 'package:open_tv/models/media_type.dart';
+import 'package:open_tv/models/settings.dart' show SearchMethod;
 import 'package:open_tv/models/view_type.dart';
 
-/// Sort key for the picker: favourites → scan-validated → everyone else,
-/// with alphabetical order within each tier.
+/// Sort key for the picker — mirrors the ORDER BY from fix72/74:
+/// favorites+validated → favorites → validated → alphabetical.
+///
+/// fix74: reads [Channel.streamValidated] (persisted DB value) with
+/// [StreamScanner.results] as a fallback for in-session scans.
 int _pickSort(Channel a, Channel b) {
   int tier(Channel ch) {
-    if (ch.favorite) return 0;
-    if (ch.id != null && StreamScanner.results[ch.id] == true) return 1;
-    return 2;
+    final validated = ch.streamValidated == true ||
+        (ch.id != null && StreamScanner.results[ch.id] == true);
+    if (ch.favorite && validated) return 0;
+    if (ch.favorite) return 1;
+    if (validated) return 2;
+    return 3;
   }
 
   final td = tier(a) - tier(b);
@@ -65,12 +73,18 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
     final all = <Channel>[];
     var page = 1;
     while (true) {
+      // fix76: use the user's chosen search method and safe mode setting,
+      // same as the main channel grid. Defaults to LIKE Scan if settings
+      // aren't loaded yet (safe and reasonably fast for any query length).
+      final s = SettingsService.cached;
       final pageResults = await Sql.search(Filters(
         query: query.isEmpty ? null : query,
         sourceIds: widget.sourceIds,
         mediaTypes: [MediaType.livestream],
         viewType: ViewType.all,
         page: page,
+        searchMethod: s?.searchMethod ?? SearchMethod.likeSubstring,
+        safeMode: s?.safeMode ?? false,
       ));
       all.addAll(pageResults);
       if (pageResults.length < pageSize) break;
