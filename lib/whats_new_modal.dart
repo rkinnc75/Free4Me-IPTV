@@ -7,6 +7,13 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.18.6': [
+    'Settings → Content: new "Safe mode" toggle — hides channels and '
+        'categories whose name or group contains adult-content keywords '
+        '(xxx, 18+, porn, erotic, x-rated). Filtering happens at the SQL '
+        'and in-memory-cache level so no adult channel ever reaches the grid. '
+        'Default: OFF.',
+  ],
   '1.18.5': [
     'Search: keyword toggle removed — search now always splits on spaces '
         '(AND mode) by default, matching all terms independently. '

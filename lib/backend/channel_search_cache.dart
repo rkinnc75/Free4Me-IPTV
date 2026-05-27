@@ -1,9 +1,6 @@
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/sql.dart';
-
-// fix70: keyword blocklist for safe-mode filtering (populated by fix70).
-// Declared here as an empty list so the cache compiles without fix70.
-const List<String> safeModeBlocklist = [];
+import 'package:open_tv/models/settings.dart' show safeModeBlocklist;
 
 /// Lightweight record for in-memory search.
 /// Only holds what the search filter needs — full Channel objects

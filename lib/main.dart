@@ -52,7 +52,7 @@ Future<void> main() async {
   // unawaited — startup continues immediately; the cache is ready by the time
   // the user first types in the search box.
   if (settings.searchMethod == SearchMethod.inMemory) {
-    unawaited(ChannelSearchCache.rebuild(safeMode: false).then((_) {
+    unawaited(ChannelSearchCache.rebuild(safeMode: settings.safeMode).then((_) {
       AppLog.info('main: ChannelSearchCache warm-up complete');
     }));
   }

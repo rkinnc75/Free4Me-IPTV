@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:open_tv/backend/app_logger.dart';
+import 'package:open_tv/backend/channel_search_cache.dart';
 import 'package:open_tv/backend/device_memory.dart';
 import 'package:open_tv/models/device_detector.dart';
 import 'package:open_tv/models/engine_type.dart';
@@ -118,6 +119,17 @@ const _helpShowSeries = (
       '↑ ON — series are visible.\n\n'
       '↓ OFF — hides series content. Does not delete content. '
       'Default: ON.',
+);
+
+// fix70
+const _helpSafeMode = (
+  title: 'Safe Mode',
+  body:
+      'Hides channels and categories whose name or group contains adult-content '
+      'keywords (e.g. "xxx", "18+", "porn").\n\n'
+      '↑ ON — adult channels are excluded from all views and search results. '
+      'The in-memory search cache is rebuilt immediately.\n\n'
+      '↓ OFF — all channels are shown. Default: OFF.',
 );
 
 const _helpHwDecode = (
@@ -1781,6 +1793,36 @@ class _SettingsState extends State<SettingsView> {
                       ),
                       // fix68: search method picker
                       _searchMethodTile(settings),
+                      // fix70: safe mode — exclude adult content
+                      _switchTile(
+                        label: 'Safe mode',
+                        value: settings.safeMode,
+                        help: _helpSafeMode,
+                        onChanged: (v) async {
+                          setState(() => settings.safeMode = v);
+                          await updateSettings();
+                          // Rebuild the in-memory cache so it picks up the
+                          // new safeMode immediately (no restart required).
+                          if (ChannelSearchCache.isBuilt) {
+                            await ChannelSearchCache.rebuild(safeMode: v);
+                            AppLog.info(
+                              'SettingsView: ChannelSearchCache rebuilt'
+                              ' after safeMode → $v',
+                            );
+                          }
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  v
+                                      ? 'Safe mode enabled — adult channels hidden.'
+                                      : 'Safe mode disabled — all channels visible.',
+                                ),
+                              ),
+                            );
+                          }
+                        },
+                      ),
                       // Stream scanner
                       _bufferSlider(
                         label: "Streams per scan",

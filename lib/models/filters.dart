@@ -15,6 +15,10 @@ class Filters {
   /// Which search implementation to use (fix68). Defaults to ftsAnd.
   SearchMethod searchMethod;
 
+  /// When true, channels matching the adult-content blocklist are excluded
+  /// from all queries (fix70). Mirrors Settings.safeMode.
+  bool safeMode;
+
   Filters({
     this.query,
     this.sourceIds,
@@ -28,6 +32,7 @@ class Filters {
     // fix68's searchMethod setting which controls this more explicitly.
     this.useKeywords = true,
     this.searchMethod = SearchMethod.ftsAnd,
+    this.safeMode = false,
   });
 
   /// Returns a shallow copy of this [Filters] with all fields cloned.
@@ -42,5 +47,6 @@ class Filters {
         groupId: groupId,
         useKeywords: useKeywords,
         searchMethod: searchMethod,
+        safeMode: safeMode,
       );
 }

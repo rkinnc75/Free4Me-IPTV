@@ -42,10 +42,9 @@ class Utils {
     // No-op if SearchMethod.inMemory was never selected this session.
     if (ChannelSearchCache.isBuilt) {
       final s = SettingsService.cached;
-      await ChannelSearchCache.rebuild(safeMode: false);
+      await ChannelSearchCache.rebuild(safeMode: s?.safeMode ?? false);
       AppLog.info(
           'ChannelSearchCache: rebuilt after source refresh (${source.name})');
-      _ = s; // suppress unused warning until fix70 adds safeMode
     }
   }
 

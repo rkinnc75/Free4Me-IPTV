@@ -95,6 +95,7 @@ class _HomeState extends State<Home> {
           SettingsService.cached ?? await SettingsService.getSettings();
       if (!mounted) return;
       widget.home.filters.mediaTypes = s.getMediaTypes();
+      widget.home.filters.safeMode = s.safeMode; // fix70
     }
 
     final versionFuture = widget.firstLaunch
@@ -110,7 +111,7 @@ class _HomeState extends State<Home> {
         cachedSettings.searchMethod == SearchMethod.inMemory &&
         !ChannelSearchCache.isBuilt) {
       if (mounted) setState(() => _searchReady = false);
-      await ChannelSearchCache.rebuild(safeMode: false);
+      await ChannelSearchCache.rebuild(safeMode: cachedSettings.safeMode);
       AppLog.info('Home: ChannelSearchCache warmup completed');
       if (mounted) setState(() => _searchReady = true);
     }
@@ -391,6 +392,7 @@ class _HomeState extends State<Home> {
               viewType: type,
               mediaTypes: widget.home.filters.mediaTypes,
               sourceIds: widget.home.filters.sourceIds,
+              safeMode: widget.home.filters.safeMode, // fix70
             ),
           ),
         ),
@@ -406,6 +408,7 @@ class _HomeState extends State<Home> {
         viewType: ViewType.all,
         mediaTypes: widget.home.filters.mediaTypes,
         sourceIds: widget.home.filters.sourceIds,
+        safeMode: widget.home.filters.safeMode, // fix70
       ),
     );
     if (widget.home.filters.groupId != null) {

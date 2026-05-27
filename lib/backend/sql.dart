@@ -351,6 +351,18 @@ class Sql {
       sqlQuery += "\nAND group_id = ?";
       params.add(filters.groupId!);
     }
+
+    // fix70: exclude adult-content channels when safe mode is on.
+    final (smClause, smParams) = safeModeClause(filters.safeMode);
+    sqlQuery += smClause;
+    params.addAll(smParams);
+    if (filters.safeMode && AppLog.enabled) {
+      AppLog.info(
+        'Sql.search[$invocation]: safeMode=true'
+        ' blocking ${safeModeBlocklist.length} terms',
+      );
+    }
+
     sqlQuery += "\nLIMIT ?, ?";
     params.add(offset);
     params.add(pageSize);
@@ -479,16 +491,22 @@ class Sql {
         : ["%$query%"];
     var mediaTypes = filters.mediaTypes!.map((x) => x.index);
     var sqlQuery = '''
-        SELECT * FROM groups 
+        SELECT * FROM groups
         WHERE (${getKeywordsSql(keywords.length)})
         AND (media_type IS NULL OR media_type IN (${generatePlaceholders(mediaTypes.length)}))
         AND source_id IN (${generatePlaceholders(filters.sourceIds!.length)})
-        LIMIT ?, ?
     ''';
     List<Object> params = [];
     params.addAll(keywords);
     params.addAll(mediaTypes);
     params.addAll(filters.sourceIds!);
+
+    // fix70: exclude adult-content groups when safe mode is on.
+    final (smGroupClause, smGroupParams) = safeModeGroupClause(filters.safeMode);
+    sqlQuery += smGroupClause;
+    params.addAll(smGroupParams);
+
+    sqlQuery += '\nLIMIT ?, ?';
     params.add(offset);
     params.add(pageSize);
     var results = await db.getAll(sqlQuery, params);
@@ -1208,6 +1226,39 @@ class Sql {
       SET epg_channel_id = ?, epg_manual_override = ?
       WHERE id = ?
     ''', [epgChannelId, epgChannelId, channelId]);
+  }
+
+  // ── fix70: safe mode SQL helpers ───────────────────────────────────────────
+
+  /// Generates a SQL fragment and parameters that exclude channels whose
+  /// `group_name` or `name` contains any term from [safeModeBlocklist].
+  ///
+  /// Uses a `c.` table alias — call this inside queries that alias the
+  /// channels table as `c`. Returns ('', []) when [safeMode] is false.
+  static (String, List<String>) safeModeClause(bool safeMode) {
+    if (!safeMode) return ('', []);
+    final conditions = safeModeBlocklist
+        .expand((_) => [
+              'LOWER(COALESCE(c.group_name, \'\')) NOT LIKE ?',
+              'LOWER(COALESCE(c.name, \'\')) NOT LIKE ?',
+            ])
+        .join(' AND ');
+    final params = safeModeBlocklist
+        .expand((t) => ['%${t.toLowerCase()}%', '%${t.toLowerCase()}%'])
+        .toList();
+    return ('\nAND ($conditions)', params);
+  }
+
+  /// Same as [safeModeClause] but for the groups table (Categories view).
+  /// No table alias — queries use bare column names.
+  static (String, List<String>) safeModeGroupClause(bool safeMode) {
+    if (!safeMode) return ('', []);
+    final conditions = safeModeBlocklist
+        .map((_) => 'LOWER(COALESCE(name, \'\')) NOT LIKE ?')
+        .join(' AND ');
+    final params =
+        safeModeBlocklist.map((t) => '%${t.toLowerCase()}%').toList();
+    return ('\nAND ($conditions)', params);
   }
 
   // ── fix68: alternative search backends ─────────────────────────────────────
