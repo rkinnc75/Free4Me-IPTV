@@ -1,8 +1,10 @@
 import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:open_tv/backend/app_logger.dart';
+import 'package:open_tv/backend/channel_search_cache.dart';
 import 'package:open_tv/backend/m3u.dart';
 import 'package:open_tv/backend/settings_io.dart';
+import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/backend/xtream.dart';
 import 'package:open_tv/memory.dart';
@@ -36,6 +38,15 @@ class Utils {
     // source (see fix28.2 / SettingsIo.applyPendingPreserves). No-op
     // if no preserve list is pending.
     await SettingsIo.applyPendingPreserves(source.name);
+    // fix68.6: rebuild in-memory search cache if it was previously populated.
+    // No-op if SearchMethod.inMemory was never selected this session.
+    if (ChannelSearchCache.isBuilt) {
+      final s = SettingsService.cached;
+      await ChannelSearchCache.rebuild(safeMode: false);
+      AppLog.info(
+          'ChannelSearchCache: rebuilt after source refresh (${source.name})');
+      _ = s; // suppress unused warning until fix70 adds safeMode
+    }
   }
 
   static Future<void> processSource(

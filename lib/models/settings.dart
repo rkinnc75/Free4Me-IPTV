@@ -9,6 +9,27 @@ import 'package:open_tv/models/view_type.dart';
 /// single content type without going into Settings.
 enum ContentTypeFilter { all, live, movies, series }
 
+/// Controls how channel name search queries are executed.
+/// See fix68.md for performance characteristics of each method.
+enum SearchMethod {
+  /// FTS5 trigram phrase — default before fix68. Substring match,
+  /// phrase ordering verified. Slowest on large datasets.
+  ftsTrigram,
+
+  /// FTS5 trigram AND — same index, no phrase ordering. ~2x faster
+  /// for multi-word queries. Single words identical to ftsTrigram.
+  ftsAnd,
+
+  /// LIKE substring scan — no FTS index. Simple string comparison.
+  /// May outperform FTS trigram on very large posting lists.
+  likeSubstring,
+
+  /// In-memory — channel names loaded into RAM on refresh. Zero
+  /// disk I/O during search. Fastest option; uses ~2.5MB RAM for
+  /// 54k channels.
+  inMemory,
+}
+
 class Settings {
   ViewType defaultView;
   bool refreshOnStart;
@@ -120,6 +141,12 @@ class Settings {
   /// app restarts. Defaults to [ContentTypeFilter.all].
   ContentTypeFilter contentTypeFilter;
 
+  // --- Search method (fix68) ---
+  /// Which search implementation to use for channel name queries.
+  /// Default: [SearchMethod.ftsAnd] — faster than phrase for multi-word
+  /// queries, same index as the original trigram method.
+  SearchMethod searchMethod;
+
   Settings({
     this.defaultView = ViewType.all,
     this.refreshOnStart = false,
@@ -155,6 +182,7 @@ class Settings {
     this.multiViewCells2x2 = ',,,',
     this.multiViewAutoRestoreChannels = true,
     this.contentTypeFilter = ContentTypeFilter.all,
+    this.searchMethod = SearchMethod.ftsAnd,
   });
 
   /// Returns the [MediaType] list for the current content-type filter.

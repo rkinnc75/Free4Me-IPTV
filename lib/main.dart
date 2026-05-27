@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:open_tv/backend/app_logger.dart';
+import 'package:open_tv/backend/channel_search_cache.dart';
 import 'package:open_tv/backend/device_memory.dart';
 import 'package:open_tv/backend/epg_service.dart';
 import 'package:open_tv/backend/settings_service.dart';
@@ -46,6 +47,15 @@ Future<void> main() async {
   await AppLog.setEnabled(earlySettings.debugLogging);
   await DeviceMemory.init();
   final settings = await SettingsService.reload();
+
+  // fix68.9: warm up in-memory search cache in the background if selected.
+  // unawaited — startup continues immediately; the cache is ready by the time
+  // the user first types in the search box.
+  if (settings.searchMethod == SearchMethod.inMemory) {
+    unawaited(ChannelSearchCache.rebuild(safeMode: false).then((_) {
+      AppLog.info('main: ChannelSearchCache warm-up complete');
+    }));
+  }
 
   // Parallelize the remaining cold-start awaits.
   final results = await Future.wait([

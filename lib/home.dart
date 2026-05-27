@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:open_tv/backend/app_logger.dart';
+import 'package:open_tv/backend/channel_search_cache.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/backend/stream_scanner.dart';
@@ -57,6 +58,11 @@ class _HomeState extends State<Home> {
   bool blockSettings = false;
   bool scrolledDeepEnough = false;
 
+  // fix68.10: false while the in-memory search cache is still building.
+  // Disables the search TextField so the user doesn't get empty results
+  // before the cache is ready.
+  bool _searchReady = true;
+
   // Stream scanner state
   bool _isScanning = false;
   bool _scanCancelled = false;
@@ -96,6 +102,18 @@ class _HomeState extends State<Home> {
         : Future<String?>.value(null);
 
     await load();
+
+    // fix68.10: if In-Memory search is selected but the warmup started in
+    // main.dart hasn't finished yet, disable the search box until it's ready.
+    final cachedSettings = SettingsService.cached;
+    if (cachedSettings != null &&
+        cachedSettings.searchMethod == SearchMethod.inMemory &&
+        !ChannelSearchCache.isBuilt) {
+      if (mounted) setState(() => _searchReady = false);
+      await ChannelSearchCache.rebuild(safeMode: false);
+      AppLog.info('Home: ChannelSearchCache warmup completed');
+      if (mounted) setState(() => _searchReady = true);
+    }
 
     final version = await versionFuture;
     if (!mounted) return;
@@ -435,6 +453,7 @@ class _HomeState extends State<Home> {
                                 ).textTheme.titleMedium?.fontSize ?? 16,
                               ),
                               controller: searchController,
+                              enabled: _searchReady, // fix68.10
                               onChanged: (query) {
                                 // fix29-2 diagnostics — record keystroke arrival
                                 // relative to the burst so we can see how long the
@@ -501,7 +520,9 @@ class _HomeState extends State<Home> {
                                 );
                               },
                               decoration: InputDecoration(
-                                hintText: "Search...",
+                                hintText: _searchReady
+                                    ? 'Search…'
+                                    : 'Preparing search…',
                                 hintStyle: TextStyle(
                                   fontSize: Theme.of(
                                     context,
@@ -512,18 +533,9 @@ class _HomeState extends State<Home> {
                                   borderRadius: BorderRadius.circular(8),
                                   borderSide: BorderSide.none,
                                 ),
-                                suffixIcon: IconButton(
-                                  onPressed: () {
-                                    widget.home.filters.useKeywords =
-                                        !widget.home.filters.useKeywords;
-                                    load(false);
-                                  },
-                                  icon: Icon(
-                                    widget.home.filters.useKeywords
-                                        ? Icons.label
-                                        : Icons.label_outline,
-                                  ),
-                                ),
+                                // suffixIcon removed — keyword vs phrase mode
+                                // is now controlled by the search method
+                                // selector in Settings (fix68).
                                 filled: true,
                               ),
                             ),
@@ -567,37 +579,94 @@ class _HomeState extends State<Home> {
                       ),
                     ),
                   ),
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(10, 5, 10, 10),
-                    sliver: SliverGrid(
-                      delegate: SliverChildBuilderDelegate(
-                        (context, index) {
-                          final channel = channels[index];
-                          final isHistory = widget.home.filters.viewType ==
-                              ViewType.history;
-                          return ChannelTile(
-                            key: ValueKey(
-                              'ch-${channel.id ?? channel.name}-$index',
-                            ),
-                            channel: channel,
-                            parentContext: context,
-                            setNode: setNode,
-                            isHistory: isHistory,
-                            onRemoveHistory:
-                                isHistory ? () => load(false) : null,
-                          );
-                        },
-                        childCount: channels.length,
-                        addRepaintBoundaries: true,
+                  if (channels.isEmpty)
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                (widget.home.filters.query?.isNotEmpty == true)
+                                    ? Icons.search_off
+                                    : Icons.tv_off,
+                                size: 48,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurface
+                                    .withAlpha(80),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                (widget.home.filters.query?.isNotEmpty == true)
+                                    ? 'No results found'
+                                    : 'No channels available',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleMedium
+                                    ?.copyWith(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurface
+                                          .withAlpha(128),
+                                    ),
+                              ),
+                              if (widget.home.filters.query?.isNotEmpty == true)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 8),
+                                  child: Text(
+                                    'Try a shorter or different search term',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onSurface
+                                              .withAlpha(100),
+                                        ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
                       ),
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: crossAxisCount,
-                        mainAxisExtent: 100,
-                        mainAxisSpacing: 12,
-                        crossAxisSpacing: 12,
+                    )
+                  else
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(10, 5, 10, 10),
+                      sliver: SliverGrid(
+                        delegate: SliverChildBuilderDelegate(
+                          (context, index) {
+                            final channel = channels[index];
+                            final isHistory = widget.home.filters.viewType ==
+                                ViewType.history;
+                            return ChannelTile(
+                              key: ValueKey(
+                                'ch-${channel.id ?? channel.name}-$index',
+                              ),
+                              channel: channel,
+                              parentContext: context,
+                              setNode: setNode,
+                              isHistory: isHistory,
+                              onRemoveHistory:
+                                  isHistory ? () => load(false) : null,
+                            );
+                          },
+                          childCount: channels.length,
+                          addRepaintBoundaries: true,
+                        ),
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: crossAxisCount,
+                          mainAxisExtent: 100,
+                          mainAxisSpacing: 12,
+                          crossAxisSpacing: 12,
+                        ),
                       ),
                     ),
-                  ),
                 ],
               );
             },

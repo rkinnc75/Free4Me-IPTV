@@ -1,7 +1,7 @@
 {
-  "latest": "1.18.4",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.18.4",
+  "latest": "1.18.5",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.18.5",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: tapping the content-type filter tab (All \u2192 Live \u2192 Movies \u2192 Series) now correctly reloads the channel list immediately \u2014 the grid no longer stays frozen on all types after a tap.\n\u2022 Fix: filter change is reflected in the channel grid before the database write completes, so every tap feels instant."
+  "releaseNotes": "\u2022 Search: keyword toggle removed \u2014 search now always splits on spaces (AND mode) by default, matching all terms independently. Measurably faster than phrase mode for multi-word queries.\n\u2022 Search: empty results now show a contextual message \u2014 \"No results found\" with a search-off icon when a query is active, \"No channels available\" otherwise.\n\u2022 Settings \u2192 Content: new \"Search method\" picker with four options: FTS AND (default, fast), FTS Phrase (original exact-phrase mode), LIKE Scan (any query length, slower), and In-Memory (pre-loads all channel names into RAM \u2014 fastest for repeated searches, ~2.5 MB for 54k channels).\n\u2022 Search: selecting In-Memory mode warms up the channel name cache in the background at startup. The search box shows \"Preparing search\u2026\" and is briefly disabled until the cache is ready."
 }

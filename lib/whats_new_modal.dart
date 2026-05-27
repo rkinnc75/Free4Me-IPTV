@@ -7,6 +7,22 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.18.5': [
+    'Search: keyword toggle removed — search now always splits on spaces '
+        '(AND mode) by default, matching all terms independently. '
+        'Measurably faster than phrase mode for multi-word queries.',
+    'Search: empty results now show a contextual message — "No results '
+        'found" with a search-off icon when a query is active, '
+        '"No channels available" otherwise.',
+    'Settings → Content: new "Search method" picker with four options: '
+        'FTS AND (default, fast), FTS Phrase (original exact-phrase mode), '
+        'LIKE Scan (any query length, slower), and In-Memory (pre-loads '
+        'all channel names into RAM — fastest for repeated searches, '
+        '~2.5 MB for 54k channels).',
+    'Search: selecting In-Memory mode warms up the channel name cache in '
+        'the background at startup. The search box shows "Preparing '
+        'search…" and is briefly disabled until the cache is ready.',
+  ],
   '1.18.4': [
     'Fix: tapping the content-type filter tab (All → Live → Movies → Series) '
         'now correctly reloads the channel list immediately — the grid no '

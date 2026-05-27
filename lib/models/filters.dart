@@ -1,4 +1,5 @@
 import 'package:open_tv/models/media_type.dart';
+import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/view_type.dart';
 
 class Filters {
@@ -11,6 +12,9 @@ class Filters {
   int? groupId;
   bool useKeywords;
 
+  /// Which search implementation to use (fix68). Defaults to ftsAnd.
+  SearchMethod searchMethod;
+
   Filters({
     this.query,
     this.sourceIds,
@@ -19,7 +23,11 @@ class Filters {
     this.page = 1,
     this.seriesId,
     this.groupId,
-    this.useKeywords = false,
+    // Default true — AND mode is measurably faster than phrase for
+    // multi-word queries (6s vs 17s on 54k channels). Superseded by
+    // fix68's searchMethod setting which controls this more explicitly.
+    this.useKeywords = true,
+    this.searchMethod = SearchMethod.ftsAnd,
   });
 
   /// Returns a shallow copy of this [Filters] with all fields cloned.
@@ -33,5 +41,6 @@ class Filters {
         seriesId: seriesId,
         groupId: groupId,
         useKeywords: useKeywords,
+        searchMethod: searchMethod,
       );
 }

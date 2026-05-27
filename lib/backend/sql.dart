@@ -1,6 +1,7 @@
 import 'dart:collection';
 
 import 'package:open_tv/backend/app_logger.dart';
+import 'package:open_tv/backend/channel_search_cache.dart';
 import 'package:open_tv/backend/db_factory.dart';
 import 'package:open_tv/models/channel.dart';
 import 'package:open_tv/models/engine_type.dart';
@@ -8,6 +9,7 @@ import 'package:open_tv/models/channel_http_headers.dart';
 import 'package:open_tv/models/channel_preserve.dart';
 import 'package:open_tv/models/filters.dart';
 import 'package:open_tv/models/id_data.dart';
+import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/program.dart';
 import 'package:open_tv/models/source.dart';
@@ -261,11 +263,26 @@ class Sql {
     String branch = 'no-query'; // fix29-2 diagnostic
     List<Object> params = [];
 
+    // fix68: route to the selected search method before the FTS block.
+    if (useFts) {
+      if (filters.searchMethod == SearchMethod.inMemory) {
+        return _searchInMemory(filters, rawQuery, mediaTypes, offset);
+      }
+      if (filters.searchMethod == SearchMethod.likeSubstring) {
+        return _searchLike(filters, rawQuery, mediaTypes, offset);
+      }
+    }
+
+    // For ftsTrigram and ftsAnd, effectiveKeywords overrides the legacy flag.
+    // ftsAnd splits on whitespace (AND mode); ftsTrigram keeps the raw phrase.
+    final effectiveKeywords =
+        filters.searchMethod == SearchMethod.ftsAnd || filters.useKeywords;
+
     if (useFts) {
       // Build an FTS5 MATCH expression. Trigram tokenizer matches substrings
       // when the term is at least 3 characters; for shorter terms fall back
       // to LIKE so single/double-letter queries still work.
-      final terms = filters.useKeywords
+      final terms = effectiveKeywords
           ? rawQuery.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList()
           : [rawQuery];
       final longTerms = terms.where((t) => t.length >= 3).toList();
@@ -400,6 +417,28 @@ class Sql {
 
   static String generatePlaceholders(int size) {
     return List.filled(size, "?").join(",");
+  }
+
+  /// Returns minimal channel data for the in-memory search cache (fix68).
+  /// Returns (id, name, group, mediaType, sourceId) tuples — just enough
+  /// for ChannelSearchCache to filter and match without loading full
+  /// Channel objects. group_title may be null; mapped to empty string.
+  static Future<List<(int, String, String, int, int)>>
+      getAllChannelNamesForCache() async {
+    final db = await DbFactory.db;
+    final rows = await db.getAll(
+      'SELECT id, name, COALESCE(group_name, \'\'), media_type, source_id'
+      ' FROM channels WHERE url IS NOT NULL',
+    );
+    return rows
+        .map((r) => (
+              r.columnAt(0) as int,
+              r.columnAt(1) as String,
+              r.columnAt(2) as String,
+              r.columnAt(3) as int,
+              r.columnAt(4) as int,
+            ))
+        .toList(growable: false);
   }
 
   /// Returns the channel with [id], or null if not found.
@@ -1169,5 +1208,104 @@ class Sql {
       SET epg_channel_id = ?, epg_manual_override = ?
       WHERE id = ?
     ''', [epgChannelId, epgChannelId, channelId]);
+  }
+
+  // ── fix68: alternative search backends ─────────────────────────────────────
+
+  /// In-memory search (fix68): uses [ChannelSearchCache] to get matching IDs
+  /// then fetches full [Channel] rows by ID from SQLite.
+  /// Zero FTS / WAL impact — the cache holds pre-lowercased name + group strings.
+  static Future<List<Channel>> _searchInMemory(
+    Filters filters,
+    String rawQuery,
+    Iterable<int> mediaTypes,
+    int offset,
+  ) async {
+    final ids = ChannelSearchCache.search(
+      query: rawQuery,
+      mediaTypes: mediaTypes.toList(),
+      sourceIds: filters.sourceIds!.cast<int?>().toList(),
+      limit: pageSize,
+      offset: offset,
+    );
+    if (ids.isEmpty) return [];
+
+    final db = await DbFactory.db;
+    var sqlQuery =
+        'SELECT * FROM channels WHERE id IN (${generatePlaceholders(ids.length)})'
+        ' AND url IS NOT NULL';
+    final List<Object> params = [...ids];
+
+    if (filters.viewType == ViewType.favorites && filters.seriesId == null) {
+      sqlQuery += ' AND favorite = 1';
+    }
+    if (filters.viewType == ViewType.history) {
+      sqlQuery += ' AND last_watched IS NOT NULL ORDER BY last_watched DESC';
+    }
+    if (filters.seriesId != null) {
+      sqlQuery += ' AND series_id = ?';
+      params.add(filters.seriesId!);
+    } else if (filters.groupId != null) {
+      sqlQuery += ' AND group_id = ?';
+      params.add(filters.groupId!);
+    }
+
+    final rows = await db.getAll(sqlQuery, params);
+    AppLog.info(
+      'Sql._searchInMemory: ids=${ids.length} matched=${rows.length}'
+      ' offset=$offset',
+    );
+    return rows.map(rowToChannel).toList();
+  }
+
+  /// LIKE-scan search (fix68): full-table substring scan, no FTS index.
+  /// Slower than FTS but works for any query length including < 3 chars.
+  static Future<List<Channel>> _searchLike(
+    Filters filters,
+    String rawQuery,
+    Iterable<int> mediaTypes,
+    int offset,
+  ) async {
+    final db = await DbFactory.db;
+    final terms = rawQuery
+        .split(RegExp(r'\s+'))
+        .where((t) => t.isNotEmpty)
+        .map((t) => '%$t%')
+        .toList();
+    if (terms.isEmpty) return [];
+
+    var sqlQuery = '''
+      SELECT * FROM channels c
+      WHERE (${terms.map((_) => 'c.name LIKE ?').join(' AND ')})
+        AND c.media_type IN (${generatePlaceholders(mediaTypes.length)})
+        AND c.source_id IN (${generatePlaceholders(filters.sourceIds!.length)})
+        AND c.url IS NOT NULL
+    ''';
+    final List<Object> params = [...terms, ...mediaTypes, ...filters.sourceIds!];
+
+    if (filters.viewType == ViewType.favorites && filters.seriesId == null) {
+      sqlQuery += '\nAND c.favorite = 1';
+    }
+    if (filters.viewType == ViewType.history) {
+      sqlQuery += '\nAND c.last_watched IS NOT NULL';
+      sqlQuery += '\nORDER BY c.last_watched DESC';
+    }
+    if (filters.seriesId != null) {
+      sqlQuery += '\nAND c.series_id = ?';
+      params.add(filters.seriesId!);
+    } else if (filters.groupId != null) {
+      sqlQuery += '\nAND c.group_id = ?';
+      params.add(filters.groupId!);
+    }
+    sqlQuery += '\nLIMIT ?, ?';
+    params.add(offset);
+    params.add(pageSize);
+
+    final rows = await db.getAll(sqlQuery, params);
+    AppLog.info(
+      'Sql._searchLike: terms=${terms.length} matched=${rows.length}'
+      ' offset=$offset query="$rawQuery"',
+    );
+    return rows.map(rowToChannel).toList();
   }
 }

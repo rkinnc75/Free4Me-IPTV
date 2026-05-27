@@ -1152,6 +1152,85 @@ class _SettingsState extends State<SettingsView> {
         MultiViewLayout.twoByTwo => '2×2',
       };
 
+  // ── fix68: search method picker ───────────────────────────────────────────
+
+  String _searchMethodShortLabel(SearchMethod m) => switch (m) {
+        SearchMethod.ftsAnd => 'FTS AND',
+        SearchMethod.ftsTrigram => 'FTS Phrase',
+        SearchMethod.likeSubstring => 'LIKE Scan',
+        SearchMethod.inMemory => 'In-Memory',
+      };
+
+  Widget _searchMethodTile(Settings s) {
+    return ListTile(
+      title: Row(
+        children: [
+          const Text('Search method'),
+          const SizedBox(width: 4),
+          _helpIcon(
+            title: 'Search Method',
+            body:
+                'Controls how channel search queries are executed.\n\n'
+                '"FTS AND" (default) — splits your query on spaces and '
+                'requires every word to appear in the channel name. '
+                'Uses the FTS5 full-text index; fast on large libraries.\n\n'
+                '"FTS Phrase" (original) — treats the query as a single '
+                'phrase. Slower than FTS AND for multi-word queries.\n\n'
+                '"LIKE Scan" — full-table substring scan. No FTS index, '
+                'slower on 50k+ channels but handles 1–2 character queries '
+                'that the FTS trigram index can\'t match.\n\n'
+                '"In-Memory" — pre-loads all channel names into RAM on first '
+                'search and keeps them there. Zero disk I/O after the first '
+                'build (~2.5 MB for 54k channels). Fastest for repeated '
+                'searches; takes a moment to build after source refresh.',
+          ),
+        ],
+      ),
+      trailing: TextButton(
+        onPressed: () => _showSearchMethodDialog(context),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _searchMethodShortLabel(s.searchMethod),
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(width: 4),
+            const Icon(Icons.arrow_drop_down),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showSearchMethodDialog(BuildContext context) async {
+    final labels = [
+      'FTS AND (recommended)',
+      'FTS Phrase (original)',
+      'LIKE Scan (any length)',
+      'In-Memory (fastest)',
+    ];
+    await showDialog(
+      barrierDismissible: true,
+      context: context,
+      builder: (_) => SelectDialog(
+        title: 'Search method',
+        data: SearchMethod.values
+            .asMap()
+            .entries
+            .map((e) => IdData(id: e.key, data: labels[e.key]))
+            .toList(),
+        action: (idx) {
+          setState(() {
+            settings.searchMethod = SearchMethod.values[idx];
+            updateSettings();
+          });
+          Navigator.of(context).pop();
+        },
+      ),
+    );
+  }
+
   void _showMultiViewPickerDialog(Settings settings) {
     showDialog(
       context: context,
@@ -1700,6 +1779,8 @@ class _SettingsState extends State<SettingsView> {
                           updateSettings();
                         },
                       ),
+                      // fix68: search method picker
+                      _searchMethodTile(settings),
                       // Stream scanner
                       _bufferSlider(
                         label: "Streams per scan",

@@ -63,6 +63,9 @@ const streamCompletedDelayMsProp = "streamCompletedDelayMs";
 // Content-type filter (fix62)
 const contentTypeFilterProp = "contentTypeFilter";
 
+// Search method (fix68)
+const searchMethodProp = "searchMethod";
+
 class SettingsService {
   /// Module-level cache. Loaded on first call; updated in-place on writes.
   /// Avoids repeated SQLite hits on every channel tap.
@@ -186,6 +189,14 @@ class SettingsService {
       settings.streamCompletedDelayMs = int.parse(streamCompletedDelay);
     }
 
+    // Search method (fix68)
+    final sm = settingsMap[searchMethodProp];
+    if (sm != null) {
+      settings.searchMethod = SearchMethod.values
+              .elementAtOrNull(int.tryParse(sm) ?? 0) ??
+          SearchMethod.ftsAnd;
+    }
+
     // Content-type filter (fix62)
     final ctfRaw = settingsMap[contentTypeFilterProp];
     if (ctfRaw != null) {
@@ -261,6 +272,7 @@ class SettingsService {
         settings.streamCompletedDelayMs.toString();
     settingsMap[contentTypeFilterProp] =
         settings.contentTypeFilter.index.toString();
+    settingsMap[searchMethodProp] = settings.searchMethod.index.toString();
 
     await Sql.updateSettings(settingsMap);
     _cached = settings; // keep the in-memory copy in sync
