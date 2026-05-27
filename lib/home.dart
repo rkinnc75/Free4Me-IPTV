@@ -155,10 +155,10 @@ class _HomeState extends State<Home> {
   Future<void> load([bool more = false]) async {
     // fix55: re-sync searchMethod and safeMode from Settings on every load so
     // changes made in the Settings screen take effect without a restart.
-    final _liveSettings = SettingsService.cached;
-    if (_liveSettings != null) {
-      widget.home.filters.searchMethod = _liveSettings.searchMethod;
-      widget.home.filters.safeMode = _liveSettings.safeMode;
+    final liveSettings = SettingsService.cached;
+    if (liveSettings != null) {
+      widget.home.filters.searchMethod = liveSettings.searchMethod;
+      widget.home.filters.safeMode = liveSettings.safeMode;
     }
 
     if (more) {

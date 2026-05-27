@@ -4,7 +4,6 @@ import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/channel_search_cache.dart';
 import 'package:open_tv/backend/m3u.dart';
 import 'package:open_tv/backend/settings_io.dart';
-import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/backend/xtream.dart';
 import 'package:open_tv/memory.dart';

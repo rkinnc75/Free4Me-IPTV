@@ -1804,17 +1804,18 @@ class _SettingsState extends State<SettingsView> {
                           await updateSettings();
                           // fix55: no cache rebuild needed — adultBlocked is
                           // stored per entry and filtered at search time.
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  v
-                                      ? 'Safe mode enabled — adult channels hidden.'
-                                      : 'Safe mode disabled — all channels visible.',
-                                ),
+                          if (!mounted) return;
+                          // Capture messenger before the async gap is crossed.
+                          final messenger = ScaffoldMessenger.of(context);
+                          messenger.showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                v
+                                    ? 'Safe mode enabled — adult channels hidden.'
+                                    : 'Safe mode disabled — all channels visible.',
                               ),
-                            );
-                          }
+                            ),
+                          );
                         },
                       ),
                       // Stream scanner
