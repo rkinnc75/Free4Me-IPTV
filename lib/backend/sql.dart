@@ -342,7 +342,6 @@ class Sql {
     }
     if (filters.viewType == ViewType.history) {
       sqlQuery += "\nAND last_watched IS NOT NULL";
-      sqlQuery += "\nORDER BY last_watched DESC";
     }
     if (filters.seriesId != null) {
       sqlQuery += "\nAND series_id = ?";
@@ -353,6 +352,7 @@ class Sql {
     }
 
     // fix70: exclude adult-content channels when safe mode is on.
+    // Must be before ORDER BY — AND clauses after ORDER BY are invalid SQL.
     final (smClause, smParams) = safeModeClause(filters.safeMode);
     sqlQuery += smClause;
     params.addAll(smParams);
@@ -361,6 +361,18 @@ class Sql {
         'Sql.search[$invocation]: safeMode=true'
         ' blocking ${safeModeBlocklist.length} terms',
       );
+    }
+
+    // fix72: ORDER BY after all WHERE conditions and safe mode clause.
+    // fix74: stream_validated included so validated channels float up.
+    if (filters.viewType == ViewType.history) {
+      sqlQuery += "\nORDER BY c.last_watched DESC";
+    } else {
+      sqlQuery += "\nORDER BY"
+          " COALESCE(c.favorite, 0) DESC,"
+          " COALESCE(c.stream_validated, 0) DESC,"
+          " COALESCE(c.last_watched, 0) DESC,"
+          " c.name ASC";
     }
 
     sqlQuery += "\nLIMIT ?, ?";
@@ -399,13 +411,14 @@ class Sql {
     //   source_id(6) favorite(7) series_id(8) group_id(9) stream_id(10)
     //   last_watched(11) epg_channel_id(12) epg_manual_override(13)
     //   catchup_type(14) catchup_source(15) catchup_days(16)
-    //   engine_override(17)
+    //   engine_override(17) stream_validated(18)  [fix74: migration 10]
     final rawMediaType = row.columnAt(5) as int?;
     final mediaType = (rawMediaType != null &&
             rawMediaType >= 0 &&
             rawMediaType < MediaType.values.length)
         ? MediaType.values[rawMediaType]
         : MediaType.livestream;
+    final sv = row.columnAt(18) as int?;
     return Channel(
       id: row.columnAt(0),
       name: row.columnAt(1),
@@ -418,12 +431,14 @@ class Sql {
       seriesId: row.columnAt(8),
       groupId: row.columnAt(9),
       streamId: row.columnAt(10) as int?,
+      lastWatched: row.columnAt(11) as int?,   // fix72
       epgChannelId: row.columnAt(12) as String?,
       epgManualOverride: row.columnAt(13) as String?,
       catchupType: row.columnAt(14) as String?,
       catchupSource: row.columnAt(15) as String?,
       catchupDays: row.columnAt(16) as int?,
       engineOverride: EngineType.fromJson(row.columnAt(17) as String?),
+      streamValidated: sv == null ? null : sv == 1,  // fix74
     );
   }
 
@@ -762,7 +777,8 @@ class Sql {
   static Future<List<ChannelPreserve>> getChannelsPreserve(int sourceId) async {
     var db = await DbFactory.db;
     var results = await db.getAll('''
-      SELECT name, favorite, last_watched, epg_channel_id, epg_manual_override
+      SELECT name, favorite, last_watched, epg_channel_id, epg_manual_override,
+             stream_validated
       FROM channels
       WHERE source_id = ?
         AND (
@@ -770,6 +786,7 @@ class Sql {
           OR last_watched IS NOT NULL
           OR epg_channel_id IS NOT NULL
           OR epg_manual_override IS NOT NULL
+          OR stream_validated IS NOT NULL
         )
     ''', [sourceId]);
     final preserve = results.map(rowToChannelPreserve).toList();
@@ -791,6 +808,7 @@ class Sql {
       lastWatched: row.columnAt(2),
       epgChannelId: row.columnAt(3) as String?,
       epgManualOverride: row.columnAt(4) as String?,
+      streamValidated: row.columnAt(5) as int?,  // fix74
     );
   }
 
@@ -819,7 +837,8 @@ class Sql {
             SET favorite            = ?,
                 last_watched        = ?,
                 epg_channel_id      = ?,
-                epg_manual_override = ?
+                epg_manual_override = ?,
+                stream_validated    = COALESCE(?, stream_validated)
             WHERE name = ?
             AND source_id = ?
           ''', [
@@ -827,6 +846,7 @@ class Sql {
             channel.lastWatched,
             channel.epgManualOverride,
             channel.epgManualOverride,
+            channel.streamValidated,  // fix74
             channel.name,
             sourceId,
           ]);
@@ -839,13 +859,15 @@ class Sql {
             SET favorite            = ?,
                 last_watched        = ?,
                 epg_channel_id      = COALESCE(epg_channel_id, ?),
-                epg_manual_override = NULL
+                epg_manual_override = NULL,
+                stream_validated    = COALESCE(?, stream_validated)
             WHERE name = ?
             AND source_id = ?
           ''', [
             channel.favorite,
             channel.lastWatched,
             channel.epgChannelId,
+            channel.streamValidated,  // fix74
             channel.name,
             sourceId,
           ]);
@@ -859,6 +881,32 @@ class Sql {
         ' manualRestored=$restoredManual',
       );
     };
+  }
+
+  // ── Stream validation (fix74) ──────────────────────────────────────────────
+
+  /// Persist a stream scan result for a channel.
+  /// [isValid] = true → stream confirmed as media.
+  /// [isValid] = false → stream unreachable or not media.
+  /// The value persists across sessions and is only updated by a new scan.
+  static Future<void> setStreamValidated(int channelId, bool isValid) async {
+    final db = await DbFactory.db;
+    await db.execute(
+      'UPDATE channels SET stream_validated = ? WHERE id = ?',
+      [isValid ? 1 : 0, channelId],
+    );
+    AppLog.info(
+      'Sql.setStreamValidated: channel=$channelId'
+      ' validated=${isValid ? "✓" : "✗"}',
+    );
+  }
+
+  /// Reset all stream_validated flags to NULL.
+  /// Called from Settings → Reset → "Clear stream validation".
+  static Future<void> clearAllStreamValidated() async {
+    final db = await DbFactory.db;
+    await db.execute('UPDATE channels SET stream_validated = NULL');
+    AppLog.info('Sql.clearAllStreamValidated: reset all stream_validated flags');
   }
 
   // ── EPG ────────────────────────────────────────────────────────────────────
@@ -1312,7 +1360,22 @@ class Sql {
       'Sql._searchInMemory: ids=${ids.length} matched=${rows.length}'
       ' offset=$offset',
     );
-    return [for (final id in ids) if (byId.containsKey(id)) byId[id]!];
+
+    final mapped = [for (final id in ids) if (byId.containsKey(id)) byId[id]!];
+    // fix72+fix74: sort — favorites first, validated second, recently watched
+    // third, alphabetical fallback. Mirrors the SQL ORDER BY in search() and
+    // _searchLike() so all three backends produce consistent ordering.
+    mapped.sort((a, b) {
+      final favCmp = (b.favorite ? 1 : 0).compareTo(a.favorite ? 1 : 0);
+      if (favCmp != 0) return favCmp;
+      final valCmp = (b.streamValidated == true ? 1 : 0)
+          .compareTo(a.streamValidated == true ? 1 : 0);
+      if (valCmp != 0) return valCmp;
+      final watchCmp = (b.lastWatched ?? 0).compareTo(a.lastWatched ?? 0);
+      if (watchCmp != 0) return watchCmp;
+      return a.name.compareTo(b.name);
+    });
+    return mapped;
   }
 
   /// LIKE-scan search (fix68): full-table substring scan, no FTS index.
@@ -1345,7 +1408,6 @@ class Sql {
     }
     if (filters.viewType == ViewType.history) {
       sqlQuery += '\nAND c.last_watched IS NOT NULL';
-      sqlQuery += '\nORDER BY c.last_watched DESC';
     }
     if (filters.seriesId != null) {
       sqlQuery += '\nAND c.series_id = ?';
@@ -1355,10 +1417,22 @@ class Sql {
       params.add(filters.groupId!);
     }
 
-    // fix55 (P1-3): honour safe mode in the LIKE backend, same as FTS paths.
+    // fix70: safe mode clause before ORDER BY — AND after ORDER BY is invalid SQL.
     final (smClause, smParams) = safeModeClause(filters.safeMode);
     sqlQuery += smClause;
     params.addAll(smParams);
+
+    // fix72: ORDER BY after all WHERE conditions.
+    // fix74: stream_validated included so validated channels float up.
+    if (filters.viewType == ViewType.history) {
+      sqlQuery += '\nORDER BY c.last_watched DESC';
+    } else {
+      sqlQuery += '\nORDER BY'
+          ' COALESCE(c.favorite, 0) DESC,'
+          ' COALESCE(c.stream_validated, 0) DESC,'
+          ' COALESCE(c.last_watched, 0) DESC,'
+          ' c.name ASC';
+    }
 
     sqlQuery += '\nLIMIT ?, ?';
     params.add(offset);

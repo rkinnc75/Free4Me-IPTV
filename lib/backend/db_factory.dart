@@ -258,6 +258,15 @@ class DbFactory {
         await tx.execute('DROP INDEX IF EXISTS idx_programs_channel_time;');
         await tx.execute('DROP INDEX IF EXISTS idx_programs_time_range;');
         await tx.execute('DROP INDEX IF EXISTS idx_programs_unique;');
+      }))
+      ..add(SqliteMigration(10, (tx) async {
+        // fix74: persist stream scanner results across sessions.
+        // NULL = never scanned, 1 = valid, 0 = invalid.
+        // ALTER TABLE ADD COLUMN defaults to NULL for all existing rows —
+        // correct, since existing channels have never been scanned.
+        await tx.execute(
+          'ALTER TABLE channels ADD COLUMN stream_validated INTEGER;',
+        );
       }));
     await migrations.migrate(db);
 

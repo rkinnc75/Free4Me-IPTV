@@ -13,6 +13,7 @@ import 'package:open_tv/backend/settings_io.dart';
 import 'package:open_tv/views/epg_channel_mapping.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
+import 'package:open_tv/backend/stream_scanner.dart';
 import 'package:open_tv/backend/update_checker.dart';
 import 'package:open_tv/backend/utils.dart';
 import 'package:open_tv/bottom_nav.dart';
@@ -1301,29 +1302,6 @@ class _SettingsState extends State<SettingsView> {
                     ),
                   ),
 
-                  // ── Default view ─────────────────────────────────────────
-                  ListTile(
-                    title: GestureDetector(
-                      onTap: () => SettingHelpDialog.show(
-                        context,
-                        title: _helpDefaultView.title,
-                        body: _helpDefaultView.body,
-                      ),
-                      child: Row(
-                        children: [
-                          const Text("Default view"),
-                          const SizedBox(width: 4),
-                          _helpIcon(
-                            title: _helpDefaultView.title,
-                            body: _helpDefaultView.body,
-                          ),
-                        ],
-                      ),
-                    ),
-                    subtitle: Text(viewTypeToString(settings.defaultView)),
-                    onTap: () async => await _showDefaultViewDialog(context),
-                  ),
-
                   // ── Playback ─────────────────────────────────────────────
                   ExpansionTile(
                     key: const PageStorageKey('playback'),
@@ -1699,6 +1677,28 @@ class _SettingsState extends State<SettingsView> {
                     childrenPadding: EdgeInsets.zero,
                     initiallyExpanded: false,
                     children: [
+                      // fix72: Default view moved here from top-level.
+                      ListTile(
+                        title: GestureDetector(
+                          onTap: () => SettingHelpDialog.show(
+                            context,
+                            title: _helpDefaultView.title,
+                            body: _helpDefaultView.body,
+                          ),
+                          child: Row(
+                            children: [
+                              const Text("Default view"),
+                              const SizedBox(width: 4),
+                              _helpIcon(
+                                title: _helpDefaultView.title,
+                                body: _helpDefaultView.body,
+                              ),
+                            ],
+                          ),
+                        ),
+                        subtitle: Text(viewTypeToString(settings.defaultView)),
+                        onTap: () async => await _showDefaultViewDialog(context),
+                      ),
                       _switchTile(
                         label: "Refresh sources on start",
                         value: settings.refreshOnStart,
@@ -2339,6 +2339,51 @@ class _SettingsState extends State<SettingsView> {
                         ),
                         preserveLibraryPreferences: true,
                       );
+                    },
+                  ),
+                  // fix74: clear persisted stream scan results.
+                  ListTile(
+                    leading: const Icon(Icons.wifi_tethering_off),
+                    title: const Text("Clear stream validation"),
+                    subtitle: const Text(
+                      "Reset all stream scan results. Channels will "
+                      "show as unvalidated until rescanned.",
+                    ),
+                    onTap: () async {
+                      final confirmed = await showDialog<bool>(
+                        context: context,
+                        builder: (_) => AlertDialog(
+                          title: const Text("Clear stream validation?"),
+                          content: const Text(
+                            "This resets the scan result for every channel. "
+                            "Channels will appear unvalidated until you run "
+                            "the stream scanner again.\n\n"
+                            "Your favorites, watch history, and EPG data "
+                            "are not affected.",
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text("Cancel"),
+                            ),
+                            FilledButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              child: const Text("Clear"),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirmed == true && mounted) {
+                        await Sql.clearAllStreamValidated();
+                        StreamScanner.clearResults();
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text("Stream validation cleared."),
+                            ),
+                          );
+                        }
+                      }
                     },
                   ),
 

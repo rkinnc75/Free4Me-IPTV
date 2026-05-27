@@ -6,6 +6,8 @@ class ChannelPreserve {
   // erase every EPG match the user has accumulated.
   String? epgChannelId;
   String? epgManualOverride;
+  // fix74: preserve stream scan result across source refresh.
+  int? streamValidated;
 
   ChannelPreserve({
     required this.name,
@@ -13,5 +15,6 @@ class ChannelPreserve {
     this.lastWatched,
     this.epgChannelId,
     this.epgManualOverride,
+    this.streamValidated,
   });
 }

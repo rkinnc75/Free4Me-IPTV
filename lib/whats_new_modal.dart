@@ -7,6 +7,21 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.18.8': [
+    'Fix: tapping History or Favorites with Safe mode enabled no longer crashes '
+        'with a SQL syntax error — the ORDER BY clause was incorrectly placed '
+        'before the Safe mode AND conditions.',
+    'Search results are now sorted — favorites first, then recently watched, '
+        'then alphabetical. This order is consistent across FTS, LIKE Scan, '
+        'and In-Memory search.',
+    'Stream Scanner results now persist across app restarts. A previously '
+        'validated channel (green indicator) will still show as validated after '
+        'relaunching the app, and survives source refresh.',
+    'Settings → Reset: new "Clear stream validation" option resets all scan '
+        'results so channels appear unvalidated until rescanned.',
+    'Settings → Content: "Default view" setting moved into the Content '
+        'section where it logically belongs.',
+  ],
   '1.18.7': [
     'Fix: selecting "FTS AND (recommended)" in Settings now correctly activates '
         'FTS AND mode — the dialog labels were swapped with FTS Phrase. Any user '

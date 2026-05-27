@@ -36,6 +36,15 @@ class Channel {
   /// Per-channel engine override. Null = use source/global/auto selection.
   EngineType? engineOverride;
 
+  // --- Watch history (fix72) ---
+  /// Unix epoch seconds of last watch event. Null = never watched.
+  int? lastWatched;
+
+  // --- Stream validation (fix74) ---
+  /// Result of the most recent StreamScanner probe.
+  /// null = never scanned, true = valid media, false = invalid/unreachable.
+  bool? streamValidated;
+
   Channel({
     this.id,
     required this.name,
@@ -54,6 +63,8 @@ class Channel {
     this.catchupSource,
     this.catchupDays,
     this.engineOverride,
+    this.lastWatched,
+    this.streamValidated,
   });
 
   /// True iff this channel has any flavor of catchup support.

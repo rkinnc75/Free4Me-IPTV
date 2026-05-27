@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:open_tv/backend/app_logger.dart';
+import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/models/channel.dart';
 
 /// Stream validity probe.
@@ -45,6 +46,8 @@ class StreamScanner {
       final ch = toScan[i];
       final ok = await _probe(ch.url!, timeout);
       results[ch.id!] = ok;
+      // fix74: persist scan result so it survives app restarts.
+      await Sql.setStreamValidated(ch.id!, ok);
       AppLog.info('StreamScanner: "${ch.name}" → ${ok ? "OK" : "FAIL"}');
       onProgress(i + 1, toScan.length);
     }
