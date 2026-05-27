@@ -46,23 +46,30 @@ class ChannelPickerScreen extends StatefulWidget {
 }
 
 class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
+  // fix59: match Live TV search debounce
+  static const _searchDebounce = Duration(milliseconds: 200);
+
   final _searchCtrl = TextEditingController();
   Timer? _debounce;
   List<Channel> _channels = [];
   bool _loading = true;
 
-  // fix78.2: stale-load guard — each _load() call claims a new invocation id;
+  // fix78.2: stale-load guard — each load call claims a new invocation id;
   // any in-flight call whose id no longer matches the current is dropped.
   int _loadInvocation = 0;
 
-  // fix78.2: warm cache for the empty-query browse so rebuild-triggered
-  // _load('') calls don't hammer SQLite while streams are running.
+  // fix59: track the active search query and whether the initial browse is done.
+  String _activeQuery = '';
+  bool _initialBrowseLoaded = false;
+
+  // fix78.2 + fix59: warm cache for empty-query browse so rebuild-triggered
+  // calls and "clear search box" actions never re-hit SQLite.
   List<Channel>? _cachedEmptyQuery;
 
   @override
   void initState() {
     super.initState();
-    _load('');
+    _loadInitialBrowse();
   }
 
   @override
@@ -72,44 +79,39 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
     super.dispose();
   }
 
-  Future<void> _load(String query) async {
-    if (!mounted) return;
-    final inv = ++_loadInvocation; // fix78.2: claim invocation slot
+  /// fix59: builds Live TV [Filters] for any page of picker results.
+  ///
+  /// fix59: fallback changed from likeSubstring → ftsAnd to match the app
+  /// default when settings are not yet cached.
+  Filters _liveTvPickerFilters({required String? query, required int page}) {
+    final s = SettingsService.cached;
+    return Filters(
+      query: query,
+      sourceIds: widget.sourceIds,
+      mediaTypes: const [MediaType.livestream],
+      viewType: ViewType.all,
+      page: page,
+      searchMethod: s?.searchMethod ?? SearchMethod.ftsAnd,
+      safeMode: s?.safeMode ?? false,
+    );
+  }
 
-    // fix78.2: serve from cache on repeated empty-query calls (e.g. rebuild-
-    // triggered re-loads) — avoids pounding SQLite while streams are running.
-    if (query.isEmpty && _cachedEmptyQuery != null) {
-      if (_loadInvocation != inv) return; // superseded
-      setState(() {
-        _channels = _cachedEmptyQuery!;
-        _loading = false;
-      });
-      return;
-    }
-
+  /// fix59: runs once from [initState] to build the full Live TV browse list.
+  ///
+  /// Fetches all pages (so favorites/validated beyond page 1 are included),
+  /// sorts client-side, and populates [_cachedEmptyQuery].
+  Future<void> _loadInitialBrowse() async {
+    if (!mounted || _initialBrowseLoaded) return;
+    final inv = ++_loadInvocation;
     setState(() => _loading = true);
 
-    // Fetch all pages so that favorites/validated channels beyond the first
-    // page are included, then sort client-side.
     final all = <Channel>[];
     var page = 1;
     while (true) {
-      if (_loadInvocation != inv) return; // fix78.2: superseded while fetching
-      // fix76: use the user's chosen search method and safe mode setting,
-      // same as the main channel grid. Defaults to LIKE Scan if settings
-      // aren't loaded yet (safe and reasonably fast for any query length).
-      final s = SettingsService.cached;
+      if (_loadInvocation != inv) return; // fix78.2: superseded
       final pageResults = await Sql.search(
-        Filters(
-          query: query.isEmpty ? null : query,
-          sourceIds: widget.sourceIds,
-          mediaTypes: [MediaType.livestream],
-          viewType: ViewType.all,
-          page: page,
-          searchMethod: s?.searchMethod ?? SearchMethod.likeSubstring,
-          safeMode: s?.safeMode ?? false,
-        ),
-        invocation: inv, // fix78.2: forward inv so log lines are correlatable
+        _liveTvPickerFilters(query: null, page: page),
+        invocation: inv,
       );
       all.addAll(pageResults);
       if (pageResults.length < pageSize) break;
@@ -117,21 +119,72 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
     }
     all.sort(_pickSort);
 
-    if (_loadInvocation != inv) return; // fix78.2: superseded after final page
-    if (!mounted) return;
+    if (_loadInvocation != inv || !mounted) return; // fix78.2: superseded
 
-    // fix78.2: populate empty-query cache for subsequent rebuild-triggered calls.
-    if (query.isEmpty) _cachedEmptyQuery = List.unmodifiable(all);
+    _cachedEmptyQuery = List.unmodifiable(all);
+    _initialBrowseLoaded = true;
 
+    setState(() {
+      _channels = _cachedEmptyQuery!;
+      _loading = false;
+    });
+  }
+
+  /// fix59: runs only for non-empty queries after the debounce fires.
+  Future<void> _loadSearch(String query) async {
+    final trimmed = query.trim();
+    if (trimmed.isEmpty || !mounted) return;
+    final inv = ++_loadInvocation;
+    setState(() => _loading = true);
+
+    final all = <Channel>[];
+    var page = 1;
+    while (true) {
+      if (_loadInvocation != inv) return; // fix78.2: superseded
+      final pageResults = await Sql.search(
+        _liveTvPickerFilters(query: trimmed, page: page),
+        invocation: inv,
+      );
+      all.addAll(pageResults);
+      if (pageResults.length < pageSize) break;
+      page++;
+    }
+    all.sort(_pickSort);
+
+    if (_loadInvocation != inv || !mounted) return; // fix78.2: superseded
     setState(() {
       _channels = all;
       _loading = false;
     });
   }
 
-  void _onQueryChanged(String q) {
+  void _onQueryChanged(String value) {
+    final query = value.trim();
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 350), () => _load(q));
+
+    // fix59: empty query → restore the cached browse without any SQL.
+    if (query.isEmpty) {
+      // Already showing the browse list and nothing changed — no-op.
+      if (_activeQuery.isEmpty && _initialBrowseLoaded) return;
+      _activeQuery = '';
+      final cached = _cachedEmptyQuery;
+      if (cached != null) {
+        setState(() {
+          _channels = cached;
+          _loading = false;
+        });
+      }
+      return;
+    }
+
+    // fix59: skip if the trimmed query is unchanged (e.g. trailing space).
+    if (query == _activeQuery) return;
+
+    _debounce = Timer(_searchDebounce, () {
+      if (!mounted) return;
+      _activeQuery = query;
+      _loadSearch(query);
+    });
   }
 
   /// Returns a section-header widget when index [i] is the first item in a

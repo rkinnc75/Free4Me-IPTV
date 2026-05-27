@@ -12,7 +12,16 @@ class SettingHelpDialog {
       context: context,
       builder: (_) => AlertDialog(
         title: Text(title),
-        content: SingleChildScrollView(child: Text(body)),
+        // fix61: relaxed line height improves readability of longer help text.
+        content: SingleChildScrollView(
+          child: Text(
+            body,
+            style: Theme.of(context)
+                .textTheme
+                .bodyMedium
+                ?.copyWith(height: 1.35),
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),

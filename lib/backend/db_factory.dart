@@ -267,6 +267,35 @@ class DbFactory {
         await tx.execute(
           'ALTER TABLE channels ADD COLUMN stream_validated INTEGER;',
         );
+      }))
+      ..add(SqliteMigration(11, (tx) async {
+        // fix57.4: scope the FTS update trigger to name changes only.
+        // The previous trigger (AFTER UPDATE ON channels) fired for every
+        // column write — favorites, history, stream_validated, EPG — causing
+        // unnecessary FTS index churn and WAL growth with no search benefit.
+        await tx.execute('DROP TRIGGER IF EXISTS channels_au;');
+        await tx.execute('''
+          CREATE TRIGGER channels_au AFTER UPDATE OF name ON channels BEGIN
+            INSERT INTO channels_fts(channels_fts, rowid, name)
+              VALUES('delete', old.id, old.name);
+            INSERT INTO channels_fts(rowid, name) VALUES (new.id, new.name);
+          END;
+        ''');
+        // fix57.5: composite partial index for the hot browse-order query
+        // (no-query Live TV browse and channel-picker browse).
+        // Covers: source filter + media-type filter + ORDER BY columns.
+        await tx.execute('''
+          CREATE INDEX IF NOT EXISTS index_channels_browse_order
+          ON channels(
+            source_id,
+            media_type,
+            favorite DESC,
+            stream_validated DESC,
+            last_watched DESC,
+            name COLLATE NOCASE
+          )
+          WHERE url IS NOT NULL;
+        ''');
       }));
     await migrations.migrate(db);
 

@@ -448,17 +448,22 @@ class Sql {
 
   /// Returns channel data for the in-memory search cache (fix68 / fix55).
   ///
-  /// Returns 9-tuples: (id, name, group, mediaType, sourceId,
-  ///                     favorite, lastWatched, groupId, seriesId).
+  /// Returns 10-tuples: (id, name, group, mediaType, sourceId,
+  ///                      favorite, lastWatched, groupId, seriesId,
+  ///                      streamValidated).
   /// The cache uses these to apply ALL view filters before pagination so
   /// full Channel objects are only fetched for the final page of IDs.
+  ///
+  /// fix57: added stream_validated (col 10) so [ChannelSearchCache] can
+  /// sort in-memory results by the same ORDER BY used in SQL search.
   static Future<
-      List<(int, String, String, int, int, bool, int?, int?, int?)>>
+      List<(int, String, String, int, int, bool, int?, int?, int?, bool?)>>
       getAllChannelNamesForCache() async {
     final db = await DbFactory.db;
     final rows = await db.getAll(
       'SELECT id, name, COALESCE(group_name, \'\'), media_type, source_id,'
-      '       COALESCE(favorite, 0), last_watched, group_id, series_id'
+      '       COALESCE(favorite, 0), last_watched, group_id, series_id,'
+      '       stream_validated'
       ' FROM channels WHERE url IS NOT NULL',
     );
     return rows
@@ -468,10 +473,14 @@ class Sql {
               r.columnAt(2) as String,
               r.columnAt(3) as int,
               r.columnAt(4) as int,
-              (r.columnAt(5) as int) == 1,  // favorite
-              r.columnAt(6) as int?,         // lastWatched (epoch ms, nullable)
-              r.columnAt(7) as int?,         // groupId
-              r.columnAt(8) as int?,         // seriesId
+              (r.columnAt(5) as int) == 1,       // favorite
+              r.columnAt(6) as int?,              // lastWatched (epoch-seconds)
+              r.columnAt(7) as int?,              // groupId
+              r.columnAt(8) as int?,              // seriesId
+              // fix57: stream_validated (null/0/1 → null/false/true)
+              (r.columnAt(9) as int?) == null
+                  ? null
+                  : (r.columnAt(9) as int) == 1,
             ))
         .toList(growable: false);
   }
@@ -622,6 +631,9 @@ class Sql {
       SET favorite = ?
       WHERE id = ?
     ''', [favorite ? 1 : 0, channelId]);
+    // fix57.2: keep in-memory cache current so InMemory search reflects the
+    // new favorite state without a full rebuild.
+    ChannelSearchCache.updateFavorite(channelId, favorite);
   }
 
   static Future<HashMap<String, String>> getSettings() async {
@@ -745,27 +757,36 @@ class Sql {
       'UPDATE channels SET last_watched = NULL WHERE id = ?',
       [channelId],
     );
+    // fix57.2: mirror the NULL into the in-memory cache.
+    ChannelSearchCache.updateLastWatched(channelId, null);
   }
 
   static Future<void> addToHistory(int id) async {
+    // fix57.2: use a Dart-side timestamp so SQLite and in-memory cache both
+    // receive the exact same epoch-seconds value.
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     var db = await DbFactory.db;
-    await db.execute('''
-      UPDATE channels
-      SET last_watched = strftime('%s', 'now')
-      WHERE id = ?
-    ''', [id]);
+    await db.execute(
+      'UPDATE channels SET last_watched = ? WHERE id = ?',
+      [now, id],
+    );
     await db.execute('''
       UPDATE channels
       SET last_watched = NULL
       WHERE last_watched IS NOT NULL
 		  AND id NOT IN (
-				SELECT id 
+				SELECT id
 				FROM channels
 				WHERE last_watched IS NOT NULL
 				ORDER BY last_watched DESC
 				LIMIT 36
 		  )
     ''');
+    // fix57.2: update the watched channel in the in-memory cache.
+    // The pruning query above may null-out older entries in SQLite; the cache
+    // stays slightly optimistic for those until the next rebuild (acceptable —
+    // they're beyond top-36 history anyway).
+    ChannelSearchCache.updateLastWatched(id, now);
   }
 
   /// Capture per-channel attributes that must survive a source wipe:
@@ -899,6 +920,9 @@ class Sql {
       'Sql.setStreamValidated: channel=$channelId'
       ' validated=${isValid ? "✓" : "✗"}',
     );
+    // fix57.2: mirror into in-memory cache so InMemory search shows the
+    // green validation indicator immediately.
+    ChannelSearchCache.updateStreamValidated(channelId, isValid);
   }
 
   /// Reset all stream_validated flags to NULL.
@@ -907,6 +931,8 @@ class Sql {
     final db = await DbFactory.db;
     await db.execute('UPDATE channels SET stream_validated = NULL');
     AppLog.info('Sql.clearAllStreamValidated: reset all stream_validated flags');
+    // fix57.2: mirror the reset into the in-memory cache.
+    ChannelSearchCache.clearAllStreamValidated();
   }
 
   // ── EPG ────────────────────────────────────────────────────────────────────

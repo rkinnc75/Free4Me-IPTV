@@ -41,212 +41,228 @@ import 'package:url_launcher/url_launcher.dart';
 // ─── Help copy constants ─────────────────────────────────────────────────────
 // All strings are final per the development handbook. Do not paraphrase.
 
+// fix61: all help constants rewritten for clarity, accuracy, and consistency.
+// Key corrections: safe mode no longer claims cache is rebuilt on toggle (stale
+// since fix55); show-livestreams now mentions the multi-view picker.
+
 const _helpDefaultView = (
   title: 'Default View',
   body:
-      'Which content type the app opens to when you launch it. '
-      '"All" shows livestreams, movies, and series together. '
-      '"Livestreams" jumps straight to live TV. '
-      '"Movies" or "Series" opens that section directly.\n\n'
-      'Choose whichever you use most — saves a navigation tap every launch. '
-      'Default: All.',
+      'Chooses the content view the app opens to at launch.\n\n'
+      'Default: All.\n\n'
+      'All shows every enabled content type together. Livestreams opens '
+      'directly to live TV. Movies and Series open directly to those '
+      'libraries.\n\n'
+      'Use the view you open most often to save a navigation step every '
+      'time the app starts. This does not hide or delete content; it only '
+      'changes the first screen you see.',
 );
 
 const _helpForceTvMode = (
   title: 'Force TV Mode',
   body:
-      'Overrides automatic device detection and always uses the '
-      'TV-optimised layout — larger tiles, D-pad navigation, no touch '
-      'shortcuts.\n\n'
-      '↑ ON — forces TV layout on any device. Use this if the app '
-      'incorrectly starts in phone mode on your Android TV box or Onn 4K.\n\n'
-      '↓ OFF — uses the touch-friendly phone/tablet layout. '
-      'Default: OFF.',
+      'Forces the TV-style interface even if the device is detected as a '
+      'phone or tablet.\n\n'
+      'Default: OFF.\n\n'
+      'ON: Uses larger TV-focused controls and D-pad navigation. Turn this '
+      'on if an Android TV box, Onn 4K, Fire TV, or similar device is '
+      'detected as a touch device.\n\n'
+      'OFF: Lets the app choose the layout automatically. Best for phones '
+      'and tablets where touch controls are easier to use.',
 );
 
 const _helpLowLatency = (
   title: 'Low Latency (Live TV)',
   body:
-      'Tells libmpv to request the lowest-bitrate HLS variant stream '
-      'and reduces internal buffering targets.\n\n'
-      '↑ ON — minimises the delay between broadcast and playback. '
-      'Useful for live sports where score spoilers matter. '
-      'May reduce picture quality on HLS streams.\n\n'
-      '↓ OFF — requests the highest-quality variant and uses larger '
-      'buffers for smoother playback on stable connections.\n\n'
-      'Has no effect on non-HLS streams (MPEG-TS, RTMP). Default: OFF.',
+      'Reduces the delay between the live broadcast and what you see on '
+      'screen.\n\n'
+      'Default: OFF.\n\n'
+      'ON: Requests the lowest-latency HLS behavior and reduces buffering. '
+      'Useful for live sports or events where being several seconds behind '
+      'matters. May reduce picture quality and can make unstable streams '
+      'buffer more often.\n\n'
+      'OFF: Uses normal buffering for smoother playback and better quality '
+      'selection on stable connections. Recommended for most users.\n\n'
+      'This mainly affects HLS streams. Non-HLS streams (MPEG-TS, RTMP) '
+      'may not benefit.',
 );
 
 const _helpRefreshOnStart = (
   title: 'Refresh Sources on Start',
   body:
-      'Re-downloads all M3U playlists and Xtream channel lists every '
-      'time the app launches.\n\n'
-      '↑ ON — always starts with the freshest channel list. Useful if '
-      'your provider changes URLs often. Adds a few seconds to startup '
-      'and uses data on every launch.\n\n'
-      '↓ OFF — uses the cached list for instant startup. '
-      'You can still refresh manually from the Sources section. '
-      'Default: OFF.',
+      'Refreshes your channel lists automatically every time the app '
+      'opens.\n\n'
+      'Default: OFF.\n\n'
+      'ON: Downloads the latest M3U and Xtream data at startup. Use this '
+      'if your provider changes channels or stream URLs often. Startup '
+      'takes longer and uses network data every launch.\n\n'
+      'OFF: Starts faster using the saved channel list. You can still '
+      'refresh manually from the Sources section whenever you want fresh '
+      'data.',
 );
 
 const _helpShowLivestreams = (
   title: 'Show Livestreams',
   body:
-      'Controls whether live TV channels appear in the channel grid, '
-      'search results, and "All" view.\n\n'
-      '↑ ON — live TV is visible everywhere in the app.\n\n'
-      '↓ OFF — hides all live TV channels. Does not delete them — '
-      'they reappear when turned back on. '
-      'Useful if your source only has movies and series. Default: ON.',
+      'Controls whether live TV channels appear in browsing and search.\n\n'
+      'Default: ON.\n\n'
+      'ON: Live TV appears in All, Livestreams, search results, and the '
+      'multi-view channel picker.\n\n'
+      'OFF: Hides live TV from normal browsing and search. Nothing is '
+      'deleted; turn it back on to show live channels again.\n\n'
+      'At least one content type must stay enabled.',
 );
 
 const _helpShowMovies = (
   title: 'Show Movies',
   body:
-      'Controls whether on-demand movies appear in the channel grid, '
-      'search results, and "All" view.\n\n'
-      '↑ ON — movies are visible.\n\n'
-      '↓ OFF — hides the movie library. Does not delete content. '
-      'Default: ON.',
+      'Controls whether on-demand movies appear in browsing and search.\n\n'
+      'Default: ON.\n\n'
+      'ON: Movies appear in All, Movies, and search results.\n\n'
+      'OFF: Hides the movie library from normal browsing and search. '
+      'Nothing is deleted; turn it back on to show movies again.\n\n'
+      'At least one content type must stay enabled.',
 );
 
 const _helpShowSeries = (
   title: 'Show Series',
   body:
-      'Controls whether TV series and episodes appear in the channel '
-      'grid, search results, and "All" view.\n\n'
-      '↑ ON — series are visible.\n\n'
-      '↓ OFF — hides series content. Does not delete content. '
-      'Default: ON.',
+      'Controls whether series and episodes appear in browsing and '
+      'search.\n\n'
+      'Default: ON.\n\n'
+      'ON: Series appear in All, Series, and search results.\n\n'
+      'OFF: Hides series content from normal browsing and search. Nothing '
+      'is deleted; turn it back on to show series again.\n\n'
+      'At least one content type must stay enabled.',
 );
 
-// fix70
+// fix61: removed stale "in-memory search cache is rebuilt immediately" line
+// (incorrect since fix55 — adult filtering is applied at search time).
 const _helpSafeMode = (
   title: 'Safe Mode',
   body:
-      'Hides channels and categories whose name or group contains adult-content '
-      'keywords (e.g. "xxx", "18+", "porn").\n\n'
-      '↑ ON — adult channels are excluded from all views and search results. '
-      'The in-memory search cache is rebuilt immediately.\n\n'
-      '↓ OFF — all channels are shown. Default: OFF.',
+      'Hides channels and categories whose name or group contains '
+      'adult-content keywords.\n\n'
+      'Default: OFF.\n\n'
+      'ON: Adult-labeled channels are hidden from browsing, categories, '
+      'search results, and picker screens. The filter is applied '
+      'immediately.\n\n'
+      'OFF: Shows all channels from your enabled sources.\n\n'
+      'Safe Mode uses a keyword blocklist (e.g. xxx, 18+, erotic, porn, '
+      'x-rated). It is a practical filter, not a parental-control '
+      'guarantee.',
 );
 
 const _helpHwDecode = (
   title: 'Hardware Decoding',
   body:
-      'Uses your device\'s dedicated video-decoder chip instead of the CPU.\n\n'
-      '↑ ON — MediaCodec (Android) or VideoToolbox (iOS/Apple TV) '
-      'handles decoding. Dramatically reduces CPU heat and load. '
-      'Required for smooth 4K/HEVC playback on TV boxes. '
-      'Recommended for all devices. '
-      'Android TV / Nvidia Shield automatically uses a copy mode '
-      '(mediacodec-copy) that is compatible with all TV chipsets.\n\n'
-      '↓ OFF — software (CPU) decoding. Use only if you see video '
-      'corruption, a green screen, or black video with audio — '
-      'which indicates a buggy hardware decoder on your device. '
-      'Default: ON.',
+      'Uses the device video decoder instead of relying only on the CPU.\n\n'
+      'Default: ON.\n\n'
+      'ON: Usually gives smoother playback, lower CPU use, less heat, and '
+      'better battery life. Recommended for most devices, especially 4K or '
+      'HEVC streams. Android TV and Nvidia Shield automatically use a safer '
+      'copy mode where needed.\n\n'
+      'OFF: Uses software decoding. Turn this off only if hardware decoding '
+      'causes black video, green video, corruption, or device-specific '
+      'playback problems.',
 );
 
 const _helpPreWarm = (
   title: 'Pre-warm Streams on Focus',
   body:
-      'Resolves redirect URLs in the background as soon as you highlight '
-      'a channel tile with the D-pad or hover over it.\n\n'
-      '↑ ON — playback starts noticeably faster when you select a channel '
-      'because the redirect is already resolved. Best for D-pad navigation '
-      'on TV boxes.\n\n'
-      '↓ OFF — URL resolution happens at tap time. Slightly slower channel '
-      'start but no background network activity while browsing. '
-      'Recommended on metered mobile connections. Default: ON.',
+      'Starts resolving a stream URL when a channel tile receives focus, '
+      'before you press play.\n\n'
+      'Default: ON.\n\n'
+      'ON: Channels often start faster because redirects and basic network '
+      'setup have already happened. Best for TV remotes where focus moves '
+      'deliberately.\n\n'
+      'OFF: Does no background stream checks while browsing. Uses less '
+      'network activity and can be better on metered or slow connections. '
+      'Playback may take slightly longer to begin.',
 );
 
 const _helpLiveCacheSecs = (
   title: 'Livestream Cache (seconds)',
   body:
-      'How many seconds of live TV libmpv reads ahead into memory.\n\n'
-      '↑ Raising — reduces rebuffering on unstable or congested connections. '
-      'Also adds a small rewind window. Uses more RAM. '
-      'Values above 45 s can cause audio/video sync drift on slow streams.\n\n'
-      '↓ Lowering — reduces RAM use. Recommended on 1–2 GB Android TV boxes '
-      '(Onn 4K, Fire TV Stick). May increase rebuffering on weak signals.\n\n'
-      'Has no effect in Low Latency mode (which disables caching entirely). '
-      'Default: 20 s. Range: 5–60 s.',
+      'Controls how many seconds of live TV playback are buffered ahead.\n\n'
+      'Default: 20 s. Range: 5–60 s.\n\n'
+      'Increasing: Gives the player more cushion on unstable connections '
+      'and can reduce buffering. Uses more RAM and increases live delay. '
+      'Very high values can make slow streams feel less live.\n\n'
+      'Decreasing: Uses less RAM and reduces live delay. May buffer more '
+      'often on weak Wi-Fi or unreliable providers.\n\n'
+      'Low Latency mode reduces or bypasses this buffer.',
 );
 
 const _helpLiveDemuxerMB = (
   title: 'Livestream Demuxer Buffer (MB)',
   body:
-      'Maximum RAM the stream-splitter (demuxer) may use while playing '
-      'live TV. This is separate from and in addition to the cache.\n\n'
-      '↑ Raising — gives the decoder a larger in-memory cushion, reducing '
-      'dropped frames on high-bitrate 4K or HEVC streams. '
-      'Also helps when two streams play simultaneously (mini-player + '
-      'full-screen).\n\n'
-      '↓ Lowering — frees RAM. Reduce this first if the app is killed by '
-      'the system on a low-memory box. 32–64 MB is sufficient for '
-      'standard 1080p IPTV streams.\n\n'
-      'Max is capped at 75 % of your device RAM. '
-      'Default: auto-detected from RAM. Range: 32–512 MB.',
+      'Sets the maximum RAM the stream demuxer can use while playing live '
+      'TV.\n\n'
+      'Default: calculated from device RAM. Range: 32–512 MB.\n\n'
+      'Increasing: Helps high-bitrate, 4K, HEVC, or unstable live streams '
+      'keep enough data ready for decoding. May reduce stutter, but uses '
+      'more RAM.\n\n'
+      'Decreasing: Frees RAM for the system and other players. Lower this '
+      'first on 1–2 GB TV boxes if the app closes in the background or '
+      'during multi-player use.\n\n'
+      'The maximum is capped from detected RAM to avoid unsafe values.',
 );
 
 const _helpVodCacheSecs = (
   title: 'VOD/Movie Cache (seconds)',
   body:
-      'How many seconds ahead libmpv reads from a movie or on-demand '
-      'stream into memory.\n\n'
-      '↑ Raising — reduces pauses during seek (fast-forward/rewind) and '
-      'smooths playback on slow connections. Large values also improve '
-      'chapter-skip responsiveness.\n\n'
-      '↓ Lowering — reduces RAM use. Has no effect on live TV streams. '
-      'Default: 60 s. Range: 10–180 s.',
+      'Controls how many seconds of movies or series are buffered ahead.\n\n'
+      'Default: 60 s. Range: 10–180 s.\n\n'
+      'Increasing: Helps long movies, large files, and slow servers play '
+      'more smoothly. Can also make seeking feel better. Uses more RAM and '
+      'may take longer to fill after a seek.\n\n'
+      'Decreasing: Uses less RAM and may respond faster after jumps, but '
+      'can buffer more often on slow VOD servers.\n\n'
+      'Does not affect live TV streams.',
 );
 
 const _helpVodDemuxerMB = (
   title: 'VOD/Movie Demuxer Buffer (MB)',
   body:
-      'Maximum RAM the demuxer may use while playing a movie or series '
-      'episode.\n\n'
-      '↑ Raising — improves seek performance and reduces pauses on '
-      'high-bitrate VOD (Blu-ray remuxes, 4K HDR). '
-      'Essential for smooth chapter navigation on large files.\n\n'
-      '↓ Lowering — frees RAM. Has no effect on live TV streams. '
-      '64–128 MB is sufficient for most 1080p VOD. '
-      'Default: 256 MB. Range: 64–1024 MB.',
+      'Sets the maximum RAM the demuxer can use for movies and series '
+      'episodes.\n\n'
+      'Default: 256 MB. Range: 64–1024 MB.\n\n'
+      'Increasing: Helps high-bitrate VOD, 4K movies, and large files play '
+      'and seek more smoothly. Uses more RAM.\n\n'
+      'Decreasing: Frees RAM for the system and other streams. Most 1080p '
+      'VOD works well around 64–128 MB, while large 4K files may need '
+      'more.\n\n'
+      'Does not affect live TV streams.',
 );
 
 const _helpOpenTimeout = (
   title: 'Stream Open Timeout (seconds)',
   body:
-      'How long the player waits for a stream to begin playing before '
-      'giving up and showing an error.\n\n'
-      '↑ Raising — gives slow or geographically distant servers more time '
-      'to respond. Helpful on congested networks or with international '
-      'streams. Also useful for streams that take longer to negotiate '
-      'a session.\n\n'
-      '↓ Lowering — surfaces failures faster so the app can retry sooner. '
-      'Reduce if you find yourself waiting a long time for obviously '
-      'dead streams.\n\n'
-      'Default: 15 s. Range: 5–60 s.',
+      'Controls how long the app waits for a stream to start before '
+      'treating the open attempt as failed.\n\n'
+      'Default: 15 s. Range: 5–60 s.\n\n'
+      'Increasing: Gives slow servers, overloaded providers, or distant '
+      'streams more time to respond. Can reduce false failures, but you '
+      'may wait longer before the app retries or reports a bad stream.\n\n'
+      'Decreasing: Fails faster when a stream is dead or unreachable. Can '
+      'make retries quicker, but may give up too soon on slow providers.',
 );
 
 const _helpWatchdog = (
   title: 'Buffering Watchdog (seconds)',
   body:
-      'If a live stream stalls in a buffering/loading state for longer '
-      'than this value, the player automatically reconnects.\n\n'
-      '↑ Raising — gives the server more time to recover on its own. '
-      'Better on intermittent connections where a brief stall '
-      'self-resolves within a few seconds. Reduces unnecessary reconnects '
-      'during temporary network hiccups.\n\n'
-      '↓ Lowering — forces a reconnect sooner. Useful for streams that '
-      'silently freeze without ever recovering — you get picture back '
-      'faster at the cost of more reconnects on shaky connections.\n\n'
-      'Note: when two streams are playing simultaneously (mini-player + '
-      'full-screen), both watchdogs run independently. If both fire at '
-      'the same time, the reconnects compete for bandwidth — '
-      'raising this value reduces that risk. '
-      'Default: 12 s. Range: 5–60 s.',
+      'Controls how long a live stream may stay buffering before the app '
+      'tries to reconnect it.\n\n'
+      'Default: 12 s. Range: 5–60 s.\n\n'
+      'Increasing: Gives the provider more time to recover naturally. Can '
+      'avoid unnecessary reconnects on streams that pause briefly, but '
+      'leaves you waiting longer when a stream is truly stuck.\n\n'
+      'Decreasing: Reconnects sooner when playback freezes. Can recover '
+      'bad streams faster, but may cause extra reconnects during temporary '
+      'network dips.\n\n'
+      'In mini-player or multi-view, each active stream has its own '
+      'watchdog.',
 );
 
 // ─── Widget ──────────────────────────────────────────────────────────────────
@@ -1063,15 +1079,17 @@ class _SettingsState extends State<SettingsView> {
               context,
               title: 'Player Engine',
               body:
-                  'Controls which media engine plays your streams.\n\n'
-                  '"Auto (recommended)" picks automatically: HLS (.m3u8), DASH (.mpd) '
-                  'and MP4 streams use ExoPlayer for better adaptive bitrate and battery '
-                  'efficiency; everything else (MPEG-TS, RTMP) uses libmpv.\n\n'
-                  '"libmpv" forces libmpv for all streams — best for MPEG-TS and RTMP '
-                  'sources that ExoPlayer cannot handle.\n\n'
-                  '"ExoPlayer" forces ExoPlayer — use only if Auto selects the wrong '
-                  'engine for your source. Note: track selection (subtitles/audio) is '
-                  'not available in ExoPlayer mode.',
+                  'Chooses which playback engine opens streams.\n\n'
+                  'Default: Auto.\n\n'
+                  'Auto: Recommended. The app chooses the best engine for each URL. '
+                  'HLS, DASH, and MP4 streams generally use ExoPlayer for adaptive '
+                  'streaming and battery efficiency. MPEG-TS, RTMP, and less standard '
+                  'streams generally use libmpv for compatibility.\n\n'
+                  'libmpv: Forces libmpv for every stream. Use this if a provider '
+                  'works better with mpv or if ExoPlayer cannot open the stream.\n\n'
+                  'ExoPlayer: Forces ExoPlayer for every stream. Use this only if '
+                  'Auto picks the wrong engine for your source. Some advanced track '
+                  'controls may not be available in ExoPlayer mode.',
             ),
           ),
         ],
@@ -1129,15 +1147,18 @@ class _SettingsState extends State<SettingsView> {
           const SizedBox(width: 4),
           _helpIcon(
             title: 'Multi-view',
-            body: 'Play multiple streams simultaneously in a split-screen '
-                'grid.\n\n'
-                '1×2 shows two streams side-by-side.\n'
-                '2×2 shows four streams in a quad grid.\n\n'
-                'Tap a cell to give it audio focus. Tap + to assign a '
-                'channel to an empty cell. Double-tap to promote a cell to '
-                'full-screen.\n\n'
-                'Each stream uses its own decoder. On lower-end devices, '
-                '2×2 may cause thermal throttling — start with 1×2.',
+            body: 'Plays multiple Live TV channels at the same time in a '
+                'split-screen grid.\n\n'
+                'Default: Off.\n\n'
+                'Off: Multi-view is hidden and no extra streams are '
+                'started.\n\n'
+                '1×2: Plays up to two Live TV channels side by side. This '
+                'is the safest multi-view option for most TV boxes.\n\n'
+                '2×2: Plays up to four Live TV channels. Needs more CPU, '
+                'decoder capacity, network bandwidth, and RAM. Use it on '
+                'stronger devices or with lower-bitrate streams.\n\n'
+                'Tap an empty cell to choose a Live TV channel. Tap a '
+                'playing cell to give it audio focus.',
           ),
         ],
       ),
@@ -1182,19 +1203,23 @@ class _SettingsState extends State<SettingsView> {
           _helpIcon(
             title: 'Search Method',
             body:
-                'Controls how channel search queries are executed.\n\n'
-                '"FTS AND" (default) — splits your query on spaces and '
-                'requires every word to appear in the channel name. '
-                'Uses the FTS5 full-text index; fast on large libraries.\n\n'
-                '"FTS Phrase" (original) — treats the query as a single '
-                'phrase. Slower than FTS AND for multi-word queries.\n\n'
-                '"LIKE Scan" — full-table substring scan. No FTS index, '
-                'slower on 50k+ channels but handles 1–2 character queries '
-                'that the FTS trigram index can\'t match.\n\n'
-                '"In-Memory" — pre-loads all channel names into RAM on first '
-                'search and keeps them there. Zero disk I/O after the first '
-                'build (~2.5 MB for 54k channels). Fastest for repeated '
-                'searches; takes a moment to build after source refresh.',
+                'Controls how channel-name searches are performed in the '
+                'Live TV grid and channel picker screens.\n\n'
+                'Default: FTS AND.\n\n'
+                'FTS AND: Recommended. Splits your search into words and '
+                'requires every word to match. Fast on large channel lists '
+                'and usually best for names like "sky sports" or '
+                '"espn hd".\n\n'
+                'FTS Phrase: Uses the full query as one phrase. Can be '
+                'useful when word order matters, but may be slower or less '
+                'forgiving for multi-word searches.\n\n'
+                'LIKE Scan: Checks channel names directly without the '
+                'full-text index. Can match very short searches such as '
+                '1–2 characters, but may be slow on large sources.\n\n'
+                'In-Memory: Loads lightweight channel search data into RAM '
+                'and searches it without disk reads. Fast for repeated '
+                'searches after warmup, but uses more memory and may take '
+                'a moment to prepare after startup or source refresh.',
           ),
         ],
       ),
@@ -1408,23 +1433,21 @@ class _SettingsState extends State<SettingsView> {
                     help: (
                       title: 'Mini-Player Demuxer Buffer (MB)',
                       body:
-                          'Maximum RAM the demuxer may use for the mini-player '
-                          '/ overlay stream running alongside the full-screen '
-                          'player.\n\n'
-                          '↑ Raising — smoother mini-player playback on '
-                          'high-bitrate streams. Reduces buffering oscillation '
-                          'when both streams compete for bandwidth. Uses more '
-                          'RAM — ensure full-screen + mini-player total stays '
-                          'below ~60 % of device RAM.\n\n'
-                          '↓ Lowering — frees RAM for the full-screen stream '
-                          'and the OS. 16–32 MB is usually sufficient for '
-                          '1080p IPTV. Reduce first if the app is killed by '
-                          'the system.\n\n'
-                          'Max is capped at 75 % of your device RAM ÷ 2. '
-                          'Default: auto-detected '
-                          '(${DeviceMemory.defaultMiniDemuxerMb} MB '
-                          'on this ${DeviceMemory.totalMb} MB device). '
-                          'Range: 8–${DeviceMemory.maxMiniDemuxerMb} MB.',
+                          'Sets the maximum RAM the demuxer can use for the '
+                          'mini-player or overlay stream while another player '
+                          'may also be active.\n\n'
+                          'Default: calculated from device RAM '
+                          '(${DeviceMemory.defaultMiniDemuxerMb} MB on this '
+                          '${DeviceMemory.totalMb} MB device). '
+                          'Range: 8–${DeviceMemory.maxMiniDemuxerMb} MB.\n\n'
+                          'Increasing: Can smooth the mini-player on '
+                          'higher-bitrate streams and reduce buffer swings '
+                          'when two streams are active. Uses more RAM.\n\n'
+                          'Decreasing: Frees RAM for the main player, '
+                          'multi-view cells, and the OS. Use lower values on '
+                          'low-memory TV boxes or if the app is closed by the '
+                          'system.\n\n'
+                          'For many 1080p streams, 16–32 MB is enough.',
                     ),
                     onChanged: (v) {
                       setState(() => settings.miniDemuxerMaxMB = v.round());
@@ -1441,24 +1464,21 @@ class _SettingsState extends State<SettingsView> {
                     help: (
                       title: 'Player Buffer Size (MB)',
                       body:
-                          'Internal libmpv read-ahead buffer allocated per '
-                          'player instance at startup. The mini-player '
-                          'automatically uses half this value.\n\n'
-                          '↑ Raising — larger in-memory read buffer. Helps on '
-                          'very high bitrate streams (4K HEVC above 25 Mbps). '
-                          'Takes effect on the next app restart.\n\n'
-                          '↓ Lowering — reduces per-instance RAM use. '
-                          'Essential on devices with 2 GB or less RAM, '
-                          'especially when the mini-player is active '
-                          '(two instances = 2× this value). '
-                          'Values below 32 MB may cause frequent stalls on '
-                          '4K streams.\n\n'
-                          'Max is capped at 75 % of your device RAM ÷ 2. '
-                          'Requires app restart to take effect. '
-                          'Default: auto-detected '
-                          '(${DeviceMemory.defaultBufferSizeMb} MB '
-                          'on this ${DeviceMemory.totalMb} MB device). '
-                          'Range: 16–${DeviceMemory.maxBufferSizeMb} MB.',
+                          'Sets the internal libmpv read buffer allocated '
+                          'when a player instance is created.\n\n'
+                          'Default: calculated from device RAM '
+                          '(${DeviceMemory.defaultBufferSizeMb} MB on this '
+                          '${DeviceMemory.totalMb} MB device). '
+                          'Range: 16–${DeviceMemory.maxBufferSizeMb} MB.\n\n'
+                          'Increasing: Can help very high-bitrate streams, '
+                          'especially 4K or HEVC, keep enough data ready. '
+                          'Uses more RAM per player. Multi-view and '
+                          'mini-player sessions multiply that cost.\n\n'
+                          'Decreasing: Reduces per-player RAM use and is '
+                          'safer on 1–2 GB devices. Very low values can '
+                          'cause more stalls on high-bitrate streams.\n\n'
+                          'Restart required: this value is applied when '
+                          'player instances are created.',
                     ),
                     onChanged: (v) {
                       setState(() => settings.bufferSizeMB = v.round());
@@ -1524,19 +1544,18 @@ class _SettingsState extends State<SettingsView> {
                     help: (
                       title: 'Stable Playback Threshold (seconds)',
                       body:
-                          'How long a stream must play without any buffering '
-                          'event before the reconnect retry counter resets to '
-                          'zero.\n\n'
-                          '↑ Raising — requires more sustained stability before '
-                          'considering the stream "healthy". Keeps the retry '
-                          'counter active longer after a shaky period, so the '
-                          'app gives up sooner on persistently unstable '
-                          'streams.\n\n'
-                          '↓ Lowering — resets the counter sooner after a brief '
-                          'blip, allowing more retries on streams that recover '
-                          'quickly. Reduce if good streams are hitting '
-                          'max-reconnect and giving up prematurely.\n\n'
-                          'Default: 30 s. Range: 5–60 s.',
+                          'Controls how long playback must stay healthy '
+                          'before the reconnect retry counter resets.\n\n'
+                          'Default: 30 s. Range: 5–60 s.\n\n'
+                          'Increasing: Requires a longer stable period before '
+                          'the app trusts the stream again. This is stricter '
+                          'for unreliable streams and can make the app give up '
+                          'sooner after repeated problems.\n\n'
+                          'Decreasing: Resets the retry counter sooner after '
+                          'a brief recovery. More forgiving for streams that '
+                          'have small hiccups but usually recover.\n\n'
+                          'If good streams are reaching the maximum retry '
+                          'limit too easily, lower this value.',
                     ),
                     onChanged: (v) {
                       setState(
@@ -1554,21 +1573,21 @@ class _SettingsState extends State<SettingsView> {
                     help: (
                       title: 'Startup Grace Window (ms)',
                       body:
-                          'How long after buffering begins to suppress mpv '
-                          'errors that could otherwise cause an immediate '
-                          'false reconnect on every channel open.\n\n'
-                          'Note: as of the current version, seek errors are '
-                          'suppressed unconditionally (not just during the '
-                          'grace window), so this setting primarily affects '
-                          'other false-positive errors that may fire during '
-                          'stream initialisation.\n\n'
-                          '↑ Raising — catches errors that arrive later during '
-                          'startup. Increase to 1000–1500 ms on slower TV '
-                          'hardware (Onn 4K, older Fire TV Stick) if streams '
-                          'still double-start.\n\n'
-                          '↓ Lowering — allows genuine errors to surface and '
-                          'trigger a reconnect sooner after stream open. '
-                          'Default: 500 ms. Range: 100–3000 ms.',
+                          'Gives a newly opened stream a short grace period '
+                          'before certain startup errors are allowed to '
+                          'trigger reconnect behavior.\n\n'
+                          'Default: 500 ms. Range: 100–3000 ms.\n\n'
+                          'Increasing: Helps slower TV hardware and slow '
+                          'providers that emit harmless startup errors shortly '
+                          'after playback begins. Try 1000–1500 ms if streams '
+                          'double-start or reconnect immediately after '
+                          'opening.\n\n'
+                          'Decreasing: Lets real startup failures surface '
+                          'sooner. Use lower values if bad streams take too '
+                          'long to fail.\n\n'
+                          'Seek-related startup errors are already suppressed '
+                          'separately, so this setting mainly covers other '
+                          'startup noise.',
                     ),
                     onChanged: (v) {
                       setState(
@@ -1586,22 +1605,18 @@ class _SettingsState extends State<SettingsView> {
                     help: (
                       title: 'Stream-Ended Reconnect Delay (ms)',
                       body:
-                          'How long to wait before reconnecting when the '
-                          'stream signals it has ended (TCP connection closed '
-                          'by provider).\n\n'
-                          'IPTV providers sometimes briefly close the TCP '
-                          'connection at segment boundaries or during '
-                          'load-balancer rotation — the stream is not actually '
-                          'dead, just rotating. A short wait lets the provider '
-                          're-establish without triggering a full reconnect.\n\n'
-                          '↑ Raising — gives the provider more time to '
-                          're-establish. Reduces unnecessary reconnects on '
-                          'providers that frequently rotate connections. Values '
-                          'above 5000 ms may cause a visible freeze.\n\n'
-                          '↓ Lowering — reconnects faster when the stream '
-                          'genuinely ends. Set to 0 to reconnect immediately '
-                          '(original behaviour).\n\n'
-                          'Default: 2000 ms (2 seconds). Range: 0–10 000 ms.',
+                          'Controls how long the app waits before '
+                          'reconnecting after a live stream reports that it '
+                          'ended or the provider closes the connection.\n\n'
+                          'Default: 2000 ms. Range: 0–10 000 ms.\n\n'
+                          'Increasing: Gives providers more time to rotate '
+                          'servers or reconnect at a segment boundary without '
+                          'an immediate full reconnect. Can reduce connection '
+                          'churn, but values above about 5000 ms may create '
+                          'a visible freeze.\n\n'
+                          'Decreasing: Reconnects faster when the stream '
+                          'really ended. Set to 0 for immediate reconnect '
+                          'behavior.',
                     ),
                       onChanged: (v) {
                         setState(
@@ -1638,13 +1653,19 @@ class _SettingsState extends State<SettingsView> {
                             _helpIcon(
                               title: 'Auto-restore channels',
                               body:
-                                  'When ON, opening multi-view brings back the channels '
-                                  'you had loaded the last time you used the current '
-                                  'layout — exactly as you left them.\n\n'
-                                  'When OFF, multi-view opens with all cells empty; tap '
-                                  'each "+" to pick a channel.\n\n'
-                                  'Your last picks are remembered in either case — '
-                                  'turning this back ON restores them on the next open.',
+                                  'Controls whether multi-view reopens with '
+                                  'the Live TV channels you used last time.\n\n'
+                                  'Default: ON.\n\n'
+                                  'ON: Opening multi-view restores the saved '
+                                  'channels for the selected layout. Fastest '
+                                  'if you usually watch the same channel '
+                                  'group.\n\n'
+                                  'OFF: Multi-view opens with empty cells. '
+                                  'Use this if you prefer to choose fresh '
+                                  'channels each session.\n\n'
+                                  'Your previous picks are still remembered. '
+                                  'Turning this back on restores them the '
+                                  'next time multi-view opens.',
                             ),
                           ],
                         ),
@@ -2402,8 +2423,8 @@ class _SettingsState extends State<SettingsView> {
                     },
                   ),
                   ListTile(
-                    leading: const Icon(Icons.info_outline),
-                    title: const Text('App version'),
+                    leading: const Icon(Icons.article_outlined),
+                    title: const Text('Version and changelog'),
                     subtitle: Text(_appVersion.isEmpty ? '…' : _appVersion),
                     onTap: _appVersion.isEmpty
                         ? null

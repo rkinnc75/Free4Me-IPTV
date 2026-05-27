@@ -7,6 +7,26 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.20.0': [
+    'In-Memory search now sorts results correctly across all pages — '
+        'favourites and validated channels were previously skipped when they '
+        'fell beyond the first page in cache order.',
+    'Favouriting a channel, watching a channel, or running a stream scan '
+        'now updates the in-memory search cache immediately without a full '
+        'rebuild.',
+    'Multi-view channel picker: the search box now uses a 200 ms debounce '
+        'matching the main Live TV search. Clearing the search box restores the '
+        'browse list instantly without any SQL. The fallback search method is '
+        'now FTS AND, matching the app default.',
+    'SQLite FTS index now only updates on channel name changes. Previously '
+        'every favourite toggle, history write, or stream scan caused '
+        'unnecessary FTS index churn.',
+    'New composite index on the channels table speeds up the no-query '
+        'Live TV browse and picker browse flows.',
+    'Settings help text updated throughout: clearer defaults, ON/OFF '
+        'trade-offs, and corrected descriptions. Safe Mode no longer '
+        'incorrectly claims the search cache is rebuilt on toggle.',
+  ],
   '1.19.0': [
     'Fix: multi-view channel picker no longer floods SQLite with thousands of '
         'redundant browse queries while streams are running. '
