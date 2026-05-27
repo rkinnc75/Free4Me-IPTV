@@ -7,6 +7,16 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.19.0': [
+    'Fix: multi-view channel picker no longer floods SQLite with thousands of '
+        'redundant browse queries while streams are running. '
+        'A stale-load guard drops superseded in-flight searches, and the '
+        'no-query result is cached so rebuild-triggered reloads are O(1) '
+        'memory lookups instead of SQL round-trips.',
+    'Favorite toggle events (add/remove) are now written to the app log, '
+        'making it easier to correlate user actions with playback activity '
+        'when diagnosing issues.',
+  ],
   '1.18.9': [
     'Fix: long-pressing a channel to favorite it no longer jumps the scroll '
         'position back to the top of the list.',

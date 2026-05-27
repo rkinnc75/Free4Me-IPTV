@@ -191,12 +191,21 @@ class _ChannelTileState extends State<ChannelTile> {
   Future<void> favorite() async {
     if (widget.channel.mediaType == MediaType.group) return;
     final wasFavorite = widget.channel.favorite;
+    // fix78.1: log favorite toggles so they appear in AppLog alongside play/prewarm events.
+    AppLog.info(
+      'ChannelTile: favorite channel="${widget.channel.name}"'
+      ' wasFavorite=$wasFavorite → ${!wasFavorite}',
+    );
     await Error.tryAsyncNoLoading(() async {
       await Sql.favoriteChannel(widget.channel.id!, !wasFavorite);
       if (!mounted) return;
       setState(() {
         widget.channel.favorite = !wasFavorite;
       });
+      AppLog.info(
+        'ChannelTile: favorite done channel="${widget.channel.name}"'
+        ' favorite=${!wasFavorite}',
+      );
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(

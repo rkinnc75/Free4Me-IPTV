@@ -1,7 +1,7 @@
 {
-  "latest": "1.18.9",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.18.9",
+  "latest": "1.19.0",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.19.0",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: long-pressing a channel to favorite it no longer jumps the scroll position back to the top of the list.\n\u2022 Fix: tapping the All tab from Favorites or History now navigates to All without also cycling the content filter. The filter only cycles when you are already on the All tab.\n\u2022 Multi-view channel picker now uses your chosen search method and safe mode setting \u2014 faster searches and adult channels are filtered when safe mode is on. Results are sorted favorites+validated \u2192 favorites \u2192 validated \u2192 alphabetical."
+  "releaseNotes": "\u2022 Fix: multi-view channel picker no longer floods SQLite with thousands of redundant browse queries while streams are running. A stale-load guard drops superseded in-flight searches, and the no-query result is cached so rebuild-triggered reloads are O(1) memory lookups instead of SQL round-trips.\n\u2022 Favorite toggle events (add/remove) are now written to the app log, making it easier to correlate user actions with playback activity when diagnosing issues."
 }

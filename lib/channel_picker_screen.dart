@@ -51,6 +51,14 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
   List<Channel> _channels = [];
   bool _loading = true;
 
+  // fix78.2: stale-load guard — each _load() call claims a new invocation id;
+  // any in-flight call whose id no longer matches the current is dropped.
+  int _loadInvocation = 0;
+
+  // fix78.2: warm cache for the empty-query browse so rebuild-triggered
+  // _load('') calls don't hammer SQLite while streams are running.
+  List<Channel>? _cachedEmptyQuery;
+
   @override
   void initState() {
     super.initState();
@@ -66,6 +74,19 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
 
   Future<void> _load(String query) async {
     if (!mounted) return;
+    final inv = ++_loadInvocation; // fix78.2: claim invocation slot
+
+    // fix78.2: serve from cache on repeated empty-query calls (e.g. rebuild-
+    // triggered re-loads) — avoids pounding SQLite while streams are running.
+    if (query.isEmpty && _cachedEmptyQuery != null) {
+      if (_loadInvocation != inv) return; // superseded
+      setState(() {
+        _channels = _cachedEmptyQuery!;
+        _loading = false;
+      });
+      return;
+    }
+
     setState(() => _loading = true);
 
     // Fetch all pages so that favorites/validated channels beyond the first
@@ -73,26 +94,35 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
     final all = <Channel>[];
     var page = 1;
     while (true) {
+      if (_loadInvocation != inv) return; // fix78.2: superseded while fetching
       // fix76: use the user's chosen search method and safe mode setting,
       // same as the main channel grid. Defaults to LIKE Scan if settings
       // aren't loaded yet (safe and reasonably fast for any query length).
       final s = SettingsService.cached;
-      final pageResults = await Sql.search(Filters(
-        query: query.isEmpty ? null : query,
-        sourceIds: widget.sourceIds,
-        mediaTypes: [MediaType.livestream],
-        viewType: ViewType.all,
-        page: page,
-        searchMethod: s?.searchMethod ?? SearchMethod.likeSubstring,
-        safeMode: s?.safeMode ?? false,
-      ));
+      final pageResults = await Sql.search(
+        Filters(
+          query: query.isEmpty ? null : query,
+          sourceIds: widget.sourceIds,
+          mediaTypes: [MediaType.livestream],
+          viewType: ViewType.all,
+          page: page,
+          searchMethod: s?.searchMethod ?? SearchMethod.likeSubstring,
+          safeMode: s?.safeMode ?? false,
+        ),
+        invocation: inv, // fix78.2: forward inv so log lines are correlatable
+      );
       all.addAll(pageResults);
       if (pageResults.length < pageSize) break;
       page++;
     }
     all.sort(_pickSort);
 
+    if (_loadInvocation != inv) return; // fix78.2: superseded after final page
     if (!mounted) return;
+
+    // fix78.2: populate empty-query cache for subsequent rebuild-triggered calls.
+    if (query.isEmpty) _cachedEmptyQuery = List.unmodifiable(all);
+
     setState(() {
       _channels = all;
       _loading = false;
