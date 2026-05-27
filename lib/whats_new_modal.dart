@@ -7,6 +7,23 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.18.7': [
+    'Fix: selecting "FTS AND (recommended)" in Settings now correctly activates '
+        'FTS AND mode — the dialog labels were swapped with FTS Phrase. Any user '
+        'who previously selected FTS AND was actually running FTS Phrase and vice versa.',
+    'Fix: the selected Search method now actually takes effect — searches were '
+        'always using the FTS AND default regardless of what was chosen. '
+        'In-Memory search is now fully functional.',
+    'Fix: In-Memory search with Favorites, History, or Category views no longer '
+        'returns sparse pages — all filters are applied before pagination.',
+    'Fix: In-Memory search result order is now deterministic across pages.',
+    'Fix: Safe mode now applies to LIKE Scan searches (previously adult channels '
+        'could appear when LIKE Scan was selected).',
+    'Fix: Safe mode toggle is instant — no cache rebuild required. The '
+        'adult-blocked flag is pre-computed at cache build time.',
+    'Fix: In-Memory cache no longer builds twice on cold start when the background '
+        'warmup and home screen initialization overlap.',
+  ],
   '1.18.6': [
     'Settings → Content: new "Safe mode" toggle — hides channels and '
         'categories whose name or group contains adult-content keywords '

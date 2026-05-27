@@ -1,7 +1,7 @@
 {
-  "latest": "1.18.6",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.18.6",
+  "latest": "1.18.7",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.18.7",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Settings \u2192 Content: new \"Safe mode\" toggle \u2014 hides channels and categories whose name or group contains adult-content keywords (xxx, 18+, porn, erotic, x-rated). Filtering happens at the SQL and in-memory-cache level so no adult channel ever reaches the grid. Default: OFF."
+  "releaseNotes": "\u2022 Fix: selecting \"FTS AND (recommended)\" in Settings now correctly activates FTS AND mode \u2014 the dialog labels were swapped with FTS Phrase. Any user who previously selected FTS AND was actually running FTS Phrase and vice versa.\n\u2022 Fix: the selected Search method now actually takes effect \u2014 searches were always using the FTS AND default regardless of what was chosen. In-Memory search is now fully functional.\n\u2022 Fix: In-Memory search with Favorites, History, or Category views no longer returns sparse pages \u2014 all filters are applied before pagination.\n\u2022 Fix: In-Memory search result order is now deterministic across pages.\n\u2022 Fix: Safe mode now applies to LIKE Scan searches (previously adult channels could appear when LIKE Scan was selected).\n\u2022 Fix: Safe mode toggle is instant \u2014 no cache rebuild required. The adult-blocked flag is pre-computed at cache build time.\n\u2022 Fix: In-Memory cache no longer builds twice on cold start when the background warmup and home screen initialization overlap."
 }

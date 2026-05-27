@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:open_tv/backend/app_logger.dart';
-import 'package:open_tv/backend/channel_search_cache.dart';
 import 'package:open_tv/backend/device_memory.dart';
 import 'package:open_tv/models/device_detector.dart';
 import 'package:open_tv/models/engine_type.dart';
@@ -1215,26 +1214,28 @@ class _SettingsState extends State<SettingsView> {
     );
   }
 
+  // fix55: explicit method→label pairs so enum index order can never drift.
+  static const _searchMethodOptions = [
+    (method: SearchMethod.ftsAnd,        label: 'FTS AND (recommended)'),
+    (method: SearchMethod.ftsTrigram,    label: 'FTS Phrase (original)'),
+    (method: SearchMethod.likeSubstring, label: 'LIKE Scan (any length)'),
+    (method: SearchMethod.inMemory,      label: 'In-Memory (fastest)'),
+  ];
+
   Future<void> _showSearchMethodDialog(BuildContext context) async {
-    final labels = [
-      'FTS AND (recommended)',
-      'FTS Phrase (original)',
-      'LIKE Scan (any length)',
-      'In-Memory (fastest)',
-    ];
     await showDialog(
       barrierDismissible: true,
       context: context,
       builder: (_) => SelectDialog(
         title: 'Search method',
-        data: SearchMethod.values
+        data: _searchMethodOptions
             .asMap()
             .entries
-            .map((e) => IdData(id: e.key, data: labels[e.key]))
+            .map((e) => IdData(id: e.key, data: e.value.label))
             .toList(),
         action: (idx) {
           setState(() {
-            settings.searchMethod = SearchMethod.values[idx];
+            settings.searchMethod = _searchMethodOptions[idx].method;
             updateSettings();
           });
           Navigator.of(context).pop();
@@ -1801,15 +1802,8 @@ class _SettingsState extends State<SettingsView> {
                         onChanged: (v) async {
                           setState(() => settings.safeMode = v);
                           await updateSettings();
-                          // Rebuild the in-memory cache so it picks up the
-                          // new safeMode immediately (no restart required).
-                          if (ChannelSearchCache.isBuilt) {
-                            await ChannelSearchCache.rebuild(safeMode: v);
-                            AppLog.info(
-                              'SettingsView: ChannelSearchCache rebuilt'
-                              ' after safeMode → $v',
-                            );
-                          }
+                          // fix55: no cache rebuild needed — adultBlocked is
+                          // stored per entry and filtered at search time.
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(

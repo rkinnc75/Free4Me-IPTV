@@ -41,8 +41,7 @@ class Utils {
     // fix68.6: rebuild in-memory search cache if it was previously populated.
     // No-op if SearchMethod.inMemory was never selected this session.
     if (ChannelSearchCache.isBuilt) {
-      final s = SettingsService.cached;
-      await ChannelSearchCache.rebuild(safeMode: s?.safeMode ?? false);
+      await ChannelSearchCache.rebuild(); // fix55: safeMode now a per-search flag
       AppLog.info(
           'ChannelSearchCache: rebuilt after source refresh (${source.name})');
     }

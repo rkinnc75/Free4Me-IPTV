@@ -95,7 +95,8 @@ class _HomeState extends State<Home> {
           SettingsService.cached ?? await SettingsService.getSettings();
       if (!mounted) return;
       widget.home.filters.mediaTypes = s.getMediaTypes();
-      widget.home.filters.safeMode = s.safeMode; // fix70
+      widget.home.filters.safeMode = s.safeMode;         // fix70
+      widget.home.filters.searchMethod = s.searchMethod; // fix55
     }
 
     final versionFuture = widget.firstLaunch
@@ -109,9 +110,9 @@ class _HomeState extends State<Home> {
     final cachedSettings = SettingsService.cached;
     if (cachedSettings != null &&
         cachedSettings.searchMethod == SearchMethod.inMemory &&
-        !ChannelSearchCache.isBuilt) {
+        ChannelSearchCache.needsRebuild()) {
       if (mounted) setState(() => _searchReady = false);
-      await ChannelSearchCache.rebuild(safeMode: cachedSettings.safeMode);
+      await ChannelSearchCache.ensureBuilt(); // fix55: dedupes with main() warmup
       AppLog.info('Home: ChannelSearchCache warmup completed');
       if (mounted) setState(() => _searchReady = true);
     }
@@ -152,6 +153,14 @@ class _HomeState extends State<Home> {
   }
 
   Future<void> load([bool more = false]) async {
+    // fix55: re-sync searchMethod and safeMode from Settings on every load so
+    // changes made in the Settings screen take effect without a restart.
+    final _liveSettings = SettingsService.cached;
+    if (_liveSettings != null) {
+      widget.home.filters.searchMethod = _liveSettings.searchMethod;
+      widget.home.filters.safeMode = _liveSettings.safeMode;
+    }
+
     if (more) {
       widget.home.filters.page++;
     } else {
@@ -392,7 +401,8 @@ class _HomeState extends State<Home> {
               viewType: type,
               mediaTypes: widget.home.filters.mediaTypes,
               sourceIds: widget.home.filters.sourceIds,
-              safeMode: widget.home.filters.safeMode, // fix70
+              safeMode: widget.home.filters.safeMode,
+              searchMethod: widget.home.filters.searchMethod, // fix55
             ),
           ),
         ),
@@ -408,7 +418,8 @@ class _HomeState extends State<Home> {
         viewType: ViewType.all,
         mediaTypes: widget.home.filters.mediaTypes,
         sourceIds: widget.home.filters.sourceIds,
-        safeMode: widget.home.filters.safeMode, // fix70
+        safeMode: widget.home.filters.safeMode,
+        searchMethod: widget.home.filters.searchMethod, // fix55
       ),
     );
     if (widget.home.filters.groupId != null) {

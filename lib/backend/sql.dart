@@ -431,15 +431,19 @@ class Sql {
     return List.filled(size, "?").join(",");
   }
 
-  /// Returns minimal channel data for the in-memory search cache (fix68).
-  /// Returns (id, name, group, mediaType, sourceId) tuples — just enough
-  /// for ChannelSearchCache to filter and match without loading full
-  /// Channel objects. group_title may be null; mapped to empty string.
-  static Future<List<(int, String, String, int, int)>>
+  /// Returns channel data for the in-memory search cache (fix68 / fix55).
+  ///
+  /// Returns 9-tuples: (id, name, group, mediaType, sourceId,
+  ///                     favorite, lastWatched, groupId, seriesId).
+  /// The cache uses these to apply ALL view filters before pagination so
+  /// full Channel objects are only fetched for the final page of IDs.
+  static Future<
+      List<(int, String, String, int, int, bool, int?, int?, int?)>>
       getAllChannelNamesForCache() async {
     final db = await DbFactory.db;
     final rows = await db.getAll(
-      'SELECT id, name, COALESCE(group_name, \'\'), media_type, source_id'
+      'SELECT id, name, COALESCE(group_name, \'\'), media_type, source_id,'
+      '       COALESCE(favorite, 0), last_watched, group_id, series_id'
       ' FROM channels WHERE url IS NOT NULL',
     );
     return rows
@@ -449,6 +453,10 @@ class Sql {
               r.columnAt(2) as String,
               r.columnAt(3) as int,
               r.columnAt(4) as int,
+              (r.columnAt(5) as int) == 1,  // favorite
+              r.columnAt(6) as int?,         // lastWatched (epoch ms, nullable)
+              r.columnAt(7) as int?,         // groupId
+              r.columnAt(8) as int?,         // seriesId
             ))
         .toList(growable: false);
   }
@@ -1272,41 +1280,39 @@ class Sql {
     Iterable<int> mediaTypes,
     int offset,
   ) async {
+    // fix55: cache applies ALL filters (view type, group, series, safe mode)
+    // before pagination, so the returned IDs are the exact final page.
     final ids = ChannelSearchCache.search(
       query: rawQuery,
-      mediaTypes: mediaTypes.toList(),
-      sourceIds: filters.sourceIds!.cast<int?>().toList(),
+      mediaTypes: mediaTypes.toSet(),
+      sourceIds: filters.sourceIds!.toSet(),
+      viewType: filters.viewType,
+      groupId: filters.groupId,
+      seriesId: filters.seriesId,
+      safeMode: filters.safeMode,
       limit: pageSize,
       offset: offset,
     );
     if (ids.isEmpty) return [];
 
     final db = await DbFactory.db;
-    var sqlQuery =
+    final sqlQuery =
         'SELECT * FROM channels WHERE id IN (${generatePlaceholders(ids.length)})'
         ' AND url IS NOT NULL';
-    final List<Object> params = [...ids];
+    final rows = await db.getAll(sqlQuery, [...ids]);
 
-    if (filters.viewType == ViewType.favorites && filters.seriesId == null) {
-      sqlQuery += ' AND favorite = 1';
-    }
-    if (filters.viewType == ViewType.history) {
-      sqlQuery += ' AND last_watched IS NOT NULL ORDER BY last_watched DESC';
-    }
-    if (filters.seriesId != null) {
-      sqlQuery += ' AND series_id = ?';
-      params.add(filters.seriesId!);
-    } else if (filters.groupId != null) {
-      sqlQuery += ' AND group_id = ?';
-      params.add(filters.groupId!);
+    // Preserve the cache's result order — WHERE IN does not guarantee ordering.
+    final byId = <int, Channel>{};
+    for (final row in rows) {
+      final ch = rowToChannel(row);
+      if (ch.id != null) byId[ch.id!] = ch;
     }
 
-    final rows = await db.getAll(sqlQuery, params);
     AppLog.info(
       'Sql._searchInMemory: ids=${ids.length} matched=${rows.length}'
       ' offset=$offset',
     );
-    return rows.map(rowToChannel).toList();
+    return [for (final id in ids) if (byId.containsKey(id)) byId[id]!];
   }
 
   /// LIKE-scan search (fix68): full-table substring scan, no FTS index.
@@ -1348,6 +1354,12 @@ class Sql {
       sqlQuery += '\nAND c.group_id = ?';
       params.add(filters.groupId!);
     }
+
+    // fix55 (P1-3): honour safe mode in the LIKE backend, same as FTS paths.
+    final (smClause, smParams) = safeModeClause(filters.safeMode);
+    sqlQuery += smClause;
+    params.addAll(smParams);
+
     sqlQuery += '\nLIMIT ?, ?';
     params.add(offset);
     params.add(pageSize);
