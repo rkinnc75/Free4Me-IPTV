@@ -220,12 +220,17 @@ class _MultiViewCellState extends State<MultiViewCell> {
         err.contains('force-seekable=yes');
   }
 
-  Future<void> _startEngine(Channel ch) async {
+  /// [isRetry] = true preserves the transient retry counter so repeated
+  /// failures accumulate toward the max. Fresh starts (new channel, manual
+  /// Retry button) use the default false to reset the budget.
+  Future<void> _startEngine(Channel ch, {bool isRetry = false}) async {
     final generation = ++_openGeneration;
-    _transientRetries = 0;
+    if (!isRetry) {
+      _transientRetries = 0;
+      _lastTransientIncrementAt = null;
+    }
     _lastErrorAt = null;
     _lastBufferingState = null;
-    _lastTransientIncrementAt = null;
     _eofRetryScheduled = false;
 
     // Resolve which engine to use through the same picker the main player
@@ -376,7 +381,7 @@ class _MultiViewCellState extends State<MultiViewCell> {
             );
             if (mounted) setState(() => _retryMessage = null);
             _disposeEngine();
-            _startEngine(ch);
+            _startEngine(ch, isRetry: true); // fix90: preserve counter
           }
         });
         return;

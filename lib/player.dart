@@ -71,6 +71,11 @@ class _PlayerState extends State<Player> {
   late PlayerEngine _engine;
 
   bool exiting = false;
+  /// Guards onExit() against double-pop, independent of [exiting].
+  /// [exiting] is set early by the max-reconnect path to silence engine
+  /// listeners; using it as the onExit guard meant the back button was
+  /// dead on the stuck buffering screen (fixed in fix90).
+  bool _exitInvoked = false;
   bool fill = false;
   List<StreamSubscription<dynamic>> subscriptions = [];
 
@@ -396,45 +401,37 @@ class _PlayerState extends State<Player> {
       final channelId = widget.channel.id;
       if (channelId != null) Player._recentGiveUps[channelId] = DateTime.now();
 
-      // Stop all background activity so the watchdog, errorStream, and
-      // completedStream listeners no-op — prevents automatic re-open after
-      // give-up when a background timer fires.
+      // Stop background activity so late listener callbacks no-op.
       exiting = true;
       _bufferingWatchdog?.cancel();
       _bufferingWatchdog = null;
       _stableTimer?.cancel();
       _stableTimer = null;
 
-      // Pop back to the channel list with a snackbar.
-      // Cannot use onExit() — it guards with `if (exiting) return` and
-      // exiting is already true above. Cannot use Navigator.canPop() —
-      // PopScope(canPop:false) always returns false.
-      // Restore orientation/UI directly, then pop.
       if (mounted) {
+        // Show terminal message immediately so the overlay updates in the
+        // brief window before onExit() completes the pop.
+        setState(() => _bufferingState =
+            'Stream unavailable — too many failed attempts.');
+
         final channelName = widget.channel.name;
         final maxAttempts = widget.settings.maxReconnectAttempts;
-        unawaited(PipController.setPlaying(false));
-        await SystemChrome.setPreferredOrientations([
-          DeviceOrientation.portraitUp,
-          DeviceOrientation.portraitDown,
-          DeviceOrientation.landscapeLeft,
-          DeviceOrientation.landscapeRight,
-        ]);
-        await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-        if (mounted) {
-          Navigator.of(context).pop();
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-              SnackBar(
-                content: Text(
-                  '"$channelName" failed to load after '
-                  '$maxAttempts attempts — stream may be unavailable.',
-                ),
-                duration: const Duration(seconds: 5),
+        // Schedule the snackbar before popping so the post-frame callback
+        // fires on the underlying route after the pop.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+            SnackBar(
+              content: Text(
+                '"$channelName" failed to load after '
+                '$maxAttempts attempts — stream may be unavailable.',
               ),
-            );
-          });
-        }
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        });
+        // Exit via the same proven path as the back button. _exitInvoked
+        // guards against a double-pop if the user also hits back.
+        onExit();
       }
       return;
     }
@@ -775,7 +772,8 @@ class _PlayerState extends State<Player> {
 
 
   void onExit() async {
-    if (exiting) return;
+    if (_exitInvoked) return;
+    _exitInvoked = true;
     exiting = true;
     unawaited(PipController.setPlaying(false));
     _bufferingWatchdog?.cancel();
@@ -931,7 +929,8 @@ class _PlayerState extends State<Player> {
     // so the user can leave the dead channel without going through system
     // back, and drop the spinner since nothing is in progress.
     final isTerminal = message.contains('please wait') ||
-        message.startsWith('Unable to connect');
+        message.startsWith('Unable to connect') ||
+        message.startsWith('Stream unavailable');
 
     final card = Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),

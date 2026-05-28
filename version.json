@@ -1,7 +1,7 @@
 {
-  "latest": "1.21.1",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.21.1",
+  "latest": "1.21.2",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.21.2",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: when a stream exhausts all reconnect attempts, the player now correctly returns to the channel list. The previous fix (v1.20.2) was blocked by the back-gesture guard and never fired.\n\u2022 Full-screen reconnect overlay now shows \"Retrying 1/6\u2026\" instead of a static \"Reconnecting\u2026\" message.\n\u2022 Multi-view cells now show a retry counter (\"Retrying 1/6\u2026\") below the spinner during transient reconnects."
+  "releaseNotes": "\u2022 Fix: the back button now works on the stuck buffering screen. After exhausting all reconnect attempts, pressing back was silently ignored \u2014 the only way out was force-closing the app. Root cause: the \u201cstop retrying\u201d flag also blocked the back-button handler. The two concerns are now separate.\n\u2022 Fix: multi-view cells now correctly count retries and give up after the configured maximum. Previously the retry counter reset to 0 on every attempt, so cells retried forever at \u201c1/6\u201d."
 }

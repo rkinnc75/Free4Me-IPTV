@@ -7,6 +7,16 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.21.2': [
+    'Fix: the back button now works on the stuck buffering screen. After '
+        'exhausting all reconnect attempts, pressing back was silently ignored '
+        '— the only way out was force-closing the app. Root cause: the '
+        '“stop retrying” flag also blocked the back-button handler. '
+        'The two concerns are now separate.',
+    'Fix: multi-view cells now correctly count retries and give up after '
+        'the configured maximum. Previously the retry counter reset to 0 on '
+        'every attempt, so cells retried forever at “1/6”.',
+  ],
   '1.21.1': [
     'Fix: when a stream exhausts all reconnect attempts, the player now '
         'correctly returns to the channel list. The previous fix (v1.20.2) '
