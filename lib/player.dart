@@ -32,12 +32,19 @@ class Player extends StatefulWidget {
   /// Overrides the channel's normal live URL (e.g. catchup / time-shift URL).
   /// When set, the pre-warm cache is bypassed and ExoPlayer is never auto-selected.
   final String? overrideUrl;
+  /// fix116: an already-open, already-playing engine to adopt instead of
+  /// creating and opening a new one. Used by the swap path so the promoted
+  /// channel's stream is never closed/reopened (which stalled ~10s on some
+  /// streams). When non-null, initState adopts it and initAsync skips the
+  /// open/_startPlayback step.
+  final PlayerEngine? adoptEngine;
   const Player({
     super.key,
     required this.channel,
     required this.settings,
     this.source,
     this.overrideUrl,
+    this.adoptEngine,
   });
 
   /// Channels that recently hit max reconnects. Maps channel ID → DateTime
@@ -82,6 +89,9 @@ class _PlayerState extends State<Player> {
   /// without disposing the engine — that left the engine alive and audio
   /// playing after back was pressed.)
   bool _engineDisposed = false;
+  /// fix116: true when this Player adopted a pre-playing engine (swap).
+  /// Skips the open/_startPlayback step.
+  bool _adopted = false;
   bool fill = false;
   List<StreamSubscription<dynamic>> subscriptions = [];
 
@@ -138,9 +148,25 @@ class _PlayerState extends State<Player> {
   @override
   void initState() {
     super.initState();
-    _engineType = _pickEngine();
-    AppLog.info('Player: engine=$_engineType channel="${widget.channel.name}"');
-    _engine = _createEngine(_engineType);
+    final adopt = widget.adoptEngine;
+    if (adopt is MpvEngine) {
+      // fix116: adopt the already-playing engine from the swap. No create,
+      // no open — the stream stays live, avoiding the reopen stall.
+      _engineType = EngineType.libmpv;
+      _engine = adopt;
+      _adopted = true;
+      AppLog.info(
+        'Player: ADOPTED engine eid=${identityHashCode(adopt)}'
+        ' channel="${widget.channel.name}"',
+      );
+    } else {
+      _engineType = _pickEngine();
+      _engine = _createEngine(_engineType);
+      AppLog.info(
+        'Player: CREATED engine eid=${identityHashCode(_engine)}'
+        ' type=$_engineType channel="${widget.channel.name}"',
+      );
+    }
     // Register so the overlay swap can pop this route and take over.
     OverlayPlayerController.instance.registerMain(
       widget.channel,
@@ -151,6 +177,9 @@ class _PlayerState extends State<Player> {
     // fix106: let the swap path halt this player synchronously before
     // pushReplacement so it cannot fire a background reconnect.
     OverlayPlayerController.instance.registerMainHalt(haltForSwap);
+    // fix116: register detach callback so swap can hand the live engine off
+    // to the overlay without disposing it.
+    OverlayPlayerController.instance.registerMainDetach(detachForSwap);
     initAsync();
   }
 
@@ -235,6 +264,21 @@ class _PlayerState extends State<Player> {
         );
       }
     });
+
+    if (_adopted) {
+      // fix116: engine is already open and playing — just wire up its
+      // lifecycle streams and ensure full volume. No _startPlayback.
+      AppLog.info('Player: initAsync adopt path — skipping open'
+          ' eid=${identityHashCode(_engine)}'
+          ' channel="${widget.channel.name}"');
+      _subscribeEngineStreams();
+      AppLog.info('Player: re-subscribed engine streams (adopt)'
+          ' eid=${identityHashCode(_engine)}');
+      await _engine.setVolume(1.0);
+      AppLog.info('Player: adopt volume=1.0 set'
+          ' eid=${identityHashCode(_engine)}');
+      return;
+    }
 
     final channelId = widget.channel.id;
     final headers =
@@ -741,12 +785,18 @@ class _PlayerState extends State<Player> {
       s.cancel();
     }
     _engineSubs.clear();
-    // fix110: dispose only if not already disposed by haltForSwap/onExit.
-    // (fix106.4 keyed this off `exiting`, which onExit set without
-    // disposing — leaving the engine alive. _engineDisposed is precise.)
+    // fix110/116: dispose only if we still own the engine.
     if (!_engineDisposed) {
+      AppLog.info('Player: dispose() disposing owned engine'
+          ' eid=${identityHashCode(_engine)}'
+          ' channel="${widget.channel.name}"');
       _engine.dispose();
       _engineDisposed = true;
+    } else {
+      AppLog.info('Player: dispose() SKIP engine dispose'
+          ' (already disposed or handed off via swap)'
+          ' eid=${identityHashCode(_engine)}'
+          ' channel="${widget.channel.name}"');
     }
     super.dispose();
   }
@@ -932,6 +982,41 @@ class _PlayerState extends State<Player> {
       AppLog.warn('Player: haltForSwap dispose error — $e');
       _engineDisposed = true; // fix110: don't retry a failed dispose
     }
+  }
+
+  /// fix116: stop this player's reconnect/timers and RETURN its live engine
+  /// for handoff to the overlay, WITHOUT disposing it. Mirrors haltForSwap
+  /// but transfers ownership instead of tearing the engine down.
+  MpvEngine? detachForSwap() {
+    final e = _engine;
+    AppLog.info('Player: detachForSwap eid=${identityHashCode(e)}'
+        ' channel="${widget.channel.name}"'
+        ' isMpv=${e is MpvEngine}');
+    exiting = true;          // silence listener callbacks
+    _exitInvoked = true;     // guard onExit double-pop
+    _engineDisposed = true;  // CRITICAL: ownership moves to overlay; dispose()
+                             // must NOT dispose the handed-off engine.
+    AppLog.info('Player: detachForSwap set _engineDisposed=true'
+        ' (engine handed off, will NOT be disposed by this widget)'
+        ' eid=${identityHashCode(e)}');
+    _bufferingWatchdog?.cancel();
+    _bufferingWatchdog = null;
+    _startupWatchdog?.cancel();
+    _startupWatchdog = null;
+    _stableTimer?.cancel();
+    _stableTimer = null;
+    for (final s in _engineSubs) {
+      s.cancel();
+    }
+    _engineSubs.clear();
+    if (e is MpvEngine) {
+      AppLog.info('Player: detachForSwap returning engine'
+          ' eid=${identityHashCode(e)}');
+      return e;
+    }
+    AppLog.warn('Player: detachForSwap — engine not MpvEngine, returning null'
+        ' (caller will reopen)');
+    return null;
   }
 
   void onExit() async {

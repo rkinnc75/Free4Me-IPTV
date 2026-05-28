@@ -40,6 +40,10 @@ class OverlayPlayerController extends ChangeNotifier {
   /// the swap path can synchronously stop it before pushReplacement,
   /// preventing phantom background reconnect engines.
   Future<void> Function()? _mainHalt;
+  /// fix116: the outgoing full-screen player registers a "detach" callback
+  /// that stops its reconnect/timers and returns its live engine WITHOUT
+  /// disposing it, so the swap can hand that engine to the overlay.
+  MpvEngine? Function()? _mainDetach;
 
   Channel? get mainChannel => _mainChannel;
   Settings? get mainSettings => _mainSettings;
@@ -65,7 +69,8 @@ class OverlayPlayerController extends ChangeNotifier {
     _mainSettings = s;
     _mainSource = src;
     _mainEngine = engine;
-    _mainHalt = null; // fix106: new player registers its own halt below
+    _mainHalt = null;   // fix106: new player registers its own halt below
+    _mainDetach = null; // fix116: new player registers its own detach below
   }
 
   /// Unregisters [engine] as the main player.  If [engine] is provided and
@@ -83,7 +88,8 @@ class OverlayPlayerController extends ChangeNotifier {
     _mainSettings = null;
     _mainSource = null;
     _mainEngine = null;
-    _mainHalt = null; // fix106
+    _mainHalt = null;   // fix106
+    _mainDetach = null; // fix116
     // fix100: full-screen closed — if the mini-player is still up, it's now
     // the only player, so restore its audio.
     if (_engine != null) {
@@ -115,6 +121,71 @@ class OverlayPlayerController extends ChangeNotifier {
       AppLog.info('OverlayController: haltMain');
       await h();
     }
+  }
+
+  /// fix116: registers [detach] as the detach callback for the current main
+  /// player. Called by the Player in [initState] after [registerMainHalt].
+  void registerMainDetach(MpvEngine? Function() detach) {
+    _mainDetach = detach;
+  }
+
+  /// fix116: detach the current full-screen engine for handoff. Returns the
+  /// live engine (still playing) or null if none / not detachable.
+  MpvEngine? detachMain() {
+    final d = _mainDetach;
+    if (d != null) {
+      final e = d();
+      AppLog.info('OverlayController: detachMain →'
+          ' eid=${e == null ? 'null' : identityHashCode(e)}');
+      return e;
+    }
+    AppLog.info('OverlayController: detachMain — no detach callback');
+    return null;
+  }
+
+  /// fix116: like consumeOverlay but RETURNS the live engine instead of
+  /// disposing it, so the caller (swap) can hand it to the new full-screen
+  /// Player. The overlay's references are cleared but the engine keeps
+  /// playing. Returns null if no overlay is active.
+  ({Channel ch, Settings s, Source? src, MpvEngine engine})?
+      detachOverlayEngine() {
+    final ch = _channel;
+    final s = _settings;
+    final src = _source;
+    final e = _engine;
+    if (ch == null || s == null || e == null) {
+      AppLog.warn('OverlayController: detachOverlayEngine — nothing to detach');
+      return null;
+    }
+    AppLog.info('OverlayController: detachOverlayEngine'
+        ' eid=${identityHashCode(e)} channel="${ch.name}"');
+    // Clear references WITHOUT disposing — ownership transfers to the Player.
+    _engine = null;
+    _channel = null;
+    _settings = null;
+    _source = null;
+    notifyListeners();
+    return (ch: ch, s: s, src: src, engine: e);
+  }
+
+  /// fix116: install an already-playing engine as the overlay (no open).
+  /// Used by swap to demote the ex-full-screen engine into the mini-player.
+  void adoptOverlayEngine(
+    Channel ch,
+    Settings s,
+    Source? src,
+    MpvEngine engine, {
+    bool muted = true,
+  }) {
+    AppLog.info('OverlayController: adoptOverlayEngine'
+        ' eid=${identityHashCode(engine)}'
+        ' channel="${ch.name}" muted=$muted');
+    _channel = ch;
+    _settings = s;
+    _source = src;
+    _engine = engine;
+    unawaited(engine.setVolume(muted ? 0.0 : 1.0));
+    notifyListeners();
   }
 
 

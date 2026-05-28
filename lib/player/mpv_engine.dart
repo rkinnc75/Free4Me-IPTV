@@ -67,6 +67,11 @@ class MpvEngine implements PlayerEngine {
     _subs.add(_player.stream.completed.listen((v) => _completedCtrl.add(v)));
     _subs.add(_player.stream.error.listen((e) => _errorCtrl.add(e)));
     _subs.add(_player.stream.position.listen((p) => _positionCtrl.add(p)));
+
+    // fix116.5g: engine-identity tag so every engine can be followed
+    // end-to-end through create → detach → adopt → dispose in logs.
+    AppLog.info('MpvEngine: created eid=${identityHashCode(this)}'
+        ' channel="${channel.name}" previewMode=$previewMode');
   }
 
 
@@ -133,7 +138,7 @@ class MpvEngine implements PlayerEngine {
     }
     _disposed = true;
     AppLog.info(
-      'MpvEngine: dispose()'
+      'MpvEngine: dispose() eid=${identityHashCode(this)}'
       ' channel="${channel.name}"'
       ' previewMode=$previewMode',
     );

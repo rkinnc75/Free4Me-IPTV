@@ -1,7 +1,7 @@
 {
-  "latest": "1.22.4",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.22.4",
+  "latest": "1.22.5",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.22.5",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Build fix: removed an unused field that caused the CI build to fail with an unused_field warning. No behaviour change."
+  "releaseNotes": "\u2022 Fix: swapping the mini-player with the full-screen player no longer causes a 10\u201325 second black screen / buffering stall on channels whose stream URL stalls when re-opened immediately after close. Swap now hands the live engine objects between players instead of closing and reopening the stream \u2014 the promoted channel appears full-screen instantly because it was already decoding in the mini-player.\n\u2022 Technical: each engine instance is now tagged with a unique identity in the log, making swap handoffs end-to-end traceable: the same id flows from overlay \u2192 full-screen (adopt) and full-screen \u2192 overlay (demote), and confirms each engine is disposed exactly once."
 }

@@ -7,6 +7,18 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.22.5': [
+    'Fix: swapping the mini-player with the full-screen player no longer '
+        'causes a 10–25 second black screen / buffering stall on channels '
+        'whose stream URL stalls when re-opened immediately after close. '
+        'Swap now hands the live engine objects between players instead of '
+        'closing and reopening the stream — the promoted channel appears '
+        'full-screen instantly because it was already decoding in the mini-player.',
+    'Technical: each engine instance is now tagged with a unique identity '
+        'in the log, making swap handoffs end-to-end traceable: the same id '
+        'flows from overlay → full-screen (adopt) and full-screen → overlay '
+        '(demote), and confirms each engine is disposed exactly once.',
+  ],
   '1.22.4': [
     'Build fix: removed an unused field that caused the CI build to fail '
         'with an unused_field warning. No behaviour change.',

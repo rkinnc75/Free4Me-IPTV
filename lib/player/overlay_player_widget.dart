@@ -254,8 +254,7 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
         ' main="${_ctrl.mainChannel?.name ?? 'none'}"',
       );
 
-      // Capture main BEFORE consuming the overlay (consumeOverlay fires
-      // notifyListeners which can rebuild this widget).
+      // Capture main BEFORE detaching the overlay.
       final mainCh = _ctrl.mainChannel;
       final mainSettings = _ctrl.mainSettings;
       final mainSource = _ctrl.mainSource;
@@ -265,69 +264,86 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
         ' main="${mainCh?.name ?? 'none'}" hadMain=$hadMain',
       );
 
-      // fix106: halt the outgoing full-screen player synchronously so it
-      // cannot fire a background reconnect after its route is replaced
-      // (that created phantom previewMode=false engines). haltMain disposes
-      // its engine and cancels its timers; this also stops audio bleed, so
-      // the old muteMain call is no longer needed.
-      if (hadMain) {
-        await _ctrl.haltMain();
-      }
+      // fix116: detach (do NOT dispose) the outgoing full-screen engine so
+      // it can become the overlay. Returns null if not an MpvEngine.
+      final detachedMain = hadMain ? _ctrl.detachMain() : null;
 
-      final snapshot = await _ctrl.consumeOverlay();
-      if (snapshot == null) {
-        AppLog.warn('OverlayWidget: _swap ABORT — no overlay to consume');
+      // fix116: detach (do NOT dispose) the overlay engine so it can become
+      // the full-screen player.
+      final overlay = _ctrl.detachOverlayEngine();
+      if (overlay == null) {
+        AppLog.warn('OverlayWidget: _swap ABORT — no overlay to detach');
+        // Release the detached main if we grabbed it, to avoid a leak.
+        await detachedMain?.dispose();
         return;
       }
-      AppLog.info('OverlayWidget: _swap consumed overlay "${snapshot.ch.name}"');
+      AppLog.info(
+        'OverlayWidget: _swap detached'
+        ' overlay="${overlay.ch.name}" overlayEid=${identityHashCode(overlay.engine)}'
+        ' mainEid=${detachedMain == null ? 'null' : identityHashCode(detachedMain)}',
+      );
 
       // Promoted channel was live — clear any stale give-up cooldown so its
       // new Player starts immediately.
-      Player.clearCooldown(snapshot.ch.id);
+      Player.clearCooldown(overlay.ch.id);
 
       // fix104: replace the current full-screen route instead of pop+push.
-      // If there is no main, there is no full-screen route to replace, so
-      // push; otherwise pushReplacement swaps the route atomically.
+      // fix116: pass the live overlay engine (adoptEngine) — no reopen, no stall.
       final promoted = MaterialPageRoute(
         builder: (_) => Player(
-          channel: snapshot.ch,
-          settings: snapshot.s,
-          source: snapshot.src,
+          channel: overlay.ch,
+          settings: overlay.s,
+          source: overlay.src,
+          adoptEngine: overlay.engine, // fix116
         ),
       );
       if (hadMain) {
         AppLog.info(
-          'OverlayWidget: _swap pushReplacement → "${snapshot.ch.name}"'
-          ' (replacing "${mainCh.name}")',
+          'OverlayWidget: _swap pushReplacement → "${overlay.ch.name}" (adopt)',
         );
         _nav.pushReplacement(promoted);
       } else {
         AppLog.info(
-          'OverlayWidget: _swap push → "${snapshot.ch.name}"'
-          ' (no existing full-screen)',
+          'OverlayWidget: _swap push → "${overlay.ch.name}" (adopt)',
         );
         _nav.push(promoted);
       }
 
-      // Demote the ex-main channel into the overlay (muted — the promoted
-      // channel now owns full-screen audio). forceMuted avoids depending on
-      // the promoted Player's registerMain having fired yet.
+      // Demote the ex-full-screen channel into the overlay.
       if (hadMain) {
-        AppLog.info(
-          'OverlayWidget: _swap demoting "${mainCh.name}" → mini-player (muted)',
-        );
-        await _ctrl.startOverlay(
-          mainCh, mainSettings, mainSource,
-          forceMuted: true,
-        );
+        if (detachedMain != null) {
+          // fix116: adopt the live ex-main engine as the overlay — no reopen.
+          AppLog.info(
+            'OverlayWidget: _swap demoting "${mainCh.name}"'
+            ' → mini-player (adopt, muted)',
+          );
+          _ctrl.adoptOverlayEngine(
+            mainCh, mainSettings, mainSource, detachedMain,
+            muted: true,
+          );
+        } else {
+          // Fallback: ex-main wasn't an MpvEngine — reopen as overlay.
+          AppLog.info(
+            'OverlayWidget: _swap demoting "${mainCh.name}"'
+            ' → mini-player (reopen fallback, muted)',
+          );
+          await _ctrl.startOverlay(
+            mainCh, mainSettings, mainSource,
+            forceMuted: true,
+          );
+        }
         AppLog.info(
           'OverlayWidget: _swap DONE'
-          ' full-screen="${snapshot.ch.name}" mini="${mainCh.name}"',
+          ' full-screen="${overlay.ch.name}" fullEid=${identityHashCode(overlay.engine)}'
+          '${detachedMain != null
+              ? ' mini="${mainCh.name}" miniEid=${identityHashCode(detachedMain)}'
+              : ' mini="${mainCh.name}" (reopened)'}',
         );
       } else {
         AppLog.info(
           'OverlayWidget: _swap DONE'
-          ' full-screen="${snapshot.ch.name}" mini=none',
+          ' full-screen="${overlay.ch.name}" fullEid=${identityHashCode(overlay.engine)}'
+          ' mini=none',
         );
       }
     } finally {
