@@ -65,6 +65,10 @@ class _MultiViewCellState extends State<MultiViewCell> {
   bool _error = false;
   bool _loading = false;
 
+  /// Shown in the loading overlay during transient retries.
+  /// Null when not retrying — reverts the cell to a plain spinner.
+  String? _retryMessage;
+
   /// Used to cancel an in-flight open() if the channel changes before it
   /// completes.
   int _openGeneration = 0;
@@ -355,13 +359,22 @@ class _MultiViewCellState extends State<MultiViewCell> {
         _lastTransientIncrementAt = now;
         _transientRetries++;
         final attempt = _transientRetries;
+        final maxAttempts = widget.settings.maxReconnectAttempts;
+        if (mounted) {
+          setState(() {
+            _retryMessage = 'Retrying $attempt/$maxAttempts…';
+            _loading = true;
+            _error = false;
+          });
+        }
         Future.delayed(const Duration(seconds: 3), () {
           if (mounted && generation == _openGeneration) {
             AppLog.info(
-              'MultiViewCell: retry $attempt/${widget.settings.maxReconnectAttempts}'
+              'MultiViewCell: retry $attempt/$maxAttempts'
               ' cell=${widget.cellIndex}'
               ' channel="${ch.name}"',
             );
+            if (mounted) setState(() => _retryMessage = null);
             _disposeEngine();
             _startEngine(ch);
           }
@@ -480,6 +493,7 @@ class _MultiViewCellState extends State<MultiViewCell> {
     setState(() {
       _engine = engine;
       _loading = false;
+      _retryMessage = null;
     });
   }
 
@@ -614,14 +628,36 @@ class _MultiViewCellState extends State<MultiViewCell> {
   }
 
   Widget _buildLoadingCell() {
-    return const ColoredBox(
+    return ColoredBox(
       color: Colors.black,
       child: Center(
-        child: SizedBox(
-          width: 24,
-          height: 24,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
+        child: _retryMessage != null
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white54,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _retryMessage!,
+                    style: const TextStyle(
+                      color: Colors.white54,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              )
+            : const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
       ),
     );
   }

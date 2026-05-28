@@ -405,33 +405,46 @@ class _PlayerState extends State<Player> {
       _stableTimer?.cancel();
       _stableTimer = null;
 
-      // Pop back to the channel list and surface a snackbar so the user
-      // knows why playback stopped. Without this the screen freezes with
-      // no controls — the only exit was force-closing the app.
-      if (mounted && Navigator.canPop(context)) {
+      // Pop back to the channel list with a snackbar.
+      // Cannot use onExit() — it guards with `if (exiting) return` and
+      // exiting is already true above. Cannot use Navigator.canPop() —
+      // PopScope(canPop:false) always returns false.
+      // Restore orientation/UI directly, then pop.
+      if (mounted) {
         final channelName = widget.channel.name;
-        Navigator.pop(context);
-        // Show snackbar on the underlying screen after pop completes.
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          final messenger = ScaffoldMessenger.maybeOf(context);
-          if (messenger != null) {
-            messenger.showSnackBar(
+        final maxAttempts = widget.settings.maxReconnectAttempts;
+        unawaited(PipController.setPlaying(false));
+        await SystemChrome.setPreferredOrientations([
+          DeviceOrientation.portraitUp,
+          DeviceOrientation.portraitDown,
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]);
+        await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+        if (mounted) {
+          Navigator.of(context).pop();
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            ScaffoldMessenger.maybeOf(context)?.showSnackBar(
               SnackBar(
                 content: Text(
                   '"$channelName" failed to load after '
-                  '${widget.settings.maxReconnectAttempts} attempts — stream may be unavailable.',
+                  '$maxAttempts attempts — stream may be unavailable.',
                 ),
                 duration: const Duration(seconds: 5),
               ),
             );
-          }
-        });
+          });
+        }
       }
       return;
     }
 
     AppLog.info('Player: reconnect — $reason');
-    if (mounted) setState(() => _bufferingState = 'Reconnecting...');
+    if (mounted) {
+      setState(() => _bufferingState =
+          'Retrying $_totalReconnectAttempts'
+          '/${widget.settings.maxReconnectAttempts}…');
+    }
     await Future.delayed(const Duration(seconds: 1));
     if (!mounted || exiting) {
       _isReconnecting = false;

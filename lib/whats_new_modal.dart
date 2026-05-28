@@ -7,6 +7,15 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.21.1': [
+    'Fix: when a stream exhausts all reconnect attempts, the player now '
+        'correctly returns to the channel list. The previous fix (v1.20.2) '
+        'was blocked by the back-gesture guard and never fired.',
+    'Full-screen reconnect overlay now shows "Retrying 1/6…" '
+        'instead of a static "Reconnecting…" message.',
+    'Multi-view cells now show a retry counter ("Retrying 1/6…") '
+        'below the spinner during transient reconnects.',
+  ],
   '1.21.0': [
     'New setting: Max Reconnect Attempts (Settings → Buffering). '
         'Controls how many times the app retries a failed stream before '
