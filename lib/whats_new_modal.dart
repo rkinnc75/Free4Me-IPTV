@@ -7,6 +7,18 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.22.2': [
+    'Fix (critical): audio no longer keeps playing after pressing back. '
+        'A guard introduced in v1.22.0 to prevent double-dispose accidentally '
+        'skipped engine disposal on the normal exit path — the engine stayed '
+        'alive and audio continued until force-close. The engine is now '
+        'explicitly stopped when the player exits.',
+    'Fix: mini-player now renders correctly. The hardware-decode option '
+        '(mediacodec-copy) added in v1.22.1 was never actually applied to '
+        'the overlay engine because mpv options must be set before open() '
+        'is called, and that call was missing. The overlay now calls '
+        'reapplyOptions before open, so the hwdec setting takes effect.',
+  ],
   '1.22.1': [
     'Fix: mini-player (and multi-view cells) no longer show a permanent '
         'black screen with a spinner. The overlay was forced into pure CPU '

@@ -1,7 +1,7 @@
 {
-  "latest": "1.22.1",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.22.1",
+  "latest": "1.22.2",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.22.2",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: mini-player (and multi-view cells) no longer show a permanent black screen with a spinner. The overlay was forced into pure CPU decode, which stalls silently on MPEG-TS/H.264 streams even though the same channel plays fine in full-screen. The overlay now uses hardware decode in copy mode (mediacodec-copy on Android), which avoids decoder-pool contention while reliably rendering frames.\n\u2022 The Hardware Decode toggle in Settings still applies to the mini-player \u2014 turning it off falls back to CPU decode as before."
+  "releaseNotes": "\u2022 Fix (critical): audio no longer keeps playing after pressing back. A guard introduced in v1.22.0 to prevent double-dispose accidentally skipped engine disposal on the normal exit path \u2014 the engine stayed alive and audio continued until force-close. The engine is now explicitly stopped when the player exits.\n\u2022 Fix: mini-player now renders correctly. The hardware-decode option (mediacodec-copy) added in v1.22.1 was never actually applied to the overlay engine because mpv options must be set before open() is called, and that call was missing. The overlay now calls reapplyOptions before open, so the hwdec setting takes effect."
 }

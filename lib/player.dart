@@ -76,6 +76,12 @@ class _PlayerState extends State<Player> {
   /// listeners; using it as the onExit guard meant the back button was
   /// dead on the stuck buffering screen (fixed in fix90).
   bool _exitInvoked = false;
+  /// fix110: tracks whether _engine has been disposed, so dispose() can
+  /// avoid a double-dispose WITHOUT skipping disposal on the onExit path.
+  /// (fix106.4 used `exiting` for this, but onExit sets exiting=true
+  /// without disposing the engine — that left the engine alive and audio
+  /// playing after back was pressed.)
+  bool _engineDisposed = false;
   bool fill = false;
   List<StreamSubscription<dynamic>> subscriptions = [];
 
@@ -696,10 +702,12 @@ class _PlayerState extends State<Player> {
       s.cancel();
     }
     _engineSubs.clear();
-    // fix106: haltForSwap (or onExit) may have already disposed the engine
-    // when exiting is true. Guard against a double-dispose.
-    if (!exiting) {
+    // fix110: dispose only if not already disposed by haltForSwap/onExit.
+    // (fix106.4 keyed this off `exiting`, which onExit set without
+    // disposing — leaving the engine alive. _engineDisposed is precise.)
+    if (!_engineDisposed) {
       _engine.dispose();
+      _engineDisposed = true;
     }
     super.dispose();
   }
@@ -880,8 +888,10 @@ class _PlayerState extends State<Player> {
     _stableTimer = null;
     try {
       await _engine.dispose();
+      _engineDisposed = true; // fix110
     } catch (e) {
       AppLog.warn('Player: haltForSwap dispose error — $e');
+      _engineDisposed = true; // fix110: don't retry a failed dispose
     }
   }
 
@@ -900,6 +910,19 @@ class _PlayerState extends State<Player> {
     }
     if (_engine.handlesOwnFullscreen && _engine.isFullscreen) {
       await _engine.exitFullscreen();
+    }
+    // fix110: dispose the engine here so audio/video stop the moment the
+    // user exits. Previously disposal was left to the widget dispose(),
+    // but fix106.4's guard skipped it when exiting=true — audio kept
+    // playing until force-close.
+    if (!_engineDisposed) {
+      try {
+        await _engine.dispose();
+        _engineDisposed = true;
+      } catch (e) {
+        AppLog.warn('Player: onExit dispose error — $e');
+        _engineDisposed = true;
+      }
     }
     await SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,

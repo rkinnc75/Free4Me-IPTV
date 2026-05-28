@@ -160,6 +160,11 @@ class OverlayPlayerController extends ChangeNotifier {
     _engine = engine;
     notifyListeners();
 
+    // fix110: apply mpv options (hwdec, demuxer, buffer) BEFORE open().
+    // Without this the overlay engine never gets fix108's mediacodec-copy
+    // hwdec and ran on mpv's default decode path, which stalled on these
+    // streams — the mini-player opened but never rendered (frozen black).
+    await engine.reapplyOptions(url: url);
     await engine.open(url: url);
     AppLog.info('OverlayController: overlay open() succeeded channel="${ch.name}"');
   }
