@@ -405,9 +405,28 @@ class _PlayerState extends State<Player> {
       _bufferingWatchdog = null;
       _stableTimer?.cancel();
       _stableTimer = null;
-      if (mounted) {
-        setState(() => _bufferingState =
-            'Stream unavailable — too many failed attempts. Try again shortly.');
+
+      // fix82: pop back to the channel list and surface a snackbar so the
+      // user knows why playback stopped. Without this the screen freezes
+      // with no controls — the only exit was force-closing the app.
+      if (mounted && Navigator.canPop(context)) {
+        final channelName = widget.channel.name;
+        Navigator.pop(context);
+        // Show snackbar on the underlying screen after pop completes.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final messenger = ScaffoldMessenger.maybeOf(context);
+          if (messenger != null) {
+            messenger.showSnackBar(
+              SnackBar(
+                content: Text(
+                  '"$channelName" failed to load after '
+                  '$_maxReconnectAttempts attempts — stream may be unavailable.',
+                ),
+                duration: const Duration(seconds: 5),
+              ),
+            );
+          }
+        });
       }
       return;
     }
@@ -586,7 +605,6 @@ class _PlayerState extends State<Player> {
     super.dispose();
   }
 
-  // ── Cast ───────────────────────────────────────────────────────────────────
 
   Future<void> _onCastTap() async {
     if (!_castSupported) return;
@@ -624,7 +642,6 @@ class _PlayerState extends State<Player> {
         });
         // Resume locally from Cast-reported position.
         // reapplyOptions() must precede open() since open() no longer
-        // calls _applyMpvOptions() internally (fix6).
         if (_engine case final MpvEngine mpv) {
           await mpv.reapplyOptions(url: url);
         }
@@ -682,7 +699,6 @@ class _PlayerState extends State<Player> {
     return Icons.cast;
   }
 
-  // ── Track selection ────────────────────────────────────────────────────────
 
   Future<void> openSubtitlesModal() async {
     final tracks = _engine.subtitleTracks;
@@ -720,7 +736,6 @@ class _PlayerState extends State<Player> {
     );
   }
 
-  // ── Zoom toggle (mpv only) ─────────────────────────────────────────────────
 
   void toggleZoom() {
     final engine = _engine;
@@ -735,7 +750,6 @@ class _PlayerState extends State<Player> {
     setState(() => fill = !fill);
   }
 
-  // ── Mini-player ────────────────────────────────────────────────────────────
 
   /// Sends the current channel to the floating overlay and pops this route.
   Future<void> _minimizeToOverlay() async {
@@ -747,7 +761,6 @@ class _PlayerState extends State<Player> {
     if (mounted) onExit();
   }
 
-  // ── Exit ───────────────────────────────────────────────────────────────────
 
   void onExit() async {
     if (exiting) return;
@@ -773,7 +786,6 @@ class _PlayerState extends State<Player> {
     if (mounted) Navigator.of(context).pop();
   }
 
-  // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {

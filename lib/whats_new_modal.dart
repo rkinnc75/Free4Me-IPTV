@@ -7,6 +7,13 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.20.2': [
+    'Fix: when a stream fails after the maximum number of reconnect attempts, '
+        'the player now automatically returns to the channel list and shows a '
+        'brief message explaining the stream is unavailable. Previously the '
+        'screen froze with no visible controls — the only way out was '
+        'force-closing the app.',
+  ],
   '1.20.1': [
     'Fix: multi-view channel picker now opens instantly. '
         'The initial browse previously fetched the entire Live TV catalogue '

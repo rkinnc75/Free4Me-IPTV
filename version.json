@@ -1,7 +1,7 @@
 {
-  "latest": "1.20.1",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.20.1",
+  "latest": "1.20.2",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.20.2",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: multi-view channel picker now opens instantly. The initial browse previously fetched the entire Live TV catalogue (\u223c8\u202f400 SQL round-trips for 302\u202fk channels) before showing anything. It now loads a single page in under 60\u202fms. Favourites and validated channels still appear at the top because the database already returns them first."
+  "releaseNotes": "\u2022 Fix: when a stream fails after the maximum number of reconnect attempts, the player now automatically returns to the channel list and shows a brief message explaining the stream is unavailable. Previously the screen froze with no visible controls \u2014 the only way out was force-closing the app."
 }
