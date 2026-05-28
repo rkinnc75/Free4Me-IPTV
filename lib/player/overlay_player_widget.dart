@@ -305,9 +305,15 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
       ),
     );
 
-    // Start the ex-main channel as the new muted overlay
+    // Start the ex-main channel as the new overlay. It must be muted —
+    // the ex-overlay channel is becoming the audible full-screen player.
+    // fix100.4: pass forceMuted so this doesn't depend on registerMain
+    // having already fired for the new full-screen player (async race).
     if (mainCh != null && mainSettings != null) {
-      await _ctrl.startOverlay(mainCh, mainSettings, mainSource);
+      await _ctrl.startOverlay(
+        mainCh, mainSettings, mainSource,
+        forceMuted: true,
+      );
     }
   }
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/models/channel.dart';
@@ -9,14 +11,15 @@ import 'package:open_tv/player/player_engine.dart';
 /// Singleton that manages the picture-in-picture overlay player.
 ///
 /// The overlay always uses [MpvEngine] (supports all stream formats) and
-/// plays muted.  The full-screen [Player] widget registers itself so the
+/// plays with audio when it is the only active player, and is muted while
+/// a full-screen [Player] is active.  The full-screen Player registers
+/// itself so the
 /// swap operation can pop it and start a fresh [Player] for the ex-overlay
 /// channel.
 class OverlayPlayerController extends ChangeNotifier {
   OverlayPlayerController._();
   static final instance = OverlayPlayerController._();
 
-  // ── Overlay state ──────────────────────────────────────────────────────────
 
   Channel? _channel;
   Settings? _settings;
@@ -28,7 +31,6 @@ class OverlayPlayerController extends ChangeNotifier {
   MpvEngine? get engine => _engine;
   Alignment get corner => _corner;
 
-  // ── Main player registration (set by the active Player route) ─────────────
 
   Channel? _mainChannel;
   Settings? _mainSettings;
@@ -41,6 +43,20 @@ class OverlayPlayerController extends ChangeNotifier {
 
   void registerMain(Channel ch, Settings s, Source? src, PlayerEngine engine) {
     AppLog.info('OverlayController: registerMain channel="${ch.name}"');
+    // fix100: mute the outgoing main engine on handoff so its audio doesn't
+    // bleed under the new player. Replaces fix98.2's RouteAware muting,
+    // which misfired on the newly-created player and opened it muted.
+    final previous = _mainEngine;
+    if (previous != null && previous != engine) {
+      AppLog.info('OverlayController: muting outgoing main on handoff');
+      unawaited(previous.setVolume(0.0));
+    }
+    // fix100: a full-screen player is taking over audio — mute the
+    // mini-player overlay (if any) so only one source is audible.
+    if (_engine != null) {
+      AppLog.info('OverlayController: muting overlay — full-screen active');
+      unawaited(_engine!.setVolume(0.0));
+    }
     _mainChannel = ch;
     _mainSettings = s;
     _mainSource = src;
@@ -62,6 +78,12 @@ class OverlayPlayerController extends ChangeNotifier {
     _mainSettings = null;
     _mainSource = null;
     _mainEngine = null;
+    // fix100: full-screen closed — if the mini-player is still up, it's now
+    // the only player, so restore its audio.
+    if (_engine != null) {
+      AppLog.info('OverlayController: restoring overlay audio');
+      unawaited(_engine!.setVolume(1.0));
+    }
   }
 
   /// Mutes the currently active main player so audio doesn't bleed during
@@ -71,10 +93,19 @@ class OverlayPlayerController extends ChangeNotifier {
     await _mainEngine?.setVolume(0.0);
   }
 
-  // ── Overlay lifecycle ──────────────────────────────────────────────────────
 
   /// Start (or restart) the overlay for [ch].
-  Future<void> startOverlay(Channel ch, Settings s, Source? src) async {
+  ///
+  /// [forceMuted] forces the overlay to start muted regardless of whether a
+  /// full-screen player is currently registered. Used by the swap path
+  /// (fix100.4) where the new full-screen player's [registerMain] may not
+  /// have fired yet when this is called.
+  Future<void> startOverlay(
+    Channel ch,
+    Settings s,
+    Source? src, {
+    bool forceMuted = false,
+  }) async {
     AppLog.info('OverlayController: startOverlay channel="${ch.name}"');
     await _disposeEngine();
     _channel = ch;
@@ -95,9 +126,13 @@ class OverlayPlayerController extends ChangeNotifier {
       // hardware decoder pool and shared bandwidth budget.
       previewMode: true,
     );
-    // Mute BEFORE open so the stream starts silent — avoids the window between
-    // playback starting and a post-open setVolume call reaching the mpv queue.
-    await engine.setVolume(0.0);
+    // fix100: the mini-player now plays WITH audio when it is the only
+    // active player. If a full-screen player is already registered, start
+    // muted (full-screen owns audio); otherwise start audible.
+    // fix100.4: forceMuted covers the swap transition where the new full-screen
+    // player's registerMain may not have fired yet.
+    final fullScreenActive = forceMuted || _mainEngine != null;
+    await engine.setVolume(fullScreenActive ? 0.0 : 1.0);
     _engine = engine;
     notifyListeners();
 
@@ -120,7 +155,6 @@ class OverlayPlayerController extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── Swap helpers (called by OverlayPlayerWidget) ───────────────────────────
 
   /// Returns a snapshot of the current overlay state and disposes the engine,
   /// clearing the channel.  Returns null if no overlay is active.
@@ -139,7 +173,6 @@ class OverlayPlayerController extends ChangeNotifier {
     return (ch: ch, s: s, src: src);
   }
 
-  // ── Internal ───────────────────────────────────────────────────────────────
 
   Future<void> _disposeEngine() async {
     final e = _engine;

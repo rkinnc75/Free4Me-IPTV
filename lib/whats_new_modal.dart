@@ -7,6 +7,15 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.21.6': [
+    'Fix: full-screen player no longer opens muted. The route-based muting '
+        'added in v1.21.5 misfired on the newly created player itself. '
+        'Audio handoff is now tied to the player registration handoff instead '
+        'of route push/pop timing.',
+    'New: mini-player now plays with audio when it is the only active player. '
+        'It mutes when a full-screen player opens and unmutes when the '
+        'full-screen player closes.',
+  ],
   '1.21.5': [
     'Fix: tapping the mini-player to go full-screen while another full-screen '
         'channel was already playing caused double audio. The old player is now '
