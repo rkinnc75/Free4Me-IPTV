@@ -64,7 +64,6 @@ class SettingsIo {
                     'name': p.name,
                     if (p.favorite != null) 'favorite': p.favorite,
                     if (p.lastWatched != null) 'lastWatched': p.lastWatched,
-                    // fix58.3: also export EPG assignments so restore-from-backup
                     // preserves matched channel IDs across source refresh.
                     if (p.epgChannelId != null) 'epgChannelId': p.epgChannelId,
                     if (p.epgManualOverride != null)
@@ -182,7 +181,6 @@ class SettingsIo {
         final rawSettings = payload['settings'] as Map<String, dynamic>;
         final settings = _settingsFromMap(rawSettings);
 
-        // fix30 diagnostic — log what arrived in the payload alongside
         // what _settingsFromMap produced. If a v2 backup is imported,
         // the multi-view fields are absent from rawSettings and the
         // resulting settings hold constructor defaults. That's expected
@@ -199,7 +197,6 @@ class SettingsIo {
         );
 
         await SettingsService.updateSettings(settings);
-        // fix60.3: activate the logger immediately so the rest of
         // the import session is captured. Without this, a fresh
         // install that imports a backup with debugLogging=true
         // produces an empty log file for the entire first session.
@@ -222,7 +219,6 @@ class SettingsIo {
           );
           await Sql.commitWrite([Sql.getOrCreateSourceByName(source)]);
 
-          // fix48.2: log the enabled state so the log confirms what was written.
           AppLog.info(
             'SettingsIo.import: source "${source.name}"'
             ' enabled=${source.enabled}'
@@ -244,7 +240,6 @@ class SettingsIo {
                     name: m['name'] as String,
                     favorite: m['favorite'] as int?,
                     lastWatched: m['lastWatched'] as int?,
-                    // fix58.3: read EPG assignments written by updated export.
                     epgChannelId: m['epgChannelId'] as String?,
                     epgManualOverride: m['epgManualOverride'] as String?,
                   );
@@ -261,7 +256,6 @@ class SettingsIo {
         }
       }
 
-      // fix33: callers are responsible for showing post-import
       // feedback (the new showSourcesRefreshDialog supersedes the
       // old "Refreshing in the background…" snackbar — the dialog
       // is what the user actually sees during refresh).
@@ -357,6 +351,7 @@ class SettingsIo {
         'miniDemuxerMaxMB': s.miniDemuxerMaxMB,
         'bufferSizeMB': s.bufferSizeMB,
         'streamCompletedDelayMs': s.streamCompletedDelayMs,
+        'maxReconnectAttempts': s.maxReconnectAttempts,
         'streamScanMaxCount': s.streamScanMaxCount,
         'streamScanTimeoutSecs': s.streamScanTimeoutSecs,
         'multiViewLayout': s.multiViewLayout.toJson(),
@@ -398,12 +393,14 @@ class SettingsIo {
       epgForecastDays: m['epgForecastDays'] as int? ?? 7,
     );
 
-    // v3 overlay — only assign if present in the payload.
     if (m['startupGraceMs'] is int) s.startupGraceMs = m['startupGraceMs'];
     if (m['miniDemuxerMaxMB'] is int) s.miniDemuxerMaxMB = m['miniDemuxerMaxMB'];
     if (m['bufferSizeMB'] is int) s.bufferSizeMB = m['bufferSizeMB'];
     if (m['streamCompletedDelayMs'] is int) {
       s.streamCompletedDelayMs = m['streamCompletedDelayMs'];
+    }
+    if (m['maxReconnectAttempts'] is int) {
+      s.maxReconnectAttempts = m['maxReconnectAttempts'];
     }
     if (m['streamScanMaxCount'] is int) {
       s.streamScanMaxCount = m['streamScanMaxCount'];

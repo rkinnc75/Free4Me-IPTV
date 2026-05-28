@@ -38,13 +38,6 @@ import 'package:open_tv/widgets/sources_refresh_dialog.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-// ─── Help copy constants ─────────────────────────────────────────────────────
-// All strings are final per the development handbook. Do not paraphrase.
-
-// fix61: all help constants rewritten for clarity, accuracy, and consistency.
-// Key corrections: safe mode no longer claims cache is rebuilt on toggle (stale
-// since fix55); show-livestreams now mentions the multi-view picker.
-
 const _helpDefaultView = (
   title: 'Default View',
   body:
@@ -136,8 +129,6 @@ const _helpShowSeries = (
       'At least one content type must stay enabled.',
 );
 
-// fix61: removed stale "in-memory search cache is rebuilt immediately" line
-// (incorrect since fix55 — adult filtering is applied at search time).
 const _helpSafeMode = (
   title: 'Safe Mode',
   body:
@@ -249,6 +240,24 @@ const _helpOpenTimeout = (
       'make retries quicker, but may give up too soon on slow providers.',
 );
 
+const _helpMaxReconnectAttempts = (
+  title: 'Max Reconnect Attempts',
+  body:
+      'How many times the app retries a failed stream before giving up.\n\n'
+      'Default: 6. Range: 1–10.\n\n'
+      'Applies to both full-screen playback and multi-view cells.\n\n'
+      'Full-screen: after the limit is reached the player automatically '
+      'returns to the channel list and shows a message.\n\n'
+      'Multi-view: after the limit is reached the cell shows '
+      '"Stream unavailable" with a manual Retry button.\n\n'
+      '↑ Increasing — gives flaky streams more chances to recover. '
+      'Useful for providers with intermittent connection drops that '
+      'usually resolve on their own.\n\n'
+      '↓ Decreasing — fails faster on dead streams. Set to 1–2 if '
+      'you want the app to give up quickly and prefer to pick a '
+      'different channel manually.',
+);
+
 const _helpWatchdog = (
   title: 'Buffering Watchdog (seconds)',
   body:
@@ -265,7 +274,6 @@ const _helpWatchdog = (
       'watchdog.',
 );
 
-// ─── Widget ──────────────────────────────────────────────────────────────────
 
 class SettingsView extends StatefulWidget {
   final bool showNavBar;
@@ -556,7 +564,6 @@ class _SettingsState extends State<SettingsView> {
     final results = <String>[];
 
     bool dialogOpen = true;
-    // fix50.D: clear any stale setSt from a previous dialog before opening
     // a new one. After a dialog closes, _refreshSetState still holds its
     // disposed widget's setSt. Calling it throws "Null check operator used
     // on a null value" inside Flutter's State.setState (_element! is null
@@ -638,7 +645,6 @@ class _SettingsState extends State<SettingsView> {
           source,
           epgUrl: url,
           onProgress: (p) {
-            // fix50.C: only update program count during download phase.
             // matchChannels fires onProgress with programsInserted: 0
             // (it doesn't insert programs). Without this guard the
             // match-phase callbacks overwrite sourceInserted with 0,
@@ -737,7 +743,7 @@ class _SettingsState extends State<SettingsView> {
     int matchDone = 0;
     int matchTotal = 0;
     bool dialogOpen = true;
-    _refreshSetState = null; // fix50.D — clear stale disposed-dialog reference
+    _refreshSetState = null;
 
     showDialog(
       context: ctx,
@@ -962,7 +968,6 @@ class _SettingsState extends State<SettingsView> {
     );
   }
 
-  // ─── Reusable helper widgets ──────────────────────────────────────────────
 
   /// A section header with the standard style.
   Widget _sectionHeader(String label) {
@@ -1185,7 +1190,6 @@ class _SettingsState extends State<SettingsView> {
         MultiViewLayout.twoByTwo => '2×2',
       };
 
-  // ── fix68: search method picker ───────────────────────────────────────────
 
   String _searchMethodShortLabel(SearchMethod m) => switch (m) {
         SearchMethod.ftsAnd => 'FTS AND',
@@ -1240,7 +1244,6 @@ class _SettingsState extends State<SettingsView> {
     );
   }
 
-  // fix55: explicit method→label pairs so enum index order can never drift.
   static const _searchMethodOptions = [
     (method: SearchMethod.ftsAnd,        label: 'FTS AND (recommended)'),
     (method: SearchMethod.ftsTrigram,    label: 'FTS Phrase (original)'),
@@ -1284,7 +1287,6 @@ class _SettingsState extends State<SettingsView> {
     );
   }
 
-  // ─── Build ────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -1312,7 +1314,6 @@ class _SettingsState extends State<SettingsView> {
                   ),
                   const SizedBox(height: 10),
 
-                  // ── Donate ──────────────────────────────────────────────
                   ListTile(
                     autofocus: true,
                     title: const Text("Donate"),
@@ -1327,7 +1328,6 @@ class _SettingsState extends State<SettingsView> {
                     ),
                   ),
 
-                  // ── Playback ─────────────────────────────────────────────
                   ExpansionTile(
                     key: const PageStorageKey('playback'),
                     leading: const Icon(Icons.play_circle_outline),
@@ -1383,7 +1383,6 @@ class _SettingsState extends State<SettingsView> {
 
                   const Divider(),
 
-                  // ── Buffering ─────────────────────────────────────────────
                   ExpansionTile(
                     key: const PageStorageKey('buffering'),
                     leading: const Icon(Icons.tune),
@@ -1625,10 +1624,23 @@ class _SettingsState extends State<SettingsView> {
                         updateSettings();
                       },
                     ),
+                  _bufferSlider(
+                    label: "Max reconnect attempts",
+                    value: settings.maxReconnectAttempts.toDouble(),
+                    min: 1,
+                    max: 10,
+                    divisions: 9,
+                    help: _helpMaxReconnectAttempts,
+                    onChanged: (v) {
+                      setState(
+                        () => settings.maxReconnectAttempts = v.round(),
+                      );
+                      updateSettings();
+                    },
+                  ),
                     ],
                   ),
 
-                  // ── Multi-view ────────────────────────────────────────────
                   ExpansionTile(
                     key: const PageStorageKey('multiview'),
                     leading: const Icon(Icons.grid_view),
@@ -1684,7 +1696,6 @@ class _SettingsState extends State<SettingsView> {
 
                   const Divider(),
 
-                  // ── Content ───────────────────────────────────────────────
                   ExpansionTile(
                     key: const PageStorageKey('content'),
                     leading: const Icon(Icons.filter_list),
@@ -1698,7 +1709,6 @@ class _SettingsState extends State<SettingsView> {
                     childrenPadding: EdgeInsets.zero,
                     initiallyExpanded: false,
                     children: [
-                      // fix72: Default view moved here from top-level.
                       ListTile(
                         title: GestureDetector(
                           onTap: () => SettingHelpDialog.show(
@@ -1813,9 +1823,7 @@ class _SettingsState extends State<SettingsView> {
                           updateSettings();
                         },
                       ),
-                      // fix68: search method picker
                       _searchMethodTile(settings),
-                      // fix70: safe mode — exclude adult content
                       _switchTile(
                         label: 'Safe mode',
                         value: settings.safeMode,
@@ -1823,8 +1831,6 @@ class _SettingsState extends State<SettingsView> {
                         onChanged: (v) async {
                           setState(() => settings.safeMode = v);
                           await updateSettings();
-                          // fix55: no cache rebuild needed — adultBlocked is
-                          // stored per entry and filtered at search time.
                           if (!mounted) return;
                           // Capture messenger before the async gap is crossed.
                           final messenger = ScaffoldMessenger.of(context);
@@ -1903,7 +1909,6 @@ class _SettingsState extends State<SettingsView> {
 
                   const Divider(),
 
-                  // ── EPG ───────────────────────────────────────────────────
                   ExpansionTile(
                     key: const PageStorageKey('epg'),
                     leading: const Icon(Icons.calendar_month),
@@ -2174,7 +2179,6 @@ class _SettingsState extends State<SettingsView> {
 
                   const Divider(),
 
-                  // ── Diagnostics ───────────────────────────────────────────
                   _sectionHeader("Diagnostics"),
                   _switchTile(
                     label: "Enable debug logging",
@@ -2245,7 +2249,6 @@ class _SettingsState extends State<SettingsView> {
 
                   const Divider(),
 
-                  // ── Backup & Restore ──────────────────────────────────────
                   _sectionHeader("Backup & Restore"),
                   ListTile(
                     leading: const Icon(Icons.upload_file),
@@ -2293,12 +2296,6 @@ class _SettingsState extends State<SettingsView> {
                           await SettingsIo.importFromFile(context);
                       if (!context.mounted) return;
                       if (imported) {
-                        // fix33: block on a progress-dialog refresh so
-                        // the Settings UI doesn't end up showing partial
-                        // post-import state. Channel-attribute restores
-                        // (favorites / last-watched) get applied via the
-                        // SettingsIo.applyPendingPreserves hook from
-                        // fix28 while the dialog is up.
                         await showSourcesRefreshDialog(context);
                       }
                       if (!context.mounted) return;
@@ -2308,7 +2305,6 @@ class _SettingsState extends State<SettingsView> {
 
                   const Divider(),
 
-                  // ── Reset ─────────────────────────────────────────────────
                   _sectionHeader("Reset"),
                   ListTile(
                     leading: const Icon(Icons.refresh),
@@ -2362,7 +2358,6 @@ class _SettingsState extends State<SettingsView> {
                       );
                     },
                   ),
-                  // fix74: clear persisted stream scan results.
                   ListTile(
                     leading: const Icon(Icons.wifi_tethering_off),
                     title: const Text("Clear stream validation"),
@@ -2410,7 +2405,6 @@ class _SettingsState extends State<SettingsView> {
 
                   const Divider(),
 
-                  // ── App ───────────────────────────────────────────────────
                   _sectionHeader("App"),
                   ListTile(
                     leading: const Icon(Icons.system_update_outlined),
@@ -2441,7 +2435,6 @@ class _SettingsState extends State<SettingsView> {
 
                   const Divider(),
 
-                  // ── Sources section ───────────────────────────────────────
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -2459,10 +2452,6 @@ class _SettingsState extends State<SettingsView> {
                         children: [
                           IconButton(
                             onPressed: () async {
-                              // Show the full progress dialog instead of the
-                              // plain spinner. The dialog shows per-source
-                              // status, a progress bar, and a summary on
-                              // completion. (fix52 / point 5)
                               await showSourcesRefreshDialog(context);
                               // Reload the sources list in case names or
                               // counts changed.

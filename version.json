@@ -1,7 +1,7 @@
 {
-  "latest": "1.20.2",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.20.2",
+  "latest": "1.21.0",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.21.0",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: when a stream fails after the maximum number of reconnect attempts, the player now automatically returns to the channel list and shows a brief message explaining the stream is unavailable. Previously the screen froze with no visible controls \u2014 the only way out was force-closing the app."
+  "releaseNotes": "\u2022 New setting: Max Reconnect Attempts (Settings \u2192 Buffering). Controls how many times the app retries a failed stream before giving up \u2014 applies to both full-screen playback and multi-view cells. Default: 6. Range: 1\u201310. Previously hardcoded to 6 (full-screen) and 5 (multi-view).\n\u2022 Code cleanup: removed internal fix-number labels from source comments. No behaviour change."
 }

@@ -10,9 +10,8 @@ import 'package:open_tv/models/view_type.dart';
 enum ContentTypeFilter { all, live, movies, series }
 
 /// Controls how channel name search queries are executed.
-/// See fix68.md for performance characteristics of each method.
 enum SearchMethod {
-  /// FTS5 trigram phrase — default before fix68. Substring match,
+  /// FTS5 trigram phrase. Substring match,
   /// phrase ordering verified. Slowest on large datasets.
   ftsTrigram,
 
@@ -39,7 +38,6 @@ class Settings {
   bool showSeries;
   bool forceTVMode;
 
-  // --- Free4Me-IPTV: buffer tuning ---
   /// libmpv cache read-ahead in seconds for live streams.
   int liveCacheSecs;
 
@@ -75,21 +73,17 @@ class Settings {
   /// Pre-warm channel URL (HEAD request) when a tile receives focus.
   bool preWarmOnFocus;
 
-  // --- Engine (v1.4) ---
   /// Global engine override. [EngineType.auto] means let EnginePicker decide.
   EngineType forcedEngine;
 
-  // --- Debug ---
   bool debugLogging;
 
-  // --- EPG settings (v1.2) ---
   bool epgAutoRefresh;
   int epgRefreshHours;
   int epgRefreshHour;
   int epgPastDays;
   int epgForecastDays;
 
-  // --- Stream scanner (v1.13.2) ---
   /// Maximum number of streams the radar scanner probes per run.
   /// Default 20, range 1–100. Higher counts take longer.
   int streamScanMaxCount;
@@ -98,7 +92,6 @@ class Settings {
   /// is actually serving live media bytes. Default 8, range 3–30.
   int streamScanTimeoutSecs;
 
-  // --- Playback reliability (v1.15) ---
   /// libmpv forward demuxer cache (MB) for the mini-player / overlay stream.
   /// Independently tunable from liveDemuxerMaxMB.
   /// Default is set from DeviceMemory.defaultMiniDemuxerMb at first run.
@@ -115,7 +108,15 @@ class Settings {
   /// 0 = reconnect immediately. Default: 2000ms. Range: 0–10000ms.
   int streamCompletedDelayMs;
 
-  // --- Multi-view (v1.14) ---
+  /// Maximum number of reconnect attempts before the player gives up
+  /// and auto-pops (full-screen) or shows the error UI (multi-view cell).
+  ///
+  /// Default: 6. Range: 1–10.
+  ///
+  /// Full-screen: maps to Player._totalReconnectAttempts give-up threshold.
+  /// Multi-view:  maps to MultiViewCell._transientRetries give-up threshold.
+  int maxReconnectAttempts;
+
   /// Which multi-view grid layout is active (or none).
   MultiViewLayout multiViewLayout;
 
@@ -135,19 +136,16 @@ class Settings {
   /// restore the channels that were active before the toggle.
   bool multiViewAutoRestoreChannels;
 
-  // --- Content-type filter (fix62) ---
   /// Active content-type filter for the All tab. Persisted so the user's
   /// preferred filter (e.g. Live-only on a large multi-type source) survives
   /// app restarts. Defaults to [ContentTypeFilter.all].
   ContentTypeFilter contentTypeFilter;
 
-  // --- Search method (fix68) ---
   /// Which search implementation to use for channel name queries.
   /// Default: [SearchMethod.ftsAnd] — faster than phrase for multi-word
   /// queries, same index as the original trigram method.
   SearchMethod searchMethod;
 
-  // --- Safe mode (fix70) ---
   /// When true, channels and categories whose name or group name contains
   /// any term from [safeModeBlocklist] are excluded from all views.
   bool safeMode;
@@ -182,6 +180,7 @@ class Settings {
     this.miniDemuxerMaxMB = 32,
     this.bufferSizeMB = 128,
     this.streamCompletedDelayMs = 2000,
+    this.maxReconnectAttempts = 6,
     this.multiViewLayout = MultiViewLayout.none,
     this.multiViewCells1x2 = ',',
     this.multiViewCells2x2 = ',,,',
@@ -289,6 +288,7 @@ class Settings {
     s.stableThresholdSecs = 15;
     s.startupGraceMs = isTV ? 1500 : 800;
     s.streamCompletedDelayMs = 2000;
+    s.maxReconnectAttempts = 6;
 
     // Hardware decode is always recommended; the engine code routes TV
     // hardware to mediacodec-copy and preview cells to software decode
@@ -305,7 +305,7 @@ class Settings {
     s.streamScanTimeoutSecs = isTV ? 10 : 8;
 
     s.forcedEngine = EngineType.auto;
-    s.multiViewAutoRestoreChannels = true; // safe default (fix30)
+    s.multiViewAutoRestoreChannels = true;
 
     // Low-latency mode disables back-buffer and tightens cache; on shaky
     // providers it produces more disconnects than it prevents.
@@ -316,7 +316,7 @@ class Settings {
 }
 
 /// Terms matched case-insensitively against channel group_name and name
-/// to identify adult content when safeMode is enabled (fix70).
+/// to identify adult content when safeMode is enabled.
 ///
 /// Imported by sql.dart, channel_search_cache.dart, and settings_view.dart
 /// so all filtering uses a single source of truth.

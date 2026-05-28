@@ -92,7 +92,6 @@ class _PlayerState extends State<Player> {
   // the stream is confirmed stable for _stableThresholdSecs seconds — a
   // brief buffering=false right after open() does NOT count as "stable".
   int _totalReconnectAttempts = 0;
-  static const int _maxReconnectAttempts = 6;
 
   Timer? _bufferingWatchdog;
   Timer? _stableTimer;
@@ -289,7 +288,7 @@ class _PlayerState extends State<Player> {
       );
       // onDisconnect() is the single source of truth for incrementing
       // _totalReconnectAttempts — do not pre-increment here, which caused
-      // the counter to jump by 2 per failure and exceed _maxReconnectAttempts.
+      // the counter to jump by 2 per failure and exceed widget.settings.maxReconnectAttempts.
       onDisconnect(reason: 'player error: $err');
     }));
     _engineSubs.add(_engine.bufferingStream.listen(_onBufferingChanged));
@@ -381,14 +380,14 @@ class _PlayerState extends State<Player> {
     _isReconnecting = true;
     _totalReconnectAttempts++;
     AppLog.warn(
-      'Player: onDisconnect — attempt $_totalReconnectAttempts/$_maxReconnectAttempts'
+      'Player: onDisconnect — attempt $_totalReconnectAttempts/${widget.settings.maxReconnectAttempts}'
       ' reconnecting=$_isReconnecting'
       ' openFailures=$_consecutiveOpenFailures'
       ' startupGrace=$_startupGrace'
       ' reason="$reason" channel="${widget.channel.name}"',
     );
 
-    if (_totalReconnectAttempts >= _maxReconnectAttempts) {
+    if (_totalReconnectAttempts >= widget.settings.maxReconnectAttempts) {
       AppLog.warn(
         'Player: max reconnects reached — giving up on "${widget.channel.name}"',
       );
@@ -406,9 +405,9 @@ class _PlayerState extends State<Player> {
       _stableTimer?.cancel();
       _stableTimer = null;
 
-      // fix82: pop back to the channel list and surface a snackbar so the
-      // user knows why playback stopped. Without this the screen freezes
-      // with no controls — the only exit was force-closing the app.
+      // Pop back to the channel list and surface a snackbar so the user
+      // knows why playback stopped. Without this the screen freezes with
+      // no controls — the only exit was force-closing the app.
       if (mounted && Navigator.canPop(context)) {
         final channelName = widget.channel.name;
         Navigator.pop(context);
@@ -420,7 +419,7 @@ class _PlayerState extends State<Player> {
               SnackBar(
                 content: Text(
                   '"$channelName" failed to load after '
-                  '$_maxReconnectAttempts attempts — stream may be unavailable.',
+                  '${widget.settings.maxReconnectAttempts} attempts — stream may be unavailable.',
                 ),
                 duration: const Duration(seconds: 5),
               ),

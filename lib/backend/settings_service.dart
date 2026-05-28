@@ -52,21 +52,18 @@ const streamScanTimeoutSecsProp = "streamScanTimeoutSecs";
 const multiViewLayoutProp = "multiViewLayout";
 const multiViewCells1x2Prop = "multiViewCells1x2";
 const multiViewCells2x2Prop = "multiViewCells2x2";
-// v1.16.3 (fix30): auto-restore opt-out
 const multiViewAutoRestoreChannelsProp = "multiViewAutoRestoreChannels";
 
 // Playback reliability (v1.15)
 const miniDemuxerMaxMBProp = "miniDemuxerMaxMB";
 const bufferSizeMBProp = "bufferSizeMB";
 const streamCompletedDelayMsProp = "streamCompletedDelayMs";
+const maxReconnectAttemptsProp = "maxReconnectAttempts";
 
-// Content-type filter (fix62)
 const contentTypeFilterProp = "contentTypeFilter";
 
-// Search method (fix68)
 const searchMethodProp = "searchMethod";
 
-// Safe mode (fix70)
 const safeModeProp = "safeMode";
 
 class SettingsService {
@@ -128,6 +125,7 @@ class SettingsService {
     var miniDemuxer = settingsMap[miniDemuxerMaxMBProp];
     var bufferSize = settingsMap[bufferSizeMBProp];
     var streamCompletedDelay = settingsMap[streamCompletedDelayMsProp];
+    var maxReconnect = settingsMap[maxReconnectAttemptsProp];
 
     if (view != null) {
       settings.defaultView = ViewType.values[int.parse(view)];
@@ -191,8 +189,10 @@ class SettingsService {
     if (streamCompletedDelay != null) {
       settings.streamCompletedDelayMs = int.parse(streamCompletedDelay);
     }
+    if (maxReconnect != null) {
+      settings.maxReconnectAttempts = int.parse(maxReconnect);
+    }
 
-    // Search method (fix68)
     final sm = settingsMap[searchMethodProp];
     if (sm != null) {
       settings.searchMethod = SearchMethod.values
@@ -200,11 +200,9 @@ class SettingsService {
           SearchMethod.ftsAnd;
     }
 
-    // Safe mode (fix70)
     final sm70 = settingsMap[safeModeProp];
     if (sm70 != null) settings.safeMode = int.parse(sm70) == 1;
 
-    // Content-type filter (fix62)
     final ctfRaw = settingsMap[contentTypeFilterProp];
     if (ctfRaw != null) {
       final idx = int.tryParse(ctfRaw) ?? 0;
@@ -224,6 +222,7 @@ class SettingsService {
       ' stableThresholdSecs=${settings.stableThresholdSecs}'
       ' startupGraceMs=${settings.startupGraceMs}'
       ' streamCompletedDelayMs=${settings.streamCompletedDelayMs}'
+      ' maxReconnectAttempts=${settings.maxReconnectAttempts}'
       ' multiViewLayout=${settings.multiViewLayout.name}'
       ' multiViewCells1x2="${settings.multiViewCells1x2}"'
       ' multiViewCells2x2="${settings.multiViewCells2x2}"'
@@ -277,6 +276,8 @@ class SettingsService {
     settingsMap[bufferSizeMBProp] = settings.bufferSizeMB.toString();
     settingsMap[streamCompletedDelayMsProp] =
         settings.streamCompletedDelayMs.toString();
+    settingsMap[maxReconnectAttemptsProp] =
+        settings.maxReconnectAttempts.toString();
     settingsMap[contentTypeFilterProp] =
         settings.contentTypeFilter.index.toString();
     settingsMap[searchMethodProp] = settings.searchMethod.index.toString();

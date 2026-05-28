@@ -7,6 +7,15 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.21.0': [
+    'New setting: Max Reconnect Attempts (Settings → Buffering). '
+        'Controls how many times the app retries a failed stream before '
+        'giving up — applies to both full-screen playback and multi-view '
+        'cells. Default: 6. Range: 1–10. Previously hardcoded to 6 '
+        '(full-screen) and 5 (multi-view).',
+    'Code cleanup: removed internal fix-number labels from source '
+        'comments. No behaviour change.',
+  ],
   '1.20.2': [
     'Fix: when a stream fails after the maximum number of reconnect attempts, '
         'the player now automatically returns to the channel list and shows a '

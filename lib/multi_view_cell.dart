@@ -79,12 +79,11 @@ class _MultiViewCellState extends State<MultiViewCell> {
   /// [_startEngine] call and on 15 s of stable playback after an error.
   int _transientRetries = 0;
 
-  /// Per-cell transient retry budget. Five attempts at a 3-second cadence
-  /// gives a healthy stream up to 15 s of recovery time during provider
-  /// edge cycling. The 15-second stable-playback counter (see
-  /// bufferingStream listener) still resets the count to zero, so a
-  /// truly-dead channel still hits the error UI promptly.
-  static const int _maxTransientRetries = 5;
+  /// Per-cell transient retry budget, drawn from [Settings.maxReconnectAttempts].
+  /// A 3-second cadence between retries gives a healthy stream time to
+  /// recover during provider edge cycling. The 15-second stable-playback
+  /// counter (see bufferingStream listener) resets the count to zero, so
+  /// a truly-dead channel still hits the error UI promptly.
   DateTime? _lastErrorAt;
 
   /// Timestamp of the last transient-retry counter increment. Used to
@@ -177,7 +176,7 @@ class _MultiViewCellState extends State<MultiViewCell> {
   /// `open()` succeeds. The cell aligns with mpv's view here.
   ///
   /// Truly-dead channels still hit the error UI within ~15 s once the
-  /// transient retry budget is exhausted (see [_maxTransientRetries]).
+  /// transient retry budget is exhausted (see [widget.settings.maxReconnectAttempts]).
   static bool _isTransientError(String err) {
     return
         // Network-layer
@@ -257,7 +256,6 @@ class _MultiViewCellState extends State<MultiViewCell> {
     // reapplyOptions() (ignoreSsl) and open() (UA/Referer/Origin).
     // Without these the cell hits the provider with mpv's generic UA,
     // which some edges treat aggressively (shorter keepalive, faster idle
-    // disconnect). See fix20.md for evidence.
     final channelId = ch.id;
     final ChannelHttpHeaders? chHeaders =
         channelId != null ? await Sql.getChannelHeaders(channelId) : null;
@@ -314,7 +312,7 @@ class _MultiViewCellState extends State<MultiViewCell> {
         ' [${transient ? "transient" : "permanent"}]'
         ' cell=${widget.cellIndex}'
         ' channel="${ch.name}"'
-        ' retries=$_transientRetries/$_maxTransientRetries'
+        ' retries=$_transientRetries/${widget.settings.maxReconnectAttempts}'
         ' error="$err"',
       );
 
@@ -345,7 +343,7 @@ class _MultiViewCellState extends State<MultiViewCell> {
       }
 
       // 2. Transient — retry up to N times with a short delay.
-      if (transient && _transientRetries < _maxTransientRetries) {
+      if (transient && _transientRetries < widget.settings.maxReconnectAttempts) {
         // mpv routinely emits two transient errors in the same event
         // tick (e.g. ECONNRESET + the subsequent read failure). Debounce
         // so a single network event doesn't burn two retries.
@@ -360,7 +358,7 @@ class _MultiViewCellState extends State<MultiViewCell> {
         Future.delayed(const Duration(seconds: 3), () {
           if (mounted && generation == _openGeneration) {
             AppLog.info(
-              'MultiViewCell: retry $attempt/$_maxTransientRetries'
+              'MultiViewCell: retry $attempt/${widget.settings.maxReconnectAttempts}'
               ' cell=${widget.cellIndex}'
               ' channel="${ch.name}"',
             );
@@ -507,7 +505,6 @@ class _MultiViewCellState extends State<MultiViewCell> {
     // it's live.
     Player.clearCooldown(ch.id);
 
-    // Record in watch history (part 28.3 / fix26). Mirrors the
     // channel_tile.dart:249 tap-to-play path that's the only other
     // place a user actively chooses a channel.
     if (ch.id != null) {
@@ -518,7 +515,6 @@ class _MultiViewCellState extends State<MultiViewCell> {
     // screen Player. Both engines would otherwise try to read the
     // same .ts URL from the same provider credentials, and the
     // provider rejects the duplicate read with "Failed to open"
-    // (see fix28.4 evidence in free4me_log_1779565841465.txt at
     // 15:47:53–15:47:54). Without this, every long-press → Full
     // screen and every double-tap fails permanently.
     //
