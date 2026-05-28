@@ -7,6 +7,16 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.22.1': [
+    'Fix: mini-player (and multi-view cells) no longer show a permanent '
+        'black screen with a spinner. The overlay was forced into pure CPU '
+        'decode, which stalls silently on MPEG-TS/H.264 streams even though '
+        'the same channel plays fine in full-screen. The overlay now uses '
+        'hardware decode in copy mode (mediacodec-copy on Android), which '
+        'avoids decoder-pool contention while reliably rendering frames.',
+    'The Hardware Decode toggle in Settings still applies to the mini-player '
+        '— turning it off falls back to CPU decode as before.',
+  ],
   '1.22.0': [
     'Fix: after swapping the mini-player with the full-screen player, the '
         'demoted channel no longer reconnects in the background. Previously '

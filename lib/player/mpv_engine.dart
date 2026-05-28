@@ -69,7 +69,6 @@ class MpvEngine implements PlayerEngine {
     _subs.add(_player.stream.position.listen((p) => _positionCtrl.add(p)));
   }
 
-  // ── PlayerEngine ───────────────────────────────────────────────────────────
 
   @override
   Widget buildVideoView(BuildContext context) {
@@ -148,7 +147,6 @@ class MpvEngine implements PlayerEngine {
     await _player.dispose();
   }
 
-  // ── Streams ────────────────────────────────────────────────────────────────
 
   @override
   Stream<bool> get bufferingStream => _bufferingCtrl.stream;
@@ -162,7 +160,6 @@ class MpvEngine implements PlayerEngine {
   @override
   Duration get position => _player.state.position;
 
-  // ── Track selection ────────────────────────────────────────────────────────
 
   @override
   bool get supportsTrackSelection => true;
@@ -203,7 +200,6 @@ class MpvEngine implements PlayerEngine {
     _player.setAudioTrack(_player.state.tracks.audio[index]);
   }
 
-  // ── Fullscreen ─────────────────────────────────────────────────────────────
 
   @override
   bool get handlesOwnFullscreen => true;
@@ -221,7 +217,6 @@ class MpvEngine implements PlayerEngine {
   @override
   bool get isFullscreen => _videoKey.currentState?.isFullscreen() ?? false;
 
-  // ── Video dimensions (used by toggleZoom in player.dart) ──────────────────
 
   int? get videoWidth => _player.state.width;
   int? get videoHeight => _player.state.height;
@@ -230,7 +225,6 @@ class MpvEngine implements PlayerEngine {
     _videoKey.currentState?.update(aspectRatio: ratio);
   }
 
-  // ── mpv option application ─────────────────────────────────────────────────
 
   Future<void> _applyMpvOptions({
     required String url,
@@ -251,11 +245,25 @@ class MpvEngine implements PlayerEngine {
       await np.setProperty('hls-bitrate', s.lowLatency ? 'min' : 'max');
     }
 
-    // Preview mode (multi-view cells): force software decode to avoid
-    // surface-binding contention when multiple cells share the device's
-    // hardware decoder pool. Cells are small (≤540p) so CPU decode is fine.
-    if (previewMode) {
+    // Preview mode (overlay + multi-view cells): use HARDWARE decode but in
+    // copy mode. fix108: pure software decode (hwdec=no) stalled/failed
+    // silently on these MPEG-TS/H.264 streams — the overlay opened but never
+    // rendered (black + spinner), while the same URL played fine full-screen.
+    // mediacodec-copy decodes in hardware and copies frames to CPU memory,
+    // bypassing the SurfaceTexture binding that causes contention when
+    // multiple players share the decoder pool. This is the same mode used for
+    // Android TV (line below) and is safe for concurrent preview windows.
+    if (previewMode && Platform.isAndroid && s.hwDecode) {
+      await np.setProperty('hwdec', 'mediacodec-copy');
+      AppLog.info('Player: hwdec=mediacodec-copy (preview) channel="${channel.name}"');
+    } else if (previewMode && Platform.isIOS && s.hwDecode) {
+      // videotoolbox supports concurrent decode sessions on iOS.
+      await np.setProperty('hwdec', 'videotoolbox');
+      AppLog.info('Player: hwdec=videotoolbox (preview) channel="${channel.name}"');
+    } else if (previewMode) {
+      // hwDecode disabled by user, or unsupported platform — fall back to CPU.
       await np.setProperty('hwdec', 'no');
+      AppLog.info('Player: hwdec=no (preview fallback) channel="${channel.name}"');
     } else if (s.hwDecode && Platform.isAndroid) {
       // Android TV devices (Shield, Fire TV, Onn 4K, etc.) require
       // mediacodec-copy rather than mediacodec surface mode. In surface
