@@ -96,32 +96,25 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
     );
   }
 
-  /// fix59: runs once from [initState] to build the full Live TV browse list.
+  /// fix80: load only the first page for the initial browse.
   ///
-  /// Fetches all pages (so favorites/validated beyond page 1 are included),
-  /// sorts client-side, and populates [_cachedEmptyQuery].
+  /// The SQL ORDER BY (fix72/74) already surfaces favorites and validated
+  /// channels first, so paginating the entire catalogue is unnecessary.
+  /// A single page loads in <60ms instead of minutes. The cached result
+  /// is reused whenever the search box is cleared.
   Future<void> _loadInitialBrowse() async {
     if (!mounted || _initialBrowseLoaded) return;
     final inv = ++_loadInvocation;
     setState(() => _loading = true);
 
-    final all = <Channel>[];
-    var page = 1;
-    while (true) {
-      if (_loadInvocation != inv) return; // fix78.2: superseded
-      final pageResults = await Sql.search(
-        _liveTvPickerFilters(query: null, page: page),
-        invocation: inv,
-      );
-      all.addAll(pageResults);
-      if (pageResults.length < pageSize) break;
-      page++;
-    }
-    all.sort(_pickSort);
+    final pageResults = await Sql.search(
+      _liveTvPickerFilters(query: null, page: 1),
+      invocation: inv,
+    );
+    if (_loadInvocation != inv || !mounted) return;
 
-    if (_loadInvocation != inv || !mounted) return; // fix78.2: superseded
-
-    _cachedEmptyQuery = List.unmodifiable(all);
+    final sorted = List<Channel>.from(pageResults)..sort(_pickSort);
+    _cachedEmptyQuery = List.unmodifiable(sorted);
     _initialBrowseLoaded = true;
 
     setState(() {

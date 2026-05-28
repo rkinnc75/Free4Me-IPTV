@@ -1,7 +1,7 @@
 {
-  "latest": "1.20.0",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.20.0",
+  "latest": "1.20.1",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.20.1",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 In-Memory search now sorts results correctly across all pages \u2014 favourites and validated channels were previously skipped when they fell beyond the first page in cache order.\n\u2022 Favouriting a channel, watching a channel, or running a stream scan now updates the in-memory search cache immediately without a full rebuild.\n\u2022 Multi-view channel picker: the search box now uses a 200\u202fms debounce matching the main Live TV search. Clearing the search box restores the browse list instantly without any SQL. The fallback search method is now FTS AND, matching the app default.\n\u2022 SQLite FTS index now only updates on channel name changes. Previously every favourite toggle, history write, or stream scan caused unnecessary FTS index churn.\n\u2022 New composite index on the channels table speeds up the no-query Live TV browse and picker browse flows.\n\u2022 Settings help text updated throughout: clearer defaults, ON/OFF trade-offs, and corrected descriptions. Safe Mode no longer incorrectly claims the search cache is rebuilt on toggle."
+  "releaseNotes": "\u2022 Fix: multi-view channel picker now opens instantly. The initial browse previously fetched the entire Live TV catalogue (\u223c8\u202f400 SQL round-trips for 302\u202fk channels) before showing anything. It now loads a single page in under 60\u202fms. Favourites and validated channels still appear at the top because the database already returns them first."
 }

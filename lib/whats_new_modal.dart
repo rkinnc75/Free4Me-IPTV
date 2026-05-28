@@ -7,6 +7,14 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.20.1': [
+    'Fix: multi-view channel picker now opens instantly. '
+        'The initial browse previously fetched the entire Live TV catalogue '
+        '(∼8 400 SQL round-trips for 302 k channels) before '
+        'showing anything. It now loads a single page in under 60 ms. '
+        'Favourites and validated channels still appear at the top because '
+        'the database already returns them first.',
+  ],
   '1.20.0': [
     'In-Memory search now sorts results correctly across all pages — '
         'favourites and validated channels were previously skipped when they '
