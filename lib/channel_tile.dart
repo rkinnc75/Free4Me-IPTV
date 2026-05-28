@@ -191,7 +191,6 @@ class _ChannelTileState extends State<ChannelTile> {
   Future<void> favorite() async {
     if (widget.channel.mediaType == MediaType.group) return;
     final wasFavorite = widget.channel.favorite;
-    // fix78.1: log favorite toggles so they appear in AppLog alongside play/prewarm events.
     AppLog.info(
       'ChannelTile: favorite channel="${widget.channel.name}"'
       ' wasFavorite=$wasFavorite → ${!wasFavorite}',
@@ -256,6 +255,13 @@ class _ChannelTileState extends State<ChannelTile> {
           SettingsService.cached ?? await SettingsService.getSettings();
       final source = await Sql.getSourceById(widget.channel.sourceId);
       unawaited(Sql.addToHistory(channelId));
+      if (!mounted) return;
+      // fix112: if a full-screen player is already active, halt it (dispose
+      // its engine) BEFORE opening the new channel. On connection-limited
+      // accounts the provider won't grant the new connection until the old
+      // one is released; opening on top of a live engine races that release
+      // and causes an instant "Failed to open".
+      await OverlayPlayerController.instance.haltMain();
       if (!mounted) return;
       Navigator.push(
         context,

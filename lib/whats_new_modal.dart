@@ -7,6 +7,20 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.22.3': [
+    'Fix: when a channel fails instantly with "Failed to open" on every '
+        'attempt, the app now shows a specific message: "this provider may '
+        'allow only one stream at a time." Previously the generic '
+        '"stream may be unavailable" message gave no hint that a concurrent '
+        'connection on another device was the likely cause.',
+    'Fix: after an instant connection refusal, the app waits 3 seconds '
+        'before retrying (up from 1 second), giving the provider time to '
+        'release the previous connection slot.',
+    'Fix: when switching channels, the previous channel\'s connection is '
+        'now closed before the new one opens. On single-connection accounts '
+        'this prevents the new channel racing the old connection\'s release '
+        'and getting an instant "Failed to open".',
+  ],
   '1.22.2': [
     'Fix (critical): audio no longer keeps playing after pressing back. '
         'A guard introduced in v1.22.0 to prevent double-dispose accidentally '

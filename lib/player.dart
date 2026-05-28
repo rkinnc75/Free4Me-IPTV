@@ -97,6 +97,12 @@ class _PlayerState extends State<Player> {
 
   // Reconnect bookkeeping
   int _consecutiveOpenFailures = 0;
+  /// fix112: the most recent engine error text and whether it arrived
+  /// "instantly" after open (within ~2s) — the signature of a provider
+  /// refusing a concurrent connection on a connection-limited account.
+  String? _lastEngineError;
+  bool _lastFailureWasInstant = false;
+  DateTime? _lastOpenAt;
   // fix96: open-failure limit now follows the user's maxReconnectAttempts
   // setting instead of a separate hardcoded 6. One knob controls both
   // failure modes (open() threw, and opened-then-dropped).
@@ -303,8 +309,20 @@ class _PlayerState extends State<Player> {
           err.contains('404') ||
           err.contains('403') ||
           err.contains('Connection refused');
+      // fix112: an instant "Failed to open" (within ~2s of the open call)
+      // is the signature of a connection-limit rejection — the provider
+      // refused because the single allowed connection is in use elsewhere
+      // (another device, or this device's previous stream not yet released).
+      _lastEngineError = err;
+      final sinceOpen = _lastOpenAt == null
+          ? Duration.zero
+          : DateTime.now().difference(_lastOpenAt!);
+      _lastFailureWasInstant = isPermanent &&
+          err.contains('Failed to open') &&
+          sinceOpen.inSeconds <= 2;
       AppLog.warn(
         'Player: engine error [${isPermanent ? "permanent" : "transient"}]'
+        '${_lastFailureWasInstant ? " (instant — possible connection limit)" : ""}'
         ' — "$err" channel="${widget.channel.name}"',
       );
       // onDisconnect() is the single source of truth for incrementing
@@ -474,8 +492,13 @@ class _PlayerState extends State<Player> {
       if (mounted) {
         // Show terminal message immediately so the overlay updates in the
         // brief window before onExit() completes the pop.
-        setState(() => _bufferingState =
-            'Stream unavailable — too many failed attempts.');
+        // fix112: if every attempt failed instantly with "Failed to open",
+        // this is almost certainly a connection-limit rejection, not a dead
+        // stream. Tell the user something actionable.
+        final connLimit = _lastFailureWasInstant;
+        setState(() => _bufferingState = connLimit
+            ? 'Stream unavailable — connection limit reached.'
+            : 'Stream unavailable — too many failed attempts.');
 
         final channelName = widget.channel.name;
         final maxAttempts = widget.settings.maxReconnectAttempts;
@@ -485,10 +508,14 @@ class _PlayerState extends State<Player> {
           ScaffoldMessenger.maybeOf(context)?.showSnackBar(
             SnackBar(
               content: Text(
-                '"$channelName" failed to load after '
-                '$maxAttempts attempts — stream may be unavailable.',
+                connLimit
+                    ? '"$channelName" couldn\'t open — this provider may '
+                      'allow only one stream at a time. Close other '
+                      'devices/streams using this account and try again.'
+                    : '"$channelName" failed to load after $maxAttempts '
+                      'attempts — stream may be unavailable.',
               ),
-              duration: const Duration(seconds: 5),
+              duration: const Duration(seconds: 6),
             ),
           );
         });
@@ -505,7 +532,20 @@ class _PlayerState extends State<Player> {
           'Retrying $_totalReconnectAttempts'
           '/${widget.settings.maxReconnectAttempts}…');
     }
-    await Future.delayed(const Duration(seconds: 1));
+    // fix112: back off longer after an instant "Failed to open" (likely a
+    // connection-limit rejection) so the previous connection has time to
+    // release before we retry. Ordinary transient drops keep the fast 1s.
+    final backoff = _lastFailureWasInstant
+        ? const Duration(seconds: 3)
+        : const Duration(seconds: 1);
+    if (_lastFailureWasInstant) {
+      AppLog.info(
+        'Player: backing off ${backoff.inSeconds}s before retry'
+        ' (instant failure — possible connection limit)'
+        ' channel="${widget.channel.name}"',
+      );
+    }
+    await Future.delayed(backoff);
     if (!mounted || exiting) {
       _isReconnecting = false;
       return;
@@ -547,6 +587,7 @@ class _PlayerState extends State<Player> {
         }
 
         _startupGrace = true;
+        _lastOpenAt = DateTime.now(); // fix112
         await _engine
             .open(
               url: playbackUrl,
