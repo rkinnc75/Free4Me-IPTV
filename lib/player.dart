@@ -324,14 +324,31 @@ class _PlayerState extends State<Player> {
     AppLog.info('Player: buffering=$buffering channel="${widget.channel.name}"');
     if (buffering) {
       _stableTimer?.cancel(); // stream is no longer stable
-      if (mounted) setState(() => _bufferingState = 'Buffering...');
-      // During startup grace the indicator is shown but the watchdog is
-      // suppressed — prevents reconnect loops while the stream stabilises.
-      if (!_startupGrace && widget.channel.mediaType == MediaType.livestream) {
+      if (mounted) {
+        setState(() => _bufferingState = 'Buffering...');
+        AppLog.info(
+          'Player: overlay → "Buffering..." (grace=$_startupGrace)'
+          ' channel="${widget.channel.name}"',
+        );
+      }
+      // fix92: previously the watchdog was suppressed entirely during
+      // _startupGrace. On reconnects, buffering=true arrives inside the
+      // 500ms grace window, so the watchdog never armed and the player
+      // waited ~31s for mpv's own TCP timeout on every cycle. Now we
+      // always arm it; during grace we use a longer timeout so genuine
+      // slow-starts aren't killed prematurely.
+      if (widget.channel.mediaType == MediaType.livestream) {
+        final base = widget.settings.bufferingWatchdogSecs;
+        final watchdogSecs = _startupGrace ? base * 2 : base;
         _bufferingWatchdog?.cancel();
         _bufferingWatchdog = Timer(
-          Duration(seconds: widget.settings.bufferingWatchdogSecs),
+          Duration(seconds: watchdogSecs),
           () => onDisconnect(reason: 'buffering watchdog'),
+        );
+        AppLog.info(
+          'Player: watchdog armed ${watchdogSecs}s'
+          ' (grace=$_startupGrace base=${base}s)'
+          ' channel="${widget.channel.name}"',
         );
       }
     } else {
@@ -348,7 +365,14 @@ class _PlayerState extends State<Player> {
         Future.delayed(
           Duration(milliseconds: widget.settings.startupGraceMs),
           () {
-            if (mounted) setState(() => _startupGrace = false);
+            if (mounted) {
+              setState(() => _startupGrace = false);
+              AppLog.info(
+                'Player: startup grace expired'
+                ' (after ${widget.settings.startupGraceMs}ms)'
+                ' channel="${widget.channel.name}"',
+              );
+            }
           },
         );
       }
@@ -384,6 +408,17 @@ class _PlayerState extends State<Player> {
     // arriving in the same event-loop tick is rejected by the guard above.
     _isReconnecting = true;
     _totalReconnectAttempts++;
+    // fix92: cancel any pending stable-timer so a late "stream stable"
+    // callback can't zero the counter mid-give-up.
+    if (_stableTimer != null) {
+      AppLog.info(
+        'Player: cancelled pending stable-timer on disconnect'
+        ' (attempt $_totalReconnectAttempts)'
+        ' channel="${widget.channel.name}"',
+      );
+    }
+    _stableTimer?.cancel();
+    _stableTimer = null;
     AppLog.warn(
       'Player: onDisconnect — attempt $_totalReconnectAttempts/${widget.settings.maxReconnectAttempts}'
       ' reconnecting=$_isReconnecting'

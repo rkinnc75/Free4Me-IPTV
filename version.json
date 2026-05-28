@@ -1,7 +1,7 @@
 {
-  "latest": "1.21.2",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.21.2",
+  "latest": "1.21.3",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.21.3",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: the back button now works on the stuck buffering screen. After exhausting all reconnect attempts, pressing back was silently ignored \u2014 the only way out was force-closing the app. Root cause: the \u201cstop retrying\u201d flag also blocked the back-button handler. The two concerns are now separate.\n\u2022 Fix: multi-view cells now correctly count retries and give up after the configured maximum. Previously the retry counter reset to 0 on every attempt, so cells retried forever at \u201c1/6\u201d."
+  "releaseNotes": "\u2022 Fix: each reconnect attempt now times out in ~12 s instead of ~31 s. The buffering watchdog was being silenced during the startup grace window, so the player waited for mpv's own TCP timeout on every cycle. The watchdog now arms during grace using a 2\u00d7 timeout, keeping slow-start protection while catching genuine stalls promptly."
 }

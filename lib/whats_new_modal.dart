@@ -7,6 +7,13 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.21.3': [
+    'Fix: each reconnect attempt now times out in ~12 s instead of ~31 s. '
+        'The buffering watchdog was being silenced during the startup grace '
+        'window, so the player waited for mpv\'s own TCP timeout on every '
+        'cycle. The watchdog now arms during grace using a 2× timeout, '
+        'keeping slow-start protection while catching genuine stalls promptly.',
+  ],
   '1.21.2': [
     'Fix: the back button now works on the stuck buffering screen. After '
         'exhausting all reconnect attempts, pressing back was silently ignored '
