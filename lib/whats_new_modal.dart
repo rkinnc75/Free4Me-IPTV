@@ -7,6 +7,10 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.22.4': [
+    'Build fix: removed an unused field that caused the CI build to fail '
+        'with an unused_field warning. No behaviour change.',
+  ],
   '1.22.3': [
     'Fix: when a channel fails instantly with "Failed to open" on every '
         'attempt, the app now shows a specific message: "this provider may '

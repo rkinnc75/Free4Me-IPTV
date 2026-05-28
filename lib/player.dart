@@ -97,10 +97,9 @@ class _PlayerState extends State<Player> {
 
   // Reconnect bookkeeping
   int _consecutiveOpenFailures = 0;
-  /// fix112: the most recent engine error text and whether it arrived
-  /// "instantly" after open (within ~2s) — the signature of a provider
-  /// refusing a concurrent connection on a connection-limited account.
-  String? _lastEngineError;
+  /// fix112: whether the most recent engine error arrived "instantly"
+  /// after open (within ~2s) — the signature of a provider refusing a
+  /// concurrent connection on a connection-limited account.
   bool _lastFailureWasInstant = false;
   DateTime? _lastOpenAt;
   // fix96: open-failure limit now follows the user's maxReconnectAttempts
@@ -313,7 +312,6 @@ class _PlayerState extends State<Player> {
       // is the signature of a connection-limit rejection — the provider
       // refused because the single allowed connection is in use elsewhere
       // (another device, or this device's previous stream not yet released).
-      _lastEngineError = err;
       final sinceOpen = _lastOpenAt == null
           ? Duration.zero
           : DateTime.now().difference(_lastOpenAt!);
