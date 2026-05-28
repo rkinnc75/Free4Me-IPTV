@@ -7,6 +7,17 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.21.7': [
+    'Fix: swapping the mini-player with the full-screen player no longer '
+        'stacks routes. Each swap replaces the current full-screen route '
+        'atomically, so pressing back always exits in a single tap instead '
+        'of requiring 5–6 back presses.',
+    'Fix: rapid double-tapping the swap button is now ignored — a debounce '
+        'guard prevents a second swap from firing before the first completes.',
+    'Removed the maximize (⤢) button from the mini-player. The video body '
+        'tap and the ⇄ swap button both promote the mini-player to full-screen; '
+        'a separate maximize button is redundant.',
+  ],
   '1.21.6': [
     'Fix: full-screen player no longer opens muted. The route-based muting '
         'added in v1.21.5 misfired on the newly created player itself. '

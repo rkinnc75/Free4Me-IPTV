@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/models/app_navigator.dart';
 import 'package:open_tv/player.dart';
 import 'package:open_tv/player/overlay_player_controller.dart';
@@ -13,9 +14,8 @@ import 'package:open_tv/player/overlay_player_controller.dart';
 ///
 /// Interaction design:
 /// - Drag: grab the **video area** to drag the window to a new corner.
-/// - Tap video: maximizes (restores the channel to full-screen Player).
-/// - ⤢ button: same as tapping the video — restore to full screen.
-/// - ⇄ button: swap the overlay channel with the current full-screen player.
+/// - Tap video: swap (promotes overlay to full-screen, demotes current full-screen to mini).
+/// - ⇄ button: same as tapping the video — swap channels.
 /// - ✕ button: close the mini-player.
 ///
 /// The control bar buttons are NOT inside the drag GestureDetector, which
@@ -41,6 +41,10 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
 
   /// Non-null while the user is dragging; null = use snapped corner position.
   Offset? _dragOffset;
+
+  /// fix104: prevents a rapid double-tap from firing _swap twice and
+  /// re-introducing route stacking.
+  bool _swapInFlight = false;
 
   @override
   void initState() {
@@ -107,7 +111,7 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
               _buildControlBar(context),
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: _maximize,
+                onTap: _swap, // fix104: maximize removed; body tap = swap
                 onPanUpdate: (d) {
                   setState(() {
                     final cur = _dragOffset ?? snapped;
@@ -141,11 +145,12 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
 
   //
   // Layout (left → right):
-  //   [⤢ maximize 44px] [channel name expanded] [⇄ swap 44px] [✕ close 44px]
+  //   [channel name expanded] [⇄ swap 44px] [✕ close 44px]
   //
   // Each action button is exactly _kBtnWidth × _kBarHeight — meeting the
   // 44 px minimum touch target on both axes.  The close button has a red
   // icon tint so it is visually distinct from swap even at a glance.
+  // fix104: maximize button removed; body tap and swap button both promote.
 
   Widget _buildControlBar(BuildContext context) {
     return SizedBox(
@@ -155,13 +160,6 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _barButton(
-              icon: Icons.open_in_full,
-              tooltip: 'Restore to full screen',
-              color: Colors.white,
-              onTap: _maximize,
-            ),
-
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -234,86 +232,102 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
 
   NavigatorState get _nav => appNavigatorKey.currentState!;
 
-  /// Push a full-screen [Player] for the overlay channel and close the overlay.
-  Future<void> _maximize() async {
-    // fix98: if a full-screen player is already running it stays mounted
-    // underneath the new route and keeps playing audio — double audio.
-    // Mute it immediately (stops audio bleed during the transition) and
-    // pop its route before pushing the maximized overlay, mirroring _swap.
-    final hadMain = _ctrl.mainChannel != null;
-    if (hadMain) {
-      await _ctrl.muteMain();
-    }
-
-    final snapshot = await _ctrl.consumeOverlay();
-    if (snapshot == null) return;
-
-    // The overlay was actively streaming this channel — any stale cooldown
-    // entry is wrong and would block the freshly created Player widget.
-    Player.clearCooldown(snapshot.ch.id);
-
-    // Close the existing full-screen player (if any) so only one Player
-    // is ever mounted and audible at a time.
-    if (hadMain) {
-      _nav.pop();
-    }
-
-    _nav.push(
-      MaterialPageRoute(
-        builder: (_) => Player(
-          channel: snapshot.ch,
-          settings: snapshot.s,
-          source: snapshot.src,
-        ),
-      ),
-    );
-  }
-
   /// Swap the overlay channel with the current full-screen player.
   ///
-  /// If no full-screen player is registered the overlay channel simply becomes
-  /// the new full-screen player (equivalent to maximize).
+  /// Promotes the overlay channel to full-screen and demotes the current
+  /// full-screen channel into the overlay. If no full-screen player is
+  /// registered, the overlay simply becomes the full-screen player.
+  ///
+  /// fix104: uses pushReplacement so exactly one full-screen route exists
+  /// at any time — pop+push previously stacked routes (user had to close
+  /// ~6 instances). Also guards against rapid double-tap via _swapInFlight.
   Future<void> _swap() async {
-    // Mute the main player immediately so audio doesn't bleed during the
-    // navigation transition animation.
-    await _ctrl.muteMain();
+    if (_swapInFlight) {
+      AppLog.warn('OverlayWidget: _swap ignored — already in flight');
+      return;
+    }
+    _swapInFlight = true;
+    try {
+      AppLog.info(
+        'OverlayWidget: _swap START'
+        ' overlay="${_ctrl.channel?.name ?? 'none'}"'
+        ' main="${_ctrl.mainChannel?.name ?? 'none'}"',
+      );
 
-    final snapshot = await _ctrl.consumeOverlay();
-    if (snapshot == null) return;
+      // Capture main BEFORE consuming the overlay (consumeOverlay fires
+      // notifyListeners which can rebuild this widget).
+      final mainCh = _ctrl.mainChannel;
+      final mainSettings = _ctrl.mainSettings;
+      final mainSource = _ctrl.mainSource;
+      final hadMain = mainCh != null && mainSettings != null;
+      AppLog.info(
+        'OverlayWidget: _swap captured'
+        ' main="${mainCh?.name ?? 'none'}" hadMain=$hadMain',
+      );
 
-    final mainCh = _ctrl.mainChannel;
-    final mainSettings = _ctrl.mainSettings;
-    final mainSource = _ctrl.mainSource;
+      // Mute the outgoing main so audio doesn't bleed during the transition.
+      if (hadMain) {
+        await _ctrl.muteMain();
+      }
 
-    // Overlay was streaming live — clear any stale give-up cooldown for the
-    // promoted channel so its new Player widget starts immediately. Without
-    // this, a channel that earlier hit max-reconnects in this session would
-    // be blocked here despite proving it is currently live.
-    Player.clearCooldown(snapshot.ch.id);
+      final snapshot = await _ctrl.consumeOverlay();
+      if (snapshot == null) {
+        AppLog.warn('OverlayWidget: _swap ABORT — no overlay to consume');
+        return;
+      }
+      AppLog.info('OverlayWidget: _swap consumed overlay "${snapshot.ch.name}"');
 
-    // Close the current full-screen player (if any)
-    if (mainCh != null) _nav.pop();
+      // Promoted channel was live — clear any stale give-up cooldown so its
+      // new Player starts immediately.
+      Player.clearCooldown(snapshot.ch.id);
 
-    // Open the ex-overlay channel as the new full-screen player
-    _nav.push(
-      MaterialPageRoute(
+      // fix104: replace the current full-screen route instead of pop+push.
+      // If there is no main, there is no full-screen route to replace, so
+      // push; otherwise pushReplacement swaps the route atomically.
+      final promoted = MaterialPageRoute(
         builder: (_) => Player(
           channel: snapshot.ch,
           settings: snapshot.s,
           source: snapshot.src,
         ),
-      ),
-    );
-
-    // Start the ex-main channel as the new overlay. It must be muted —
-    // the ex-overlay channel is becoming the audible full-screen player.
-    // fix100.4: pass forceMuted so this doesn't depend on registerMain
-    // having already fired for the new full-screen player (async race).
-    if (mainCh != null && mainSettings != null) {
-      await _ctrl.startOverlay(
-        mainCh, mainSettings, mainSource,
-        forceMuted: true,
       );
+      if (hadMain) {
+        AppLog.info(
+          'OverlayWidget: _swap pushReplacement → "${snapshot.ch.name}"'
+          ' (replacing "${mainCh.name}")',
+        );
+        _nav.pushReplacement(promoted);
+      } else {
+        AppLog.info(
+          'OverlayWidget: _swap push → "${snapshot.ch.name}"'
+          ' (no existing full-screen)',
+        );
+        _nav.push(promoted);
+      }
+
+      // Demote the ex-main channel into the overlay (muted — the promoted
+      // channel now owns full-screen audio). forceMuted avoids depending on
+      // the promoted Player's registerMain having fired yet.
+      if (hadMain) {
+        AppLog.info(
+          'OverlayWidget: _swap demoting "${mainCh.name}" → mini-player (muted)',
+        );
+        await _ctrl.startOverlay(
+          mainCh, mainSettings, mainSource,
+          forceMuted: true,
+        );
+        AppLog.info(
+          'OverlayWidget: _swap DONE'
+          ' full-screen="${snapshot.ch.name}" mini="${mainCh.name}"',
+        );
+      } else {
+        AppLog.info(
+          'OverlayWidget: _swap DONE'
+          ' full-screen="${snapshot.ch.name}" mini=none',
+        );
+      }
+    } finally {
+      _swapInFlight = false;
     }
   }
 

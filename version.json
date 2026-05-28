@@ -1,7 +1,7 @@
 {
-  "latest": "1.21.6",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.21.6",
+  "latest": "1.21.7",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.21.7",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: full-screen player no longer opens muted. The route-based muting added in v1.21.5 misfired on the newly created player itself. Audio handoff is now tied to the player registration handoff instead of route push/pop timing.\n\u2022 New: mini-player now plays with audio when it is the only active player. It mutes when a full-screen player opens and unmutes when the full-screen player closes."
+  "releaseNotes": "\u2022 Fix: swapping the mini-player with the full-screen player no longer stacks routes. Each swap replaces the current full-screen route atomically, so pressing back always exits in a single tap instead of requiring 5\u20136 back presses.\n\u2022 Fix: rapid double-tapping the swap button is now ignored \u2014 a debounce guard prevents a second swap from firing before the first completes.\n\u2022 Removed the maximize (\u2922) button from the mini-player. The video body tap and the \u21c4 swap button both promote the mini-player to full-screen; a separate maximize button is redundant."
 }
