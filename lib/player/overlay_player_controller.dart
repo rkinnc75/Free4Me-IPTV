@@ -36,6 +36,10 @@ class OverlayPlayerController extends ChangeNotifier {
   Settings? _mainSettings;
   Source? _mainSource;
   PlayerEngine? _mainEngine;
+  /// fix106: the outgoing full-screen player registers a halt callback so
+  /// the swap path can synchronously stop it before pushReplacement,
+  /// preventing phantom background reconnect engines.
+  Future<void> Function()? _mainHalt;
 
   Channel? get mainChannel => _mainChannel;
   Settings? get mainSettings => _mainSettings;
@@ -61,6 +65,7 @@ class OverlayPlayerController extends ChangeNotifier {
     _mainSettings = s;
     _mainSource = src;
     _mainEngine = engine;
+    _mainHalt = null; // fix106: new player registers its own halt below
   }
 
   /// Unregisters [engine] as the main player.  If [engine] is provided and
@@ -78,6 +83,7 @@ class OverlayPlayerController extends ChangeNotifier {
     _mainSettings = null;
     _mainSource = null;
     _mainEngine = null;
+    _mainHalt = null; // fix106
     // fix100: full-screen closed — if the mini-player is still up, it's now
     // the only player, so restore its audio.
     if (_engine != null) {
@@ -91,6 +97,24 @@ class OverlayPlayerController extends ChangeNotifier {
   Future<void> muteMain() async {
     AppLog.info('OverlayController: muteMain');
     await _mainEngine?.setVolume(0.0);
+  }
+
+  /// fix106: registers [halt] as the synchronous shutdown callback for the
+  /// current main player. Called by the Player in [initState] immediately
+  /// after [registerMain].
+  void registerMainHalt(Future<void> Function() halt) {
+    _mainHalt = halt;
+  }
+
+  /// fix106: halts the outgoing full-screen player synchronously.
+  /// Disposes its engine and cancels its timers so it cannot fire a
+  /// background reconnect after its route is replaced by pushReplacement.
+  Future<void> haltMain() async {
+    final h = _mainHalt;
+    if (h != null) {
+      AppLog.info('OverlayController: haltMain');
+      await h();
+    }
   }
 
 

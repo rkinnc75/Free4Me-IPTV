@@ -1,7 +1,7 @@
 {
-  "latest": "1.21.7",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.21.7",
+  "latest": "1.22.0",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.22.0",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: swapping the mini-player with the full-screen player no longer stacks routes. Each swap replaces the current full-screen route atomically, so pressing back always exits in a single tap instead of requiring 5\u20136 back presses.\n\u2022 Fix: rapid double-tapping the swap button is now ignored \u2014 a debounce guard prevents a second swap from firing before the first completes.\n\u2022 Removed the maximize (\u2922) button from the mini-player. The video body tap and the \u21c4 swap button both promote the mini-player to full-screen; a separate maximize button is redundant."
+  "releaseNotes": "\u2022 Fix: after swapping the mini-player with the full-screen player, the demoted channel no longer reconnects in the background. Previously each swap left a phantom full-screen engine alive that could spontaneously steal audio or change the visible feed. The outgoing player is now fully stopped before the new one takes over.\n\u2022 Fix: pressing back after multiple swaps now reliably disposes a single engine instead of 3+ phantom instances, eliminating the force-close that was required in some cases."
 }

@@ -265,9 +265,13 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
         ' main="${mainCh?.name ?? 'none'}" hadMain=$hadMain',
       );
 
-      // Mute the outgoing main so audio doesn't bleed during the transition.
+      // fix106: halt the outgoing full-screen player synchronously so it
+      // cannot fire a background reconnect after its route is replaced
+      // (that created phantom previewMode=false engines). haltMain disposes
+      // its engine and cancels its timers; this also stops audio bleed, so
+      // the old muteMain call is no longer needed.
       if (hadMain) {
-        await _ctrl.muteMain();
+        await _ctrl.haltMain();
       }
 
       final snapshot = await _ctrl.consumeOverlay();

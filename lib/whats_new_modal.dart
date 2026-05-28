@@ -7,6 +7,16 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.22.0': [
+    'Fix: after swapping the mini-player with the full-screen player, the '
+        'demoted channel no longer reconnects in the background. Previously '
+        'each swap left a phantom full-screen engine alive that could '
+        'spontaneously steal audio or change the visible feed. The outgoing '
+        'player is now fully stopped before the new one takes over.',
+    'Fix: pressing back after multiple swaps now reliably disposes a single '
+        'engine instead of 3+ phantom instances, eliminating the force-close '
+        'that was required in some cases.',
+  ],
   '1.21.7': [
     'Fix: swapping the mini-player with the full-screen player no longer '
         'stacks routes. Each swap replaces the current full-screen route '

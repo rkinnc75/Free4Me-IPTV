@@ -137,6 +137,9 @@ class _PlayerState extends State<Player> {
       widget.source,
       _engine,
     );
+    // fix106: let the swap path halt this player synchronously before
+    // pushReplacement so it cannot fire a background reconnect.
+    OverlayPlayerController.instance.registerMainHalt(haltForSwap);
     initAsync();
   }
 
@@ -693,7 +696,11 @@ class _PlayerState extends State<Player> {
       s.cancel();
     }
     _engineSubs.clear();
-    _engine.dispose();
+    // fix106: haltForSwap (or onExit) may have already disposed the engine
+    // when exiting is true. Guard against a double-dispose.
+    if (!exiting) {
+      _engine.dispose();
+    }
     super.dispose();
   }
 
@@ -853,6 +860,30 @@ class _PlayerState extends State<Player> {
     if (mounted) onExit();
   }
 
+
+  /// fix106: immediately halt all playback/reconnect activity for this
+  /// player without navigating. Called by the swap path on the OUTGOING
+  /// full-screen player so it cannot fire a background reconnect (which
+  /// previously created phantom previewMode=false engines after a swap).
+  ///
+  /// Safe to call multiple times. Does NOT pop the route — pushReplacement
+  /// handles route removal.
+  Future<void> haltForSwap() async {
+    AppLog.info('Player: haltForSwap channel="${widget.channel.name}"');
+    exiting = true;                 // makes all listener callbacks no-op
+    _exitInvoked = true;            // belt-and-suspenders against onExit
+    _bufferingWatchdog?.cancel();
+    _bufferingWatchdog = null;
+    _startupWatchdog?.cancel();
+    _startupWatchdog = null;
+    _stableTimer?.cancel();
+    _stableTimer = null;
+    try {
+      await _engine.dispose();
+    } catch (e) {
+      AppLog.warn('Player: haltForSwap dispose error — $e');
+    }
+  }
 
   void onExit() async {
     if (_exitInvoked) return;
