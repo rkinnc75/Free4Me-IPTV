@@ -104,9 +104,7 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
           ),
           child: Column(
             children: [
-              // ── Control bar (NOT draggable — owns the button touch targets)
               _buildControlBar(context),
-              // ── Video surface (draggable + tap-to-maximize) ──────────────
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: _maximize,
@@ -141,7 +139,6 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
     );
   }
 
-  // ── Control bar ────────────────────────────────────────────────────────────
   //
   // Layout (left → right):
   //   [⤢ maximize 44px] [channel name expanded] [⇄ swap 44px] [✕ close 44px]
@@ -158,7 +155,6 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // ── Maximize (restore to full screen) ───────────────────────────
             _barButton(
               icon: Icons.open_in_full,
               tooltip: 'Restore to full screen',
@@ -166,7 +162,6 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
               onTap: _maximize,
             ),
 
-            // ── Channel name ────────────────────────────────────────────────
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -185,7 +180,6 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
               ),
             ),
 
-            // ── Swap ────────────────────────────────────────────────────────
             _barButton(
               icon: Icons.swap_horiz,
               tooltip: 'Swap with full-screen',
@@ -202,7 +196,6 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
               endIndent: 8,
             ),
 
-            // ── Close ───────────────────────────────────────────────────────
             _barButton(
               icon: Icons.close,
               tooltip: 'Close mini-player',
@@ -238,18 +231,32 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
     );
   }
 
-  // ── Actions ────────────────────────────────────────────────────────────────
 
   NavigatorState get _nav => appNavigatorKey.currentState!;
 
   /// Push a full-screen [Player] for the overlay channel and close the overlay.
   Future<void> _maximize() async {
+    // fix98: if a full-screen player is already running it stays mounted
+    // underneath the new route and keeps playing audio — double audio.
+    // Mute it immediately (stops audio bleed during the transition) and
+    // pop its route before pushing the maximized overlay, mirroring _swap.
+    final hadMain = _ctrl.mainChannel != null;
+    if (hadMain) {
+      await _ctrl.muteMain();
+    }
+
     final snapshot = await _ctrl.consumeOverlay();
     if (snapshot == null) return;
 
     // The overlay was actively streaming this channel — any stale cooldown
     // entry is wrong and would block the freshly created Player widget.
     Player.clearCooldown(snapshot.ch.id);
+
+    // Close the existing full-screen player (if any) so only one Player
+    // is ever mounted and audible at a time.
+    if (hadMain) {
+      _nav.pop();
+    }
 
     _nav.push(
       MaterialPageRoute(
@@ -304,7 +311,6 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
     }
   }
 
-  // ── Corner helpers ─────────────────────────────────────────────────────────
 
   Offset _cornerOffset(Alignment corner, Size size, EdgeInsets padding) {
     final l = _kMarginH;

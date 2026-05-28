@@ -48,7 +48,6 @@ Future<void> main() async {
   await DeviceMemory.init();
   final settings = await SettingsService.reload();
 
-  // fix68.9: warm up in-memory search cache in the background if selected.
   // unawaited — startup continues immediately; the cache is ready by the time
   // the user first types in the search box.
   if (settings.searchMethod == SearchMethod.inMemory) {
@@ -155,6 +154,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Free4Me-IPTV',
       navigatorKey: navigatorKey,
+      navigatorObservers: [playerRouteObserver], // fix98
       builder: (context, child) {
         return Stack(
           children: [

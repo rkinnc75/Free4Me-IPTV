@@ -8,6 +8,7 @@ import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/channel_tile.dart';
 import 'package:open_tv/error.dart';
+import 'package:open_tv/models/app_navigator.dart' show playerRouteObserver;
 import 'package:open_tv/models/channel.dart';
 import 'package:open_tv/models/channel_http_headers.dart';
 import 'package:open_tv/models/engine_type.dart';
@@ -64,7 +65,7 @@ class Player extends StatefulWidget {
   State<StatefulWidget> createState() => _PlayerState();
 }
 
-class _PlayerState extends State<Player> {
+class _PlayerState extends State<Player> with RouteAware {
   // Reassignable so a mid-flight engine swap (ExoPlayer → libmpv fallback)
   // can replace the active engine without rebuilding the whole route.
   late EngineType _engineType;
@@ -677,8 +678,45 @@ class _PlayerState extends State<Player> {
     AppLog.info('Player: swapped engine → $type');
   }
 
+  // fix98: subscribe to the app-wide RouteObserver so we learn when another
+  // route is pushed on top of (or popped back from) this player.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route is PageRoute) {
+      playerRouteObserver.subscribe(this, route);
+    }
+  }
+
+  /// Another route was pushed on top of this player — mute so it doesn't
+  /// bleed audio under the new screen. fix98.
+  @override
+  void didPushNext() {
+    if (!exiting) {
+      unawaited(_engine.setVolume(0.0));
+      AppLog.info(
+        'Player: covered by new route — muted'
+        ' channel="${widget.channel.name}"',
+      );
+    }
+  }
+
+  /// The covering route was popped — this player is visible again. fix98.
+  @override
+  void didPopNext() {
+    if (!exiting && mounted) {
+      unawaited(_engine.setVolume(1.0));
+      AppLog.info(
+        'Player: uncovered — unmuted'
+        ' channel="${widget.channel.name}"',
+      );
+    }
+  }
+
   @override
   void dispose() {
+    playerRouteObserver.unsubscribe(this); // fix98
     // Pass our engine so that if a new Player already called registerMain
     // during a swap transition, we don't accidentally wipe its registration.
     OverlayPlayerController.instance.unregisterMain(_engine);

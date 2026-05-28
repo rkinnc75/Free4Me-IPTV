@@ -8,3 +8,9 @@ import 'package:flutter/material.dart';
 /// widgets that are siblings of the Navigator in the widget tree rather than
 /// descendants of it.
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
+
+/// App-wide route observer for the [Player] widget. fix98: lets Player
+/// subscribe to didPushNext/didPopNext so it mutes when covered by another
+/// route and unmutes when uncovered — preventing audio bleed.
+final RouteObserver<PageRoute> playerRouteObserver =
+    RouteObserver<PageRoute>();

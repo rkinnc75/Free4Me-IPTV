@@ -7,6 +7,14 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.21.5': [
+    'Fix: tapping the mini-player to go full-screen while another full-screen '
+        'channel was already playing caused double audio. The old player is now '
+        'muted and closed before the new one opens.',
+    'Defense in depth: the full-screen player now mutes automatically '
+        'whenever any other screen is pushed on top of it, and unmutes '
+        'when that screen is dismissed.',
+  ],
   '1.21.4': [
     'Fix: streams that open successfully but never produce a frame now give '
         'up in ~watchdog seconds instead of waiting ~30 s for mpv\'s internal '
