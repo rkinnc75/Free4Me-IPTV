@@ -1,7 +1,7 @@
 {
-  "latest": "1.21.3",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.21.3",
+  "latest": "1.21.4",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.21.4",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: each reconnect attempt now times out in ~12 s instead of ~31 s. The buffering watchdog was being silenced during the startup grace window, so the player waited for mpv's own TCP timeout on every cycle. The watchdog now arms during grace using a 2\u00d7 timeout, keeping slow-start protection while catching genuine stalls promptly."
+  "releaseNotes": "\u2022 Fix: streams that open successfully but never produce a frame now give up in ~watchdog seconds instead of waiting ~30 s for mpv's internal timeout. A startup watchdog now covers the open\u2192first-frame gap in both full-screen and multi-view.\n\u2022 Fix: open-failure retries now respect the Max Reconnect Attempts setting instead of a separate hardcoded limit of 6. All failure modes \u2014 open() throwing, stream dropping, and startup stall \u2014 now share one counter and one setting.\n\u2022 Default Max Reconnect Attempts changed from 6 to 3 (existing stored values are kept; only fresh installs and Settings Reset get 3).\n\u2022 Buffering settings help text rewritten: each entry now explains what the setting controls, how changing it affects behaviour, and which other settings it interacts with."
 }

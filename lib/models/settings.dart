@@ -108,13 +108,18 @@ class Settings {
   /// 0 = reconnect immediately. Default: 2000ms. Range: 0–10000ms.
   int streamCompletedDelayMs;
 
-  /// Maximum number of reconnect attempts before the player gives up
-  /// and auto-pops (full-screen) or shows the error UI (multi-view cell).
+  /// Maximum number of attempts before the app gives up on a stream.
   ///
-  /// Default: 6. Range: 1–10.
+  /// Covers BOTH failure modes (fix96):
+  ///   • open() throwing before it connects (open failures)
+  ///   • a stream that opened then dropped, stalled, or never produced
+  ///     a frame (reconnects / watchdog / startup-watchdog)
   ///
-  /// Full-screen: maps to Player._totalReconnectAttempts give-up threshold.
-  /// Multi-view:  maps to MultiViewCell._transientRetries give-up threshold.
+  /// Default: 3. Range: 1–10.
+  ///
+  /// Full-screen: maps to the reconnect counter and the open-failure
+  ///   counter in Player.
+  /// Multi-view:  maps to MultiViewCell's transient-retry budget.
   int maxReconnectAttempts;
 
   /// Which multi-view grid layout is active (or none).
@@ -180,7 +185,7 @@ class Settings {
     this.miniDemuxerMaxMB = 32,
     this.bufferSizeMB = 128,
     this.streamCompletedDelayMs = 2000,
-    this.maxReconnectAttempts = 6,
+    this.maxReconnectAttempts = 3,
     this.multiViewLayout = MultiViewLayout.none,
     this.multiViewCells1x2 = ',',
     this.multiViewCells2x2 = ',,,',
@@ -288,7 +293,7 @@ class Settings {
     s.stableThresholdSecs = 15;
     s.startupGraceMs = isTV ? 1500 : 800;
     s.streamCompletedDelayMs = 2000;
-    s.maxReconnectAttempts = 6;
+    s.maxReconnectAttempts = 3;
 
     // Hardware decode is always recommended; the engine code routes TV
     // hardware to mediacodec-copy and preview cells to software decode

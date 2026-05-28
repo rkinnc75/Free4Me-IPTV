@@ -7,6 +7,21 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.21.4': [
+    'Fix: streams that open successfully but never produce a frame now give '
+        'up in ~watchdog seconds instead of waiting ~30 s for mpv\'s internal '
+        'timeout. A startup watchdog now covers the open→first-frame gap in '
+        'both full-screen and multi-view.',
+    'Fix: open-failure retries now respect the Max Reconnect Attempts setting '
+        'instead of a separate hardcoded limit of 6. All failure modes — '
+        'open() throwing, stream dropping, and startup stall — now share one '
+        'counter and one setting.',
+    'Default Max Reconnect Attempts changed from 6 to 3 (existing stored '
+        'values are kept; only fresh installs and Settings Reset get 3).',
+    'Buffering settings help text rewritten: each entry now explains '
+        'what the setting controls, how changing it affects behaviour, '
+        'and which other settings it interacts with.',
+  ],
   '1.21.3': [
     'Fix: each reconnect attempt now times out in ~12 s instead of ~31 s. '
         'The buffering watchdog was being silenced during the startup grace '

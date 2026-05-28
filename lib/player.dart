@@ -91,7 +91,9 @@ class _PlayerState extends State<Player> {
 
   // Reconnect bookkeeping
   int _consecutiveOpenFailures = 0;
-  static const int _maxOpenFailures = 6;
+  // fix96: open-failure limit now follows the user's maxReconnectAttempts
+  // setting instead of a separate hardcoded 6. One knob controls both
+  // failure modes (open() threw, and opened-then-dropped).
   // Counts every onDisconnect() call regardless of path (catches the async
   // error path that bypasses _consecutiveOpenFailures). Only reset after
   // the stream is confirmed stable for _stableThresholdSecs seconds — a
@@ -99,6 +101,11 @@ class _PlayerState extends State<Player> {
   int _totalReconnectAttempts = 0;
 
   Timer? _bufferingWatchdog;
+  /// fix94: covers the gap between open() success and the first frame.
+  /// A dead stream can return open-success then never emit any buffering
+  /// event, so _bufferingWatchdog (armed only on buffering=true) never
+  /// arms. This fires if no playback signal arrives in time.
+  Timer? _startupWatchdog;
   Timer? _stableTimer;
   bool _isReconnecting = false;
   String? _bufferingState;
@@ -321,6 +328,16 @@ class _PlayerState extends State<Player> {
 
   void _onBufferingChanged(bool buffering) {
     if (!mounted || exiting) return;
+    // fix94: first buffering signal means the engine is alive — the
+    // startup watchdog has done its job, hand off to the normal timers.
+    if (_startupWatchdog != null) {
+      _startupWatchdog!.cancel();
+      _startupWatchdog = null;
+      AppLog.info(
+        'Player: startup watchdog cancelled (buffering=$buffering)'
+        ' channel="${widget.channel.name}"',
+      );
+    }
     AppLog.info('Player: buffering=$buffering channel="${widget.channel.name}"');
     if (buffering) {
       _stableTimer?.cancel(); // stream is no longer stable
@@ -440,6 +457,8 @@ class _PlayerState extends State<Player> {
       exiting = true;
       _bufferingWatchdog?.cancel();
       _bufferingWatchdog = null;
+      _startupWatchdog?.cancel(); // fix94
+      _startupWatchdog = null;
       _stableTimer?.cancel();
       _stableTimer = null;
 
@@ -500,6 +519,7 @@ class _PlayerState extends State<Player> {
     final timeout = Duration(seconds: widget.settings.openTimeoutSecs);
     while (true) {
       if (!mounted || exiting) return;
+      _startupWatchdog?.cancel(); // fix94: clear before re-open
       try {
         final playbackUrl = _playbackUrl();
         final httpHeaders = headers != null
@@ -535,6 +555,32 @@ class _PlayerState extends State<Player> {
         AppLog.info(
           'Player: open() succeeded — engine=$_engineType url="$playbackUrl"',
         );
+        // fix94: arm a startup watchdog. If the stream opens but never
+        // produces a frame / buffering event, mpv can sit ~30s on its
+        // internal read timeout. Catch it sooner. Cancelled by the first
+        // _onBufferingChanged event. Uses bufferingWatchdogSecs as the
+        // duration — one knob for all stall scenarios.
+        if (widget.channel.mediaType == MediaType.livestream) {
+          final startupSecs = widget.settings.bufferingWatchdogSecs;
+          _startupWatchdog?.cancel();
+          _startupWatchdog = Timer(
+            Duration(seconds: startupSecs),
+            () {
+              if (mounted && !exiting) {
+                AppLog.warn(
+                  'Player: startup watchdog fired after ${startupSecs}s'
+                  ' — open succeeded but no frame'
+                  ' channel="${widget.channel.name}"',
+                );
+                onDisconnect(reason: 'startup watchdog');
+              }
+            },
+          );
+          AppLog.info(
+            'Player: startup watchdog armed ${startupSecs}s'
+            ' channel="${widget.channel.name}"',
+          );
+        }
         // Grace expires 500ms after buffering=false in _onBufferingChanged(),
         // not on a fixed timer anchored to open(). The seek probe fires
         // relative to buffering=false — anchoring to open() caused grace to
@@ -570,10 +616,11 @@ class _PlayerState extends State<Player> {
         }
 
         AppLog.warn(
-          'Player: open() failed ($_consecutiveOpenFailures/$_maxOpenFailures)'
+          'Player: open() failed'
+          ' ($_consecutiveOpenFailures/${widget.settings.maxReconnectAttempts})'
           ' — $e — channel="${widget.channel.name}"',
         );
-        if (_consecutiveOpenFailures >= _maxOpenFailures) {
+        if (_consecutiveOpenFailures >= widget.settings.maxReconnectAttempts) {
           if (mounted) {
             setState(
               () => _bufferingState =
@@ -637,6 +684,7 @@ class _PlayerState extends State<Player> {
     OverlayPlayerController.instance.unregisterMain(_engine);
     unawaited(PipController.setPlaying(false));
     _bufferingWatchdog?.cancel();
+    _startupWatchdog?.cancel(); // fix94
     _stableTimer?.cancel();
     for (final s in subscriptions) {
       s.cancel();
@@ -812,6 +860,7 @@ class _PlayerState extends State<Player> {
     exiting = true;
     unawaited(PipController.setPlaying(false));
     _bufferingWatchdog?.cancel();
+    _startupWatchdog?.cancel(); // fix94
     if (widget.channel.mediaType == MediaType.movie) {
       final id = widget.channel.id;
       if (id != null) {

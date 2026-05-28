@@ -109,6 +109,9 @@ class _MultiViewCellState extends State<MultiViewCell> {
   /// before being short-circuited by the generation token. The flag is
   /// reset whenever the engine is (re)started or disposed.
   bool _eofRetryScheduled = false;
+  /// fix94: covers open-success → first-frame gap in the cell, mirroring
+  /// the player's startup watchdog. Dead streams open but never decode.
+  Timer? _startupWatchdog;
 
   @override
   void initState() {
@@ -155,6 +158,8 @@ class _MultiViewCellState extends State<MultiViewCell> {
     _lastBufferingState = null;
     _lastTransientIncrementAt = null;
     _eofRetryScheduled = false;
+    _startupWatchdog?.cancel(); // fix94
+    _startupWatchdog = null;
     if (e != null) {
       // dispose() is async; we fire-and-forget since the widget is gone.
       // Wrap with .catchError so a native dispose failure (rare but possible)
@@ -427,6 +432,11 @@ class _MultiViewCellState extends State<MultiViewCell> {
     }));
 
     _engineSubs.add(engine.bufferingStream.listen((buffering) {
+      // fix94: first buffering signal means the engine is alive.
+      if (_startupWatchdog != null) {
+        _startupWatchdog!.cancel();
+        _startupWatchdog = null;
+      }
       // Reset the transient retry counter after 15 s of stable playback.
       if (!buffering &&
           _lastErrorAt != null &&
@@ -500,6 +510,49 @@ class _MultiViewCellState extends State<MultiViewCell> {
       _loading = false;
       _retryMessage = null;
     });
+    // fix94: arm startup watchdog — if no frame arrives, force a
+    // transient error so the retry/give-up path runs instead of
+    // waiting ~30s for mpv's internal timeout.
+    final startupSecs = widget.settings.bufferingWatchdogSecs;
+    _startupWatchdog?.cancel();
+    _startupWatchdog = Timer(
+      Duration(seconds: startupSecs),
+      () {
+        if (mounted && generation == _openGeneration && !_error) {
+          AppLog.warn(
+            'MultiViewCell: startup watchdog fired after ${startupSecs}s'
+            ' — open succeeded but no frame'
+            ' cell=${widget.cellIndex}'
+            ' channel="${ch.name}"',
+          );
+          // Drive the same retry/give-up path a transient error would.
+          if (_transientRetries < widget.settings.maxReconnectAttempts) {
+            _transientRetries++;
+            final attempt = _transientRetries;
+            final maxAttempts = widget.settings.maxReconnectAttempts;
+            setState(() {
+              _retryMessage = 'Retrying $attempt/$maxAttempts…';
+              _loading = true;
+              _error = false;
+            });
+            _disposeEngine();
+            _startEngine(ch, isRetry: true);
+          } else {
+            setState(() {
+              _error = true;
+              _loading = false;
+              _retryMessage = null;
+            });
+            _disposeEngine();
+          }
+        }
+      },
+    );
+    AppLog.info(
+      'MultiViewCell: startup watchdog armed ${startupSecs}s'
+      ' cell=${widget.cellIndex}'
+      ' channel="${ch.name}"',
+    );
   }
 
   Future<void> _pickChannel() async {

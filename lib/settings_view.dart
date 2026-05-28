@@ -182,7 +182,11 @@ const _helpLiveCacheSecs = (
       'Very high values can make slow streams feel less live.\n\n'
       'Decreasing: Uses less RAM and reduces live delay. May buffer more '
       'often on weak Wi-Fi or unreliable providers.\n\n'
-      'Low Latency mode reduces or bypasses this buffer.',
+      'Interacts with:\n'
+      '• Low Latency mode — reduces or bypasses this buffer for a more '
+      'live feed at the cost of stability.\n'
+      '• Livestream Demuxer Buffer — the cache lives inside the demuxer '
+      'buffer; a large cache needs enough demuxer MB to hold it.',
 );
 
 const _helpLiveDemuxerMB = (
@@ -197,6 +201,11 @@ const _helpLiveDemuxerMB = (
       'Decreasing: Frees RAM for the system and other players. Lower this '
       'first on 1–2 GB TV boxes if the app closes in the background or '
       'during multi-player use.\n\n'
+      'Interacts with:\n'
+      '• Livestream Cache — the cache must fit inside this buffer; raise '
+      'this if you raise the cache.\n'
+      '• Multi-view — each cell allocates its own (smaller) demuxer '
+      'buffer, so total RAM use scales with the number of cells.\n\n'
       'The maximum is capped from detected RAM to avoid unsafe values.',
 );
 
@@ -210,6 +219,9 @@ const _helpVodCacheSecs = (
       'may take longer to fill after a seek.\n\n'
       'Decreasing: Uses less RAM and may respond faster after jumps, but '
       'can buffer more often on slow VOD servers.\n\n'
+      'Interacts with:\n'
+      '• VOD/Movie Demuxer Buffer — the cache lives inside that buffer; '
+      'a large cache needs enough demuxer MB.\n\n'
       'Does not affect live TV streams.',
 );
 
@@ -224,52 +236,79 @@ const _helpVodDemuxerMB = (
       'Decreasing: Frees RAM for the system and other streams. Most 1080p '
       'VOD works well around 64–128 MB, while large 4K files may need '
       'more.\n\n'
+      'Interacts with:\n'
+      '• VOD/Movie Cache — the cache must fit inside this buffer; raise '
+      'this if you raise the cache.\n\n'
       'Does not affect live TV streams.',
 );
 
 const _helpOpenTimeout = (
   title: 'Stream Open Timeout (seconds)',
   body:
-      'Controls how long the app waits for a stream to start before '
-      'treating the open attempt as failed.\n\n'
-      'Default: 15 s. Range: 5–60 s.\n\n'
-      'Increasing: Gives slow servers, overloaded providers, or distant '
-      'streams more time to respond. Can reduce false failures, but you '
-      'may wait longer before the app retries or reports a bad stream.\n\n'
-      'Decreasing: Fails faster when a stream is dead or unreachable. Can '
-      'make retries quicker, but may give up too soon on slow providers.',
+      'How long the app waits for the open() call to start a stream '
+      'before counting that attempt as a failure.\n\n'
+      'Default: 5 s. Range: 5–60 s.\n\n'
+      '↑ Increasing — gives slow or distant servers more time to '
+      'respond before failing. Fewer false failures, but you wait '
+      'longer before a retry or give-up.\n\n'
+      '↓ Decreasing — fails faster on dead servers.\n\n'
+      'Interacts with:\n'
+      '• Max Reconnect Attempts — each open failure counts toward that '
+      'limit. With a low timeout and a low attempt limit, a dead stream '
+      'gives up very quickly.\n'
+      '• Buffering Watchdog — the open timeout only covers the open() '
+      'call. Once a stream opens but then stalls without a picture, the '
+      'Buffering Watchdog (not this setting) catches it.',
 );
 
 const _helpMaxReconnectAttempts = (
   title: 'Max Reconnect Attempts',
   body:
-      'How many times the app retries a failed stream before giving up.\n\n'
-      'Default: 6. Range: 1–10.\n\n'
+      'How many times the app tries a stream before giving up. This is '
+      'the single limit for ALL failure types: a stream that won\'t '
+      'open, one that opens then drops, and one that opens but never '
+      'shows a picture.\n\n'
+      'Default: 3. Range: 1–10.\n\n'
       'Applies to both full-screen playback and multi-view cells.\n\n'
-      'Full-screen: after the limit is reached the player automatically '
-      'returns to the channel list and shows a message.\n\n'
-      'Multi-view: after the limit is reached the cell shows '
-      '"Stream unavailable" with a manual Retry button.\n\n'
+      'Full-screen: when the limit is reached the player returns to the '
+      'channel list and shows a message.\n'
+      'Multi-view: when the limit is reached the cell shows "Stream '
+      'unavailable" with a manual Retry button.\n\n'
       '↑ Increasing — gives flaky streams more chances to recover. '
-      'Useful for providers with intermittent connection drops that '
-      'usually resolve on their own.\n\n'
-      '↓ Decreasing — fails faster on dead streams. Set to 1–2 if '
-      'you want the app to give up quickly and prefer to pick a '
-      'different channel manually.',
+      'Useful for providers that drop briefly then come back.\n\n'
+      '↓ Decreasing — fails faster on dead streams. Set to 1 for '
+      'immediate give-up with no retry; 2–3 for a couple of chances.\n\n'
+      'Interacts with:\n'
+      '• Stream Open Timeout — each attempt can wait up to this long for '
+      'open() to respond.\n'
+      '• Buffering Watchdog — each attempt can wait up to this long for '
+      'a stalled stream to recover before counting as a failed attempt.\n'
+      '• Total wait before give-up ≈ attempts × (open timeout or '
+      'watchdog, whichever applies). Example: 3 attempts × 10 s '
+      'watchdog ≈ 30 s worst case on a dead stream.',
 );
 
 const _helpWatchdog = (
   title: 'Buffering Watchdog (seconds)',
   body:
-      'Controls how long a live stream may stay buffering before the app '
-      'tries to reconnect it.\n\n'
+      'How long a live stream may stay frozen — buffering, or opened but '
+      'showing no picture — before the app counts it as a failed attempt '
+      'and reconnects or gives up.\n\n'
       'Default: 12 s. Range: 5–60 s.\n\n'
-      'Increasing: Gives the provider more time to recover naturally. Can '
-      'avoid unnecessary reconnects on streams that pause briefly, but '
-      'leaves you waiting longer when a stream is truly stuck.\n\n'
-      'Decreasing: Reconnects sooner when playback freezes. Can recover '
-      'bad streams faster, but may cause extra reconnects during temporary '
-      'network dips.\n\n'
+      '↑ Increasing — gives a stuck stream more time to recover on its '
+      'own. Fewer needless reconnects on brief pauses, but longer waits '
+      'when a stream is truly stuck.\n\n'
+      '↓ Decreasing — reacts faster when playback freezes. Quicker '
+      'recovery, but may reconnect during short network dips.\n\n'
+      'Interacts with:\n'
+      '• Max Reconnect Attempts — every time this watchdog fires it uses '
+      'one attempt. Total give-up time ≈ attempts × this value on a '
+      'stuck stream.\n'
+      '• Startup Grace — during the brief grace window right after open, '
+      'the watchdog uses a longer timeout so a slow but real start is '
+      'not killed early.\n'
+      '• It also covers the "opened but never produced a frame" case '
+      '(a dead stream that returns success then sends nothing).\n\n'
       'In mini-player or multi-view, each active stream has its own '
       'watchdog.',
 );
