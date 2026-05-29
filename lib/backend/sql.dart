@@ -99,11 +99,6 @@ class Sql {
     };
   }
 
-  // FIX (Tier 3, #13): the upstream version of this function had two SQL
-  // bugs that silently broke group_id assignment:
-  //   1. A stray `;` between GROUP BY and ON CONFLICT split the statement.
-  //   2. The UPDATE referenced `source_id = ?` but had no parameter bound.
-  // Rewritten as two clean parameterized statements.
   static Future<void> Function(SqliteWriteContext, Map<String, String>)
       updateGroups() {
     return (SqliteWriteContext tx, Map<String, String> memory) async {
@@ -169,10 +164,6 @@ class Sql {
   static Future<void> Function(SqliteWriteContext, Map<String, String>)
       getOrCreateSourceByName(Source source) {
     return (SqliteWriteContext tx, Map<String, String> memory) async {
-      // fix48: use SELECT-then-INSERT-or-UPDATE so that backup imports
-      // correctly write `enabled` and `default_engine` instead of always
-      // inheriting the column defaults (enabled=1, default_engine=NULL).
-      //
       // INSERT OR REPLACE was rejected because AUTOINCREMENT assigns a new
       // id on each replace, which would orphan rows in `channels` that
       // reference `sources.id` via the source_id FK. The SELECT-first
@@ -188,10 +179,6 @@ class Sql {
         // `enabled` and `default_engine`). The id is preserved, so
         // channel FK references are unaffected.
         final id = existing.columnAt(0);
-        // fix51-B: use COALESCE for username/password so a credential-safe
-        // backup (exported with includeCredentials=false, meaning both fields
-        // are null) never overwrites an already-configured Xtream source's
-        // stored credentials. Non-null values from the backup still win.
         await tx.execute('''
               UPDATE sources
                  SET source_type    = ?,
@@ -214,9 +201,6 @@ class Sql {
         ]);
         memory['sourceId'] = id.toString();
       } else {
-        // New source — INSERT with all fields including enabled and
-        // default_engine. Previously these were omitted, so every imported
-        // source was created enabled regardless of the backup value (fix48).
         await tx.execute('''
               INSERT INTO sources
                 (name, source_type, url, username, password, epg_url,
@@ -238,11 +222,10 @@ class Sql {
     };
   }
 
-  // FIX (Tier 4, #8): use FTS5 when the user has typed a search query.
   // Leading-wildcard LIKE forced a full-table scan; trigram FTS is index-backed.
   //
   /// [invocation] is an opaque correlation id passed through to log lines so
-  /// the caller can tie search timing to its own load id (fix29-2).
+  /// the caller can tie search timing to its own load id.
   /// Safe to pass 0 if not correlating.
   static Future<List<Channel>> search(Filters filters,
       {int invocation = 0}) async {
@@ -260,10 +243,9 @@ class Sql {
     final useFts = rawQuery.isNotEmpty;
 
     String sqlQuery;
-    String branch = 'no-query'; // fix29-2 diagnostic
+    String branch = 'no-query';
     List<Object> params = [];
 
-    // fix68: route to the selected search method before the FTS block.
     if (useFts) {
       if (filters.searchMethod == SearchMethod.inMemory) {
         return _searchInMemory(filters, rawQuery, mediaTypes, offset);
@@ -310,7 +292,6 @@ class Sql {
           branch = 'fts'; // long terms only; the common ≥3-char case
         }
       } else {
-        // fix53: all terms are too short for the trigram index (< 3 chars).
         // A leading-wildcard LIKE scan here forces a full-table read that can
         // take 2–5 seconds on a 90k-channel source. The result set would be
         // enormous and unhelpful anyway. Return early with an empty list so
@@ -351,7 +332,6 @@ class Sql {
       params.add(filters.groupId!);
     }
 
-    // fix70: exclude adult-content channels when safe mode is on.
     // Must be before ORDER BY — AND clauses after ORDER BY are invalid SQL.
     final (smClause, smParams) = safeModeClause(filters.safeMode);
     sqlQuery += smClause;
@@ -363,8 +343,6 @@ class Sql {
       );
     }
 
-    // fix72: ORDER BY after all WHERE conditions and safe mode clause.
-    // fix74: stream_validated included so validated channels float up.
     if (filters.viewType == ViewType.history) {
       sqlQuery += "\nORDER BY c.last_watched DESC";
     } else {
@@ -379,7 +357,6 @@ class Sql {
     params.add(offset);
     params.add(pageSize);
 
-    // fix29-2 diagnostic — split SQL execution from row mapping so the
     // log can tell us which is the bottleneck.
     final sqlStart = DateTime.now();
     var results = await db.getAll(sqlQuery, params);
@@ -411,7 +388,6 @@ class Sql {
     //   source_id(6) favorite(7) series_id(8) group_id(9) stream_id(10)
     //   last_watched(11) epg_channel_id(12) epg_manual_override(13)
     //   catchup_type(14) catchup_source(15) catchup_days(16)
-    //   engine_override(17) stream_validated(18)  [fix74: migration 10]
     final rawMediaType = row.columnAt(5) as int?;
     final mediaType = (rawMediaType != null &&
             rawMediaType >= 0 &&
@@ -431,14 +407,14 @@ class Sql {
       seriesId: row.columnAt(8),
       groupId: row.columnAt(9),
       streamId: row.columnAt(10) as int?,
-      lastWatched: row.columnAt(11) as int?,   // fix72
+      lastWatched: row.columnAt(11) as int?,
       epgChannelId: row.columnAt(12) as String?,
       epgManualOverride: row.columnAt(13) as String?,
       catchupType: row.columnAt(14) as String?,
       catchupSource: row.columnAt(15) as String?,
       catchupDays: row.columnAt(16) as int?,
       engineOverride: EngineType.fromJson(row.columnAt(17) as String?),
-      streamValidated: sv == null ? null : sv == 1,  // fix74
+      streamValidated: sv == null ? null : sv == 1,
     );
   }
 
@@ -446,7 +422,7 @@ class Sql {
     return List.filled(size, "?").join(",");
   }
 
-  /// Returns channel data for the in-memory search cache (fix68 / fix55).
+  /// Returns channel data for the in-memory search cache.
   ///
   /// Returns 10-tuples: (id, name, group, mediaType, sourceId,
   ///                      favorite, lastWatched, groupId, seriesId,
@@ -454,8 +430,7 @@ class Sql {
   /// The cache uses these to apply ALL view filters before pagination so
   /// full Channel objects are only fetched for the final page of IDs.
   ///
-  /// fix57: added stream_validated (col 10) so [ChannelSearchCache] can
-  /// sort in-memory results by the same ORDER BY used in SQL search.
+  /// Includes stream validation so cache ordering can match SQL search.
   static Future<
       List<(int, String, String, int, int, bool, int?, int?, int?, bool?)>>
       getAllChannelNamesForCache() async {
@@ -477,7 +452,6 @@ class Sql {
               r.columnAt(6) as int?,              // lastWatched (epoch-seconds)
               r.columnAt(7) as int?,              // groupId
               r.columnAt(8) as int?,              // seriesId
-              // fix57: stream_validated (null/0/1 → null/false/true)
               (r.columnAt(9) as int?) == null
                   ? null
                   : (r.columnAt(9) as int) == 1,
@@ -501,7 +475,6 @@ class Sql {
   }
 
   static Future<List<Channel>> searchGroup(Filters filters) async {
-    // fix53: skip the full-table LIKE scan when every keyword is < 3 chars.
     final rawGroupQuery = (filters.query ?? "").trim();
     if (rawGroupQuery.isNotEmpty) {
       final groupTerms = filters.useKeywords
@@ -533,7 +506,6 @@ class Sql {
     params.addAll(mediaTypes);
     params.addAll(filters.sourceIds!);
 
-    // fix70: exclude adult-content groups when safe mode is on.
     final (smGroupClause, smGroupParams) = safeModeGroupClause(filters.safeMode);
     sqlQuery += smGroupClause;
     params.addAll(smGroupParams);
@@ -631,8 +603,6 @@ class Sql {
       SET favorite = ?
       WHERE id = ?
     ''', [favorite ? 1 : 0, channelId]);
-    // fix57.2: keep in-memory cache current so InMemory search reflects the
-    // new favorite state without a full rebuild.
     ChannelSearchCache.updateFavorite(channelId, favorite);
   }
 
@@ -757,13 +727,10 @@ class Sql {
       'UPDATE channels SET last_watched = NULL WHERE id = ?',
       [channelId],
     );
-    // fix57.2: mirror the NULL into the in-memory cache.
     ChannelSearchCache.updateLastWatched(channelId, null);
   }
 
   static Future<void> addToHistory(int id) async {
-    // fix57.2: use a Dart-side timestamp so SQLite and in-memory cache both
-    // receive the exact same epoch-seconds value.
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     var db = await DbFactory.db;
     await db.execute(
@@ -782,19 +749,13 @@ class Sql {
 				LIMIT 36
 		  )
     ''');
-    // fix57.2: update the watched channel in the in-memory cache.
     // The pruning query above may null-out older entries in SQLite; the cache
     // stays slightly optimistic for those until the next rebuild (acceptable —
     // they're beyond top-36 history anyway).
     ChannelSearchCache.updateLastWatched(id, now);
   }
 
-  /// Capture per-channel attributes that must survive a source wipe:
-  /// favorites, watch history, EPG assignments, and manual EPG overrides.
-  ///
-  /// fix50: extended to include epg_channel_id and epg_manual_override.
-  /// Before this fix, every source refresh erased all EPG matches,
-  /// requiring a full re-match after every M3U/Xtream reload.
+  /// Capture per-channel attributes that must survive a source wipe.
   static Future<List<ChannelPreserve>> getChannelsPreserve(int sourceId) async {
     var db = await DbFactory.db;
     var results = await db.getAll('''
@@ -829,14 +790,13 @@ class Sql {
       lastWatched: row.columnAt(2),
       epgChannelId: row.columnAt(3) as String?,
       epgManualOverride: row.columnAt(4) as String?,
-      streamValidated: row.columnAt(5) as int?,  // fix74
+      streamValidated: row.columnAt(5) as int?,
     );
   }
 
   /// Restore per-channel attributes after a wipe+re-import.
   ///
-  /// fix50: extended to also restore epg_channel_id and epg_manual_override.
-  /// fix51-D: when a manual override is present, write it to BOTH
+  /// When a manual override is present, write it to BOTH
   /// epg_manual_override AND epg_channel_id so that the guide lookup (which
   /// reads epg_channel_id) immediately reflects the user's explicit pin.
   /// Without this, the override was stored in epg_manual_override but
@@ -867,7 +827,7 @@ class Sql {
             channel.lastWatched,
             channel.epgManualOverride,
             channel.epgManualOverride,
-            channel.streamValidated,  // fix74
+            channel.streamValidated,
             channel.name,
             sourceId,
           ]);
@@ -888,7 +848,7 @@ class Sql {
             channel.favorite,
             channel.lastWatched,
             channel.epgChannelId,
-            channel.streamValidated,  // fix74
+            channel.streamValidated,
             channel.name,
             sourceId,
           ]);
@@ -904,7 +864,6 @@ class Sql {
     };
   }
 
-  // ── Stream validation (fix74) ──────────────────────────────────────────────
 
   /// Persist a stream scan result for a channel.
   /// [isValid] = true → stream confirmed as media.
@@ -920,7 +879,6 @@ class Sql {
       'Sql.setStreamValidated: channel=$channelId'
       ' validated=${isValid ? "✓" : "✗"}',
     );
-    // fix57.2: mirror into in-memory cache so InMemory search shows the
     // green validation indicator immediately.
     ChannelSearchCache.updateStreamValidated(channelId, isValid);
   }
@@ -931,11 +889,9 @@ class Sql {
     final db = await DbFactory.db;
     await db.execute('UPDATE channels SET stream_validated = NULL');
     AppLog.info('Sql.clearAllStreamValidated: reset all stream_validated flags');
-    // fix57.2: mirror the reset into the in-memory cache.
     ChannelSearchCache.clearAllStreamValidated();
   }
 
-  // ── EPG ────────────────────────────────────────────────────────────────────
 
   /// Persist the EPG URL for a source.
   static Future<void> setSourceEpgUrl(int sourceId, String? url) async {
@@ -954,7 +910,7 @@ class Sql {
   /// The earlier `UPDATE … FROM (VALUES …) AS _data(id, epg)` form
   /// required SQLite 3.39+ (for the derived-table column-alias-list
   /// syntax) and produced "syntax error near '('" on devices whose
-  /// loaded sqlite is older — see fix40.md. The CTE-based form below
+  /// loaded sqlite is older. The CTE-based form below
   /// works on SQLite 3.8.3+ (2014), which covers every plausible
   /// runtime including the system sqlite on older Android.
   static Future<void> setChannelEpgIds(
@@ -1009,7 +965,7 @@ class Sql {
 
   /// Delete all EPG data for a source from epg.sqlite.
   /// Call this when deleting a source from db.sqlite, since the cross-file
-  /// FK cannot cascade automatically. See fix56.md.
+  /// FK cannot cascade automatically.
   static Future<void> deleteEpgForSource(int sourceId) async {
     final db = await EpgDbFactory.db;
     await db.writeTransaction((tx) async {
@@ -1082,7 +1038,7 @@ class Sql {
   /// Call after large batch writes (e.g. EPG programme inserts) to prevent
   /// SQLite's automatic PASSIVE checkpoint from running concurrently with UI
   /// reads. An unmanaged checkpoint on a 100MB+ WAL blocks all read queries
-  /// for 90–150 seconds on phone flash (fix52).
+  /// for 90–150 seconds on phone flash.
   ///
   /// TRUNCATE mode: waits for all active readers, flushes the entire WAL to
   /// the main DB file, then truncates the WAL file to 0 bytes. Subsequent
@@ -1259,7 +1215,6 @@ class Sql {
     return rows.map(rowToChannel).toList();
   }
 
-  // ── EPG manual channel mapping ─────────────────────────────────────────────
 
   /// All live channels for a source, ordered: unmatched first then matched.
   static Future<List<Channel>> getLiveChannelsForMapping(int sourceId) async {
@@ -1310,7 +1265,6 @@ class Sql {
     ''', [epgChannelId, epgChannelId, channelId]);
   }
 
-  // ── fix70: safe mode SQL helpers ───────────────────────────────────────────
 
   /// Generates a SQL fragment and parameters that exclude channels whose
   /// `group_name` or `name` contains any term from [safeModeBlocklist].
@@ -1343,9 +1297,8 @@ class Sql {
     return ('\nAND ($conditions)', params);
   }
 
-  // ── fix68: alternative search backends ─────────────────────────────────────
 
-  /// In-memory search (fix68): uses [ChannelSearchCache] to get matching IDs
+  /// In-memory search: uses [ChannelSearchCache] to get matching IDs
   /// then fetches full [Channel] rows by ID from SQLite.
   /// Zero FTS / WAL impact — the cache holds pre-lowercased name + group strings.
   static Future<List<Channel>> _searchInMemory(
@@ -1354,8 +1307,6 @@ class Sql {
     Iterable<int> mediaTypes,
     int offset,
   ) async {
-    // fix55: cache applies ALL filters (view type, group, series, safe mode)
-    // before pagination, so the returned IDs are the exact final page.
     final ids = ChannelSearchCache.search(
       query: rawQuery,
       mediaTypes: mediaTypes.toSet(),
@@ -1388,9 +1339,6 @@ class Sql {
     );
 
     final mapped = [for (final id in ids) if (byId.containsKey(id)) byId[id]!];
-    // fix72+fix74: sort — favorites first, validated second, recently watched
-    // third, alphabetical fallback. Mirrors the SQL ORDER BY in search() and
-    // _searchLike() so all three backends produce consistent ordering.
     mapped.sort((a, b) {
       final favCmp = (b.favorite ? 1 : 0).compareTo(a.favorite ? 1 : 0);
       if (favCmp != 0) return favCmp;
@@ -1404,7 +1352,7 @@ class Sql {
     return mapped;
   }
 
-  /// LIKE-scan search (fix68): full-table substring scan, no FTS index.
+  /// LIKE-scan search: full-table substring scan, no FTS index.
   /// Slower than FTS but works for any query length including < 3 chars.
   static Future<List<Channel>> _searchLike(
     Filters filters,
@@ -1443,13 +1391,10 @@ class Sql {
       params.add(filters.groupId!);
     }
 
-    // fix70: safe mode clause before ORDER BY — AND after ORDER BY is invalid SQL.
     final (smClause, smParams) = safeModeClause(filters.safeMode);
     sqlQuery += smClause;
     params.addAll(smParams);
 
-    // fix72: ORDER BY after all WHERE conditions.
-    // fix74: stream_validated included so validated channels float up.
     if (filters.viewType == ViewType.history) {
       sqlQuery += '\nORDER BY c.last_watched DESC';
     } else {

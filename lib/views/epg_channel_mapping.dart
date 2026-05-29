@@ -191,7 +191,6 @@ class _EpgChannelMappingViewState extends State<EpgChannelMappingView> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 
 class _EpgIdPickerDialog extends StatefulWidget {
   final String channelName;

@@ -117,7 +117,6 @@ class EpgService {
     int inserted = 0;
     AppLog.info('EPG: downloading "${source.name}" — $url');
     try {
-      // Idempotent insert path (fix29.5): no upfront wipe. The schema-v8
       // unique index on (source_id, epg_channel_id, start_utc) turns the
       // batch insert into an upsert so a mid-stream failure leaves the
       // previous EPG intact instead of emptying the table.
@@ -138,11 +137,9 @@ class EpgService {
       // with the user's first searches after EPG completes. For a large
       // source (100k+ programs → ~100MB WAL), this checkpoint takes
       // 90–150 seconds on phone flash and blocks every read query during
-      // that time (see fix52.md, free4me_log_1779765900144.txt).
       //
       // Running the checkpoint here while the progress dialog is still
       // visible hides the cost entirely.
-      // fix51-E: delete stale rows BEFORE the checkpoint so the single
       // explicit flush covers both the fresh inserts and the stale deletes.
       // Previously deleteStalePrograms ran after the checkpoint, creating a
       // fresh WAL that could reintroduce an auto-checkpoint stall on the

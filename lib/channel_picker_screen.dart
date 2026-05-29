@@ -11,11 +11,8 @@ import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/settings.dart' show SearchMethod;
 import 'package:open_tv/models/view_type.dart';
 
-/// Sort key for the picker — mirrors the ORDER BY from fix72/74:
-/// favorites+validated → favorites → validated → alphabetical.
-///
-/// fix74: reads [Channel.streamValidated] (persisted DB value) with
-/// [StreamScanner.results] as a fallback for in-session scans.
+/// Sort key for the picker: favorites plus validated streams first, then
+/// favorites, validated streams, and alphabetical fallback.
 int _pickSort(Channel a, Channel b) {
   int tier(Channel ch) {
     final validated = ch.streamValidated == true ||
@@ -46,7 +43,6 @@ class ChannelPickerScreen extends StatefulWidget {
 }
 
 class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
-  // fix59: match Live TV search debounce
   static const _searchDebounce = Duration(milliseconds: 200);
 
   final _searchCtrl = TextEditingController();
@@ -54,16 +50,11 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
   List<Channel> _channels = [];
   bool _loading = true;
 
-  // fix78.2: stale-load guard — each load call claims a new invocation id;
-  // any in-flight call whose id no longer matches the current is dropped.
   int _loadInvocation = 0;
 
-  // fix59: track the active search query and whether the initial browse is done.
   String _activeQuery = '';
   bool _initialBrowseLoaded = false;
 
-  // fix78.2 + fix59: warm cache for empty-query browse so rebuild-triggered
-  // calls and "clear search box" actions never re-hit SQLite.
   List<Channel>? _cachedEmptyQuery;
 
   @override
@@ -79,10 +70,6 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
     super.dispose();
   }
 
-  /// fix59: builds Live TV [Filters] for any page of picker results.
-  ///
-  /// fix59: fallback changed from likeSubstring → ftsAnd to match the app
-  /// default when settings are not yet cached.
   Filters _liveTvPickerFilters({required String? query, required int page}) {
     final s = SettingsService.cached;
     return Filters(
@@ -96,9 +83,7 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
     );
   }
 
-  /// fix80: load only the first page for the initial browse.
-  ///
-  /// The SQL ORDER BY (fix72/74) already surfaces favorites and validated
+  /// The SQL ORDER BY already surfaces favorites and validated
   /// channels first, so paginating the entire catalogue is unnecessary.
   /// A single page loads in <60ms instead of minutes. The cached result
   /// is reused whenever the search box is cleared.
@@ -123,7 +108,6 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
     });
   }
 
-  /// fix59: runs only for non-empty queries after the debounce fires.
   Future<void> _loadSearch(String query) async {
     final trimmed = query.trim();
     if (trimmed.isEmpty || !mounted) return;
@@ -133,7 +117,7 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
     final all = <Channel>[];
     var page = 1;
     while (true) {
-      if (_loadInvocation != inv) return; // fix78.2: superseded
+      if (_loadInvocation != inv) return;
       final pageResults = await Sql.search(
         _liveTvPickerFilters(query: trimmed, page: page),
         invocation: inv,
@@ -144,7 +128,7 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
     }
     all.sort(_pickSort);
 
-    if (_loadInvocation != inv || !mounted) return; // fix78.2: superseded
+    if (_loadInvocation != inv || !mounted) return;
     setState(() {
       _channels = all;
       _loading = false;
@@ -155,7 +139,6 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
     final query = value.trim();
     _debounce?.cancel();
 
-    // fix59: empty query → restore the cached browse without any SQL.
     if (query.isEmpty) {
       // Already showing the browse list and nothing changed — no-op.
       if (_activeQuery.isEmpty && _initialBrowseLoaded) return;
@@ -170,7 +153,6 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
       return;
     }
 
-    // fix59: skip if the trimmed query is unchanged (e.g. trailing space).
     if (query == _activeQuery) return;
 
     _debounce = Timer(_searchDebounce, () {

@@ -22,7 +22,6 @@ final httpOriginRegex = RegExp(r'http-origin=(.+)');
 final httpReferrerRegex = RegExp(r'http-referrer=(.+)');
 final httpUserAgentRegex = RegExp(r'http-user-agent=(.+)');
 
-// v1.3: catchup attributes — see https://github.com/iptv-org/iptv#catchup
 final catchupTypeRegex = RegExp(r'catchup="([^"]*)"');
 final catchupSourceRegex = RegExp(r'catchup-source="([^"]*)"');
 final catchupDaysRegex = RegExp(r'catchup-days="([^"]*)"');
@@ -229,7 +228,6 @@ Future<void> processM3UUrl(
 }
 
 Future<String> downloadM3U(String urlStr) async {
-  // FIX (Tier 2, #5): use shared client, add timeout on initial response
   // headers, and use a unique-per-request temp filename to avoid collisions.
   final url = Uri.parse(urlStr);
   final request = http.Request('GET', url);

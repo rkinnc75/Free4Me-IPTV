@@ -31,7 +31,6 @@ class DpadTextField extends StatelessWidget {
   final bool obscureText;
   final int? maxLines;
   final FocusNode? focusNode;
-  // fix68.10: allow callers to disable the field (e.g. while cache builds).
   final bool enabled;
 
   const DpadTextField({

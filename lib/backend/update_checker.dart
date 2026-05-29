@@ -20,7 +20,6 @@ class UpdateChecker {
 
   static const String _cacheFilename = 'update_check_cache.json';
 
-  // ── Public API ─────────────────────────────────────────────────────────────
 
   /// Called once on app launch. Respects the throttle interval; silent on error.
   static Future<void> checkOnLaunch(BuildContext context) async {
@@ -53,7 +52,6 @@ class UpdateChecker {
     }
   }
 
-  // ── Internal ───────────────────────────────────────────────────────────────
 
   static Future<void> _runCheck(
     BuildContext context, {

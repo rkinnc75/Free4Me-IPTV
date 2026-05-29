@@ -96,7 +96,6 @@ class XmltvParser {
     // The connection-establishment timeout on AppHttp.sendStreaming only
     // covers receiving the response headers — once the body stream opens,
     // there is no watchdog. A CDN that stalls mid-body would otherwise
-    // leave the parser in `await for` indefinitely (fix46).
     //
     // `onTimeout` closes the stream (rather than erroring) so the `await
     // for` loop exits cleanly and control falls through to flushBatch().
@@ -257,7 +256,6 @@ class XmltvParser {
         }
       },
       onDone: () {
-        // fix51-A: complete the Completer before closing the controller so
         // an empty body or a timeout-closed stream never leaves the caller
         // awaiting _maybeUngzip() forever. An empty controller.stream is a
         // valid (zero-program) result; the XML parser will emit no events

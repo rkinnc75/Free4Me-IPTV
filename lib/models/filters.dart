@@ -12,11 +12,11 @@ class Filters {
   int? groupId;
   bool useKeywords;
 
-  /// Which search implementation to use (fix68). Defaults to ftsAnd.
+  /// Which search implementation to use. Defaults to ftsAnd.
   SearchMethod searchMethod;
 
   /// When true, channels matching the adult-content blocklist are excluded
-  /// from all queries (fix70). Mirrors Settings.safeMode.
+  /// from all queries. Mirrors Settings.safeMode.
   bool safeMode;
 
   Filters({
@@ -29,7 +29,6 @@ class Filters {
     this.groupId,
     // Default true — AND mode is measurably faster than phrase for
     // multi-word queries (6s vs 17s on 54k channels). Superseded by
-    // fix68's searchMethod setting which controls this more explicitly.
     this.useKeywords = true,
     this.searchMethod = SearchMethod.ftsAnd,
     this.safeMode = false,

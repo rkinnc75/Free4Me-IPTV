@@ -34,13 +34,11 @@ class Utils {
     await processSource(source, true, onProgress);
     // After channels are populated, apply any favorites and last-
     // watched timestamps that an imported backup staged for this
-    // source (see fix28.2 / SettingsIo.applyPendingPreserves). No-op
     // if no preserve list is pending.
     await SettingsIo.applyPendingPreserves(source.name);
-    // fix68.6: rebuild in-memory search cache if it was previously populated.
     // No-op if SearchMethod.inMemory was never selected this session.
     if (ChannelSearchCache.isBuilt) {
-      await ChannelSearchCache.rebuild(); // fix55: safeMode now a per-search flag
+      await ChannelSearchCache.rebuild();
       AppLog.info(
           'ChannelSearchCache: rebuilt after source refresh (${source.name})');
     }

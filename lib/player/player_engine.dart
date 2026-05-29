@@ -16,14 +16,12 @@ class TrackInfo {
 /// The [Player] widget owns one engine instance per playback session and
 /// delegates all media operations through this interface.
 abstract class PlayerEngine {
-  // ── Video rendering ────────────────────────────────────────────────────────
 
   /// Returns the widget that renders the video surface.
   /// Must be called after the engine is constructed; the widget can be
   /// embedded anywhere in the build tree.
   Widget buildVideoView(BuildContext context);
 
-  // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   /// Open [url] and start playback.
   /// [startPosition] is only honoured for VOD (seekable streams).
@@ -37,7 +35,6 @@ abstract class PlayerEngine {
   /// Release all native resources.  Must be called exactly once.
   Future<void> dispose();
 
-  // ── Playback state streams ─────────────────────────────────────────────────
 
   /// Emits [true] while the player is in a rebuffering state.
   Stream<bool> get bufferingStream;
@@ -51,11 +48,9 @@ abstract class PlayerEngine {
   /// Current playback position, updated at most once per second.
   Stream<Duration> get positionStream;
 
-  // ── Current state snapshots ────────────────────────────────────────────────
 
   Duration get position;
 
-  // ── Track selection ────────────────────────────────────────────────────────
 
   /// Whether this engine can enumerate and switch audio/subtitle tracks.
   /// [ExoEngine] returns false because video_player exposes no track API.
@@ -67,14 +62,11 @@ abstract class PlayerEngine {
   Future<void> setSubtitleTrack(int index);
   Future<void> setAudioTrack(int index);
 
-  // ── Fullscreen ─────────────────────────────────────────────────────────────
 
-  // ── Volume ─────────────────────────────────────────────────────────────────
 
   /// Set playback volume. [volume] is 0.0 (muted) to 1.0 (full).
   Future<void> setVolume(double volume);
 
-  // ── Fullscreen ─────────────────────────────────────────────────────────────
 
   /// Whether this engine controls its own fullscreen transition.
   /// MpvEngine uses media_kit_video's VideoState; ExoEngine delegates to the

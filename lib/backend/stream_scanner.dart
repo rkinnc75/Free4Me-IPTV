@@ -46,7 +46,6 @@ class StreamScanner {
       final ch = toScan[i];
       final ok = await _probe(ch.url!, timeout);
       results[ch.id!] = ok;
-      // fix74: persist scan result so it survives app restarts.
       await Sql.setStreamValidated(ch.id!, ok);
       AppLog.info('StreamScanner: "${ch.name}" → ${ok ? "OK" : "FAIL"}');
       onProgress(i + 1, toScan.length);

@@ -67,7 +67,6 @@ class CatchupUrl {
     }
   }
 
-  // ── Xtream Codes timeshift ────────────────────────────────────────────────
   // http://{host}:{port}/streaming/timeshift.php?username={u}&password={p}
   //   &stream={id}&start=YYYY-MM-DD:HH-MM&duration={duration_minutes}
   static String? _buildXtream(
@@ -115,7 +114,6 @@ class CatchupUrl {
     return null;
   }
 
-  // ── catchup="append" ──────────────────────────────────────────────────────
   // catchup-source contains a query suffix; append to live URL with
   // placeholders resolved against start time.
   static String? _appendToLive(
@@ -131,7 +129,6 @@ class CatchupUrl {
     return '$base$sep${suffix.startsWith('?') || suffix.startsWith('&') ? suffix.substring(1) : suffix}';
   }
 
-  // ── catchup="shift" ───────────────────────────────────────────────────────
   // Append ?utc={start}&lutc={now} to the live URL.
   static String _shiftQuery(
     Channel channel,
@@ -143,7 +140,6 @@ class CatchupUrl {
     return '$base${sep}utc=${program.startUtc}&lutc=$nowEpoch';
   }
 
-  // ── Placeholder substitution ──────────────────────────────────────────────
   static String? _substitute(
     String? template,
     Program program,

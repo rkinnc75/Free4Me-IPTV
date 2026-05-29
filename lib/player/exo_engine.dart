@@ -24,7 +24,6 @@ class ExoEngine implements PlayerEngine {
   Timer? _pollTimer;
   bool _wasBuffering = false;
 
-  // ── PlayerEngine ───────────────────────────────────────────────────────────
 
   @override
   Widget buildVideoView(BuildContext context) {
@@ -83,7 +82,6 @@ class ExoEngine implements PlayerEngine {
     await _positionCtrl.close();
   }
 
-  // ── Streams ────────────────────────────────────────────────────────────────
 
   @override
   Stream<bool> get bufferingStream => _bufferingCtrl.stream;
@@ -97,7 +95,6 @@ class ExoEngine implements PlayerEngine {
   @override
   Duration get position => _controller?.value.position ?? Duration.zero;
 
-  // ── Track selection — not supported ───────────────────────────────────────
 
   @override
   bool get supportsTrackSelection => false;
@@ -112,14 +109,12 @@ class ExoEngine implements PlayerEngine {
   @override
   Future<void> setAudioTrack(int index) async {}
 
-  // ── Volume ─────────────────────────────────────────────────────────────────
 
   @override
   Future<void> setVolume(double volume) async {
     await _controller?.setVolume(volume);
   }
 
-  // ── Fullscreen — delegated to caller ──────────────────────────────────────
 
   @override
   bool get handlesOwnFullscreen => false;
@@ -132,7 +127,6 @@ class ExoEngine implements PlayerEngine {
   @override
   bool get isFullscreen => false;
 
-  // ── Internal ───────────────────────────────────────────────────────────────
 
   void _onValueChanged() {
     final v = _controller?.value;

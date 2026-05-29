@@ -3,7 +3,6 @@ import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/view_type.dart';
 import 'package:open_tv/settings_view.dart';
 
-// ── Fixed tab definitions (Categories → Settings) ──────────────────────────
 
 const _fixedColors = [
   Color(0xFF9B59D9), // Categories — purple
@@ -21,7 +20,6 @@ const _fixedIcons = [
 
 const _fixedLabels = ['Categories', 'Favorites', 'History', 'Settings'];
 
-// ── Content-type filter definitions ────────────────────────────────────────
 
 const _filterColors = {
   ContentTypeFilter.all:     Color(0xFF4E9FE5), // blue (matches old All)
@@ -174,14 +172,12 @@ class _BottomNavState extends State<BottomNav> {
           height: 80,
           child: Row(
             children: [
-              // ── All / content-type filter tab ──────────────────────────
               _navItem(
                 color: filterColor,
                 icon: filterIcon,
                 label: filterLabel,
                 selected: _selectedIndex == ViewType.all.index,
                 onTap: () {
-                  // fix76: use _selectedIndex (runtime state) not
                   // widget.startingView (construction-time) to decide
                   // whether to navigate or cycle the filter.
                   // startingView never updates after BottomNav is built,
@@ -199,7 +195,6 @@ class _BottomNavState extends State<BottomNav> {
                   }
                 },
               ),
-              // ── Fixed tabs ─────────────────────────────────────────────
               for (var i = 0; i < _fixedLabels.length; i++)
                 _navItem(
                   color: _fixedColors[i],

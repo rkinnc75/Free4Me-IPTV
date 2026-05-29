@@ -18,7 +18,6 @@ class Channel {
   /// channel-mapping screen. Auto-matched channels have this as null.
   String? epgManualOverride;
 
-  // --- Catchup / time-shift (v1.3) ---
   /// Catchup engine: 'default', 'append', 'shift', 'flussonic', 'xc' (xtream).
   /// Null when the channel doesn't support catchup at all.
   String? catchupType;
@@ -32,15 +31,12 @@ class Channel {
   /// Programs older than this hide the "Watch from beginning" button.
   int? catchupDays;
 
-  // --- Engine override (v1.4) ---
   /// Per-channel engine override. Null = use source/global/auto selection.
   EngineType? engineOverride;
 
-  // --- Watch history (fix72) ---
   /// Unix epoch seconds of last watch event. Null = never watched.
   int? lastWatched;
 
-  // --- Stream validation (fix74) ---
   /// Result of the most recent StreamScanner probe.
   /// null = never scanned, true = valid media, false = invalid/unreachable.
   bool? streamValidated;

@@ -155,7 +155,6 @@ class EpgMatcher {
         continue;
       }
 
-      // ─── Fuzzy tiers below ─────────────────────────────────────────────
       // Rule for every fuzzy tier: if two or more candidates tie for "best",
       // skip the match entirely. Better unmatched than wrong.
       bool fuzzyAmbiguous = false;

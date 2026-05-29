@@ -145,7 +145,6 @@ Future<dynamic> getXtreamHttpData(
   Source source, [
   Map<String, String>? extraQueryParams,
 ]) async {
-  // FIX (Tier 2, #4): shared client, timeout, one-shot retry.
   try {
     final url = buildXtreamUrl(source, action, extraQueryParams);
     final response = await AppHttp.getWithRetry(url);
@@ -198,7 +197,6 @@ Channel xtreamToChannel(
   MediaType streamType,
   String? categoryName,
 ) {
-  // v1.3: derive catchup metadata for live streams only. We mark these
   // with type "xc" so catchup_url.dart knows to build the Xtream-style
   // /streaming/timeshift.php URL on the fly.
   final isLive = streamType == MediaType.livestream;

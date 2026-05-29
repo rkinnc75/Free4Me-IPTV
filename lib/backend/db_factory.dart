@@ -159,7 +159,6 @@ class DbFactory {
           END;
         ''');
       }))
-      // v1.2: EPG support
       ..add(SqliteMigration(5, (tx) async {
         // New columns on existing tables
         await tx.execute(
@@ -210,7 +209,6 @@ class DbFactory {
           );
         ''');
       }))
-      // v1.3: Catchup / time-shift columns
       ..add(SqliteMigration(6, (tx) async {
         await tx.execute(
           'ALTER TABLE channels ADD COLUMN catchup_type TEXT;',
@@ -222,7 +220,6 @@ class DbFactory {
           'ALTER TABLE channels ADD COLUMN catchup_days INTEGER;',
         );
       }))
-      // v1.4: Per-channel and per-source engine override
       ..add(SqliteMigration(7, (tx) async {
         await tx.execute(
           'ALTER TABLE channels ADD COLUMN engine_override TEXT;',
@@ -231,8 +228,6 @@ class DbFactory {
           'ALTER TABLE sources ADD COLUMN default_engine TEXT;',
         );
       }))
-      // v1.16.2 original intent: dedupe programmes + add unique index (fix29.5).
-      // fix51-C: migration 9 immediately drops programmes/epg_refresh_log, so
       // users upgrading from schema 7 with a large EPG table (600k+ rows) were
       // paying the full dedupe+index cost at startup only to discard the table
       // moments later. Replaced with the same DROP statements migration 9 runs,
@@ -246,7 +241,6 @@ class DbFactory {
         await tx.execute('DROP INDEX IF EXISTS idx_programs_time_range;');
         await tx.execute('DROP INDEX IF EXISTS idx_programs_unique;');
       }))
-      // fix56: programmes and epg_refresh_log moved to epg.sqlite so that
       // large EPG WAL writes don't block channel-search reads in db.sqlite.
       // Drop the old tables to reclaim space. EPG data is intentionally
       // lost — the next "Refresh EPG now" repopulates epg.sqlite.
@@ -260,7 +254,6 @@ class DbFactory {
         await tx.execute('DROP INDEX IF EXISTS idx_programs_unique;');
       }))
       ..add(SqliteMigration(10, (tx) async {
-        // fix74: persist stream scanner results across sessions.
         // NULL = never scanned, 1 = valid, 0 = invalid.
         // ALTER TABLE ADD COLUMN defaults to NULL for all existing rows —
         // correct, since existing channels have never been scanned.
@@ -269,7 +262,6 @@ class DbFactory {
         );
       }))
       ..add(SqliteMigration(11, (tx) async {
-        // fix57.4: scope the FTS update trigger to name changes only.
         // The previous trigger (AFTER UPDATE ON channels) fired for every
         // column write — favorites, history, stream_validated, EPG — causing
         // unnecessary FTS index churn and WAL growth with no search benefit.
@@ -281,7 +273,6 @@ class DbFactory {
             INSERT INTO channels_fts(rowid, name) VALUES (new.id, new.name);
           END;
         ''');
-        // fix57.5: composite partial index for the hot browse-order query
         // (no-query Live TV browse and channel-picker browse).
         // Covers: source filter + media-type filter + ORDER BY columns.
         await tx.execute('''
@@ -299,7 +290,6 @@ class DbFactory {
       }));
     await migrations.migrate(db);
 
-    // fix40 diagnostic — log which SQLite is actually loaded so any
     // future "syntax error" or feature-gating bug report comes with
     // the version attached. Cheap one-shot at first DB open.
     try {
@@ -313,7 +303,6 @@ class DbFactory {
     // (32MB). This prevents fragmented automatic checkpoints during
     // large batch inserts (EPG programme loading). The explicit
     // Sql.checkpointAndTruncateWal() call in epg_service.dart handles
-    // the full flush after each EPG download. See fix52.md.
     await db.execute('PRAGMA wal_autocheckpoint = 8000');
 
     return db;
@@ -336,7 +325,7 @@ class DbFactory {
 /// The `sources` FK from these tables references `db.sqlite`, but SQLite
 /// cross-file FK enforcement is not supported — we enforce referential
 /// integrity at the application layer (Sql.deleteEpgForSource is called
-/// from Sql.deleteSource). See fix56.md.
+/// from Sql.deleteSource).
 class EpgDbFactory {
   static SqliteDatabase? _db;
 

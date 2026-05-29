@@ -313,7 +313,7 @@ class _SetupState extends State<Setup> {
 
   /// Import a backup file from the welcome screen. If the import
   /// produces at least one source, block on a refresh of all enabled
-  /// sources with a progress dialog (fix33), then jump straight to
+  /// sources with a progress dialog, then jump straight to
   /// Home with channels actually loaded. Otherwise stay on the
   /// welcome screen so the user can fall back to adding a source
   /// manually.
@@ -358,7 +358,6 @@ class _SetupState extends State<Setup> {
     //
     // Channel-attribute restores (favorites / last-watched from the
     // backup) are applied inside Utils.refreshSource via the
-    // SettingsIo.applyPendingPreserves hook from fix28.
     await showSourcesRefreshDialog(context);
 
     if (!mounted) return;

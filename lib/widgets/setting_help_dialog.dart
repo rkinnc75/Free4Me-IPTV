@@ -12,7 +12,6 @@ class SettingHelpDialog {
       context: context,
       builder: (_) => AlertDialog(
         title: Text(title),
-        // fix61: relaxed line height improves readability of longer help text.
         content: SingleChildScrollView(
           child: Text(
             body,

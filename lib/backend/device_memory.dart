@@ -41,7 +41,6 @@ class DeviceMemory {
     );
   }
 
-  // ── Per-device maximums ────────────────────────────────────────────────────
 
   /// Maximum recommended live demuxer MB for full-screen (75 % RAM ÷ 1).
   static int get maxLiveDemuxerMb =>
@@ -55,7 +54,6 @@ class DeviceMemory {
   static int get maxBufferSizeMb =>
       ((totalMb * 0.75) / 2).round().clamp(16, 256);
 
-  // ── Smart defaults ─────────────────────────────────────────────────────────
 
   /// Default liveDemuxerMaxMB for full-screen based on detected RAM.
   static int get defaultLiveDemuxerMb => switch (totalMb) {

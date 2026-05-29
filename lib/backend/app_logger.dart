@@ -84,7 +84,6 @@ class AppLogger {
     log('--- Log cleared ---', level: LogLevel.info);
   }
 
-  // ── internals ────────────────────────────────────────────────────────────
 
   Future<void> _ensureOpen() async {
     if (_sink != null || _initializing) return;

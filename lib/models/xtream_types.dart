@@ -6,7 +6,6 @@ class XtreamStream {
   final String? seriesId;
   final String? cover;
   final String? containerExtension;
-  // v1.3: catchup-related fields from /player_api.php?action=get_live_streams
   final int? tvArchive; // 1 = catchup available, 0 / missing = not
   final int? tvArchiveDuration; // days, when tvArchive == 1
 

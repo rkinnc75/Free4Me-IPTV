@@ -19,7 +19,7 @@ class _CacheEntry {
   final int? lastWatched;     // epoch-seconds; null = never watched
   final int? groupId;
   final int? seriesId;
-  /// fix57: null = never scanned, true = valid, false = invalid.
+  /// Null = never scanned, true = valid, false = invalid.
   final bool? streamValidated;
   /// True when name or group matches any [safeModeBlocklist] term.
   /// Computed once at build time so safe mode toggling never needs a rebuild.
@@ -68,26 +68,14 @@ class _CacheEntry {
   }
 }
 
-/// In-memory channel name cache for fix68 [SearchMethod.inMemory].
+/// In-memory channel name cache for [SearchMethod.inMemory].
 ///
 /// Populated by [rebuild] after every source refresh. Search runs as
 /// pure Dart string matching — no SQLite, no disk I/O, no WAL impact.
 ///
-/// fix57:
-/// - Adds [_CacheEntry.streamValidated] so in-memory ORDER BY matches SQL.
-/// - Maintains pre-sorted views ([_entriesByDefaultOrder] and
-///   [_entriesByHistoryOrder]) built once at rebuild time so pagination is
-///   correct regardless of cache insertion order.
-/// - Generation token prevents a stale in-flight rebuild from writing results
-///   after [invalidate] has been called.
-/// - Targeted mutation methods ([updateFavorite], [updateLastWatched],
-///   [updateStreamValidated], [clearAllStreamValidated]) keep the cache
-///   current after single-row DB writes so in-memory search reflects the
-///   latest user action without a full rebuild.
-///
-/// Safe mode (fix70 / fix55): every entry stores [_CacheEntry.adultBlocked]
-/// computed at build time. The [search] caller passes [safeMode] and adult
-/// entries are filtered without requiring a cache rebuild on toggle.
+/// Pre-sorted views keep pagination consistent with SQL ordering, and targeted
+/// mutation methods keep favorite/history/validation state current without a
+/// full rebuild.
 class ChannelSearchCache {
   static List<_CacheEntry> _entries = [];
 
@@ -111,10 +99,9 @@ class ChannelSearchCache {
   /// Returns true when the cache has not yet been built this session.
   static bool needsRebuild() => !_built;
 
-  // ── Sorting ────────────────────────────────────────────────────────────────
 
   /// Canonical default compare: favorites+validated → favorites → validated
-  /// → recently watched → alphabetical. Matches SQL ORDER BY in fix72/74.
+  /// → recently watched → alphabetical. Matches SQL ORDER BY.
   static int _defaultCompare(_CacheEntry a, _CacheEntry b) {
     final favCmp = (b.favorite ? 1 : 0).compareTo(a.favorite ? 1 : 0);
     if (favCmp != 0) return favCmp;
@@ -138,16 +125,14 @@ class ChannelSearchCache {
     );
   }
 
-  // ── Build / invalidate ─────────────────────────────────────────────────────
 
   /// Rebuild the cache from the channels table.
   /// Call after every source refresh completes.
   static Future<void> rebuild() async {
-    final generation = _generation; // fix57: capture before async SQL call
+    final generation = _generation;
     final t = DateTime.now();
     final rows = await Sql.getAllChannelNamesForCache();
 
-    // fix57: discard if invalidate() was called while waiting for SQL.
     if (generation != _generation) {
       AppLog.info('ChannelSearchCache: rebuild discarded (generation changed)');
       return;
@@ -168,12 +153,11 @@ class ChannelSearchCache {
         lastWatched:     r.$7,
         groupId:         r.$8,
         seriesId:        r.$9,
-        streamValidated: r.$10, // fix57
+        streamValidated: r.$10,
         adultBlocked:    adultBlocked,
       );
     }).toList(growable: false);
 
-    // fix57: check again after mapping in case invalidate() fired.
     if (generation != _generation) {
       AppLog.info(
         'ChannelSearchCache: rebuild discarded after mapping (generation changed)',
@@ -185,7 +169,7 @@ class ChannelSearchCache {
     _indexById = {
       for (var i = 0; i < _entries.length; i++) _entries[i].id: i
     };
-    _rebuildSortedViews(); // fix57: build pre-sorted views once
+    _rebuildSortedViews();
     _built = true;
 
     final ms = DateTime.now().difference(t).inMilliseconds;
@@ -208,7 +192,6 @@ class ChannelSearchCache {
     return _buildFuture!;
   }
 
-  // ── Targeted mutations (fix57.2) ───────────────────────────────────────────
 
   /// Apply [update] to the entry with [id] and rebuild sorted views.
   /// No-op if [id] is not in the cache (cache not built or entry not found).
@@ -252,16 +235,14 @@ class ChannelSearchCache {
     );
   }
 
-  // ── Search ─────────────────────────────────────────────────────────────────
 
   /// Returns channel IDs matching all supplied filters, fully paginated.
   ///
   /// All filters are applied before [offset]/[limit] so pagination is correct
   /// regardless of which view type is active.
   ///
-  /// fix57: iterates [_entriesByDefaultOrder] or [_entriesByHistoryOrder]
-  /// (pre-sorted at rebuild/mutation time) so ORDER BY is correct across pages
-  /// and early-break works for all view types.
+  /// Iterates pre-sorted views so ordering is correct across pages and
+  /// early-break works for all view types.
   static List<int> search({
     required String query,
     required Set<int> mediaTypes,
@@ -281,7 +262,6 @@ class ChannelSearchCache {
         .where((t) => t.isNotEmpty)
         .toList();
 
-    // fix57: choose pre-sorted view — iterate and early-break after filling.
     final source = viewType == ViewType.history
         ? _entriesByHistoryOrder
         : _entriesByDefaultOrder;
@@ -311,7 +291,7 @@ class ChannelSearchCache {
 
   /// Invalidate cache (e.g. when sources change).
   static void invalidate() {
-    _generation++; // fix57: abort any in-flight rebuild
+    _generation++;
     _entries = [];
     _entriesByDefaultOrder = [];
     _entriesByHistoryOrder = [];

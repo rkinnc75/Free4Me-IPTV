@@ -43,7 +43,6 @@ class Home extends StatefulWidget {
 
 class _HomeState extends State<Home> {
   Timer? _debounce;
-  // fix29-2 diagnostics — track the typing burst so we can correlate
   // keystroke rate with perceived search latency. Reset whenever the
   // debounce actually fires (i.e. user has stopped typing).
   DateTime? _firstKeystrokeAt;
@@ -58,7 +57,6 @@ class _HomeState extends State<Home> {
   bool blockSettings = false;
   bool scrolledDeepEnough = false;
 
-  // fix68.10: false while the in-memory search cache is still building.
   // Disables the search TextField so the user doesn't get empty results
   // before the cache is ready.
   bool _searchReady = true;
@@ -95,8 +93,8 @@ class _HomeState extends State<Home> {
           SettingsService.cached ?? await SettingsService.getSettings();
       if (!mounted) return;
       widget.home.filters.mediaTypes = s.getMediaTypes();
-      widget.home.filters.safeMode = s.safeMode;         // fix70
-      widget.home.filters.searchMethod = s.searchMethod; // fix55
+      widget.home.filters.safeMode = s.safeMode;
+      widget.home.filters.searchMethod = s.searchMethod;
     }
 
     final versionFuture = widget.firstLaunch
@@ -105,14 +103,13 @@ class _HomeState extends State<Home> {
 
     await load();
 
-    // fix68.10: if In-Memory search is selected but the warmup started in
     // main.dart hasn't finished yet, disable the search box until it's ready.
     final cachedSettings = SettingsService.cached;
     if (cachedSettings != null &&
         cachedSettings.searchMethod == SearchMethod.inMemory &&
         ChannelSearchCache.needsRebuild()) {
       if (mounted) setState(() => _searchReady = false);
-      await ChannelSearchCache.ensureBuilt(); // fix55: dedupes with main() warmup
+      await ChannelSearchCache.ensureBuilt();
       AppLog.info('Home: ChannelSearchCache warmup completed');
       if (mounted) setState(() => _searchReady = true);
     }
@@ -127,7 +124,6 @@ class _HomeState extends State<Home> {
     // Show the same progress dialog used by the backup import flow.
     // Previously this ran behind tryAsyncNoLoading with no visible
     // feedback — the user saw an empty grid for up to 60 seconds with
-    // no indication that loading was in progress. (fix52 / point 4)
     if (mounted) setState(() => blockSettings = true);
     await showSourcesRefreshDialog(context);
     if (mounted) {
@@ -153,7 +149,6 @@ class _HomeState extends State<Home> {
   }
 
   Future<void> load([bool more = false]) async {
-    // fix55: re-sync searchMethod and safeMode from Settings on every load so
     // changes made in the Settings screen take effect without a restart.
     final liveSettings = SettingsService.cached;
     if (liveSettings != null) {
@@ -167,12 +162,10 @@ class _HomeState extends State<Home> {
       widget.home.filters.page = 1;
     }
 
-    // fix53: snapshot the filters immediately after mutation so that a
     // concurrent load() that modifies widget.home.filters.page (or any
     // other field) mid-flight doesn't corrupt the query we're about to run.
     final snapshot = widget.home.filters.copy();
 
-    // fix29-2 diagnostics — every load gets a monotonic id so the
     // keystroke / debounce / SQL / setState lines can be correlated.
     final inv = ++_searchInvocation;
     final loadStart = DateTime.now();
@@ -204,7 +197,6 @@ class _HomeState extends State<Home> {
 
       // Drop late results from a superseded query. If a newer load()
       // has started, don't clobber its results with ours — including
-      // stale pagination (fix53: removed && !more so pagination can't
       // append out-of-order to a newer search's result list).
       if (inv != _searchInvocation) {
         if (AppLog.enabled) {
@@ -217,7 +209,6 @@ class _HomeState extends State<Home> {
       }
 
       final setStateStart = DateTime.now();
-      // fix76: preserve scroll position across non-more loads.
       // Replacing `channels` with a new list causes SliverGrid to
       // rebuild and ScrollController to reset to offset 0. Save and
       // restore the offset so a favorite toggle or filter change
@@ -418,7 +409,7 @@ class _HomeState extends State<Home> {
               mediaTypes: widget.home.filters.mediaTypes,
               sourceIds: widget.home.filters.sourceIds,
               safeMode: widget.home.filters.safeMode,
-              searchMethod: widget.home.filters.searchMethod, // fix55
+              searchMethod: widget.home.filters.searchMethod,
             ),
           ),
         ),
@@ -435,7 +426,7 @@ class _HomeState extends State<Home> {
         mediaTypes: widget.home.filters.mediaTypes,
         sourceIds: widget.home.filters.sourceIds,
         safeMode: widget.home.filters.safeMode,
-        searchMethod: widget.home.filters.searchMethod, // fix55
+        searchMethod: widget.home.filters.searchMethod,
       ),
     );
     if (widget.home.filters.groupId != null) {
@@ -483,9 +474,8 @@ class _HomeState extends State<Home> {
                                 ).textTheme.titleMedium?.fontSize ?? 16,
                               ),
                               controller: searchController,
-                              enabled: _searchReady, // fix68.10
+                              enabled: _searchReady,
                               onChanged: (query) {
-                                // fix29-2 diagnostics — record keystroke arrival
                                 // relative to the burst so we can see how long the
                                 // user has been typing before the debounce fires,
                                 // and how stale the on-screen results are.
@@ -511,7 +501,6 @@ class _HomeState extends State<Home> {
                                 _lastKeystrokeAt = now;
 
                                 _debounce?.cancel();
-                                // 200 ms (was 500 ms — fix29-2). Short enough
                                 // that a fast typist sees results update mid-word;
                                 // long enough that a single typing burst doesn't
                                 // fire ~4 queries per character.
@@ -565,7 +554,6 @@ class _HomeState extends State<Home> {
                                 ),
                                 // suffixIcon removed — keyword vs phrase mode
                                 // is now controlled by the search method
-                                // selector in Settings (fix68).
                                 filled: true,
                               ),
                             ),

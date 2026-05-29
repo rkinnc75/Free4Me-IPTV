@@ -12,7 +12,6 @@ final _dateFmt = DateFormat.MMMEd(); // e.g. "Mon, May 19"
 final _timeFmt = DateFormat.Hm(); // e.g. "20:30"
 final _durationFmt = NumberFormat('0');
 
-// ─── Flat list item types ────────────────────────────────────────────────────
 sealed class _ListItem {}
 
 class _DayHeader extends _ListItem {
@@ -26,7 +25,6 @@ class _ProgItem extends _ListItem {
   _ProgItem(this.p, {required this.isNow});
 }
 
-// ─── View ────────────────────────────────────────────────────────────────────
 
 /// Full program schedule for a single channel.
 class ChannelScheduleView extends StatefulWidget {
