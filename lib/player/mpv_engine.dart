@@ -235,7 +235,6 @@ class MpvEngine implements PlayerEngine {
   }
 
 
-  @override
   /// fix130 (130.4): surface diagnostics using the typed API.
   /// _controller.id.value = platform texture id (null = not attached).
   /// _controller.rect.value = Rect of the rendered area (null = invisible).
