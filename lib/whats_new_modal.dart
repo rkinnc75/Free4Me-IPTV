@@ -6,6 +6,17 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.22.8': [
+    'Fix (critical): after closing the mini-player and then pressing back '
+        'on the full-screen player, the app no longer shows a black screen '
+        'requiring a force-close. The route exit was working correctly '
+        '(fix118), but the channel list behind it was not repainting. '
+        'The channel list now repaints the moment the player exits.',
+    'Fix: swapping the mini-player no longer corrupts the reveal of the '
+        'channel list on a subsequent back press. The swap operation now '
+        'uses pop+push instead of pushReplacement, which keeps the '
+        'navigation stack in the same shape the rest of the app uses.',
+  ],
   '1.22.6': [
     'Fix (critical): pressing back after a swap no longer leaves a black '
         'screen with a dead back button requiring a force-close. The root '

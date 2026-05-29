@@ -16,6 +16,7 @@ import 'package:open_tv/widgets/dpad_text_field.dart';
 import 'package:open_tv/models/channel.dart';
 import 'package:open_tv/models/filters.dart';
 import 'package:open_tv/models/home_manager.dart';
+import 'package:open_tv/models/app_navigator.dart' show playerRouteObserver;
 import 'package:open_tv/models/no_push_animation_material_page_route.dart';
 import 'package:open_tv/models/node.dart';
 import 'package:open_tv/models/node_type.dart';
@@ -41,7 +42,7 @@ class Home extends StatefulWidget {
   State<Home> createState() => _HomeState();
 }
 
-class _HomeState extends State<Home> {
+class _HomeState extends State<Home> with RouteAware {
   Timer? _debounce;
   // keystroke rate with perceived search latency. Reset whenever the
   // debounce actually fires (i.e. user has stopped typing).
@@ -72,6 +73,27 @@ class _HomeState extends State<Home> {
     super.initState();
     _scrollController.addListener(_scrollListener);
     initializeAsync();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // fix120: subscribe so we get didPopNext when the full-screen Player
+    // is popped on top of us — needed to force a repaint of Home,
+    // otherwise the compositor can retain the Player's black layer.
+    final route = ModalRoute.of(context);
+    if (route is PageRoute) {
+      playerRouteObserver.subscribe(this, route);
+    }
+  }
+
+  /// fix120: a route on top of Home (the full-screen Player) was popped —
+  /// Home is visible again. Force a rebuild so the compositor repaints
+  /// Home rather than retaining the popped Player's black layer.
+  @override
+  void didPopNext() {
+    AppLog.info('Home: didPopNext — revealed, forcing repaint');
+    if (mounted) setState(() {});
   }
 
   Future<void> initializeAsync() async {
@@ -257,6 +279,7 @@ class _HomeState extends State<Home> {
 
   @override
   void dispose() {
+    playerRouteObserver.unsubscribe(this); // fix120
     _scrollController.dispose();
     searchController.dispose();
     _debounce?.cancel();

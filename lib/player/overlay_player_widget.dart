@@ -238,9 +238,12 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
   /// full-screen channel into the overlay. If no full-screen player is
   /// registered, the overlay simply becomes the full-screen player.
   ///
-  /// fix104: uses pushReplacement so exactly one full-screen route exists
-  /// at any time — pop+push previously stacked routes (user had to close
-  /// ~6 instances). Also guards against rapid double-tap via _swapInFlight.
+  /// fix104: ensures exactly one full-screen route exists at any time —
+  /// before fix104, swap stacked routes (user had to close ~6 instances).
+  /// Also guards against rapid double-tap via _swapInFlight.
+  /// fix120: switched the route op from pushReplacement to pop+push —
+  /// pushReplacement caused the revealed Home route to render black on
+  /// the next pop. Stack shape is unchanged.
   Future<void> _swap() async {
     if (_swapInFlight) {
       AppLog.warn('OverlayWidget: _swap ignored — already in flight');
@@ -298,10 +301,20 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
         ),
       );
       if (hadMain) {
+        // fix120: pop the outgoing full-screen route, THEN push the new
+        // one, instead of pushReplacement. pushReplacement left the
+        // revealed route (Home, after a later pop) rendering black —
+        // the compositor retained the disposed Player's layer.
+        // Explicit pop+push reaches the same stack shape
+        // ([Home, Player(new)]) via the same operations the rest of the
+        // app uses. The outgoing engine is already detached by
+        // detachMain (fix116) and _engineDisposed guards prevent the
+        // pop from disposing the handed-off engine.
         AppLog.info(
-          'OverlayWidget: _swap pushReplacement → "${overlay.ch.name}" (adopt)',
+          'OverlayWidget: _swap pop+push → "${overlay.ch.name}" (adopt)',
         );
-        _nav.pushReplacement(promoted);
+        _nav.pop();
+        _nav.push(promoted);
       } else {
         AppLog.info(
           'OverlayWidget: _swap push → "${overlay.ch.name}" (adopt)',

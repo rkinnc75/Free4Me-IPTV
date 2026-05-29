@@ -1,7 +1,7 @@
 {
-  "latest": "1.22.6",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.22.6",
+  "latest": "1.22.8",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.22.8",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix (critical): pressing back after a swap no longer leaves a black screen with a dead back button requiring a force-close. The root cause was the exit handler waiting on engine teardown before navigating \u2014 if the widget unmounted during that wait (which happened when the mini-player was closed moments earlier), the route never popped. The player now pops the route immediately and tears down the engine in the background.\n\u2022 Improvement: exit is no longer blocked by engine state at all \u2014 pressing back during buffering or reconnecting also exits instantly.\n\u2022 Improvement: movie resume position save is now time-bounded (1s max) so a busy engine can no longer delay exit."
+  "releaseNotes": "\u2022 Fix (critical): after closing the mini-player and then pressing back on the full-screen player, the app no longer shows a black screen requiring a force-close. The route exit was working correctly (fix118), but the channel list behind it was not repainting. The channel list now repaints the moment the player exits.\n\u2022 Fix: swapping the mini-player no longer corrupts the reveal of the channel list on a subsequent back press. The swap operation now uses pop+push instead of pushReplacement, which keeps the navigation stack in the same shape the rest of the app uses."
 }
