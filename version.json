@@ -1,7 +1,7 @@
 {
-  "latest": "1.22.9",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.22.9",
+  "latest": "1.22.10",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.22.10",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix (critical): corrected the cause of the black screen after closing the mini-player and then pressing back on the full-screen player. Flutter RouteObserver cannot fire for the channel list because it is the root route \u2014 the repaint added in 1.22.8 could never trigger. The fix now forces a repaint directly from the player exit path and adds a second trigger from the overlay controller, both of which are proven to run on every exit."
+  "releaseNotes": "\u2022 Fix (critical): eliminated the black screen after closing the mini-player and pressing back on the full-screen player after a swap. The adopted engine video texture was not released on dispose, leaving a dead black frame composited above the channel list. The fix now releases the video surface before tearing down the player, and gives each adopted engine a fresh video surface so texture lifecycles stay clean across swaps."
 }

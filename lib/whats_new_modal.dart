@@ -6,6 +6,15 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.22.10': [
+    'Fix (critical): eliminated the black screen after closing the '
+        'mini-player and pressing back on the full-screen player after a swap. '
+        'The adopted engine video texture was not released on dispose, leaving '
+        'a dead black frame composited above the channel list. The fix now '
+        'releases the video surface before tearing down the player, and gives '
+        'each adopted engine a fresh video surface so texture lifecycles stay '
+        'clean across swaps.',
+  ],
   '1.22.9': [
     'Fix (critical): corrected the cause of the black screen after closing '
         'the mini-player and then pressing back on the full-screen player. '

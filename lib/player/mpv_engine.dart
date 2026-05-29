@@ -38,7 +38,10 @@ class MpvEngine implements PlayerEngine {
   );
   late final mkvideo.VideoController _controller =
       mkvideo.VideoController(_player);
-  final GlobalKey<mkvideo.VideoState> _videoKey =
+  // fix126: NOT final — recreated on adopt so the full-screen Video gets a
+  // fresh VideoState (clean texture) instead of reparenting the mini's State
+  // via a shared GlobalKey, which stranded the platform texture at teardown.
+  GlobalKey<mkvideo.VideoState> _videoKey =
       GlobalKey<mkvideo.VideoState>();
 
   // Stream controllers that mirror the media_kit streams.
@@ -74,6 +77,17 @@ class MpvEngine implements PlayerEngine {
         ' channel="${channel.name}" previewMode=$previewMode');
   }
 
+
+  /// fix126: called by Player when this engine is adopted into a new Player
+  /// (swap handoff). Recreates the video key so the adopted Video mounts a
+  /// fresh VideoState with its own texture registration; the old mini
+  /// VideoState then disposes normally and unregisters its texture.
+  void onAdopt() {
+    if (_disposed) return;
+    _videoKey = GlobalKey<mkvideo.VideoState>();
+    AppLog.info('MpvEngine: onAdopt — new video key'
+        ' eid=${identityHashCode(this)}');
+  }
 
   @override
   Widget buildVideoView(BuildContext context) {
@@ -142,6 +156,34 @@ class MpvEngine implements PlayerEngine {
       ' channel="${channel.name}"'
       ' previewMode=$previewMode',
     );
+
+    // fix126: release the VIDEO SURFACE before tearing down mpv. The adopted
+    // ex-preview engine's media_kit Texture is registered against a Video
+    // widget that was reparented via GlobalKey (see onAdopt/126.2). If we
+    // just call _player.dispose(), the platform Texture is never unfed and
+    // the compositor keeps presenting the dead engine's last (black) frame
+    // ON TOP of the revealed Home — confirmed in the 1.22.9+124 log
+    // (fix124 repaints fired, yet still black → native surface, not Flutter).
+    //
+    // Order: exitFullscreen → vid=no (stop feeding texture) → subs/streams
+    //        → _player.dispose(). Player is disposed LAST so the native
+    //        handle is valid while we null the video output.
+    try {
+      if (_videoKey.currentState?.isFullscreen() ?? false) {
+        await _videoKey.currentState?.exitFullscreen();
+      }
+    } catch (e) {
+      AppLog.warn('MpvEngine: dispose exitFullscreen skipped — $e');
+    }
+    try {
+      if (_player.platform is mk.NativePlayer) {
+        final np = _player.platform as mk.NativePlayer;
+        await np.setProperty('vid', 'no');
+      }
+    } catch (e) {
+      AppLog.warn('MpvEngine: dispose vid=no skipped — $e');
+    }
+
     for (final s in _subs) {
       await s.cancel();
     }
@@ -150,6 +192,8 @@ class MpvEngine implements PlayerEngine {
     await _errorCtrl.close();
     await _positionCtrl.close();
     await _player.dispose();
+    AppLog.info('MpvEngine: dispose() released video + player'
+        ' eid=${identityHashCode(this)}');
   }
 
 

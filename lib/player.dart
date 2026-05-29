@@ -268,6 +268,10 @@ class _PlayerState extends State<Player> {
     if (_adopted) {
       // fix116: engine is already open and playing — just wire up its
       // lifecycle streams and ensure full volume. No _startPlayback.
+      // fix126: give the adopted engine a fresh video key so the new
+      // full-screen Video mounts a clean VideoState (own texture) rather
+      // than reparenting the mini's State via the shared GlobalKey.
+      if (_engine is MpvEngine) (_engine as MpvEngine).onAdopt();
       AppLog.info('Player: initAsync adopt path — skipping open'
           ' eid=${identityHashCode(_engine)}'
           ' channel="${widget.channel.name}"');
