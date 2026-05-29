@@ -1040,6 +1040,26 @@ class _PlayerState extends State<Player> {
         ' channel="${widget.channel.name}"');
     navigator.pop();
 
+    // fix124: the revealed route is Home, mounted as MaterialApp.home (the
+    // root route). A RouteObserver never delivers didPopNext to the root
+    // route, so fix120.1's Home.didPopNext can NEVER fire (confirmed: zero
+    // occurrences in the 1.22.8+122 log) and Home is never prompted to
+    // repaint — the compositor keeps the popped Player's black layer.
+    // Force a repaint from HERE, the path the log proves runs every time:
+    //   1) schedule a frame so the compositor re-rasterises the revealed tree
+    //   2) mark the navigator's context subtree dirty so Home rebuilds
+    WidgetsBinding.instance.scheduleFrame();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      try {
+        // ignore: invalid_use_of_protected_member
+        (navigator.context as Element).markNeedsBuild();
+      } catch (e) {
+        AppLog.warn('Player: onExit post-pop repaint skipped — $e');
+      }
+      WidgetsBinding.instance.scheduleFrame();
+      AppLog.info('Player: onExit forced post-pop repaint of revealed route');
+    });
+
     // Everything below is best-effort cleanup that must NOT block or
     // prevent the pop above. None of it needs the widget to still be
     // mounted or the route to still exist.

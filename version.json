@@ -1,7 +1,7 @@
 {
-  "latest": "1.22.8",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.22.8",
+  "latest": "1.22.9",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.22.9",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix (critical): after closing the mini-player and then pressing back on the full-screen player, the app no longer shows a black screen requiring a force-close. The route exit was working correctly (fix118), but the channel list behind it was not repainting. The channel list now repaints the moment the player exits.\n\u2022 Fix: swapping the mini-player no longer corrupts the reveal of the channel list on a subsequent back press. The swap operation now uses pop+push instead of pushReplacement, which keeps the navigation stack in the same shape the rest of the app uses."
+  "releaseNotes": "Version 1.22.9"
 }

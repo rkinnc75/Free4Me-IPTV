@@ -16,7 +16,6 @@ import 'package:open_tv/widgets/dpad_text_field.dart';
 import 'package:open_tv/models/channel.dart';
 import 'package:open_tv/models/filters.dart';
 import 'package:open_tv/models/home_manager.dart';
-import 'package:open_tv/models/app_navigator.dart' show playerRouteObserver;
 import 'package:open_tv/models/no_push_animation_material_page_route.dart';
 import 'package:open_tv/models/node.dart';
 import 'package:open_tv/models/node_type.dart';
@@ -42,7 +41,7 @@ class Home extends StatefulWidget {
   State<Home> createState() => _HomeState();
 }
 
-class _HomeState extends State<Home> with RouteAware {
+class _HomeState extends State<Home> {
   Timer? _debounce;
   // keystroke rate with perceived search latency. Reset whenever the
   // debounce actually fires (i.e. user has stopped typing).
@@ -75,25 +74,31 @@ class _HomeState extends State<Home> with RouteAware {
     initializeAsync();
   }
 
+  // fix124: fix120.1's RouteAware/didPopNext can NEVER fire — Home is
+  // MaterialApp.home (the root route) and a RouteObserver does not deliver
+  // didPopNext to the root route (confirmed: zero occurrences in the
+  // 1.22.8+122 log). Instead, repaint Home when the overlay controller
+  // signals the full-screen player was torn down (unregisterMain), which
+  // fires exactly when the Player exits and Home is revealed.
+  bool _overlayListenerAttached = false;
+
+  void _onOverlayChanged() {
+    // When no full-screen player and no mini is active, Home is the visible
+    // surface again — force a repaint so the compositor re-rasterises Home
+    // rather than retaining the popped Player's black layer.
+    if (!mounted) return;
+    AppLog.info('Home: overlay changed — forcing repaint of revealed Home');
+    setState(() {});
+    WidgetsBinding.instance.scheduleFrame();
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // fix120: subscribe so we get didPopNext when the full-screen Player
-    // is popped on top of us — needed to force a repaint of Home,
-    // otherwise the compositor can retain the Player's black layer.
-    final route = ModalRoute.of(context);
-    if (route is PageRoute) {
-      playerRouteObserver.subscribe(this, route);
+    if (!_overlayListenerAttached) {
+      OverlayPlayerController.instance.addListener(_onOverlayChanged);
+      _overlayListenerAttached = true;
     }
-  }
-
-  /// fix120: a route on top of Home (the full-screen Player) was popped —
-  /// Home is visible again. Force a rebuild so the compositor repaints
-  /// Home rather than retaining the popped Player's black layer.
-  @override
-  void didPopNext() {
-    AppLog.info('Home: didPopNext — revealed, forcing repaint');
-    if (mounted) setState(() {});
   }
 
   Future<void> initializeAsync() async {
@@ -279,7 +284,12 @@ class _HomeState extends State<Home> with RouteAware {
 
   @override
   void dispose() {
-    playerRouteObserver.unsubscribe(this); // fix120
+    // fix124: detach the overlay-controller repaint listener (replaces
+    // fix120's dead RouteAware unsubscribe).
+    if (_overlayListenerAttached) {
+      OverlayPlayerController.instance.removeListener(_onOverlayChanged);
+      _overlayListenerAttached = false;
+    }
     _scrollController.dispose();
     searchController.dispose();
     _debounce?.cancel();

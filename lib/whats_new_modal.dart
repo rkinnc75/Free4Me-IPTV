@@ -6,6 +6,15 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.22.9': [
+    'Fix (critical): corrected the cause of the black screen after closing '
+        'the mini-player and then pressing back on the full-screen player. '
+        'Flutter's RouteObserver cannot fire for the channel list because it '
+        'is the root route — the repaint added in 1.22.8 could never trigger. '
+        'The fix now forces a repaint directly from the player exit path and '
+        'adds a second trigger from the overlay controller, both of which are '
+        'proven to run on every exit.',
+  ],
   '1.22.8': [
     'Fix (critical): after closing the mini-player and then pressing back '
         'on the full-screen player, the app no longer shows a black screen '
