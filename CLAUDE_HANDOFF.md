@@ -4,7 +4,7 @@
 > repo. It contains every convention, constraint, and workflow needed to
 > implement and release fixes without asking the user a single question.
 >
-> **Last updated:** 2026-05-29 — v1.22.9+124 (fix124)
+> **Last updated:** 2026-05-29 — v1.22.12+146
 >
 > **Sufficient for:** new chat on same Mac ✓ | new Mac (see Section 17) ✓
 
@@ -20,7 +20,7 @@
 | Local path | `/Users/builder/git/free4me-iptv` |
 | Platform | Android TV (Flutter/Dart) |
 | Origin | Fork of open-tv / Fred TV |
-| Current version | `1.22.9+124` |
+| Current version | `1.22.12+146` |
 
 The app is an IPTV player for Android TV. It plays M3U/Xtream streams using
 `media_kit` (mpv) as the primary engine, with an ExoPlayer fallback. It has
@@ -42,6 +42,7 @@ free4me-iptv/
 │   ├── bottom_nav.dart                   # Bottom navigation bar
 │   ├── channel_tile.dart                 # Individual channel list row
 │   ├── channel_picker_screen.dart        # Channel picker (modal)
+│   ├── multi_view_screen.dart            # Multi-view layout screen
 │   ├── backend/
 │   │   ├── sql.dart                      # All DB access (SQLite via sqlite_async)
 │   │   ├── settings_service.dart         # Settings singleton
@@ -62,19 +63,22 @@ free4me-iptv/
 │       ├── app_navigator.dart            # appNavigatorKey + playerRouteObserver
 │       ├── settings.dart                 # Settings data class
 │       ├── channel.dart                  # Channel model
+│       ├── media_type.dart               # MediaType enum (livestream/movie/series)
 │       └── filters.dart                  # Search/filter state
 ├── pubspec.yaml                          # Version + dependencies
 ├── version.json                          # In-app update checker manifest
 ├── scripts/
 │   ├── update_version_json.py            # Regenerates version.json from pubspec + modal
-│   └── build_and_release.sh             # Local build script (not used in CI flow)
+│   ├── pre_commit_check.py               # Fast static checks before every commit
+│   └── commit_and_release.sh            # Bindfs commit + push helper (use this)
 ├── android/
 │   └── app/
 │       ├── build.gradle                  # Android build config
 │       └── release.keystore              # PKCS12 signing key (NEVER commit changes)
 ├── .github/
 │   └── workflows/
-│       └── release.yml                   # CI: triggered by tag push, builds + signs APK
+│       ├── release.yml                   # CI: tag push → build + sign APK
+│       └── analyze.yml                   # CI: main push → flutter analyze (fast check)
 ├── .github-token                         # GitHub PAT — GITIGNORED, NEVER COMMIT
 ├── fix*.md                               # Per-fix runbooks (untracked, stay local)
 └── CLAUDE_HANDOFF.md                     # This file
@@ -92,6 +96,10 @@ free4me-iptv/
   `MaterialApp.home`, never pushed through the observer). Do not use RouteAware
   on Home.
 - Route stack normal shape: `[Home, Player]`. Home is always the root.
+- **One route per Player** — `media_kit`'s `enterFullscreen()` was disabled
+  (fix130) because it pushed a hidden second route onto the root navigator,
+  causing swap to desync. The app now drives fullscreen itself via
+  `_enterSystemFullscreen()` for both MpvEngine and ExoEngine.
 
 ### Player Engine Handoff (fix116)
 - `MpvEngine` objects are handed live between player roles on swap instead of
@@ -103,12 +111,13 @@ free4me-iptv/
   refs WITHOUT disposing, return engine + metadata.
 - `adoptOverlayEngine()` — installs an already-playing engine as the mini-player.
 - `adoptEngine` param on `Player` widget — when non-null, `initState` adopts it,
-  `initAsync` skips `_startPlayback`.
+  `initAsync` calls `onAdopt()` on the engine then skips `_startPlayback`.
 
-### onExit Pattern (fix118)
-Pop the route FIRST, synchronously, before any `await`. Engine teardown is
-fire-and-forget (`unawaited(() async { … })()`). `_engineDisposed = true` is
-set BEFORE async teardown so `dispose()` skips re-dispose.
+### onExit Pattern (fix118 + fix130.3)
+Pop the route FIRST, synchronously, before any `await`. Before the pop, set
+`_videoDetached = true` (fix130.3) to unmount the Texture immediately. Engine
+teardown is fire-and-forget (`unawaited(() async { … })()`). `_engineDisposed =
+true` is set BEFORE async teardown so `dispose()` skips re-dispose.
 
 ### Home Repaint (fix124)
 After `navigator.pop()` in `onExit`, immediately:
@@ -117,13 +126,32 @@ After `navigator.pop()` in `onExit`, immediately:
    second `scheduleFrame()`
 
 Home also listens to `OverlayPlayerController.instance` via `addListener` and
-calls `setState(() {}) + scheduleFrame()` on any controller change. This fires
-on `unregisterMain` exactly when the full-screen player exits.
+calls `setState(() {}) + scheduleFrame()` on any controller change.
 
 ### Swap Route Shape (fix120.2)
 `_swap` in `overlay_player_widget.dart` uses `_nav.pop(); _nav.push(promoted)`,
 NOT `pushReplacement`. The pop+push reaches the same stack shape via operations
 the navigator handles cleanly.
+
+### MpvEngine Fullscreen (fix130)
+`handlesOwnFullscreen` returns `false`. `enterFullscreen()`, `exitFullscreen()`,
+and `isFullscreen` are no-ops. The app calls `_enterSystemFullscreen()` (immersive
+system UI + landscape orientation) exactly as it does for ExoEngine. This
+eliminates the hidden second root-navigator route that media_kit's fullscreen
+used to push, which was the root cause of the post-swap black screen.
+
+### Channel Sort Order (fix138)
+Six-tier sort applies to picker AND all Home browse views (Live/Movies/Series/All):
+- Tier 0: Favourite + Validated
+- Tier 1: Favourite
+- Tier 2: History (watched) + Validated
+- Tier 3: History
+- Tier 4: Validated only
+- Tier 5: Everything else
+
+Section headers: **Favourites** (amber) / **History** (light blue) / **All channels** (grey).
+No "Validated" header — validation shown by green-circle badge only.
+Validated = `channel.streamValidated == true` OR `StreamScanner.results[id] == true`.
 
 ---
 
@@ -131,12 +159,11 @@ the navigator handles cleanly.
 
 | Session | Fix numbers |
 |---|---|
-| Mac / Cowork (this tool) | **ODD** numbers: 115, 117, 119, 121, 123, 125… |
-| Phone (mobile Claude) | **EVEN** numbers: 116, 118, 120, 122, 124, 126… |
+| Mac / Cowork (this tool) | **ODD** numbers: 115, 117, 119, 121, 123… |
+| Phone (mobile Claude) | **EVEN** numbers: 116, 118, 120, 122, 124… |
 
 Each fix has a `fixNNN.md` runbook at the repo root. These files are **untracked**
-(gitignored) — they stay local and are also committed to the repo only as part of
-the fix commit (`git add fixNNN.md`).
+(gitignored) — committed to the repo as part of the fix commit (`git add fixNNN.md`).
 
 When the user says "fixNNN", read `fixNNN.md` and implement it exactly as
 specified. The runbook is authoritative. Do not deviate from it.
@@ -146,108 +173,139 @@ specified. The runbook is authoritative. Do not deviate from it.
 ## 5. Release Version Convention
 
 - Version string: `MAJOR.MINOR.PATCH+BUILD`
-- `MAJOR.MINOR.PATCH` in `pubspec.yaml` version field
 - `BUILD` = fix number (e.g. fix124 → build `+124`)
 - `version.json` contains `"latest": "MAJOR.MINOR.PATCH"` (no build number)
 - Tag format: `vMAJOR.MINOR.PATCH` (e.g. `v1.22.9`)
-- **Multiple fixes at the same patch version get the same tag** (force-push the
-  tag to the new commit if the patch version doesn't change).
-- Phone fixes (even) bump only the build number unless the patch was already
-  bumped by the immediately preceding Mac fix.
+- **Multiple fixes at the same patch version share the same tag** — force-push
+  the tag to the new commit when the patch version doesn't change.
 
 ### Recent version history
 | Version | Build | Fix | Notes |
 |---|---|---|---|
-| 1.22.5 | +116 | fix116 | Engine handoff on swap |
-| 1.22.6 | +118 | fix118 | onExit pop-first |
-| 1.22.7 | +65  | fix65  | Remove Donate (phone) |
 | 1.22.8 | +120 | fix120 | Home RouteAware repaint + pop+push swap |
 | 1.22.8 | +122 | fix122 | Remove invalid autofocus from ExpansionTile |
 | 1.22.9 | +124 | fix124 | Force post-pop Home repaint; overlay-controller listener |
+| 1.22.10 | +126 | fix126 | Release mpv texture on dispose; fresh VideoState on adopt |
+| 1.22.10 | +128 | fix128 | What's New dialog shown immediately; cache builds in parallel |
+| 1.22.11 | +130 | fix130 | ROOT CAUSE: drop media_kit route-based fullscreen; app owns it |
+| 1.22.11 | +132 | fix132 | Remove stray @override on logSurface (build break) |
+| 1.22.12 | +136 | fix136 | Rotation diagnostic logging |
+| 1.22.12 | +138 | fix138 | 6-tier channel sort + 3 section headers |
+| 1.22.12 | +140 | fix140 | Multi-view restore: skip non-livestream channels |
+| 1.22.12 | +142 | fix142 | Validated highlight persists across restarts |
+| 1.22.12 | +144 | fix144 | Missing MediaType import in multi_view_screen |
+| 1.22.12 | +146 | infra | Pre-commit checker, analyze workflow, commit script |
 
 ---
 
-## 6. Git Workflow — The bindfs Commit Workaround
+## 6. Static Analysis — Three Layers
 
-**Why:** The workspace folder is mounted into Claude's VM via virtiofs. The VM
-can create and rename files but **cannot delete/unlink files**. Normal `git
-commit` fails because it tries to unlink temp files. The workaround uses a
-temporary index file so git never touches the real `.git/index`.
+Flutter is not installable in the VM sandbox (Google/GitHub storage is blocked).
+Three complementary layers replace it:
 
-### The Commit Script (use this every time)
+### Layer 1 — Python pre-checker (instant, runs in VM before every commit)
 
 ```bash
-cd /sessions/<session-name>/mnt/free4me-iptv   # VM path to repo
+cd /sessions/<name>/mnt/free4me-iptv
+python3 scripts/pre_commit_check.py
+```
 
+Catches: stray `@override` on mpv-only methods, apostrophes in single-quoted
+changelog strings, duplicate changelog version keys, `version.json` out of sync,
+`autofocus` on `ExpansionTile`, targeted missing imports (`MediaType`, etc.).
+
+**Run this before every commit. If it exits non-zero, fix the issues first.**
+
+### Layer 2 — `analyze.yml` GitHub Action (real flutter analyze, ~2 min)
+
+Triggers automatically on every push to `main`. Runs `flutter analyze
+--no-fatal-infos` and the `version.json` freshness check. Results appear as a
+commit status in GitHub before you push the tag. If it fails, push a fix to main
+and the workflow re-runs — only push the tag once analyze is green.
+
+### Layer 3 — `release.yml` gate (final safety net)
+
+The existing CI build also runs analyze before building the APK. This is the
+last line of defence — aim to never need it by passing Layers 1 and 2 first.
+
+### Tolerated infos (leave these alone)
+- `use_build_context_synchronously` in `lib/settings_view.dart` (~lines 1861, 2421)
+
+### Fatal — must fix before committing
+- Any `error` level finding
+- Any `warning` level finding (unused imports, unused fields, stray `@override`)
+
+### PlayerEngine interface — which methods may carry @override in mpv_engine.dart
+Only these 17: `buildVideoView`, `open`, `dispose`, `bufferingStream`,
+`completedStream`, `errorStream`, `positionStream`, `position`,
+`supportsTrackSelection`, `subtitleTracks`, `audioTracks`, `setSubtitleTrack`,
+`setAudioTrack`, `setVolume`, `handlesOwnFullscreen`, `enterFullscreen`,
+`exitFullscreen`, `isFullscreen`. Everything else (`onAdopt`, `logSurface`,
+`videoWidth`, `videoHeight`, `reapplyOptions`) is mpv-only — **no `@override`**.
+
+---
+
+## 7. Git Workflow — The bindfs Commit Workaround
+
+**Why:** The workspace is mounted via virtiofs. The VM can create and rename
+files but **cannot delete/unlink files**. Normal `git commit` fails because it
+tries to unlink temp files. The workaround uses a temporary index file.
+
+### Use the commit helper script (preferred)
+
+```bash
+cd /sessions/<name>/mnt/free4me-iptv
+
+bash scripts/commit_and_release.sh \
+  "fixNNN: description (vX.Y.Z+NNN)" \
+  vX.Y.Z \
+  [--force-tag] \
+  file1 file2 fixNNN.md pubspec.yaml version.json
+```
+
+The script: runs pre_commit_check → bindfs commit → writes tag → **syncs index
+BEFORE push** → pushes main → pushes tag. No `index.lock` left behind.
+
+### Manual commit (when you need fine control)
+
+```bash
+python3 scripts/pre_commit_check.py          # abort if issues
 TMPIDX=$(mktemp)
 GIT_INDEX_FILE="$TMPIDX" git read-tree HEAD
-GIT_INDEX_FILE="$TMPIDX" git add <file1> <file2> ...   # exact files for this commit
+GIT_INDEX_FILE="$TMPIDX" git add <files>
 TREE=$(GIT_INDEX_FILE="$TMPIDX" git write-tree)
 PARENT=$(git rev-parse HEAD)
 COMMIT=$(GIT_INDEX_FILE="$TMPIDX" git commit-tree "$TREE" -p "$PARENT" \
   -m "fixNNN: <message> (vX.Y.Z+NNN)")
 printf '%s\n' "$COMMIT" > .git/refs/heads/main
-rm "$TMPIDX"
-```
-
-The `warning: unable to unlink ... tmp_obj_*` messages are **expected and
-harmless** — the objects were created successfully, git just can't clean up its
-temp files.
-
-### Tagging
-
-```bash
 printf '%s\n' "$COMMIT" > .git/refs/tags/vX.Y.Z
-```
-
-**Never use `git tag`, `git tag -d`, or any interactive git tag commands.**
-Write the ref file directly.
-
-### Pushing
-
-```bash
+rm "$TMPIDX"
+git read-tree HEAD          # ← sync index BEFORE push (prevents index.lock)
 PAT=$(cat .github-token)
 git push "https://${PAT}@github.com/rkinnc75/Free4Me-IPTV.git" main
 git push "https://${PAT}@github.com/rkinnc75/Free4Me-IPTV.git" refs/tags/vX.Y.Z
 ```
 
-If the tag already exists on the remote (same patch version, different build):
+**Critical ordering:** `git read-tree HEAD` must run BEFORE `git push`. The push
+creates an `index.lock` that the VM cannot remove; syncing first avoids this.
+
+### Force-pushing a tag (same patch version, new build)
+
 ```bash
 git push --force "https://${PAT}@github.com/rkinnc75/Free4Me-IPTV.git" refs/tags/vX.Y.Z
 ```
 
-**The tag push is mandatory.** CI is triggered only by a tag push. A commit push
-alone does not build.
+Or pass `--force-tag` to `commit_and_release.sh`.
 
-### Index Sync After Commit
+**Never use `git tag -d`.** Write ref files directly.
 
-After every bindfs commit, the real `.git/index` is stale (it still reflects
-the pre-commit state). Sync it immediately after pushing:
+### If index.lock is already present (rare — from an interrupted Mac-side git op)
 
-```bash
-git read-tree HEAD
-```
-
-This uses `rename()` internally (allowed by virtiofs), not `unlink()`. Run it
-right after the `rm "$TMPIDX"` line.
-
-### The index.lock Problem
-
-If `git read-tree HEAD` fails with:
-```
-fatal: Unable to create '.git/index.lock': File exists.
-```
-
-The lockfile was left by a Mac-side git process and the VM cannot delete it.
-The user must run from their **Mac Terminal**:
+The VM cannot delete it. Ask the user to run from their **Mac Terminal**:
 ```bash
 rm /Users/builder/git/free4me-iptv/.git/index.lock
 ```
-
-Then the VM can run `git read-tree HEAD` to sync the index.
-
-**Do not ask the user to do this unless the lockfile is actually blocking
-something.** After a clean session the lockfile may not be present.
+Then `git read-tree HEAD` will work from the VM.
 
 ### VM Path Translation
 
@@ -256,67 +314,49 @@ something.** After a clean session the lockfile may not be present.
 | `/Users/builder/git/free4me-iptv` | `/sessions/<name>/mnt/free4me-iptv/` |
 | `.../local-.../outputs` | `/sessions/<name>/mnt/outputs/` |
 
-The session name (e.g. `loving-stoic-bell`) changes each session. Use
-`mount | grep free4me` to find the current VM path if unsure.
+The session name changes every session. Find it with `mount | grep free4me`.
 
 ---
 
-## 7. Release Sequence — Exact Order of Operations
-
-This is the order that must be followed every time. Steps out of order cause
-CI failures (version.json mismatch is the most common).
+## 8. Release Sequence — Exact Order of Operations
 
 ```
 1.  Read fixNNN.md — understand every change required
-2.  Read the affected source files (use Read tool or bash cat/sed)
-3.  Apply all code changes to source files
+2.  Read the affected source files
+3.  Apply all code changes
 4.  Update lib/whats_new_modal.dart — add '1.X.Y': [...] entry at the TOP
-    of the _changelog map (before the existing entries)
+    of the _changelog map. NO apostrophes in single-quoted strings.
 5.  Update pubspec.yaml — bump `version: X.Y.Z+NNN`
 6.  Run: python3 scripts/update_version_json.py
-    (MUST run AFTER step 4 — the script reads whats_new_modal.dart)
-7.  Verify version.json matches pubspec: both must say the same X.Y.Z
-8.  Run the bindfs commit script, adding all changed files + fixNNN.md
-9.  Write the tag ref file
-10. Push main branch
-11. Push tag (triggers CI)
-12. Run git read-tree HEAD to sync the index
+    (MUST run AFTER step 4 — reads whats_new_modal.dart)
+7.  Run: python3 scripts/pre_commit_check.py
+    Fix any issues before proceeding.
+8.  Commit + push using commit_and_release.sh (or manual script above)
+    The script handles: pre-check → commit → tag → index sync → push main → push tag
 ```
 
-### whats_new_modal.dart format
+### whats_new_modal.dart rules
 
 ```dart
 const _changelog = <String, List<String>>{
-  '1.22.9': [                                    // ← newest version at top
-    'Fix (critical): description of what changed '
-        'and why it matters to the user.',
-    'Fix: second bullet if needed.',
+  '1.22.12': [                              // ← newest version at top
+    'Fix: description without apostrophes.',
+    'Improvement: second bullet if needed.',
   ],
-  '1.22.8': [
+  '1.22.11': [
     // older entry...
   ],
 ```
 
-**Rules:**
-- Use single-quoted Dart strings
-- **Never use an apostrophe inside a single-quoted string** — reword to avoid
-  it (e.g. "Flutter's" → "Flutter" or use a different phrasing)
-- Continuation lines are indented 8 spaces; bullet start lines are 4 spaces
-- The script's `extract_notes()` function uses this indent pattern to detect
-  bullet boundaries
-
-### version.json CI check
-
-CI runs `python3 scripts/update_version_json.py` on the checked-out commit and
-then does `git diff --quiet version.json`. If the output differs from what's
-committed, the build **fails**. This catches:
-- version.json committed before whats_new_modal.dart was updated
-- Manual edits to version.json instead of running the script
-- Apostrophe bugs in the changelog (cause mangled output)
+- Single-quoted Dart strings only
+- **No apostrophes** inside single-quoted strings — reword (e.g. "engine's" → "engine", "doesn't" → "does not")
+- Bullet start lines: 4-space indent. Continuation lines: 8-space indent.
+- The `update_version_json.py` script reads this indent pattern to extract bullets.
+- The pre-checker catches apostrophes and duplicate keys before they reach CI.
 
 ---
 
-## 8. Signing and Secrets
+## 9. Signing and Secrets
 
 | Secret | Location |
 |---|---|
@@ -325,215 +365,81 @@ committed, the build **fails**. This catches:
 | Keystore alias | `free4me-iptv` |
 | Keystore SHA-256 | `D8:D3:4D:5A:2F:35:7B:A4:40:3B:C0:C3:1D:65:2F:CD:D7:B5:50:4A:F9:DA:48:54:65:78:0A:FF:A0:46:9E:A2` |
 
-**Never commit `.github-token`.** It is in `.gitignore`. Never reference its
-contents in commit messages or log output.
-
-CI secrets (`RELEASE_KEYSTORE_B64`, `RELEASE_KEYSTORE_PASSWORD`,
-`RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD`) are stored in GitHub Actions
-secrets — not accessible from the VM, only used by CI.
-
----
-
-## 9. flutter analyze Requirements
-
-Before committing any Dart change:
-- `flutter analyze --no-fatal-infos` must exit 0 (no errors or warnings)
-- Flutter is not available in the VM sandbox — the user must run analyze on
-  their Mac, or trust that the CI gate will catch it
-- **Tolerated infos** (these are fine, do not fix them):
-  - `use_build_context_synchronously` in `lib/settings_view.dart` (~lines 1861, 2421)
-- **Fatal** (must fix before committing):
-  - Any `error` level finding
-  - Any `warning` level finding (unused imports, unused fields, etc.)
-  - `undefined_named_parameter`, `unused_import`, `unused_field` etc.
-
-### Common analyze traps
-- `with RouteAware` mixin: all four methods (`didPush`, `didPop`, `didPushNext`,
-  `didPopNext`) must be used, or the mixin must be removed entirely
-- `_overlayListenerAttached` and similar `bool` flags: must be read somewhere or
-  the linter flags `unused_field`
-- `// ignore: invalid_use_of_protected_member` — suppress the `markNeedsBuild`
-  lint; it is intentional
-- Apostrophes in single-quoted strings crash the script and may cause analyze
-  failures in adjacent string expressions
+**Never commit `.github-token`.** CI secrets are in GitHub Actions — not in
+the repo and not accessible from the VM.
 
 ---
 
 ## 10. Permanent Hard Rules
 
-These never change. Follow them unconditionally.
-
 1. **Commit IDs are fix numbers**, not `PO-xxxx` or any other format
 2. **Mac/Cowork = odd fix numbers; Phone = even fix numbers**
-3. **Never use `git tag -d`** — write `printf '%s\n' "$COMMIT" > .git/refs/tags/vX.Y.Z` directly
+3. **Never use `git tag -d`** — write ref files directly
 4. **Never commit `.github-token`**
 5. **Never hand-write version.json** — always run `python3 scripts/update_version_json.py`
-6. **Tag push is mandatory** — commit push alone does not trigger CI
-7. **whats_new_modal.dart must be updated before running update_version_json.py**
-8. **Do not use pushReplacement in the navigator** — use explicit `pop()` + `push()` (fix120.2)
-9. **fix116/118/120.2 must not be reverted** — they are load-bearing; all subsequent fixes build on them
+6. **Tag push is mandatory** — commit push alone does not build APK
+7. **whats_new_modal.dart updated BEFORE running update_version_json.py**
+8. **Pre-commit check BEFORE every commit** — `python3 scripts/pre_commit_check.py`
+9. **Index synced BEFORE push** — prevents index.lock
+10. **No pushReplacement in navigator** — use `pop()` + `push()` (fix120.2)
+11. **fix116/118/120.2/124/130 must not be reverted** — load-bearing; all subsequent fixes build on them
+12. **MpvEngine.handlesOwnFullscreen = false** — media_kit fullscreen was the black-screen root cause; keep it disabled
 
 ---
 
 ## 11. AppLog Usage
 
 ```dart
-AppLog.info('ComponentName: message with detail="${value}"');
-AppLog.warn('ComponentName: warning with context — $e');
+AppLog.info('ComponentName: message detail="${value}"');
+AppLog.warn('ComponentName: warning context — $e');
 ```
 
-`AppLog` is defined in `lib/backend/app_logger.dart`. It is already imported in
-all player-related files. Import it with:
-```dart
-import 'package:open_tv/backend/app_logger.dart';
-```
-
-Log messages follow the pattern `ClassName: verb noun detail=value`. Engine
-identity tracing uses `identityHashCode(engine)` (no import needed — it's
-`dart:core`), logged as `eid=NNNNNN`.
+Defined in `lib/backend/app_logger.dart`. Already imported in all player files.
+Engine identity tracing: `identityHashCode(engine)` (no import — `dart:core`), logged as `eid=NNNNNN`.
 
 ---
 
-## 12. Diagnostic Tripwires (what to look for in logs)
+## 12. Diagnostic Tripwires
 
 | Log line | Meaning |
 |---|---|
 | `Player: onExit START` | onExit began |
-| `Player: onExit popping route` | navigator.pop() is about to be called |
-| `Player: onExit DONE` | onExit completed |
-| `Player: dispose() SKIP` | widget disposed (confirms pop happened) |
+| `Player: onExit popping route` | navigator.pop() about to be called |
+| `Player: onExit DONE` | onExit completed cleanly |
+| `Player: dispose() SKIP` | widget disposed — confirms pop happened |
 | `Player: onExit forced post-pop repaint` | fix124.1 ran |
 | `Home: overlay changed — forcing repaint` | fix124.2 ran |
-| `Home: didPopNext` | fix120.1 (now dead for root route — should NOT appear) |
-| `OverlayWidget: _swap pop+push` | fix120.2 swap path (correct) |
-| `OverlayWidget: _swap pushReplacement` | old broken path — should never appear |
-| `MpvEngine: created eid=` | new engine created |
-| `MpvEngine: dispose() eid=` | engine disposed |
+| `OverlayWidget: _swap pop+push` | correct swap path (fix120.2) |
+| `OverlayWidget: _swap nav.canPop(before/after)` | route count at swap time (fix130.4) |
+| `MpvEngine: onAdopt (no-op…)` | engine adopted into new Player (fix130.2) |
+| `MpvEngine: SURFACE[…]` | texture id + rect dump (fix130.4 logSurface) |
+| `MpvEngine: dispose() player disposed (surface released by media_kit)` | clean teardown |
+| `Player: ROTATE portrait → landscape … (no reconnect)` | rotation logged (fix136) |
+| `MultiViewScreen: restore skipped non-livestream cell N` | saved cell was non-live (fix140) |
 | `startup watchdog fired` | channel took too long to start |
 
-**If both fix124 tripwires appear but screen is still black** → the problem is
-the native mpv video surface not releasing (fix126 territory — `mpv_engine.dart`
-platform view teardown). Navigation and Flutter repaint are ruled out.
+**Single back press exits player** (fix130 bonus — the hidden media_kit fullscreen
+route that required a double-back is gone).
 
 ---
 
-## 13. Current Open Investigation
+## 13. Known Virtiofs Limitations
 
-**Black screen after close-mini-then-close-full after swap**
-
-Sequence: mini-player active → open full-screen → swap → close mini → press back on full-screen → black screen, force-close required.
-
-Fix history:
-- fix118: confirmed working — `onExit` pops correctly
-- fix120.1: dead — `didPopNext` never fires for Home (root route)
-- fix120.2: confirmed working — swap uses pop+push
-- fix124: **just shipped** — forces repaint from onExit + overlay controller
-
-**Next diagnostic:** after 1.22.9 is installed and the repro is run, check the
-log for:
-- `Player: onExit forced post-pop repaint of revealed route` (fix124.1)
-- `Home: overlay changed — forcing repaint of revealed Home` (fix124.2)
-
-If both present but still black → fix126 (even, phone) targets mpv surface
-disposal in `mpv_engine.dart`. Note: the engines involved in the black-screen
-repro were both `previewMode=true` at dispose (they were adopted engines from
-the mini-player).
-
----
-
-## 14. Quick Reference — Common Tasks
-
-### Implement a fix from a runbook
-
-```bash
-# 1. Read the runbook
-cat /sessions/<name>/mnt/free4me-iptv/fixNNN.md
-
-# 2. Apply changes (sed, python, or bash edits)
-
-# 3. Update changelog (add entry at TOP of _changelog map)
-# lib/whats_new_modal.dart
-
-# 4. Bump version
-sed -i 's/version: X.Y.Z+OLD/version: X.Y.Z+NNN/' \
-  /sessions/<name>/mnt/free4me-iptv/pubspec.yaml
-
-# 5. Regenerate version.json (AFTER changelog update)
-cd /sessions/<name>/mnt/free4me-iptv && python3 scripts/update_version_json.py
-
-# 6. Verify
-grep "^version:" pubspec.yaml
-cat version.json | python3 -m json.tool | grep '"latest"'
-
-# 7. Commit
-TMPIDX=$(mktemp)
-GIT_INDEX_FILE="$TMPIDX" git read-tree HEAD
-GIT_INDEX_FILE="$TMPIDX" git add <files> fixNNN.md
-TREE=$(GIT_INDEX_FILE="$TMPIDX" git write-tree)
-PARENT=$(git rev-parse HEAD)
-COMMIT=$(GIT_INDEX_FILE="$TMPIDX" git commit-tree "$TREE" -p "$PARENT" \
-  -m "fixNNN: <description> (vX.Y.Z+NNN)")
-printf '%s\n' "$COMMIT" > .git/refs/heads/main
-printf '%s\n' "$COMMIT" > .git/refs/tags/vX.Y.Z
-rm "$TMPIDX"
-
-# 8. Push
-PAT=$(cat .github-token)
-git push "https://${PAT}@github.com/rkinnc75/Free4Me-IPTV.git" main
-git push "https://${PAT}@github.com/rkinnc75/Free4Me-IPTV.git" refs/tags/vX.Y.Z
-
-# 9. Sync index
-git read-tree HEAD
-```
-
-### Check repo state
-
-```bash
-cd /sessions/<name>/mnt/free4me-iptv
-git log --oneline -5
-git status --short
-grep "^version:" pubspec.yaml
-cat version.json | python3 -m json.tool | grep '"latest"'
-```
-
-### Find the VM session path
-
-```bash
-mount | grep free4me
-# Look for the fuse line — the mount point is the VM path
-```
-
-### Verify no stale autofocus/RouteAware/dead code
-
-```bash
-grep -n "autofocus" lib/settings_view.dart      # should be exactly 1 (TextField)
-grep -n "with RouteAware" lib/home.dart          # should be 0
-grep -n "playerRouteObserver" lib/home.dart      # should be 0
-grep -n "pushReplacement" lib/player/overlay_player_widget.dart  # should be 0
-```
-
----
-
-## 15. Known Virtiofs Limitations
-
-The VM workspace mount (virtiofs) allows file creation and rename but **blocks
-`unlink()`**. This means:
+The VM workspace mount (virtiofs) allows **create** and **rename** but blocks **unlink**.
 
 - `rm` of any file → `Operation not permitted`
 - `git tag -d` → fails
-- `git reset HEAD -- .` → fails (creates index.lock which then can't be removed)
-- `git read-tree HEAD` **works** (uses rename internally)
-
-The user's Mac Terminal can delete files normally. If the VM needs a file
-deleted, ask the user to run `rm <path>` from their Terminal.
+- `git reset HEAD -- .` → fails (creates index.lock, then can't remove it)
+- `git read-tree HEAD` → **works** (uses rename internally)
+- `git push` creates an index.lock internally → sync index BEFORE push, not after
 
 The `warning: unable to unlink '.git/objects/xx/tmp_obj_*'` messages during
-`git write-tree` are **harmless** — the objects were created successfully at
-their final path before git tried to clean up the temp name.
+`git write-tree` are **harmless** — objects created successfully, git just can't
+clean up its temp names.
 
 ---
 
-## 16. Dependencies Worth Knowing
+## 14. Dependencies Worth Knowing
 
 ```yaml
 media_kit: ^1.2.6           # Primary mpv-based player
@@ -543,91 +449,121 @@ connectivity_plus: ^7.0.0   # Network state
 workmanager: ^0.9.0         # Background tasks
 ```
 
-Upgrade constraint note (in pubspec.yaml comments):
-- `file_picker`, `device_info_plus`, `package_info_plus` are locked together
-  because they all depend on `win32`. Upgrade all three together when
-  `file_picker ^12.0.0` stable ships.
+Source archives committed for reference: `media_kit-1.2.6.tar.gz`,
+`media_kit_video-2.0.1.tar.gz` (fix130 investigation).
 
-Flutter version in CI: `3.44.0` (stable channel). See `.github/workflows/release.yml`.
+Upgrade constraint: `file_picker`, `device_info_plus`, `package_info_plus` are
+locked together (all depend on `win32`). Upgrade all three together when
+`file_picker ^12.0.0` stable ships.
+
+Flutter version in CI: `3.44.0` (stable). See `.github/workflows/release.yml`.
 
 ---
 
+## 15. Quick Reference
+
+### Implement and release a fix
+
+```bash
+REPO=/sessions/<name>/mnt/free4me-iptv
+cd $REPO
+
+# 1. Read the runbook
+cat fixNNN.md
+
+# 2. Apply code changes (python/sed edits to source files)
+
+# 3. Update changelog (newest entry at top, no apostrophes)
+#    lib/whats_new_modal.dart
+
+# 4. Bump version
+sed -i 's/version: X.Y.Z+OLD/version: X.Y.Z+NNN/' pubspec.yaml
+
+# 5. Regenerate version.json (AFTER changelog)
+python3 scripts/update_version_json.py
+
+# 6. Run pre-checker
+python3 scripts/pre_commit_check.py   # must pass before continuing
+
+# 7. Commit + push (handles everything including index sync)
+bash scripts/commit_and_release.sh \
+  "fixNNN: description (vX.Y.Z+NNN)" \
+  vX.Y.Z \
+  lib/changed_file.dart pubspec.yaml version.json fixNNN.md
+
+# For force-push (same patch version, new build):
+bash scripts/commit_and_release.sh \
+  "fixNNN: description (vX.Y.Z+NNN)" \
+  vX.Y.Z --force-tag \
+  lib/changed_file.dart pubspec.yaml version.json fixNNN.md
+```
+
+### Check repo state
+
+```bash
+cd /sessions/<name>/mnt/free4me-iptv
+git log --oneline -5
+git status --short
+grep "^version:" pubspec.yaml
+python3 -c "import json; d=json.load(open('version.json')); print(d['latest'])"
+```
+
+### Find the VM session path
+
+```bash
+mount | grep free4me   # look for the fuse/virtiofs line
+```
+
+### Verify analyze is green on GitHub
+
+After pushing to main, check:
+`https://github.com/rkinnc75/Free4Me-IPTV/actions/workflows/analyze.yml`
+
+Green = safe to push the tag. Red = fix and push to main again before tagging.
+
 ---
 
-## 17. Starting Fresh on a Different Mac
+## 16. Starting Fresh on a Different Mac
 
-Everything in this document applies unchanged on a different Mac. Three
-additional setup steps are required the first time only.
+Everything in this document applies unchanged. Three additional steps first time only.
 
-### Step 1 — Get the repo
+### Step 1 — Clone the repo
 
 ```bash
 git clone https://github.com/rkinnc75/Free4Me-IPTV.git \
   /Users/<you>/git/free4me-iptv
 ```
 
-The keystore (`android/app/release.keystore`) is tracked and will be present
-after the clone. All source, scripts, and CI config come with it.
-
-`fix*.md` runbook files are **untracked** (local-only). They will NOT be present
-after a fresh clone. If a pending fix exists (e.g. the phone has authored
-`fix126.md` but Mac hasn't implemented it yet), the user must transfer that file
-manually — or paste its contents into the chat. Claude should ask for the fix
-content if the runbook file is missing.
+The keystore (`android/app/release.keystore`) is tracked and comes with the
+clone. `fix*.md` runbooks are **untracked** — transfer them manually or paste
+their contents into the chat if needed.
 
 ### Step 2 — Recreate `.github-token`
-
-This file is gitignored and will not be in the clone. Without it every push
-fails. Create it:
 
 ```bash
 echo "ghp_YourPersonalAccessTokenHere" > \
   /Users/<you>/git/free4me-iptv/.github-token
 ```
 
-The PAT needs `repo` scope (push to the private repo + push tags). If the file
-is missing, Claude should tell the user exactly this: "Please create
-`.github-token` at the repo root containing your GitHub PAT with repo scope."
-That is the one question Claude is permitted to ask on a new Mac.
+PAT needs `repo` scope. This is the **one question** Claude may ask on a new Mac.
 
-### Step 3 — Open the folder in Cowork
+### Step 3 — Open in Cowork and verify
 
-In the Cowork desktop app, select the cloned repo folder as the workspace.
-Cowork mounts it into the VM. The VM path will be something like
-`/sessions/<new-session-name>/mnt/free4me-iptv/`.
-
-### Finding the VM path in a new session
-
-The session name changes every session. Find it at the start of any session:
+In Cowork, select the repo folder. Then from the VM:
 
 ```bash
-mount | grep free4me
-# Output will contain something like:
-# /mnt/.virtiofs-root/shared/Users/builder/git/free4me-iptv
-#   on /sessions/some-session-name/mnt/free4me-iptv type fuse ...
-```
-
-All bash commands in this document use the VM path. Substitute the actual
-session name. The Read/Write/Edit file tools use the Mac path
-(`/Users/builder/git/free4me-iptv/...`) directly and do not need
-translation.
-
-### Verify the setup before first commit
-
-```bash
-# Repo accessible from VM
+# Repo accessible
 ls /sessions/<name>/mnt/free4me-iptv/pubspec.yaml
 
-# PAT file present and push works (dry-run check)
+# PAT works
 PAT=$(cat /sessions/<name>/mnt/free4me-iptv/.github-token)
 git ls-remote "https://${PAT}@github.com/rkinnc75/Free4Me-IPTV.git" HEAD
 
-# Current version matches remote
-grep "^version:" /sessions/<name>/mnt/free4me-iptv/pubspec.yaml
+# Pre-checker works
+python3 /sessions/<name>/mnt/free4me-iptv/scripts/pre_commit_check.py
 ```
 
-If `ls-remote` succeeds, everything needed to implement and release fixes is
-in place.
+All three green → ready to implement and release fixes.
 
 ---
 
