@@ -313,8 +313,10 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
         AppLog.info(
           'OverlayWidget: _swap pop+push → "${overlay.ch.name}" (adopt)',
         );
+        AppLog.info('OverlayWidget: _swap nav.canPop(before)=${_nav.canPop()}');
         _nav.pop();
         _nav.push(promoted);
+        AppLog.info('OverlayWidget: _swap nav.canPop(after)=${_nav.canPop()}');
       } else {
         AppLog.info(
           'OverlayWidget: _swap push → "${overlay.ch.name}" (adopt)',

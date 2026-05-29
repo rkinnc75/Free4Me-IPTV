@@ -38,10 +38,10 @@ class MpvEngine implements PlayerEngine {
   );
   late final mkvideo.VideoController _controller =
       mkvideo.VideoController(_player);
-  // fix126: NOT final — recreated on adopt so the full-screen Video gets a
-  // fresh VideoState (clean texture) instead of reparenting the mini's State
-  // via a shared GlobalKey, which stranded the platform texture at teardown.
-  GlobalKey<mkvideo.VideoState> _videoKey =
+  // fix130: stable key — one texture per player handle; fix126's per-adopt
+  // recreation orphaned the native texture. The texture is freed by
+  // Player.dispose() release[] callbacks (confirmed from media_kit source).
+  final GlobalKey<mkvideo.VideoState> _videoKey =
       GlobalKey<mkvideo.VideoState>();
 
   // Stream controllers that mirror the media_kit streams.
@@ -82,10 +82,12 @@ class MpvEngine implements PlayerEngine {
   /// (swap handoff). Recreates the video key so the adopted Video mounts a
   /// fresh VideoState with its own texture registration; the old mini
   /// VideoState then disposes normally and unregisters its texture.
+  /// fix130: NO-OP (was fix126.2 per-adopt key recreation — reverted).
+  /// One texture per Player handle (android_video_controller _controllers[handle]);
+  /// recreating the key orphans the native texture. Texture freed by dispose().
+  /// Retained for the call site in player.dart + surface tracing.
   void onAdopt() {
-    if (_disposed) return;
-    _videoKey = GlobalKey<mkvideo.VideoState>();
-    AppLog.info('MpvEngine: onAdopt — new video key'
+    AppLog.info('MpvEngine: onAdopt (no-op; same controller/texture)'
         ' eid=${identityHashCode(this)}');
   }
 
@@ -130,7 +132,11 @@ class MpvEngine implements PlayerEngine {
       ),
     );
     AppLog.info('MpvEngine: open() command sent channel="${channel.name}"');
-    if (fullscreenOnOpen) await _videoKey.currentState?.enterFullscreen();
+    // fix130: do NOT call media_kit enterFullscreen() — it pushes a hidden
+    // second route onto the root navigator (a full Video on this controller)
+    // that the app swap pop+push does not account for, causing a route desync
+    // and orphaned Video black layer. App drives fullscreen via
+    // _enterSystemFullscreen() (handlesOwnFullscreen=false path).
   }
 
   @override
@@ -157,33 +163,12 @@ class MpvEngine implements PlayerEngine {
       ' previewMode=$previewMode',
     );
 
-    // fix126: release the VIDEO SURFACE before tearing down mpv. The adopted
-    // ex-preview engine's media_kit Texture is registered against a Video
-    // widget that was reparented via GlobalKey (see onAdopt/126.2). If we
-    // just call _player.dispose(), the platform Texture is never unfed and
-    // the compositor keeps presenting the dead engine's last (black) frame
-    // ON TOP of the revealed Home — confirmed in the 1.22.9+124 log
-    // (fix124 repaints fired, yet still black → native surface, not Flutter).
-    //
-    // Order: exitFullscreen → vid=no (stop feeding texture) → subs/streams
-    //        → _player.dispose(). Player is disposed LAST so the native
-    //        handle is valid while we null the video output.
-    try {
-      if (_videoKey.currentState?.isFullscreen() ?? false) {
-        await _videoKey.currentState?.exitFullscreen();
-      }
-    } catch (e) {
-      AppLog.warn('MpvEngine: dispose exitFullscreen skipped — $e');
-    }
-    try {
-      if (_player.platform is mk.NativePlayer) {
-        final np = _player.platform as mk.NativePlayer;
-        await np.setProperty('vid', 'no');
-      }
-    } catch (e) {
-      AppLog.warn('MpvEngine: dispose vid=no skipped — $e');
-    }
-
+    // fix130: no manual exitFullscreen()/vid=no here. media_kit releases
+    // the texture via Player.dispose() release[] callbacks
+    // (VideoOutputManager.Dispose, keyed by player handle — confirmed in
+    // media_kit source). The fix126 pokes fought media_kit's internal
+    // --vid/--vo/--wid surface state machine. Just cancel mirror-stream
+    // subs and dispose the player.
     for (final s in _subs) {
       await s.cancel();
     }
@@ -192,7 +177,7 @@ class MpvEngine implements PlayerEngine {
     await _errorCtrl.close();
     await _positionCtrl.close();
     await _player.dispose();
-    AppLog.info('MpvEngine: dispose() released video + player'
+    AppLog.info('MpvEngine: dispose() player disposed (surface released by media_kit)'
         ' eid=${identityHashCode(this)}');
   }
 
@@ -251,20 +236,38 @@ class MpvEngine implements PlayerEngine {
 
 
   @override
-  bool get handlesOwnFullscreen => true;
-
-  @override
-  Future<void> enterFullscreen() async {
-    await _videoKey.currentState?.enterFullscreen();
+  /// fix130 (130.4): surface diagnostics using the typed API.
+  /// _controller.id.value = platform texture id (null = not attached).
+  /// _controller.rect.value = Rect of the rendered area (null = invisible).
+  void logSurface(String where) {
+    try {
+      final tex = _controller.id.value;
+      final r = _controller.rect.value;
+      AppLog.info('MpvEngine: SURFACE[$where] eid=${identityHashCode(this)}'
+          ' textureId=$tex'
+          ' rect=${r == null ? 'null' : '${r.width.toInt()}x${r.height.toInt()}'}'
+          ' playerWH=${_player.state.width}x${_player.state.height}'
+          ' previewMode=$previewMode disposed=$_disposed');
+    } catch (e) {
+      AppLog.warn('MpvEngine: SURFACE[$where] log failed — $e');
+    }
   }
 
+  // fix130: false — app drives fullscreen via _enterSystemFullscreen() (immersive
+  // + landscape orientation), the same path ExoEngine uses. media_kit's
+  // enterFullscreen() pushes a hidden second root-navigator route with a second
+  // Video on this controller; that orphaned route was the black-screen root cause.
   @override
-  Future<void> exitFullscreen() async {
-    await _videoKey.currentState?.exitFullscreen();
-  }
+  bool get handlesOwnFullscreen => false;
 
   @override
-  bool get isFullscreen => _videoKey.currentState?.isFullscreen() ?? false;
+  Future<void> enterFullscreen() async {}
+
+  @override
+  Future<void> exitFullscreen() async {}
+
+  @override
+  bool get isFullscreen => false;
 
 
   int? get videoWidth => _player.state.width;

@@ -1,7 +1,7 @@
 {
-  "latest": "1.22.10",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.22.10",
+  "latest": "1.22.11",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.22.11",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix (critical): eliminated the black screen after closing the mini-player and pressing back on the full-screen player after a swap. The adopted engine video texture was not released on dispose, leaving a dead black frame composited above the channel list. The fix now releases the video surface before tearing down the player, and gives each adopted engine a fresh video surface so texture lifecycles stay clean across swaps.\n\u2022 Improvement: on a version upgrade, the release notes dialog now appears as soon as the channel list loads, instead of waiting for the in-memory search cache to finish building. The cache continues building in the background while the dialog is visible."
+  "releaseNotes": "\u2022 Fix (critical): identified and eliminated the true root cause of the post-swap black screen. media_kit fullscreen pushes a hidden second route onto the root navigator with its own Video widget on the same controller. The swap pop+push only accounted for one route per player, leaving an orphaned fullscreen route whose Video kept rendering a black frame above the channel list. The fix stops delegating fullscreen to media_kit and lets the app drive it directly, as it already does for the ExoPlayer path \u2014 one route per player, swap math stays correct. Single back press now exits the player (the hidden double-back-exit bug is also gone as a bonus)."
 }

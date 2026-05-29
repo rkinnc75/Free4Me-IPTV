@@ -92,6 +92,10 @@ class _PlayerState extends State<Player> {
   /// fix116: true when this Player adopted a pre-playing engine (swap).
   /// Skips the open/_startPlayback step.
   bool _adopted = false;
+  // fix130: when true, build renders a plain black box instead of the
+  // media_kit Video, unmounting the Texture so no stale frame composites
+  // during exit teardown.
+  bool _videoDetached = false;
   bool fill = false;
   List<StreamSubscription<dynamic>> subscriptions = [];
 
@@ -1032,6 +1036,10 @@ class _PlayerState extends State<Player> {
       ' reconnecting=$_isReconnecting engineDisposed=$_engineDisposed',
     );
 
+    // fix130: unmount the Texture before pop/dispose so no stale frame
+    // can composite during teardown.
+    if (mounted) setState(() => _videoDetached = true);
+
     // fix118: POP FIRST — synchronously, before ANY await. The previous
     // code popped only after two `await SystemChrome` calls; if the widget
     // unmounted during those awaits (e.g. the mini was just closed and the
@@ -1043,6 +1051,7 @@ class _PlayerState extends State<Player> {
     AppLog.info('Player: onExit popping route'
         ' channel="${widget.channel.name}"');
     navigator.pop();
+    if (_engine is MpvEngine) (_engine as MpvEngine).logSurface('onExit-after-pop');
 
     // fix124: the revealed route is Home, mounted as MaterialApp.home (the
     // root route). A RouteObserver never delivers didPopNext to the root
@@ -1153,6 +1162,9 @@ class _PlayerState extends State<Player> {
   }
 
   Widget _buildVideoArea() {
+    if (_videoDetached) {
+      return const ColoredBox(color: Colors.black, child: SizedBox.expand());
+    }
     if (_engineType == EngineType.exoplayer) {
       // ExoPlayer path: plain video widget + our own controls overlay
       return Stack(

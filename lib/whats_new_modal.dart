@@ -6,6 +6,18 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.22.11': [
+    'Fix (critical): identified and eliminated the true root cause of the '
+        'post-swap black screen. media_kit fullscreen pushes a hidden second '
+        'route onto the root navigator with its own Video widget on the same '
+        'controller. The swap pop+push only accounted for one route per player, '
+        'leaving an orphaned fullscreen route whose Video kept rendering a black '
+        'frame above the channel list. The fix stops delegating fullscreen to '
+        'media_kit and lets the app drive it directly, as it already does for '
+        'the ExoPlayer path — one route per player, swap math stays correct. '
+        'Single back press now exits the player (the hidden double-back-exit '
+        'bug is also gone as a bonus).',
+  ],
   '1.22.10': [
     'Fix (critical): eliminated the black screen after closing the '
         'mini-player and pressing back on the full-screen player after a swap. '
