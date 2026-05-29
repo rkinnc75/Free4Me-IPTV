@@ -1354,7 +1354,6 @@ class _SettingsState extends State<SettingsView> {
 
                   ExpansionTile(
                     key: const PageStorageKey('playback'),
-                    autofocus: true,
                     leading: const Icon(Icons.play_circle_outline),
                     title: Text(
                       'Playback',
