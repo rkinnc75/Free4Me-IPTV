@@ -12,8 +12,12 @@ const _changelog = <String, List<String>>{
         'The adopted engine video texture was not released on dispose, leaving '
         'a dead black frame composited above the channel list. The fix now '
         'releases the video surface before tearing down the player, and gives '
-        'each adopted engine a fresh video surface so texture lifecycles stay '
-        'clean across swaps.',
+        'each adopted engine a fresh video surface so texture lifecycles '
+        'stay clean across swaps.',
+    'Improvement: on a version upgrade, the release notes dialog now appears '
+        'as soon as the channel list loads, instead of waiting for the '
+        'in-memory search cache to finish building. The cache continues '
+        'building in the background while the dialog is visible.',
   ],
   '1.22.9': [
     'Fix (critical): corrected the cause of the black screen after closing '

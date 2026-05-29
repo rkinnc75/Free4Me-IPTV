@@ -3,5 +3,5 @@
   "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.22.10",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix (critical): eliminated the black screen after closing the mini-player and pressing back on the full-screen player after a swap. The adopted engine video texture was not released on dispose, leaving a dead black frame composited above the channel list. The fix now releases the video surface before tearing down the player, and gives each adopted engine a fresh video surface so texture lifecycles stay clean across swaps."
+  "releaseNotes": "\u2022 Fix (critical): eliminated the black screen after closing the mini-player and pressing back on the full-screen player after a swap. The adopted engine video texture was not released on dispose, leaving a dead black frame composited above the channel list. The fix now releases the video surface before tearing down the player, and gives each adopted engine a fresh video surface so texture lifecycles stay clean across swaps.\n\u2022 Improvement: on a version upgrade, the release notes dialog now appears as soon as the channel list loads, instead of waiting for the in-memory search cache to finish building. The cache continues building in the background while the dialog is visible."
 }

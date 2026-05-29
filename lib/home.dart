@@ -130,21 +130,31 @@ class _HomeState extends State<Home> {
 
     await load();
 
-    // main.dart hasn't finished yet, disable the search box until it's ready.
+    // fix128: start the cache build WITHOUT awaiting it so the What's New
+    // dialog can show immediately. The user reads release notes while the
+    // cache builds in the background. We await the cache future AFTER the
+    // dialog closes (or if there's no dialog, inline as before).
+    Future<void>? cacheFuture;
     final cachedSettings = SettingsService.cached;
     if (cachedSettings != null &&
         cachedSettings.searchMethod == SearchMethod.inMemory &&
         ChannelSearchCache.needsRebuild()) {
       if (mounted) setState(() => _searchReady = false);
-      await ChannelSearchCache.ensureBuilt();
-      AppLog.info('Home: ChannelSearchCache warmup completed');
-      if (mounted) setState(() => _searchReady = true);
+      cacheFuture = ChannelSearchCache.ensureBuilt();
     }
 
+    // Show What's New while the cache builds (if needed).
     final version = await versionFuture;
     if (!mounted) return;
     if (version != null) {
       await showWhatsNew(version);
+    }
+
+    // Now wait for the cache to finish (no-op if not needed or already done).
+    if (cacheFuture != null && mounted && !_searchReady) {
+      await cacheFuture;
+      AppLog.info('Home: ChannelSearchCache warmup completed');
+      if (mounted) setState(() => _searchReady = true);
     }
 
     if (!mounted || !widget.refresh) return;
