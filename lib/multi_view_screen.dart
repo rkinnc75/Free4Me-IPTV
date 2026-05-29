@@ -6,6 +6,7 @@ import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/models/channel.dart';
+import 'package:open_tv/models/media_type.dart'; // fix144
 import 'package:open_tv/models/multi_view_layout.dart';
 import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/source.dart';
