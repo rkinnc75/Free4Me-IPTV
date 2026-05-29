@@ -11,20 +11,25 @@ import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/settings.dart' show SearchMethod;
 import 'package:open_tv/models/view_type.dart';
 
-/// Sort key for the picker: favorites plus validated streams first, then
-/// favorites, validated streams, and alphabetical fallback.
-int _pickSort(Channel a, Channel b) {
-  int tier(Channel ch) {
-    final validated = ch.streamValidated == true ||
-        (ch.id != null && StreamScanner.results[ch.id] == true);
-    if (ch.favorite && validated) return 0;
-    if (ch.favorite) return 1;
-    if (validated) return 2;
-    return 3;
-  }
+/// fix138: persisted OR session validation — shared by sort + section grouping.
+bool _isValidated(Channel ch) =>
+    ch.streamValidated == true ||
+    (ch.id != null && StreamScanner.results[ch.id] == true);
 
-  final td = tier(a) - tier(b);
-  if (td != 0) return td;
+/// fix138: 6-tier sort — Favorite → History → All; Validated-first within each;
+/// then alphabetical. Favorite wins over history.
+int _channelTier(Channel ch) {
+  final validated = _isValidated(ch);
+  final watched = ch.lastWatched != null;
+  if (ch.favorite) return validated ? 0 : 1;
+  if (watched) return validated ? 2 : 3;
+  return validated ? 4 : 5;
+}
+
+int _pickSort(Channel a, Channel b) {
+  final ta = _channelTier(a);
+  final tb = _channelTier(b);
+  if (ta != tb) return ta.compareTo(tb);
   return a.name.toLowerCase().compareTo(b.name.toLowerCase());
 }
 
@@ -166,10 +171,10 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
   /// new tier (favourites → validated → all), otherwise null.
   Widget? _sectionHeader(int i) {
     String label(Channel ch) {
+      // fix138: THREE primary groups only. Validation is badge-only;
+      // validated rows sort to the top of their group via _channelTier.
       if (ch.favorite) return 'Favourites';
-      if (ch.id != null && StreamScanner.results[ch.id] == true) {
-        return 'Validated';
-      }
+      if (ch.lastWatched != null) return 'History';
       return 'All channels';
     }
 
@@ -191,8 +196,8 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
             fontWeight: FontWeight.w600,
             color: title == 'Favourites'
                 ? Colors.amberAccent
-                : title == 'Validated'
-                    ? Colors.greenAccent
+                : title == 'History'
+                    ? Colors.lightBlueAccent // fix138: History header
                     : Colors.white38,
             letterSpacing: 0.8,
           ),
@@ -284,8 +289,7 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
                   itemCount: _channels.length,
                   itemBuilder: (context, i) {
                     final ch = _channels[i];
-                    final scanOk = ch.id != null &&
-                        StreamScanner.results[ch.id] == true;
+                    final scanOk = _isValidated(ch); // fix142: persisted OR session
 
                     // Section header dividers between tiers.
                     final Widget? header = _sectionHeader(i);

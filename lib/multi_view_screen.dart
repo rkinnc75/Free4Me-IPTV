@@ -152,7 +152,16 @@ class _MultiViewScreenState extends State<MultiViewScreen> {
     for (final entry in toFetch.entries) {
       final ch = await Sql.getChannelById(entry.value);
       if (!mounted) return;
-      if (ch != null) _channels[entry.key] = ch;
+      // fix140: multi-view is live TV only. A persisted ID can become a
+      // movie/series after a source refresh; skip anything not livestream.
+      if (ch != null && ch.mediaType == MediaType.livestream) {
+        _channels[entry.key] = ch;
+      } else if (ch != null) {
+        AppLog.info(
+          'MultiViewScreen: restore skipped non-livestream cell ${entry.key}'
+          ' channel="${ch.name}" mediaType=${ch.mediaType}',
+        );
+      }
     }
 
     AppLog.info(

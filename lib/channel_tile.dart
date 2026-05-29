@@ -287,8 +287,11 @@ class _ChannelTileState extends State<ChannelTile> {
 
   @override
   Widget build(BuildContext context) {
-    final scanOk = widget.channel.id != null &&
-        StreamScanner.results[widget.channel.id] == true;
+    // fix142: persisted stream_validated survives restart; session map
+    // (StreamScanner.results) covers this-session scans. Both count.
+    final scanOk = widget.channel.streamValidated == true ||
+        (widget.channel.id != null &&
+            StreamScanner.results[widget.channel.id] == true);
     return Card(
       elevation: _focusNode.hasFocus ? 8.0 : 2.0,
       shape: RoundedRectangleBorder(

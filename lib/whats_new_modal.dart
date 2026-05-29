@@ -6,6 +6,22 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.22.12': [
+    'Improvement: channel list and picker now sort in a consistent 6-tier '
+        'order across all views — Favourites, then recently watched, then '
+        'all channels, with validated streams at the top of each group and '
+        'alphabetical ordering within. Headers show Favourites, History, and '
+        'All channels; the green circle badge indicates validated streams.',
+    'Fix: validated green highlight now persists across app restarts. '
+        'The highlight was reading only the in-memory scan map (cleared on '
+        'start), ignoring the persisted database flag. Both sources are now '
+        'checked so validated channels stay highlighted after a restart.',
+    'Fix: multi-view no longer restores non-live-TV channels into cells if '
+        'a saved channel ID was reassigned to a movie or series by a source '
+        'refresh. The cell opens empty instead.',
+    'Diagnostic: rotation is now logged to help confirm that rotating the '
+        'device does not affect playback or reconnect the stream.',
+  ],
   '1.22.11': [
     'Fix (critical): identified and eliminated the true root cause of the '
         'post-swap black screen. media_kit fullscreen pushes a hidden second '

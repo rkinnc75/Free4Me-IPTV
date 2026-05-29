@@ -71,7 +71,7 @@ class Player extends StatefulWidget {
   State<StatefulWidget> createState() => _PlayerState();
 }
 
-class _PlayerState extends State<Player> {
+class _PlayerState extends State<Player> with WidgetsBindingObserver {
   // Reassignable so a mid-flight engine swap (ExoPlayer → libmpv fallback)
   // can replace the active engine without rebuilding the whole route.
   late EngineType _engineType;
@@ -96,6 +96,7 @@ class _PlayerState extends State<Player> {
   // media_kit Video, unmounting the Texture so no stale frame composites
   // during exit teardown.
   bool _videoDetached = false;
+  Orientation? _lastOrientation; // fix136: rotation logging
   bool fill = false;
   List<StreamSubscription<dynamic>> subscriptions = [];
 
@@ -152,6 +153,7 @@ class _PlayerState extends State<Player> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this); // fix136
     final adopt = widget.adoptEngine;
     if (adopt is MpvEngine) {
       // fix116: adopt the already-playing engine from the swap. No create,
@@ -779,6 +781,7 @@ class _PlayerState extends State<Player> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this); // fix136
     // Pass our engine so that if a new Player already called registerMain
     // during a swap transition, we don't accidentally wipe its registration.
     OverlayPlayerController.instance.unregisterMain(_engine);
@@ -1133,6 +1136,29 @@ class _PlayerState extends State<Player> {
     AppLog.info('Player: onExit DONE channel="${widget.channel.name}"');
   }
 
+
+  // fix136: DIAGNOSTIC ONLY — logs rotation, no engine/connection action.
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    if (!mounted) return;
+    final view = WidgetsBinding.instance.platformDispatcher.views.first;
+    final size = view.physicalSize;
+    final orientation = size.width >= size.height
+        ? Orientation.landscape
+        : Orientation.portrait;
+    if (orientation == _lastOrientation) return;
+    final prev = _lastOrientation;
+    _lastOrientation = orientation;
+    AppLog.info(
+      'Player: ROTATE ${prev?.name ?? 'init'} → ${orientation.name}'
+      ' channel="${widget.channel.name}"'
+      ' (no reconnect — layout only)',
+    );
+    if (_engine is MpvEngine) {
+      (_engine as MpvEngine).logSurface('rotate-${orientation.name}');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

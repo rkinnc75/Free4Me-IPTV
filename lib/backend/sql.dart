@@ -346,11 +346,18 @@ class Sql {
     if (filters.viewType == ViewType.history) {
       sqlQuery += "\nORDER BY c.last_watched DESC";
     } else {
+      // fix138: 6-tier sort matching _channelTier in channel_picker_screen.
+      // Applies to ALL media-type browse views (Live/Movies/Series/All).
       sqlQuery += "\nORDER BY"
-          " COALESCE(c.favorite, 0) DESC,"
-          " COALESCE(c.stream_validated, 0) DESC,"
-          " COALESCE(c.last_watched, 0) DESC,"
-          " c.name ASC";
+          " CASE"
+          "   WHEN COALESCE(c.favorite,0)=1 AND COALESCE(c.stream_validated,0)=1 THEN 0"
+          "   WHEN COALESCE(c.favorite,0)=1 THEN 1"
+          "   WHEN c.last_watched IS NOT NULL AND COALESCE(c.stream_validated,0)=1 THEN 2"
+          "   WHEN c.last_watched IS NOT NULL THEN 3"
+          "   WHEN COALESCE(c.stream_validated,0)=1 THEN 4"
+          "   ELSE 5"
+          " END ASC,"
+          " c.name COLLATE NOCASE ASC";
     }
 
     sqlQuery += "\nLIMIT ?, ?";
