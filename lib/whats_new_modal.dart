@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:open_tv/backend/settings_service.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 /// Per-version changelog entries shown in the What's New dialog.
 /// Key format: major.minor.patch — patch can be omitted to mean "any patch
@@ -1180,18 +1179,6 @@ class WhatsNewModal extends StatelessWidget {
             );
           },
           child: const Text('Full changelog'),
-        ),
-        TextButton(
-          onPressed: () async {
-            await launchUrl(
-              Uri.parse(
-                'https://github.com/rkinnc75/Free4Me-IPTV/discussions',
-              ),
-              mode: LaunchMode.externalApplication,
-            );
-            if (context.mounted) Navigator.pop(context, false);
-          },
-          child: const Text('Donate'),
         ),
         TextButton(
           onPressed: () async {

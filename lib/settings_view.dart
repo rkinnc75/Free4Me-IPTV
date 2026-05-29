@@ -36,7 +36,6 @@ import 'package:open_tv/whats_new_modal.dart';
 import 'package:open_tv/widgets/setting_help_dialog.dart';
 import 'package:open_tv/widgets/sources_refresh_dialog.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 const _helpDefaultView = (
   title: 'Default View',
@@ -1353,22 +1352,9 @@ class _SettingsState extends State<SettingsView> {
                   ),
                   const SizedBox(height: 10),
 
-                  ListTile(
-                    autofocus: true,
-                    title: const Text("Donate"),
-                    subtitle: const Text(
-                      "Free4Me-IPTV is a fork of Fred TV. Support the original project ❤️",
-                    ),
-                    onTap: () async => await launchUrl(
-                      Uri.parse(
-                        "https://github.com/rkinnc75/Free4Me-IPTV/discussions",
-                      ),
-                      mode: LaunchMode.externalApplication,
-                    ),
-                  ),
-
                   ExpansionTile(
                     key: const PageStorageKey('playback'),
+                    autofocus: true,
                     leading: const Icon(Icons.play_circle_outline),
                     title: Text(
                       'Playback',
