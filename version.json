@@ -1,7 +1,7 @@
 {
-  "latest": "1.22.5",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.22.5",
+  "latest": "1.22.6",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.22.6",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: swapping the mini-player with the full-screen player no longer causes a 10\u201325 second black screen / buffering stall on channels whose stream URL stalls when re-opened immediately after close. Swap now hands the live engine objects between players instead of closing and reopening the stream \u2014 the promoted channel appears full-screen instantly because it was already decoding in the mini-player.\n\u2022 Technical: each engine instance is now tagged with a unique identity in the log, making swap handoffs end-to-end traceable: the same id flows from overlay \u2192 full-screen (adopt) and full-screen \u2192 overlay (demote), and confirms each engine is disposed exactly once."
+  "releaseNotes": "\u2022 Fix (critical): pressing back after a swap no longer leaves a black screen with a dead back button requiring a force-close. The root cause was the exit handler waiting on engine teardown before navigating \u2014 if the widget unmounted during that wait (which happened when the mini-player was closed moments earlier), the route never popped. The player now pops the route immediately and tears down the engine in the background.\n\u2022 Improvement: exit is no longer blocked by engine state at all \u2014 pressing back during buffering or reconnecting also exits instantly.\n\u2022 Improvement: movie resume position save is now time-bounded (1s max) so a busy engine can no longer delay exit."
 }

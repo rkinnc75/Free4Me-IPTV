@@ -7,6 +7,19 @@ import 'package:url_launcher/url_launcher.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.22.6': [
+    'Fix (critical): pressing back after a swap no longer leaves a black '
+        'screen with a dead back button requiring a force-close. The root '
+        'cause was the exit handler waiting on engine teardown before '
+        'navigating — if the widget unmounted during that wait (which '
+        'happened when the mini-player was closed moments earlier), the '
+        'route never popped. The player now pops the route immediately and '
+        'tears down the engine in the background.',
+    'Improvement: exit is no longer blocked by engine state at all — '
+        'pressing back during buffering or reconnecting also exits instantly.',
+    'Improvement: movie resume position save is now time-bounded (1s max) '
+        'so a busy engine can no longer delay exit.',
+  ],
   '1.22.5': [
     'Fix: swapping the mini-player with the full-screen player no longer '
         'causes a 10–25 second black screen / buffering stall on channels '

@@ -1022,40 +1022,82 @@ class _PlayerState extends State<Player> {
   void onExit() async {
     if (_exitInvoked) return;
     _exitInvoked = true;
-    exiting = true;
+    exiting = true; // stops the reconnect loop at its next `exiting` check
+    AppLog.info(
+      'Player: onExit START channel="${widget.channel.name}"'
+      ' reconnecting=$_isReconnecting engineDisposed=$_engineDisposed',
+    );
+
+    // fix118: POP FIRST — synchronously, before ANY await. The previous
+    // code popped only after two `await SystemChrome` calls; if the widget
+    // unmounted during those awaits (e.g. the mini was just closed and the
+    // overlay teardown is interleaving), `if (mounted)` was false and the
+    // pop was skipped — leaving a black screen with a dead back button
+    // (force-close required). Capturing the Navigator and popping up front
+    // makes navigation independent of everything that follows.
+    final navigator = Navigator.of(context);
+    AppLog.info('Player: onExit popping route'
+        ' channel="${widget.channel.name}"');
+    navigator.pop();
+
+    // Everything below is best-effort cleanup that must NOT block or
+    // prevent the pop above. None of it needs the widget to still be
+    // mounted or the route to still exist.
     unawaited(PipController.setPlaying(false));
     _bufferingWatchdog?.cancel();
+    _bufferingWatchdog = null;
     _startupWatchdog?.cancel(); // fix94
+    _startupWatchdog = null;
+    _stableTimer?.cancel();
+    _stableTimer = null;
+
+    // Save movie resume position, bounded so a busy engine can't hang.
     if (widget.channel.mediaType == MediaType.movie) {
       final id = widget.channel.id;
       if (id != null) {
-        await Sql.setPosition(id, _engine.position.inSeconds);
+        try {
+          await Sql.setPosition(id, _engine.position.inSeconds)
+              .timeout(const Duration(seconds: 1));
+        } catch (e) {
+          AppLog.warn('Player: onExit setPosition skipped — $e');
+        }
       }
     }
-    if (_engine.handlesOwnFullscreen && _engine.isFullscreen) {
-      await _engine.exitFullscreen();
-    }
-    // fix110: dispose the engine here so audio/video stop the moment the
-    // user exits. Previously disposal was left to the widget dispose(),
-    // but fix106.4's guard skipped it when exiting=true — audio kept
-    // playing until force-close.
+
+    // fix118: tear down the engine WITHOUT blocking. Fire-and-forget;
+    // MpvEngine.dispose() is idempotent (guards a second call), so the
+    // widget dispose() that follows the pop is safe even if this hasn't
+    // completed. fix110's audio-stop requirement still holds — dispose
+    // proceeds, audio stops a moment after the pop.
     if (!_engineDisposed) {
-      try {
-        await _engine.dispose();
-        _engineDisposed = true;
-      } catch (e) {
-        AppLog.warn('Player: onExit dispose error — $e');
-        _engineDisposed = true;
-      }
+      _engineDisposed = true; // mark first so widget dispose() won't re-dispose
+      unawaited(() async {
+        try {
+          if (_engine.handlesOwnFullscreen && _engine.isFullscreen) {
+            await _engine.exitFullscreen();
+          }
+          await _engine.dispose();
+          AppLog.info('Player: onExit engine disposed (async)');
+        } catch (e) {
+          AppLog.warn('Player: onExit async dispose error — $e');
+        }
+      }());
     }
-    await SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
-    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    if (mounted) Navigator.of(context).pop();
+
+    // Restore orientation / system UI last — engine-independent, and the
+    // route is already gone so this can't block navigation.
+    try {
+      await SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.portraitDown,
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    } catch (e) {
+      AppLog.warn('Player: onExit SystemChrome restore error — $e');
+    }
+    AppLog.info('Player: onExit DONE channel="${widget.channel.name}"');
   }
 
 
