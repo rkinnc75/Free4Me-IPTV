@@ -1,7 +1,7 @@
 {
-  "latest": "1.22.13",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.22.13",
+  "latest": "1.23.0",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.0",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: the local build script now correctly reads the GitHub release token from the new account after the repository transfer. The release step would have failed to create or upload the APK when running locally."
+  "releaseNotes": "\u2022 Fix: the \"All\" content filter now shows in white, making it visually distinct from the \"Live\" filter which remains blue."
 }

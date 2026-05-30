@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.23.0': [
+    'Fix: the "All" content filter now shows in white, making it visually '
+        'distinct from the "Live" filter which remains blue.',
+  ],
   '1.22.13': [
     'Fix: the local build script now correctly reads the GitHub release token '
         'from the new account after the repository transfer. The release step '

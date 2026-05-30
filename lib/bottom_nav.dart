@@ -22,7 +22,7 @@ const _fixedLabels = ['Categories', 'Favorites', 'History', 'Settings'];
 
 
 const _filterColors = {
-  ContentTypeFilter.all:     Color(0xFF4E9FE5), // blue (matches old All)
+  ContentTypeFilter.all:     Color(0xFFFFFFFF), // fix152: white (distinct from Live)
   ContentTypeFilter.live:    Color(0xFF4E9FE5), // blue
   ContentTypeFilter.movies:  Color(0xFF8BC34A), // lime
   ContentTypeFilter.series:  Color(0xFFE040FB), // magenta
