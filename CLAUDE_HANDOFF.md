@@ -4,7 +4,7 @@
 > repo. It contains every convention, constraint, and workflow needed to
 > implement and release fixes without asking the user a single question.
 >
-> **Last updated:** 2026-05-29 — v1.22.12+146
+> **Last updated:** 2026-05-29 — v1.23.0+152
 >
 > **Sufficient for:** new chat on same Mac ✓ | new Mac (see Section 17) ✓
 
@@ -20,7 +20,7 @@
 | Local path | `~/git/free4me-iptv` |
 | Platform | Android TV (Flutter/Dart) |
 | Origin | Fork of open-tv / Fred TV |
-| Current version | `1.22.12+146` |
+| Current version | `1.23.0+152` |
 
 The app is an IPTV player for Android TV. It plays M3U/Xtream streams using
 `media_kit` (mpv) as the primary engine, with an ExoPlayer fallback. It has
@@ -195,6 +195,11 @@ specified. The runbook is authoritative. Do not deviate from it.
 | 1.22.12 | +142 | fix142 | Validated highlight persists across restarts |
 | 1.22.12 | +144 | fix144 | Missing MediaType import in multi_view_screen |
 | 1.22.12 | +146 | infra | Pre-commit checker, analyze workflow, commit script |
+| 1.22.13 | +148 | fix148 | Release script keychain account rkalsky → rkinnc75 |
+| 1.22.13 | +150 | fix150 | README rewrite, doc sanitisation, .gitignore hardening |
+| 1.22.13 | +150 | chore | Repo owner renamed rkalsky → rkinnc75 across all files |
+| 1.22.13 | +150 | chore | History scrub: kalsky/pinogy removed from all commits |
+| 1.23.0  | +152 | fix152 | All filter color changed to white (distinct from Live) |
 
 ---
 
@@ -298,6 +303,19 @@ git push --force "https://${PAT}@github.com/rkinnc75/Free4Me-IPTV.git" refs/tags
 Or pass `--force-tag` to `commit_and_release.sh`.
 
 **Never use `git tag -d`.** Write ref files directly.
+
+### Git user identity (required in every new clone/session)
+
+After the history scrub the global git identity was reset. `git commit-tree`
+requires it. Set it once per new clone:
+
+```bash
+cd /sessions/<name>/mnt/free4me-iptv
+git config user.email "builder@users.noreply.github.com"
+git config user.name "builder"
+```
+
+If a commit fails with `Author identity unknown`, run the above two lines.
 
 ### If index.lock is already present (rare — from an interrupted Mac-side git op)
 
@@ -530,26 +548,38 @@ Everything in this document applies unchanged. Three additional steps first time
 ### Step 1 — Clone the repo
 
 ```bash
-git clone https://github.com/rkinnc75/Free4Me-IPTV.git \
-  /Users/<you>/git/free4me-iptv
+git clone https://github.com/rkinnc75/Free4Me-IPTV.git ~/git/free4me-iptv
 ```
 
-The keystore (`android/app/release.keystore`) is tracked and comes with the
-clone. `fix*.md` runbooks are **untracked** — transfer them manually or paste
-their contents into the chat if needed.
+The keystore (`android/app/release.keystore`) is **not** tracked — it was never
+committed. CI uses the GitHub Secret `RELEASE_KEYSTORE_B64`. If you need a local
+keystore for `build_and_release.sh`, decode it from that secret. `fix*.md`
+runbooks are **untracked** — transfer them manually or paste contents into chat.
 
 ### Step 2 — Recreate `.github-token`
 
 ```bash
-echo "ghp_YourPersonalAccessTokenHere" > \
-  /Users/<you>/git/free4me-iptv/.github-token
+echo "ghp_YourPersonalAccessTokenHere" > ~/git/free4me-iptv/.github-token
 ```
 
 PAT needs `repo` scope. This is the **one question** Claude may ask on a new Mac.
 
-### Step 3 — Open in Cowork and verify
+### Step 3 — Set git user identity
 
-In Cowork, select the repo folder. Then from the VM:
+The repo's history was scrubbed; the global git identity may be unset. Set it
+in the repo so commit-tree works:
+
+```bash
+cd ~/git/free4me-iptv
+git config user.email "builder@users.noreply.github.com"
+git config user.name "builder"
+```
+
+If a commit fails with `Author identity unknown`, this is the fix.
+
+### Step 4 — Open in Cowork and verify
+
+In Cowork, select the `~/git/free4me-iptv` folder. Then from the VM:
 
 ```bash
 # Repo accessible
@@ -559,11 +589,14 @@ ls /sessions/<name>/mnt/free4me-iptv/pubspec.yaml
 PAT=$(cat /sessions/<name>/mnt/free4me-iptv/.github-token)
 git ls-remote "https://${PAT}@github.com/rkinnc75/Free4Me-IPTV.git" HEAD
 
+# Git identity set
+git -C /sessions/<name>/mnt/free4me-iptv config user.email
+
 # Pre-checker works
 python3 /sessions/<name>/mnt/free4me-iptv/scripts/pre_commit_check.py
 ```
 
-All three green → ready to implement and release fixes.
+All four green → ready to implement and release fixes.
 
 ---
 
