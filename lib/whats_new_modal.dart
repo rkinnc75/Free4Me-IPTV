@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.22.13': [
+    'Fix: the local build script now correctly reads the GitHub release token '
+        'from the new account after the repository transfer. The release step '
+        'would have failed to create or upload the APK when running locally.',
+  ],
   '1.22.12': [
     'Improvement: channel list and picker now sort in a consistent 6-tier '
         'order across all views — Favourites, then recently watched, then '

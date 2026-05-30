@@ -1,7 +1,7 @@
 {
-  "latest": "1.22.12",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.22.12",
+  "latest": "1.22.13",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.22.13",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Improvement: channel list and picker now sort in a consistent 6-tier order across all views \u2014 Favourites, then recently watched, then all channels, with validated streams at the top of each group and alphabetical ordering within. Headers show Favourites, History, and All channels; the green circle badge indicates validated streams.\n\u2022 Fix: validated green highlight now persists across app restarts. The highlight was reading only the in-memory scan map (cleared on start), ignoring the persisted database flag. Both sources are now checked so validated channels stay highlighted after a restart.\n\u2022 Fix: multi-view no longer restores non-live-TV channels into cells if a saved channel ID was reassigned to a movie or series by a source refresh. The cell opens empty instead.\n\u2022 Diagnostic: rotation is now logged to help confirm that rotating the device does not affect playback or reconnect the stream."
+  "releaseNotes": "\u2022 Fix: the local build script now correctly reads the GitHub release token from the new account after the repository transfer. The release step would have failed to create or upload the APK when running locally."
 }
