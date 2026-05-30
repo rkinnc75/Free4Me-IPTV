@@ -1,7 +1,7 @@
 {
-  "latest": "1.23.1",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.1",
+  "latest": "1.23.2",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.2",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 New: Settings includes an Analyze playback option that reads your local playback history and suggests specific buffer, cache, and timing tweaks based on your actual rebuffering and startup times. Changes are shown for review before applying."
+  "releaseNotes": "\u2022 Fix (TV): the multi-view layout picker cards (1x2, 2x2) are now reachable with the D-pad. Settings rows no longer trap focus on the help icon, so the row actions are reachable directly."
 }

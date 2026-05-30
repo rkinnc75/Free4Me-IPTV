@@ -86,8 +86,11 @@ class _LayoutCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return GestureDetector(
+    return InkWell(
       onTap: onTap,
+      autofocus: isSelected, // fix156: focus selected card on open
+      borderRadius: BorderRadius.circular(12),
+      focusColor: colorScheme.primary.withValues(alpha: 0.25),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.all(8),
