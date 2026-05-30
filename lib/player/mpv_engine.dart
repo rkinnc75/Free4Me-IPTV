@@ -316,17 +316,16 @@ class MpvEngine implements PlayerEngine {
       await np.setProperty('hwdec', 'no');
       AppLog.info('Player: hwdec=no (preview fallback) channel="${channel.name}"');
     } else if (s.hwDecode && Platform.isAndroid) {
-      // Android TV devices (Shield, Fire TV, Onn 4K, etc.) require
-      // mediacodec-copy rather than mediacodec surface mode. In surface
-      // mode, mediacodec binds directly to a SurfaceTexture — this fails
-      // silently on Tegra X1 and similar Android TV SoCs, producing audio
-      // with a black screen. mediacodec-copy decodes in hardware but copies
-      // frames to CPU memory, bypassing the surface binding. Overhead is
-      // negligible on TV-class hardware.
+      // Phone: mediacodec surface mode (hardware, zero-copy).
+      // TV: software decode. fix164 — on low-RAM TV boxes (onn 4K Plus,
+      // 2GB / Mali-G310) the mediacodec-copy GPU→CPU readback falls behind
+      // the audio clock causing A/V desync. Software decode (hwdec=no)
+      // keeps A/V in sync and cannot hit the surface-mode black-screen
+      // failure (fix108). Preview/multi-view cells keep mediacodec-copy.
       final isTV = await DeviceDetector.isTV();
-      final hwdecMode = isTV ? 'mediacodec-copy' : 'mediacodec';
+      final hwdecMode = isTV ? 'no' : 'mediacodec';
       await np.setProperty('hwdec', hwdecMode);
-      AppLog.info('Player: hwdec=$hwdecMode isTV=$isTV');
+      AppLog.info('Player: hwdec=$hwdecMode isTV=$isTV (fix164)');
     } else if (s.hwDecode && Platform.isIOS) {
       await np.setProperty('hwdec', 'videotoolbox');
     } else {

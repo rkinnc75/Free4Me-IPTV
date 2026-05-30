@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:open_tv/widgets/dpad_text_field.dart';
 import 'package:animations/animations.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_form_builder/flutter_form_builder.dart';
@@ -582,7 +583,8 @@ class _SetupState extends State<Setup> {
             },
             initialValue: {Steps.name.name: formValues[Steps.name]},
             key: _formKeys[Steps.name],
-            child: FormBuilderTextField(
+            child: DpadFocusEscape(
+              child: FormBuilderTextField(
               autocorrect: false,
               focusNode: focusNodes[Steps.name],
               decoration: const InputDecoration(
@@ -607,6 +609,7 @@ class _SetupState extends State<Setup> {
               ]),
               name: 'name',
             ),
+            ),
           ),
         ]);
       case Steps.url:
@@ -622,7 +625,8 @@ class _SetupState extends State<Setup> {
             },
             initialValue: {Steps.url.name: formValues[Steps.url]},
             key: _formKeys[Steps.url],
-            child: FormBuilderTextField(
+            child: DpadFocusEscape(
+              child: FormBuilderTextField(
               autocorrect: false,
               focusNode: focusNodes[Steps.url],
               decoration: const InputDecoration(
@@ -648,6 +652,7 @@ class _SetupState extends State<Setup> {
               ]),
               name: 'url',
             ),
+            ),
           ),
         ]);
       case Steps.username:
@@ -663,7 +668,8 @@ class _SetupState extends State<Setup> {
             },
             initialValue: {Steps.username.name: formValues[Steps.username]},
             key: _formKeys[Steps.username],
-            child: FormBuilderTextField(
+            child: DpadFocusEscape(
+              child: FormBuilderTextField(
               autocorrect: false,
               focusNode: focusNodes[Steps.username],
               decoration: const InputDecoration(
@@ -675,6 +681,7 @@ class _SetupState extends State<Setup> {
               autovalidateMode: AutovalidateMode.onUserInteraction,
               validator: FormBuilderValidators.required(),
               name: 'username',
+            ),
             ),
           ),
         ]);
@@ -691,7 +698,8 @@ class _SetupState extends State<Setup> {
               });
             },
             key: _formKeys[Steps.password],
-            child: FormBuilderTextField(
+            child: DpadFocusEscape(
+              child: FormBuilderTextField(
               autocorrect: false,
               focusNode: focusNodes[Steps.password],
               decoration: const InputDecoration(
@@ -704,6 +712,7 @@ class _SetupState extends State<Setup> {
               validator: FormBuilderValidators.required(),
               name: 'password',
             ),
+            ),
           ),
         ]);
       case Steps.epgUrl:
@@ -711,7 +720,7 @@ class _SetupState extends State<Setup> {
           "EPG URL (optional)",
           "Enter your Electronic Programme Guide URL to enable programme\nschedules. You can also add or change this later in Settings.",
           [
-            TextField(
+            DpadTextField(
               controller: _epgUrlController,
               decoration: const InputDecoration(
                 labelText: "EPG URL (optional)",
@@ -719,9 +728,7 @@ class _SetupState extends State<Setup> {
                 prefixIcon: Icon(Icons.tv),
                 helperText: "Leave blank to skip",
               ),
-              autocorrect: false,
               keyboardType: TextInputType.url,
-              textInputAction: TextInputAction.done,
               onSubmitted: (_) => handleNext(),
             ),
           ],

@@ -230,6 +230,43 @@ class MyApp extends StatelessWidget {
             }),
           ),
         ),
+        // fix164: TV/remote focus must be visible on the dark M3 surface.
+        // Gated on !hasTouchScreen — touch UI unchanged.
+        listTileTheme: ListTileThemeData(
+          focusColor: hasTouchScreen
+              ? null
+              : Colors.blueAccent.withValues(alpha: 0.32),
+        ),
+        iconButtonTheme: IconButtonThemeData(
+          style: ButtonStyle(
+            side: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.focused) && !hasTouchScreen) {
+                return const BorderSide(color: Colors.yellow, width: 3);
+              }
+              return null;
+            }),
+          ),
+        ),
+        textButtonTheme: TextButtonThemeData(
+          style: ButtonStyle(
+            side: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.focused) && !hasTouchScreen) {
+                return const BorderSide(color: Colors.yellow, width: 3);
+              }
+              return null;
+            }),
+          ),
+        ),
+        outlinedButtonTheme: OutlinedButtonThemeData(
+          style: ButtonStyle(
+            side: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.focused) && !hasTouchScreen) {
+                return const BorderSide(color: Colors.yellow, width: 3);
+              }
+              return null;
+            }),
+          ),
+        ),
         useMaterial3: true,
       ),
       themeMode: ThemeMode.dark,

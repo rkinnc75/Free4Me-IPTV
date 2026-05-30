@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:open_tv/widgets/dpad_text_field.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
@@ -263,7 +264,7 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
           preferredSize: const Size.fromHeight(56),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-            child: TextField(
+            child: DpadTextField(
               controller: _searchCtrl,
               autofocus: true,
               decoration: InputDecoration(

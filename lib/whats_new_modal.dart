@@ -6,6 +6,23 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.23.6': [
+    'Improvement: export filenames now include a readable date and time stamp '
+        '(e.g. free4me-backup-20260530-154223.json) so files are self-describing '
+        'and each export is unique. The backup and log from one export share '
+        'the same stamp so they are obviously a matched pair. The TV export '
+        'page shows the snapshot time under the title.',
+  ],
+  '1.23.5': [
+    'Fix (TV): A/V sync restored on low-RAM TV boxes. The previous hardware '
+        'decoder path caused video to lag behind audio; software decode keeps '
+        'them in sync and avoids the black-screen failure it was replacing.',
+    'Fix (TV): D-pad can now leave the multi-view channel picker search bar '
+        'and reach the channel list. The setup wizard text fields also yield '
+        'focus so the wizard is completable with a remote.',
+    'Improvement (TV): focused rows and buttons now show a visible highlight '
+        'throughout the app so you can always see where the remote is.',
+  ],
   '1.23.4': [
     'Fix: the playback analyzer now accumulates history correctly across '
         'sessions. Each session is tracked by its actual start time so '
