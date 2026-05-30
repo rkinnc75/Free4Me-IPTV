@@ -1,6 +1,7 @@
 import 'dart:collection';
 
 import 'package:open_tv/backend/app_logger.dart';
+import 'package:open_tv/backend/playback_analyzer.dart';
 import 'package:open_tv/backend/channel_search_cache.dart';
 import 'package:open_tv/backend/db_factory.dart';
 import 'package:open_tv/models/channel.dart';
@@ -1423,4 +1424,114 @@ class Sql {
     );
     return rows.map(rowToChannel).toList();
   }
+
+  // ── fix154: Playback metrics rolling history ───────────────────────────────
+
+  /// Persist one session's metrics. Deletes any existing row with the same
+  /// session_start (idempotent re-runs) then inserts, then caps to 50 newest.
+  static Future<void> insertPlaybackMetrics(PlaybackMetrics m) async {
+    final db = await DbFactory.db;
+    final epochSecs = m.sessionStart.millisecondsSinceEpoch ~/ 1000;
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    await db.writeTransaction((tx) async {
+      await tx.execute(
+        'DELETE FROM playback_metrics WHERE session_start = ?',
+        [epochSecs],
+      );
+      await tx.execute(
+        'INSERT INTO playback_metrics ('
+        '  session_start, session_minutes, streams_opened,'
+        '  median_first_frame_ms, median_stable_ms,'
+        '  startup_visible_rebuffers,'
+        '  total_rebuffers, visible_rebuffers, median_rebuffer_ms,'
+        '  reconnects_watchdog, reconnects_error, gave_up, created_at'
+        ') VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        [
+          epochSecs,
+          m.sessionMinutes,
+          m.streamsOpened,
+          m.medianFirstFrameMs,
+          m.medianStableMs,
+          m.startupVisibleRebuffers,
+          m.totalRebuffers,
+          m.visibleRebuffers,
+          m.medianRebufferMs,
+          m.reconnectsWatchdog,
+          m.reconnectsError,
+          m.gaveUp,
+          now,
+        ],
+      );
+      // keep newest 50
+      await tx.execute(
+        'DELETE FROM playback_metrics WHERE id NOT IN ('
+        '  SELECT id FROM playback_metrics ORDER BY session_start DESC LIMIT 50'
+        ')',
+      );
+    });
+    AppLog.info('Sql.insertPlaybackMetrics: session=${m.sessionStart} '
+        'minutes=${m.sessionMinutes.toStringAsFixed(1)} '
+        'streams=${m.streamsOpened} rebuffers=${m.totalRebuffers}');
+  }
+
+  /// Aggregate all stored sessions into a single weighted summary.
+  static Future<AggregatedMetrics> getAggregatedMetrics() async {
+    final db = await DbFactory.db;
+    final rows = await db.getAll('SELECT * FROM playback_metrics', []);
+    if (rows.isEmpty) {
+      return const AggregatedMetrics(
+        sessionCount: 0, totalMinutes: 0, totalStreams: 0,
+        rebuffersPerHour: 0, medianFirstFrameMs: 0, medianStableMs: 0,
+        medianRebufferMs: 0, startupVisibleRebufferRate: 0,
+        reconnectsWatchdogPerHour: 0,
+      );
+    }
+
+    double totalMinutes = 0;
+    int totalStreams = 0;
+    int totalRebuffers = 0;
+    int totalStartupVisible = 0;
+    int totalWatchdog = 0;
+    final List<int> firstFrames = [];
+    final List<int> stable = [];
+    final List<int> rebufDurs = [];
+
+    for (final row in rows) {
+      final mins = (row['session_minutes'] as num).toDouble();
+      final streams = row['streams_opened'] as int;
+      totalMinutes += mins;
+      totalStreams += streams;
+      totalRebuffers += row['total_rebuffers'] as int;
+      totalStartupVisible += row['startup_visible_rebuffers'] as int;
+      totalWatchdog += row['reconnects_watchdog'] as int;
+      final ffms = row['median_first_frame_ms'] as int;
+      final sms = row['median_stable_ms'] as int;
+      final rdms = row['median_rebuffer_ms'] as int;
+      if (ffms > 0) firstFrames.add(ffms);
+      if (sms > 0) stable.add(sms);
+      if (rdms > 0) rebufDurs.add(rdms);
+    }
+
+    int _med(List<int> l) {
+      if (l.isEmpty) return 0;
+      final s = List<int>.from(l)..sort();
+      final mid = s.length ~/ 2;
+      return s.length.isOdd ? s[mid] : ((s[mid - 1] + s[mid]) ~/ 2);
+    }
+
+    final hours = totalMinutes / 60.0;
+    return AggregatedMetrics(
+      sessionCount: rows.length,
+      totalMinutes: totalMinutes,
+      totalStreams: totalStreams,
+      rebuffersPerHour: hours > 0 ? totalRebuffers / hours : 0,
+      medianFirstFrameMs: _med(firstFrames),
+      medianStableMs: _med(stable),
+      medianRebufferMs: _med(rebufDurs),
+      startupVisibleRebufferRate:
+          totalStreams > 0 ? totalStartupVisible / totalStreams : 0,
+      reconnectsWatchdogPerHour: hours > 0 ? totalWatchdog / hours : 0,
+    );
+  }
+
 }

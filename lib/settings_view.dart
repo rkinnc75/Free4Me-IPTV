@@ -2,7 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:convert';
 import 'package:open_tv/backend/app_logger.dart';
+import 'package:open_tv/backend/export_server.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:open_tv/backend/playback_analyzer.dart';
 import 'package:open_tv/backend/device_memory.dart';
 import 'package:open_tv/models/device_detector.dart';
 import 'package:open_tv/models/engine_type.dart';
@@ -932,6 +936,282 @@ class _SettingsState extends State<SettingsView> {
   ///   - `defaultView`, `refreshOnStart`, `forceTVMode`
   ///   - `showLivestreams`, `showMovies`, `showSeries`
   ///   - All EPG settings
+  // fix158: start server, show URL + QR dialog (TV export).
+  Future<void> _showExportServerDialog(List<ExportItem> items) async {
+    final server = ExportServer(items);
+    List<String> urls;
+    try {
+      urls = await server.start();
+    } catch (e) {
+      if (mounted) {
+        // ignore: use_build_context_synchronously
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not start export server: $e')));
+      }
+      return;
+    }
+    if (urls.isEmpty) {
+      await server.stop();
+      if (mounted) {
+        // ignore: use_build_context_synchronously
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No network found. Connect to Wi-Fi and retry.')));
+      }
+      return;
+    }
+    if (!mounted) { await server.stop(); return; }
+    final primary = urls.first;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      // ignore: use_build_context_synchronously
+      builder: (ctx) => AlertDialog(
+        title: const Text('Download on your phone or PC'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'On a device on the same Wi-Fi, scan this code or '
+                'type the address, then tap a file to download:'),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                color: Colors.white,
+                child: QrImageView(
+                  data: primary,
+                  version: QrVersions.auto,
+                  size: 220,
+                  backgroundColor: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 16),
+              for (final u in urls)
+                SelectableText(
+                  u,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              const SizedBox(height: 8),
+              const Text(
+                'Server stops after 10 minutes.',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await server.stop();
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: const Text('Done'),
+          ),
+        ],
+      ),
+    );
+    await server.stop();
+  }
+
+  // fix158: build backup + log payloads and serve via LAN (TV only).
+  Future<void> _exportEverythingViaServer(
+      {required bool includeCredentials}) async {
+    final items = <ExportItem>[];
+    final backup = await SettingsIo.buildBackupPayload(
+        includeCredentials: includeCredentials);
+    items.add(ExportItem(
+      key: 'backup',
+      filename: 'free4me-backup.json',
+      label: 'Settings backup',
+      bytes: utf8.encode(backup),
+      contentType: 'application/json',
+    ));
+    if (settings.debugLogging) {
+      final log = await AppLog.readLog();
+      if (log.isNotEmpty) {
+        items.add(ExportItem(
+          key: 'log',
+          filename:
+              'free4me_log_${DateTime.now().millisecondsSinceEpoch}.txt',
+          label: 'Debug log',
+          bytes: utf8.encode(log),
+          contentType: 'text/plain; charset=utf-8',
+        ));
+      }
+    }
+    if (!mounted) return;
+    await _showExportServerDialog(items);
+  }
+
+  // fix154: analyze playback log and suggest settings changes.
+  Future<void> _runPlaybackAnalysis() async {
+    if (!AppLog.enabled) {
+      final enable = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Enable debug logging first'),
+          content: const Text(
+            'Playback analysis needs the debug log. Enable it, '
+            'watch a few channels for at least 20 minutes, '
+            'then run this again.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Enable logging'),
+            ),
+          ],
+        ),
+      );
+      if (enable == true) {
+        await AppLog.setEnabled(true);
+        await SettingsService.persistDebugLogging(true);
+        if (mounted) setState(() => settings.debugLogging = true);
+      }
+      return;
+    }
+
+    // Snapshot current session, then aggregate history.
+    try {
+      final text = await AppLog.readLog();
+      final m = PlaybackAnalyzer.parseLatestSession(text);
+      if (m.streamsOpened > 0) await Sql.insertPlaybackMetrics(m);
+    } catch (_) {}
+
+    if (!mounted) return;
+    final agg = await Sql.getAggregatedMetrics();
+    if (!mounted) return;
+
+    if (!agg.hasSufficientData) {
+      await showDialog<void>(
+        context: context,
+        // ignore: use_build_context_synchronously
+        builder: (_) => AlertDialog(
+          title: const Text('Not enough data yet'),
+          content: Text(
+            'Need at least 20 minutes of logged playback across 3+ '
+            'streams. Current: '
+            '${agg.totalMinutes.round()} min, ${agg.totalStreams} streams.'
+            '\n\nWatch a few more channels and try again.',
+          ),
+          actions: [TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          )],
+        ),
+      );
+      return;
+    }
+
+    final recs = Recommender.recommend(agg, settings);
+
+    if (!mounted) return;
+    if (recs.isEmpty) {
+      await showDialog<void>(
+        context: context,
+        // ignore: use_build_context_synchronously
+        builder: (_) => AlertDialog(
+          title: const Text('Playback looks healthy'),
+          content: Text(
+            'No setting changes recommended based on '
+            '${agg.totalMinutes.round()} min across '
+            '${agg.totalStreams} streams.',
+          ),
+          actions: [TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          )],
+        ),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    final apply = await showDialog<bool>(
+      context: context,
+      // ignore: use_build_context_synchronously
+      builder: (_) => AlertDialog(
+        title: const Text('Suggested settings'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Based on ${agg.totalMinutes.round()} min across '
+                '${agg.totalStreams} streams:',
+                style: const TextStyle(fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              for (final r in recs) ...
+                [
+                  Text(r.label,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold)),
+                  Text(
+                    '${r.currentValue} → ${r.suggestedValue}'
+                    '${r.requiresRestart ? ' (next launch)' : ''}',
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                  Text(r.rationale,
+                      style: const TextStyle(
+                          fontSize: 12, color: Colors.grey)),
+                  const SizedBox(height: 12),
+                ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Apply all'),
+          ),
+        ],
+      ),
+    );
+
+    if (apply != true || !mounted) return;
+
+    final updated = settings;
+    for (final r in recs) {
+      switch (r.settingKey) {
+        case 'liveCacheSecs':
+          updated.liveCacheSecs = r.suggestedValue as int; break;
+        case 'bufferSizeMB':
+          updated.bufferSizeMB = r.suggestedValue as int; break;
+        case 'startupGraceMs':
+          updated.startupGraceMs = r.suggestedValue as int; break;
+        case 'bufferingWatchdogSecs':
+          updated.bufferingWatchdogSecs = r.suggestedValue as int; break;
+        case 'openTimeoutSecs':
+          updated.openTimeoutSecs = r.suggestedValue as int; break;
+      }
+    }
+    await SettingsService.updateSettings(updated);
+    if (mounted) setState(() => settings = updated);
+
+    final hasRestart = recs.any((r) => r.requiresRestart);
+    if (mounted) {
+      // ignore: use_build_context_synchronously
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+          'Applied ${recs.length} change(s).'
+          '${hasRestart ? ' Buffer size takes effect on next launch.' : ''}',
+        ),
+      ));
+    }
+  }
+
   Future<void> _confirmAndResetSettings({
     required String title,
     required String body,
@@ -1038,22 +1318,13 @@ class _SettingsState extends State<SettingsView> {
     required ValueChanged<bool> onChanged,
     required ({String title, String body}) help,
   }) {
-    return ListTile(
-      title: GestureDetector(
-        onTap: () => SettingHelpDialog.show(
-          context,
-          title: help.title,
-          body: help.body,
-        ),
-        child: Row(
-          children: [
-            Text(label),
-            const SizedBox(width: 4),
-            _helpIcon(title: help.title, body: help.body),
-          ],
-        ),
-      ),
-      trailing: Switch(value: value, onChanged: onChanged),
+    // fix156: SwitchListTile makes the whole row D-pad focusable;
+    // select toggles the switch. Help is a separate focus stop.
+    return SwitchListTile(
+      title: Text(label),
+      value: value,
+      onChanged: onChanged,
+      secondary: _helpIcon(title: help.title, body: help.body),
     );
   }
 
@@ -1068,20 +1339,10 @@ class _SettingsState extends State<SettingsView> {
     required ({String title, String body}) help,
   }) {
     return ListTile(
-      title: GestureDetector(
-        onTap: () => SettingHelpDialog.show(
-          context,
-          title: help.title,
-          body: help.body,
-        ),
-        child: Row(
-          children: [
-            Text(label),
-            const SizedBox(width: 4),
-            _helpIcon(title: help.title, body: help.body),
-          ],
-        ),
-      ),
+      // fix156: plain text title so the row body is the D-pad target;
+      // help icon moves to trailing as a separate focus stop.
+      title: Text(label),
+      trailing: _helpIcon(title: help.title, body: help.body),
       subtitle: _DpadFriendlySlider(
         value: value.clamp(min, max),
         min: min,
@@ -1734,24 +1995,15 @@ class _SettingsState extends State<SettingsView> {
                     initiallyExpanded: false,
                     children: [
                       ListTile(
-                        title: GestureDetector(
-                          onTap: () => SettingHelpDialog.show(
-                            context,
-                            title: _helpDefaultView.title,
-                            body: _helpDefaultView.body,
-                          ),
-                          child: Row(
-                            children: [
-                              const Text("Default view"),
-                              const SizedBox(width: 4),
-                              _helpIcon(
-                                title: _helpDefaultView.title,
-                                body: _helpDefaultView.body,
-                              ),
-                            ],
-                          ),
-                        ),
+                        // fix156: plain text title so ListTile is the
+                        // focusable D-pad target (select opens picker).
+                        // Help icon moved to trailing as a separate stop.
+                        title: const Text("Default view"),
                         subtitle: Text(viewTypeToString(settings.defaultView)),
+                        trailing: _helpIcon(
+                          title: _helpDefaultView.title,
+                          body: _helpDefaultView.body,
+                        ),
                         onTap: () async => await _showDefaultViewDialog(context),
                       ),
                       _switchTile(
@@ -2243,13 +2495,21 @@ class _SettingsState extends State<SettingsView> {
                               );
                               return;
                             }
-                            await SettingsIo.exportStringToFile(
-                              // ignore: use_build_context_synchronously
-                              context,
-                              content: log,
-                              suggestedName:
-                                  'free4me_log_${DateTime.now().millisecondsSinceEpoch}.txt',
-                            );
+                            // fix158: TV has no SAF — use local server
+                            final isTV = await DeviceDetector.isTV();
+                            if (!mounted) return;
+                            if (isTV) {
+                              await _exportEverythingViaServer(
+                                  includeCredentials: false);
+                            } else {
+                              await SettingsIo.exportStringToFile(
+                                // ignore: use_build_context_synchronously
+                                context,
+                                content: log,
+                                suggestedName:
+                                    'free4me_log_${DateTime.now().millisecondsSinceEpoch}.txt',
+                              );
+                            }
                           }
                         : null,
                   ),
@@ -2302,11 +2562,19 @@ class _SettingsState extends State<SettingsView> {
                         ),
                       );
                       if (includeCredentials == null || !mounted) return;
-                      await SettingsIo.exportToFile(
-                        // ignore: use_build_context_synchronously
-                        context,
-                        includeCredentials: includeCredentials,
-                      );
+                      // fix158: TV has no SAF — use local server
+                      final isTV = await DeviceDetector.isTV();
+                      if (!mounted) return;
+                      if (isTV) {
+                        await _exportEverythingViaServer(
+                            includeCredentials: includeCredentials);
+                      } else {
+                        await SettingsIo.exportToFile(
+                          // ignore: use_build_context_synchronously
+                          context,
+                          includeCredentials: includeCredentials,
+                        );
+                      }
                     },
                   ),
                   ListTile(
@@ -2381,6 +2649,16 @@ class _SettingsState extends State<SettingsView> {
                         preserveLibraryPreferences: true,
                       );
                     },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.insights),
+                    title: const Text('Analyze playback & suggest settings'),
+                    subtitle: const Text(
+                      'Reviews your recent playback history (buffering, '
+                      'startup, reconnects) and suggests buffer/cache/timing '
+                      'tweaks for your device and connection.',
+                    ),
+                    onTap: _runPlaybackAnalysis,
                   ),
                   ListTile(
                     leading: const Icon(Icons.wifi_tethering_off),

@@ -6,6 +6,22 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.23.3': [
+    'New (TV): settings backups and debug logs can now be downloaded from '
+        'any phone or PC on the same Wi-Fi. Tap Export in Settings to get a '
+        'QR code and local address. No cloud, no account required.',
+  ],
+  '1.23.2': [
+    'Fix (TV): the multi-view layout picker cards (1x2, 2x2) are now '
+        'reachable with the D-pad. Settings rows no longer trap focus on the '
+        'help icon, so the row actions are reachable directly.',
+  ],
+  '1.23.1': [
+    'New: Settings includes an Analyze playback option that reads your local '
+        'playback history and suggests specific buffer, cache, and timing '
+        'tweaks based on your actual rebuffering and startup times. '
+        'Changes are shown for review before applying.',
+  ],
   '1.23.0': [
     'Fix: the "All" content filter now shows in white, making it visually '
         'distinct from the "Live" filter which remains blue.',

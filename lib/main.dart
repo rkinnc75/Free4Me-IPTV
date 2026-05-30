@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:open_tv/backend/app_logger.dart';
+import 'package:open_tv/backend/playback_analyzer.dart';
 import 'package:open_tv/backend/channel_search_cache.dart';
 import 'package:open_tv/backend/device_memory.dart';
 import 'package:open_tv/backend/epg_service.dart';
@@ -100,13 +101,41 @@ class _RootPage extends StatefulWidget {
   State<_RootPage> createState() => _RootPageState();
 }
 
-class _RootPageState extends State<_RootPage> {
+class _RootPageState extends State<_RootPage> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this); // fix154
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) UpdateChecker.checkOnLaunch(context);
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this); // fix154
+    super.dispose();
+  }
+
+  // fix154: capture playback metrics into rolling history on app pause.
+  // Best-effort; only runs when debug logging is on.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _capturePlaybackMetrics();
+    }
+  }
+
+  static Future<void> _capturePlaybackMetrics() async {
+    try {
+      if (!AppLog.enabled) return;
+      final text = await AppLog.readLog();
+      final m = PlaybackAnalyzer.parseLatestSession(text);
+      if (m.streamsOpened == 0) return;
+      await Sql.insertPlaybackMetrics(m);
+    } catch (e) {
+      AppLog.warn('capturePlaybackMetrics: skipped — $e');
+    }
   }
 
   @override

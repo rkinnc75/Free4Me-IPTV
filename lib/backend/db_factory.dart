@@ -261,6 +261,31 @@ class DbFactory {
           'ALTER TABLE channels ADD COLUMN stream_validated INTEGER;',
         );
       }))
+      ..add(SqliteMigration(12, (tx) async {
+        // fix154: rolling playback metrics history (local, no telemetry).
+        // One row per analyzed session summary. Capped to newest 50 by DAO.
+        await tx.execute('''
+          CREATE TABLE "playback_metrics" (
+            id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_start             INTEGER NOT NULL,
+            session_minutes           REAL    NOT NULL,
+            streams_opened            INTEGER NOT NULL,
+            median_first_frame_ms     INTEGER NOT NULL,
+            median_stable_ms          INTEGER NOT NULL,
+            startup_visible_rebuffers INTEGER NOT NULL,
+            total_rebuffers           INTEGER NOT NULL,
+            visible_rebuffers         INTEGER NOT NULL,
+            median_rebuffer_ms        INTEGER NOT NULL,
+            reconnects_watchdog       INTEGER NOT NULL,
+            reconnects_error          INTEGER NOT NULL,
+            gave_up                   INTEGER NOT NULL,
+            created_at                INTEGER NOT NULL
+          );
+        ''');
+        await tx.execute(
+            'CREATE INDEX idx_pm_session '
+            'ON playback_metrics(session_start);');
+      }))
       ..add(SqliteMigration(11, (tx) async {
         // The previous trigger (AFTER UPDATE ON channels) fired for every
         // column write — favorites, history, stream_validated, EPG — causing
