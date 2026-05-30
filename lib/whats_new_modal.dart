@@ -6,6 +6,13 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.23.7': [
+    'Fix (TV): focus highlight now works correctly throughout the app. '
+        'The previous build had an invalid theme parameter that blocked CI '
+        'and prevented the fix164/166 features from shipping. This build is '
+        'the first that compiles and includes all TV improvements from '
+        'v1.23.5 and v1.23.6.',
+  ],
   '1.23.6': [
     'Improvement: export filenames now include a readable date and time stamp '
         '(e.g. free4me-backup-20260530-154223.json) so files are self-describing '

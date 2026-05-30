@@ -1,7 +1,7 @@
 {
-  "latest": "1.23.6",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.6",
+  "latest": "1.23.7",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.7",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Improvement: export filenames now include a readable date and time stamp (e.g. free4me-backup-20260530-154223.json) so files are self-describing and each export is unique. The backup and log from one export share the same stamp so they are obviously a matched pair. The TV export page shows the snapshot time under the title."
+  "releaseNotes": "\u2022 Fix (TV): focus highlight now works correctly throughout the app. The previous build had an invalid theme parameter that blocked CI and prevented the fix164/166 features from shipping. This build is the first that compiles and includes all TV improvements from v1.23.5 and v1.23.6."
 }

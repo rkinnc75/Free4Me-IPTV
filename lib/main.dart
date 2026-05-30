@@ -230,13 +230,15 @@ class MyApp extends StatelessWidget {
             }),
           ),
         ),
-        // fix164: TV/remote focus must be visible on the dark M3 surface.
+        // fix164/168: TV/remote focus must be visible on the dark M3 surface.
+        // ThemeData.focusColor is the top-level fallback that ListTile,
+        // InkWell/InkResponse, IconButton, Switch, Radio etc. read when
+        // their own focusColor is null. (fix168: ListTileThemeData has NO
+        // focusColor param — ThemeData.focusColor is the correct lever.)
         // Gated on !hasTouchScreen — touch UI unchanged.
-        listTileTheme: ListTileThemeData(
-          focusColor: hasTouchScreen
-              ? null
-              : Colors.blueAccent.withValues(alpha: 0.32),
-        ),
+        focusColor: hasTouchScreen
+            ? null
+            : Colors.lightBlueAccent.withValues(alpha: 0.40),
         iconButtonTheme: IconButtonThemeData(
           style: ButtonStyle(
             side: WidgetStateProperty.resolveWith((states) {
