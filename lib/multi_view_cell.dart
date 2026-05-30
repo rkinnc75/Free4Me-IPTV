@@ -806,6 +806,8 @@ class _MultiViewCellState extends State<MultiViewCell> {
     return FocusableActionDetector(
       // fix170: D-pad focus → audio focus. Moving the remote to a cell
       // calls onFocusTap, so the focused cell plays audio and others mute.
+      // fix172: cell 0 autofocuses so the D-pad has an initial target on TV.
+      autofocus: widget.cellIndex == 0,
       onShowFocusHighlight: (focused) {
         if (focused) widget.onFocusTap();
       },
@@ -814,47 +816,44 @@ class _MultiViewCellState extends State<MultiViewCell> {
         onDoubleTap: _promoteToFullScreen,
         onLongPress: _showCellMenu,
         child: Stack(
-        fit: StackFit.expand,
-        children: [
-          _engine!.buildVideoView(context),
+          fit: StackFit.expand,
+          children: [
+            _engine!.buildVideoView(context),
 
-          // Focused-cell border
-          if (widget.isFocused)
-            IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: Theme.of(context).colorScheme.primary,
-                    width: 3,
+            // Focused-cell border
+            if (widget.isFocused)
+              IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.primary,
+                      width: 3,
+                    ),
                   ),
                 ),
               ),
+
+            // Info bar — bottom: channel name + EPG now/next strip
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: _buildInfoBar(),
             ),
 
-          // Info bar — bottom: channel name + EPG now/next strip
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: _buildInfoBar(),
-          ),
-
-          // Volume icon — top right
-          Positioned(
-            right: 8,
-            top: 8,
-            child: IgnorePointer(
-              child: Icon(
-                widget.isFocused ? Icons.volume_up : Icons.volume_off,
-                color: widget.isFocused
-                    ? Colors.white
-                    : Colors.white30,
-                size: 16,
+            // Volume icon — top right
+            Positioned(
+              right: 8,
+              top: 8,
+              child: IgnorePointer(
+                child: Icon(
+                  widget.isFocused ? Icons.volume_up : Icons.volume_off,
+                  color: widget.isFocused ? Colors.white : Colors.white30,
+                  size: 16,
+                ),
               ),
             ),
-          ),
-        ],
-      ),
+          ],
         ),
       ),
     );

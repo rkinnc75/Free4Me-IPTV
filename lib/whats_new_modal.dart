@@ -6,6 +6,13 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.23.9': [
+    'Fix (TV): multi-view D-pad audio focus now works correctly. The previous '
+        'build had a syntax error in the cell widget that prevented compilation. '
+        'This build fixes that, seeds initial focus on the first cell so the '
+        'remote has a starting point, and keeps D-pad traversal contained '
+        'within the cells.',
+  ],
   '1.23.8': [
     'Fix: the playback analyzer now runs correctly on upgraded devices. '
         'The database migration for its history table was out of order and '

@@ -1,7 +1,7 @@
 {
-  "latest": "1.23.8",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.8",
+  "latest": "1.23.9",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.9",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: the playback analyzer now runs correctly on upgraded devices. The database migration for its history table was out of order and silently skipped, so the analyzer threw on every launch without showing any dialog. A new migration guarantees the table exists.\n\u2022 Fix (TV): in multi-view, D-pad focus now moves audio between cells. Moving the remote to a cell assigns it audio, matching touch behaviour."
+  "releaseNotes": "\u2022 Fix (TV): multi-view D-pad audio focus now works correctly. The previous build had a syntax error in the cell widget that prevented compilation. This build fixes that, seeds initial focus on the first cell so the remote has a starting point, and keeps D-pad traversal contained within the cells."
 }
