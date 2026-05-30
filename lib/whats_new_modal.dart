@@ -6,6 +6,14 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.23.4': [
+    'Fix: the playback analyzer now accumulates history correctly across '
+        'sessions. Each session is tracked by its actual start time so '
+        're-captures of the same session update the existing record instead '
+        'of adding duplicates. The data threshold has been lowered to 10 '
+        'minutes across 2 streams, and the progress dialog shows how close '
+        'you are to the threshold.',
+  ],
   '1.23.3': [
     'New (TV): settings backups and debug logs can now be downloaded from '
         'any phone or PC on the same Wi-Fi. Tap Export in Settings to get a '

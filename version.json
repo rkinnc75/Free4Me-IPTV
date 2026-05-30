@@ -1,7 +1,7 @@
 {
-  "latest": "1.23.3",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.3",
+  "latest": "1.23.4",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.4",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 New (TV): settings backups and debug logs can now be downloaded from any phone or PC on the same Wi-Fi. Tap Export in Settings to get a QR code and local address. No cloud, no account required."
+  "releaseNotes": "\u2022 Fix: the playback analyzer now accumulates history correctly across sessions. Each session is tracked by its actual start time so re-captures of the same session update the existing record instead of adding duplicates. The data threshold has been lowered to 10 minutes across 2 streams, and the progress dialog shows how close you are to the threshold."
 }

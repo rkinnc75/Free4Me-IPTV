@@ -5,7 +5,7 @@ import 'package:open_tv/models/settings.dart';
 
 /// Per-session playback metrics extracted from the app's debug log.
 class PlaybackMetrics {
-  final DateTime sessionStart;
+  DateTime sessionStart; // fix162: settable for dedup key
   int streamsOpened = 0;
 
   // startup
@@ -68,7 +68,7 @@ class AggregatedMetrics {
   });
 
   bool get hasSufficientData =>
-      totalMinutes >= 20 && totalStreams >= 3;
+      totalMinutes >= 10 && totalStreams >= 2; // fix162: lower bar
 }
 
 // ── Log parser ────────────────────────────────────────────────────────────────
@@ -117,9 +117,6 @@ class PlaybackAnalyzer {
       if (ts != null) {
         firstTs ??= ts;
         lastTs = ts;
-      }
-      if (m.sessionStart == DateTime.now() && firstTs != null) {
-        // retroactively set session start to first log line
       }
 
       // Stream open
@@ -200,6 +197,7 @@ class PlaybackAnalyzer {
     }
 
     if (firstTs != null && lastTs != null) {
+      m.sessionStart = firstTs; // fix162: real session start for dedup
       m.sessionMinutes =
           lastTs.difference(firstTs).inSeconds / 60.0;
     }
