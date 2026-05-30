@@ -32,6 +32,44 @@ class SettingsIo {
 
   /// Export all sources + settings to a JSON file chosen by the user.
   /// [includeCredentials] controls whether Xtream username/password are written.
+  // fix158: extracted so TV export can build the payload without FilePicker.
+  static Future<String> buildBackupPayload({
+    bool includeCredentials = false,
+  }) async {
+    final packageInfo = await PackageInfo.fromPlatform();
+    final settings = await SettingsService.getSettings();
+    final sources = await Sql.getSources();
+
+    final sourcesPayload = <Map<String, dynamic>>[];
+    for (final s in sources) {
+      final base = _sourceToMap(s, includeCredentials);
+      if (s.id != null) {
+        final preserve = await Sql.getChannelsPreserve(s.id!);
+        if (preserve.isNotEmpty) {
+          base['preserve'] = preserve
+              .map((p) => {
+                    'name': p.name,
+                    if (p.favorite != null) 'favorite': p.favorite,
+                    if (p.lastWatched != null) 'lastWatched': p.lastWatched,
+                    if (p.epgChannelId != null) 'epgChannelId': p.epgChannelId,
+                    if (p.epgManualOverride != null)
+                      'epgManualOverride': p.epgManualOverride,
+                  })
+              .toList();
+        }
+      }
+      sourcesPayload.add(base);
+    }
+
+    return jsonEncode({
+      'schemaVersion': _schemaVersion,
+      'exportedAt': DateTime.now().toUtc().toIso8601String(),
+      'appVersion': packageInfo.version,
+      'settings': _settingsToMap(settings),
+      'sources': sourcesPayload,
+    });
+  }
+
   static Future<void> exportToFile(
     BuildContext context, {
     bool includeCredentials = false,

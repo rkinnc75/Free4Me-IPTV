@@ -1,7 +1,7 @@
 {
-  "latest": "1.23.2",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.2",
+  "latest": "1.23.3",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.3",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix (TV): the multi-view layout picker cards (1x2, 2x2) are now reachable with the D-pad. Settings rows no longer trap focus on the help icon, so the row actions are reachable directly."
+  "releaseNotes": "\u2022 New (TV): settings backups and debug logs can now be downloaded from any phone or PC on the same Wi-Fi. Tap Export in Settings to get a QR code and local address. No cloud, no account required."
 }
