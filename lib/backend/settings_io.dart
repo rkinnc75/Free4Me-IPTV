@@ -20,6 +20,13 @@ import 'package:path_provider/path_provider.dart';
 const int _schemaVersion = 3;
 
 class SettingsIo {
+  /// fix166: local snapshot stamp `yyyymmdd-HHMMSS` for export filenames.
+  static String exportStamp(DateTime now) {
+    String p2(int n) => n.toString().padLeft(2, '0');
+    return '${now.year}${p2(now.month)}${p2(now.day)}'
+        '-${p2(now.hour)}${p2(now.minute)}${p2(now.second)}';
+  }
+
   /// Channel-attribute restores staged by importFromFile, keyed by
   /// source name. Consumed by applyPendingPreserves once channel
   /// rows are populated by the first source refresh.
@@ -121,13 +128,14 @@ class SettingsIo {
       'sources': sourcesPayload,
     });
 
+    final stamp = exportStamp(DateTime.now()); // fix166
     final dir = await getTemporaryDirectory();
-    final tmpFile = File('${dir.path}/free4me-backup.json');
+    final tmpFile = File('${dir.path}/free4me-backup-$stamp.json');
     await tmpFile.writeAsString(payload);
 
     final result = await FilePicker.platform.saveFile(
       dialogTitle: 'Save Free4Me-IPTV backup',
-      fileName: 'free4me-backup.json',
+      fileName: 'free4me-backup-\$stamp.json',
       bytes: tmpFile.readAsBytesSync(),
     );
 

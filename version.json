@@ -1,7 +1,7 @@
 {
-  "latest": "1.23.5",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.5",
+  "latest": "1.23.6",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.6",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix (TV): A/V sync restored on low-RAM TV boxes. The previous hardware decoder path caused video to lag behind audio; software decode keeps them in sync and avoids the black-screen failure it was replacing.\n\u2022 Fix (TV): D-pad can now leave the multi-view channel picker search bar and reach the channel list. The setup wizard text fields also yield focus so the wizard is completable with a remote.\n\u2022 Improvement (TV): focused rows and buttons now show a visible highlight throughout the app so you can always see where the remote is."
+  "releaseNotes": "\u2022 Improvement: export filenames now include a readable date and time stamp (e.g. free4me-backup-20260530-154223.json) so files are self-describing and each export is unique. The backup and log from one export share the same stamp so they are obviously a matched pair. The TV export page shows the snapshot time under the title."
 }

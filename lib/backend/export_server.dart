@@ -28,9 +28,10 @@ class ExportServer {
 
   HttpServer? _server;
   final List<ExportItem> _items;
+  final String? capturedAt; // fix166
   Timer? _idleTimeout;
 
-  ExportServer(this._items);
+  ExportServer(this._items, {this.capturedAt});
 
   /// Start the server and return the LAN URLs to display (one per IPv4).
   Future<List<String>> start() async {
@@ -64,8 +65,12 @@ class ExportServer {
         ..write('<!doctype html>'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
             '<body style="font-family:sans-serif;padding:2em;max-width:32em;'
-            'margin:auto"><h2>Free4Me-IPTV export</h2>'
-            '<p>Tap a file to download:</p>');
+            'margin:auto"><h2>Free4Me-IPTV export</h2>');
+      if (capturedAt != null) {
+        buf.write('<p style="color:#888;font-size:.85em;margin:-.4em 0 1em">'
+            'Snapshot taken $capturedAt</p>');
+      }
+      buf.write('<p>Tap a file to download:</p>');
       for (final it in _items) {
         final kb = (it.bytes.length / 1024).toStringAsFixed(0);
         buf.write('<p><a href="/file/${it.key}" '

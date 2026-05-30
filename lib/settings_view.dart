@@ -937,8 +937,11 @@ class _SettingsState extends State<SettingsView> {
   ///   - `showLivestreams`, `showMovies`, `showSeries`
   ///   - All EPG settings
   // fix158: start server, show URL + QR dialog (TV export).
-  Future<void> _showExportServerDialog(List<ExportItem> items) async {
-    final server = ExportServer(items);
+  Future<void> _showExportServerDialog(
+    List<ExportItem> items, {
+    String? capturedAt,
+  }) async {
+    final server = ExportServer(items, capturedAt: capturedAt);
     List<String> urls;
     try {
       urls = await server.start();
@@ -1019,11 +1022,14 @@ class _SettingsState extends State<SettingsView> {
   Future<void> _exportEverythingViaServer(
       {required bool includeCredentials}) async {
     final items = <ExportItem>[];
+    // fix166: one stamp shared by backup + log.
+    final captured = DateTime.now();
+    final stamp = SettingsIo.exportStamp(captured);
     final backup = await SettingsIo.buildBackupPayload(
         includeCredentials: includeCredentials);
     items.add(ExportItem(
       key: 'backup',
-      filename: 'free4me-backup.json',
+      filename: 'free4me-backup-$stamp.json',
       label: 'Settings backup',
       bytes: utf8.encode(backup),
       contentType: 'application/json',
@@ -1033,8 +1039,7 @@ class _SettingsState extends State<SettingsView> {
       if (log.isNotEmpty) {
         items.add(ExportItem(
           key: 'log',
-          filename:
-              'free4me_log_${DateTime.now().millisecondsSinceEpoch}.txt',
+          filename: 'free4me_log-$stamp.txt',
           label: 'Debug log',
           bytes: utf8.encode(log),
           contentType: 'text/plain; charset=utf-8',
@@ -1042,7 +1047,8 @@ class _SettingsState extends State<SettingsView> {
       }
     }
     if (!mounted) return;
-    await _showExportServerDialog(items);
+    final capturedLabel = captured.toString().split('.').first;
+    await _showExportServerDialog(items, capturedAt: capturedLabel);
   }
 
   // fix154: analyze playback log and suggest settings changes.
@@ -2515,7 +2521,7 @@ class _SettingsState extends State<SettingsView> {
                                 context,
                                 content: log,
                                 suggestedName:
-                                    'free4me_log_${DateTime.now().millisecondsSinceEpoch}.txt',
+                                    'free4me_log-${SettingsIo.exportStamp(DateTime.now())}.txt',
                               );
                             }
                           }
