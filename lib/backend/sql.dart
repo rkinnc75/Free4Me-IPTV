@@ -1512,7 +1512,7 @@ class Sql {
       if (rdms > 0) rebufDurs.add(rdms);
     }
 
-    int _med(List<int> l) {
+    int med(List<int> l) {
       if (l.isEmpty) return 0;
       final s = List<int>.from(l)..sort();
       final mid = s.length ~/ 2;
@@ -1525,9 +1525,9 @@ class Sql {
       totalMinutes: totalMinutes,
       totalStreams: totalStreams,
       rebuffersPerHour: hours > 0 ? totalRebuffers / hours : 0,
-      medianFirstFrameMs: _med(firstFrames),
-      medianStableMs: _med(stable),
-      medianRebufferMs: _med(rebufDurs),
+      medianFirstFrameMs: med(firstFrames),
+      medianStableMs: med(stable),
+      medianRebufferMs: med(rebufDurs),
       startupVisibleRebufferRate:
           totalStreams > 0 ? totalStartupVisible / totalStreams : 0,
       reconnectsWatchdogPerHour: hours > 0 ? totalWatchdog / hours : 0,

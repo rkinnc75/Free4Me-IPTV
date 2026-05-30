@@ -74,7 +74,7 @@ class ExportServer {
             'border-radius:8px">'
             '${it.label} '
             '<small style="font-size:.75em">'
-            '(${it.filename}, ${kb} KB)</small></a></p>');
+            '(${it.filename}, $kb KB)</small></a></p>');
       }
       buf.write('<p style="color:#888;font-size:.85em">'
           'Server stops after 10 minutes idle.</p></body>');

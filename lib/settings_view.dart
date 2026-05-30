@@ -1071,8 +1071,8 @@ class _SettingsState extends State<SettingsView> {
       );
       if (enable == true) {
         await AppLog.setEnabled(true);
-        await SettingsService.persistDebugLogging(true);
         if (mounted) setState(() => settings.debugLogging = true);
+        updateSettings(); // fix160: persist via standard helper
       }
       return;
     }
@@ -1339,10 +1339,8 @@ class _SettingsState extends State<SettingsView> {
     required ({String title, String body}) help,
   }) {
     return ListTile(
-      // fix156: plain text title so the row body is the D-pad target;
-      // help icon moves to trailing as a separate focus stop.
+      // fix156/160: plain text title so the row body is the D-pad target.
       title: Text(label),
-      trailing: _helpIcon(title: help.title, body: help.body),
       subtitle: _DpadFriendlySlider(
         value: value.clamp(min, max),
         min: min,
@@ -1351,13 +1349,19 @@ class _SettingsState extends State<SettingsView> {
         label: value.round().toString(),
         onChanged: onChanged,
       ),
-      trailing: SizedBox(
-        width: 56,
-        child: Text(
-          value.round().toString(),
-          textAlign: TextAlign.right,
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 56,
+            child: Text(
+              value.round().toString(),
+              textAlign: TextAlign.right,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+          _helpIcon(title: help.title, body: help.body),
+        ],
       ),
     );
   }
