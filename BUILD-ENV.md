@@ -19,7 +19,7 @@ Engine - hash fcf463a2242790d1fdcd9d044f533080f5022e18 (revision 4c525dac5e) (7 
 Tools - Dart 3.12.0 - DevTools 2.57.0
 ```
 
-Resolved binary: `/Users/builder/tools/flutter/bin/flutter` (manual install, not Homebrew). Channel `stable`.
+Resolved binary: `~/tools/flutter/bin/flutter` (manual install, not Homebrew). Channel `stable`.
 
 ### `dart --version`
 
@@ -27,7 +27,7 @@ Resolved binary: `/Users/builder/tools/flutter/bin/flutter` (manual install, not
 Dart SDK version: 3.12.0 (stable) (Fri May 8 01:51:14 2026 -0700) on "macos_arm64"
 ```
 
-Resolved binary: `/Users/builder/tools/flutter/bin/dart` (the Dart bundled with Flutter). No standalone Dart SDK.
+Resolved binary: `~/tools/flutter/bin/dart` (the Dart bundled with Flutter). No standalone Dart SDK.
 
 ### `java -version` and `which java`
 
@@ -81,7 +81,7 @@ So: **AGP 8.13.2**, **Kotlin 2.2.20** (declaration), **Kotlin 2.0.21** (Gradle's
 
 ### Android SDK packages
 
-`$ANDROID_HOME/cmdline-tools` is **not present** on this machine — Android Studio installed the SDK without the optional command-line tools, so `sdkmanager --list_installed` is unavailable. The SDK was instead populated by Android Studio's UI. Effective state by directory listing of `$ANDROID_HOME = /Users/builder/Library/Android/sdk`:
+`$ANDROID_HOME/cmdline-tools` is **not present** on this machine — Android Studio installed the SDK without the optional command-line tools, so `sdkmanager --list_installed` is unavailable. The SDK was instead populated by Android Studio's UI. Effective state by directory listing of `$ANDROID_HOME = ~/Library/Android/sdk`:
 
 | SDK component | Versions present |
 |---|---|
@@ -96,7 +96,7 @@ The project's `android/app/build.gradle` declares `compileSdk = 36`, which selec
 
 ### Build script's effective Flutter SDK path
 
-`scripts/build_and_release.sh` line 53 prepends `/Users/builder/tools/flutter/bin` to `PATH` before invoking `flutter build apk`. It does **not** set `JAVA_HOME` or `ANDROID_HOME` itself; those come from the parent shell's environment.
+`scripts/build_and_release.sh` line 53 prepends `~/tools/flutter/bin` to `PATH` before invoking `flutter build apk`. It does **not** set `JAVA_HOME` or `ANDROID_HOME` itself; those come from the parent shell's environment.
 
 ---
 
@@ -107,28 +107,28 @@ The project's `android/app/build.gradle` declares `compileSdk = 36`, which selec
 `/bin/bash -lc 'env | sort'` already exports the following relevant vars (from the user's shell init):
 
 ```
-ANDROID_HOME=/Users/builder/Library/Android/sdk
-ANDROID_SDK_ROOT=/Users/builder/Library/Android/sdk
+ANDROID_HOME=~/Library/Android/sdk
+ANDROID_SDK_ROOT=~/Library/Android/sdk
 JAVA_HOME=/Applications/Android Studio.app/Contents/jbr/Contents/Home
-PATH=...:/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin:/Users/builder/tools/flutter/bin:...
+PATH=...:/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin:~/tools/flutter/bin:...
 ```
 
-So the user's shell is already pre-staged with everything needed. The release script only adds `/Users/builder/tools/flutter/bin` to `PATH` defensively.
+So the user's shell is already pre-staged with everything needed. The release script only adds `~/tools/flutter/bin` to `PATH` defensively.
 
 ### Vars actually required by a successful run
 
 Captured immediately before invoking the build:
 
 ```
-ANDROID_HOME=/Users/builder/Library/Android/sdk
-ANDROID_SDK_ROOT=/Users/builder/Library/Android/sdk
+ANDROID_HOME=~/Library/Android/sdk
+ANDROID_SDK_ROOT=~/Library/Android/sdk
 JAVA_HOME=/Applications/Android Studio.app/Contents/jbr/Contents/Home
-PATH=/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin:/Users/builder/tools/flutter/bin:<rest of PATH>
+PATH=/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin:~/tools/flutter/bin:<rest of PATH>
 ```
 
 ### Diff vs. fresh shell
 
-There is **no env diff** at the point the script runs — the user's shell already has the vars set. The script-level export at line 53 (`export PATH="$PATH:/Users/builder/tools/flutter/bin"`) is redundant on this host but harmless.
+There is **no env diff** at the point the script runs — the user's shell already has the vars set. The script-level export at line 53 (`export PATH="$PATH:~/tools/flutter/bin"`) is redundant on this host but harmless.
 
 ### Minimum env required by CI
 
@@ -267,12 +267,12 @@ v1.17.0 ships; it's no longer referenced by the workflow.
 Captured via:
 
 ```bash
-export PATH="/Users/builder/tools/flutter/bin:$PATH"
+export PATH="~/tools/flutter/bin:$PATH"
 export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 export ANDROID_HOME="$HOME/Library/Android/sdk"
 export ANDROID_SDK_ROOT="$ANDROID_HOME"
 export PATH="$JAVA_HOME/bin:$PATH"
-cd /Users/builder/git/free4me-iptv
+cd ~/git/free4me-iptv
 flutter clean
 flutter pub get
 flutter build apk --release 2>&1 | tee /tmp/release-transcript.txt
@@ -281,10 +281,10 @@ flutter build apk --release 2>&1 | tee /tmp/release-transcript.txt
 Effective env at invocation time (from `env | sort | grep -E '...'`):
 
 ```
-ANDROID_HOME=/Users/builder/Library/Android/sdk
-ANDROID_SDK_ROOT=/Users/builder/Library/Android/sdk
+ANDROID_HOME=~/Library/Android/sdk
+ANDROID_SDK_ROOT=~/Library/Android/sdk
 JAVA_HOME=/Applications/Android Studio.app/Contents/jbr/Contents/Home
-PATH=/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin:/Users/builder/tools/flutter/bin:<plus rest>
+PATH=/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin:~/tools/flutter/bin:<plus rest>
 ```
 
 Output (verbatim, 70 lines):
@@ -335,7 +335,7 @@ Downloading file from: https://github.com/media-kit/libmpv-android-video-build/r
 Your project is configured with Android NDK 27.0.12077973, but the following plugin(s) depend on a different Android NDK version:
 - jni requires Android NDK 28.2.13676358
 Fix this issue by using the highest Android NDK version (they are backward compatible).
-Add the following to /Users/builder/git/free4me-iptv/android/app/build.gradle:
+Add the following to ~/git/free4me-iptv/android/app/build.gradle:
 
     android {
         ndkVersion = "28.2.13676358"
@@ -440,7 +440,7 @@ GITHUB_TOKEN=$(security find-internet-password -s "api.github.com" -a "rkinnc75"
 Keychain entry confirmed present:
 
 ```
-keychain: /Users/builder/Library/Keychains/login.keychain-db
+keychain: ~/Library/Keychains/login.keychain-db
 service:  api.github.com
 account:  rkinnc75
 label:    Free4Me-IPTV release token
@@ -547,7 +547,7 @@ Not set in either properties file. Daemon JVM is taken from the active `JAVA_HOM
 
 ```
 [✓] Flutter (Channel stable, 3.44.0, on macOS 26.3.1 25D771280a darwin-arm64, locale en-US) [167ms]
-    • Flutter version 3.44.0 on channel stable at /Users/builder/tools/flutter
+    • Flutter version 3.44.0 on channel stable at ~/tools/flutter
     • Upstream repository https://github.com/flutter/flutter.git
     • Framework revision 559ffa3f75 (7 days ago), 2026-05-15 14:13:13 -0700
     • Engine revision 4c525dac5e
@@ -556,7 +556,7 @@ Not set in either properties file. Daemon JVM is taken from the active `JAVA_HOM
     • Feature flags: enable-web, enable-linux-desktop, enable-macos-desktop, enable-windows-desktop, enable-android, enable-ios, cli-animations, enable-native-assets, enable-swift-package-manager, omit-legacy-version-file, enable-lldb-debugging, enable-uiscene-migration
 
 [!] Android toolchain - develop for Android devices (Android SDK version 36.0.0) [814ms]
-    • Android SDK at /Users/builder/Library/Android/sdk
+    • Android SDK at ~/Library/Android/sdk
     • Emulator version 35.5.10.0 (build_id 13402964) (CL:N/A)
     ✗ cmdline-tools component is missing.
       Try installing or updating Android Studio.

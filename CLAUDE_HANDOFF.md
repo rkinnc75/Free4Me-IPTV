@@ -17,7 +17,7 @@
 | App name | Free4Me-IPTV |
 | Package name | `open_tv` (Dart package / Android app ID) |
 | Repo | `https://github.com/rkinnc75/Free4Me-IPTV` |
-| Local path | `/Users/builder/git/free4me-iptv` |
+| Local path | `~/git/free4me-iptv` |
 | Platform | Android TV (Flutter/Dart) |
 | Origin | Fork of open-tv / Fred TV |
 | Current version | `1.22.12+146` |
@@ -303,7 +303,7 @@ Or pass `--force-tag` to `commit_and_release.sh`.
 
 The VM cannot delete it. Ask the user to run from their **Mac Terminal**:
 ```bash
-rm /Users/builder/git/free4me-iptv/.git/index.lock
+rm ~/git/free4me-iptv/.git/index.lock
 ```
 Then `git read-tree HEAD` will work from the VM.
 
@@ -311,7 +311,7 @@ Then `git read-tree HEAD` will work from the VM.
 
 | Mac path | VM path |
 |---|---|
-| `/Users/builder/git/free4me-iptv` | `/sessions/<name>/mnt/free4me-iptv/` |
+| `~/git/free4me-iptv` | `/sessions/<name>/mnt/free4me-iptv/` |
 | `.../local-.../outputs` | `/sessions/<name>/mnt/outputs/` |
 
 The session name changes every session. Find it with `mount | grep free4me`.

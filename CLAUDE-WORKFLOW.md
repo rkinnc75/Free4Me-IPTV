@@ -270,8 +270,8 @@ If any of these are lost, §7 has the recovery steps.
 6. Generate, copy the `github_pat_...` value
 7. On the Mac:
    ```bash
-   echo 'github_pat_XXX' > /Users/builder/git/free4me-iptv/.github-token
-   chmod 600 /Users/builder/git/free4me-iptv/.github-token
+   echo 'github_pat_XXX' > ~/git/free4me-iptv/.github-token
+   chmod 600 ~/git/free4me-iptv/.github-token
    ```
 8. Next Cowork session: Claude reads `.github-token` and uses it on push.
 
@@ -282,7 +282,7 @@ repo root on the Mac (gitignored, `chmod 600`). It contains all four
 values already formatted as `KEY=VALUE` lines.
 
 ```bash
-cat /Users/builder/git/free4me-iptv/.release-keystore-secrets
+cat ~/git/free4me-iptv/.release-keystore-secrets
 ```
 
 Then https://github.com/rkinnc75/Free4Me-IPTV/settings/secrets/actions →

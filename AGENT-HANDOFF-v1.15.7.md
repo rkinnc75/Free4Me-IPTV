@@ -32,13 +32,13 @@ If a fix doc has bullets or numbered items (e.g. fix20.1, fix20.2…), produce a
 
 | Item | Value |
 |---|---|
-| Working tree | `/Users/builder/git/free4me-iptv` |
+| Working tree | `~/git/free4me-iptv` |
 | Branch | `main` |
 | Latest tag | `v1.15.7` |
 | Latest commit | `d500acc v1.15.7: release build` |
 | Dart package | `open_tv` (do **not** rename) |
 | Android pkg | `me.free4me.iptv` |
-| Flutter SDK | `/Users/builder/tools/flutter/bin` |
+| Flutter SDK | `~/tools/flutter/bin` |
 | Java for builds | `/Applications/Android Studio.app/Contents/jbr/Contents/Home` |
 | Release script | `scripts/build_and_release.sh` (auto-bumps tag, builds APK, GH release) |
 | Releases | https://github.com/rkinnc75/Free4Me-IPTV/releases |
@@ -68,10 +68,10 @@ There is **no `docs/` directory.** The workspace rule `feature-documentation.mdc
 ```bash
 # Once per terminal session
 export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
-export PATH="/Users/builder/tools/flutter/bin:$JAVA_HOME/bin:$PATH"
+export PATH="~/tools/flutter/bin:$JAVA_HOME/bin:$PATH"
 export ANDROID_HOME="$HOME/Library/Android/sdk"
 
-cd /Users/builder/git/free4me-iptv
+cd ~/git/free4me-iptv
 flutter pub get                        # only after dependency changes
 flutter analyze --no-fatal-infos       # sanity check
 bash scripts/build_and_release.sh      # bumps tag, builds, pushes, GH release
@@ -311,7 +311,7 @@ This handoff caps a long thread that began with `fix17.md` review and ran throug
 - v1.15.7 → retrospective on v1.15.6 (Optimise scope, label dedupe)
 
 The same thread is in:
-`/Users/builder/.cursor/projects/Users-builder-git/agent-transcripts/f9d7672e-6f10-4f54-986f-e3d8ea221227/f9d7672e-6f10-4f54-986f-e3d8ea221227.jsonl`
+`~/.cursor/projects/Users-builder-git/agent-transcripts/f9d7672e-6f10-4f54-986f-e3d8ea221227/f9d7672e-6f10-4f54-986f-e3d8ea221227.jsonl`
 
 Use grep on filenames or "fix2" / "fix1" to navigate; do not read linearly.
 

@@ -159,3 +159,12 @@ android/app/.cxx
 
 # Release keystore secrets (fix31). Never commit.
 .release-keystore-secrets
+
+# app debug logs (may contain credentialed stream URLs / personal data)
+free4me_log_*.txt
+*.iptvlog
+
+# token backup files and source archives
+.github-token.*
+*.tar.gz
+*.tar.xz

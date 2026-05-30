@@ -13,7 +13,6 @@ A feature-rich IPTV player for Android and Android TV, forked from the excellent
 - Per-source **EPG URL** — configure at add time or later in Settings
 - Per-source **engine override** — force libmpv or ExoPlayer for a specific provider
 - Live progress dialog during source refresh (channel/movie/series counts with status text)
-- Per-source refresh button in Settings shows a live progress dialog (not a plain spinner)
 - URL auto-correction (missing `http://` prefix is added automatically)
 - Xtream: automatic correction of `player_api.php` path
 - **Credential-safe backup import** — restoring a backup without username/password fields
@@ -24,10 +23,17 @@ A feature-rich IPTV player for Android and Android TV, forked from the excellent
   short queries (1–2 chars) are skipped to avoid full-table scans on large sources
 - **Content-type filter on the All tab** — tap to cycle All → Live → Movies → Series → All;
   limits search to the selected type, making 250k+ channel sources instantly snappy
+- **Consistent multi-key sort** across the channel list and the multi-view picker:
+  Favourites first, then recently watched (History), then all channels — with validated
+  streams ordered to the top of each group and alphabetical ordering within. Applies to
+  every media-type view (Live, Movies, Series, All)
+- Section headers show **Favourites**, **History**, and **All channels**; a green circle
+  badge marks validated streams
 - Categories, Favorites, History, and All views
 - History sorted most-recent-first; long-press to remove an entry
 - **Stream scanner** — tap the radar icon to probe visible streams for validity
-  (configurable count 1–100, timeout 3–30 s); valid streams get a green outline
+  (configurable count 1–100, timeout 3–30 s); valid streams get a green outline that
+  **persists across app restarts** (validation is stored in the database, not just in memory)
 - Infinite scroll with lazy loading; stale pagination results are dropped when a
   newer search starts
 
@@ -39,10 +45,22 @@ A feature-rich IPTV player for Android and Android TV, forked from the excellent
 - Chromecast / Google Cast support for compatible streams
 - **Dual-stream Picture-in-Picture** — watch two channels simultaneously:
   one full-screen with audio, one muted in a draggable corner window; swap with one tap
+- App-managed fullscreen (immersive system UI + orientation) for a single, predictable
+  navigation stack — no hidden duplicate routes
 - Native Android PiP (background playback)
 - Reconnect logic with configurable watchdog, stable-playback threshold, startup
   grace window, and stream-completed reconnect delay — all tunable in Settings
+- Graceful give-up: after the configured reconnect attempts a dead stream auto-closes
+  and restores the previous audio rather than hanging
 - Pre-warm on focus (HEAD request) to reduce channel-switch latency on D-pad navigation
+
+### Multi-view
+- 1×2 and 2×2 layouts for watching multiple channels at once
+- **Live TV only** — movies and series are never loaded into multi-view cells, and a saved
+  cell whose stream was reassigned to non-live content by a source refresh opens empty
+  instead of loading the wrong stream
+- Optional restore-last-channels on entry
+- Independent engines per cell with their own reconnect handling
 
 ### EPG (Electronic Programme Guide)
 - Streaming XMLTV parser — handles plain and gzip-compressed feeds; sniffs compression
@@ -92,6 +110,10 @@ Tap a group header to expand/collapse it.
 - Focus-aware channel grid, settings menus, and dialogs
 - Separate TV home layout with side menu
 
+### Updates
+- Built-in update check against the project's `version.json`; surfaces a "what's new"
+  summary on version change
+
 ---
 
 ## Installation
@@ -128,6 +150,7 @@ iOS. If you find open-tv useful, please consider supporting the original author:
 - 💸 Donate via [PayPal](https://paypal.me/fredolx)
 
 This fork adds Android TV support, ExoPlayer integration, Chromecast, dual-stream PiP,
-content-type filter cycling, advanced EPG matching, separate EPG database, stream scanner,
-collapsible settings groups, and numerous reliability and performance improvements.
-All additions are released under the same license as the original project.
+content-type filter cycling, a consistent multi-key channel sort, persistent stream
+validation, live-TV-only multi-view, advanced EPG matching, a separate EPG database,
+stream scanner, collapsible settings groups, and numerous reliability and performance
+improvements. All additions are released under the same license as the original project.

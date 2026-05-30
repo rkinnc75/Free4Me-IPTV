@@ -50,7 +50,7 @@ fi
 
 #  3. Build release APK
 echo " Building release APK"
-export PATH="$PATH:/Users/builder/tools/flutter/bin"
+export PATH="$PATH:~/tools/flutter/bin"
 
 # fix31 preflight — Mac builds MUST sign with the project's release keystore.
 # If key.properties is missing, the build would silently fall back to the

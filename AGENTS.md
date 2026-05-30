@@ -18,7 +18,7 @@ Related docs:
 | GitHub releases | https://github.com/rkinnc75/Free4Me-IPTV/releases |
 | `flutter analyze` | **0 issues** |
 | Release pipelines | **Tag push (`vX.Y.Z`) triggers CI** → `.github/workflows/release.yml`. Commits to `main` alone do NOT build. Manual: `bash scripts/build_and_release.sh` (handles tag automatically). Cowork/Claude: must push commit AND tag separately. See `CLAUDE-WORKFLOW.md` and `fix49.md`. |
-| Flutter SDK (host Mac) | `/Users/builder/tools/flutter/bin` |
+| Flutter SDK (host Mac) | `~/tools/flutter/bin` |
 | Dart package name | `open_tv` (intentional — do not rename) |
 | Android package ID | `me.free4me.iptv` |
 | Signing | release keystore — alias `free4me-iptv` (fix31, v1.17.0+). See `BUILD-ENV.md §4`. |
@@ -162,11 +162,11 @@ before pushing `MultiViewScreen`. Mini-player buttons gated on
 ```bash
 # Environment (run once per terminal session)
 export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
-export PATH="/Users/builder/tools/flutter/bin:$JAVA_HOME/bin:$PATH"
+export PATH="~/tools/flutter/bin:$JAVA_HOME/bin:$PATH"
 export ANDROID_HOME="$HOME/Library/Android/sdk"
 
 # Daily checks
-cd /Users/builder/git/free4me-iptv
+cd ~/git/free4me-iptv
 flutter pub get
 flutter analyze            # must be 0 issues before shipping
 

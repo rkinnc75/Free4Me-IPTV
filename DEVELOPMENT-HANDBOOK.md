@@ -442,9 +442,9 @@ EngineType pick(Channel channel, Source source, Settings settings) {
 After every version:
 ```bash
 export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
-export PATH="/Users/builder/tools/flutter/bin:$JAVA_HOME/bin:$PATH"
+export PATH="~/tools/flutter/bin:$JAVA_HOME/bin:$PATH"
 export ANDROID_HOME="$HOME/Library/Android/sdk"
-cd /Users/builder/git/free4me-iptv
+cd ~/git/free4me-iptv
 flutter pub get
 flutter analyze --no-fatal-warnings
 flutter build apk --release --split-per-abi
