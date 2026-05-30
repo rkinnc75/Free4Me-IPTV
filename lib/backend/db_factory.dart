@@ -312,6 +312,33 @@ class DbFactory {
           )
           WHERE url IS NOT NULL;
         ''');
+      }))
+      // fix170: migration 12 (CREATE TABLE playback_metrics) was registered
+      // out of order (after 10, before 11), so sqlite_async's version-tracked
+      // migrate() skipped it on upgraded devices. New highest-version migration
+      // is guaranteed to run everywhere; IF NOT EXISTS is a no-op on fresh installs.
+      ..add(SqliteMigration(13, (tx) async {
+        await tx.execute('''
+          CREATE TABLE IF NOT EXISTS "playback_metrics" (
+            id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_start             INTEGER NOT NULL,
+            session_minutes           REAL    NOT NULL,
+            streams_opened            INTEGER NOT NULL,
+            median_first_frame_ms     INTEGER NOT NULL,
+            median_stable_ms          INTEGER NOT NULL,
+            startup_visible_rebuffers INTEGER NOT NULL,
+            total_rebuffers           INTEGER NOT NULL,
+            visible_rebuffers         INTEGER NOT NULL,
+            median_rebuffer_ms        INTEGER NOT NULL,
+            reconnects_watchdog       INTEGER NOT NULL,
+            reconnects_error          INTEGER NOT NULL,
+            gave_up                   INTEGER NOT NULL,
+            created_at                INTEGER NOT NULL
+          );
+        ''');
+        await tx.execute(
+            'CREATE INDEX IF NOT EXISTS idx_pm_session '
+            'ON playback_metrics(session_start);');
       }));
     await migrations.migrate(db);
 

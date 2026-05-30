@@ -803,11 +803,17 @@ class _MultiViewCellState extends State<MultiViewCell> {
   }
 
   Widget _buildVideoCell() {
-    return GestureDetector(
-      onTap: widget.onFocusTap,
-      onDoubleTap: _promoteToFullScreen,
-      onLongPress: _showCellMenu,
-      child: Stack(
+    return FocusableActionDetector(
+      // fix170: D-pad focus → audio focus. Moving the remote to a cell
+      // calls onFocusTap, so the focused cell plays audio and others mute.
+      onShowFocusHighlight: (focused) {
+        if (focused) widget.onFocusTap();
+      },
+      child: GestureDetector(
+        onTap: widget.onFocusTap,
+        onDoubleTap: _promoteToFullScreen,
+        onLongPress: _showCellMenu,
+        child: Stack(
         fit: StackFit.expand,
         children: [
           _engine!.buildVideoView(context),
@@ -848,6 +854,8 @@ class _MultiViewCellState extends State<MultiViewCell> {
             ),
           ),
         ],
+      ),
+        ),
       ),
     );
   }

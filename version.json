@@ -1,7 +1,7 @@
 {
-  "latest": "1.23.7",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.7",
+  "latest": "1.23.8",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.8",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix (TV): focus highlight now works correctly throughout the app. The previous build had an invalid theme parameter that blocked CI and prevented the fix164/166 features from shipping. This build is the first that compiles and includes all TV improvements from v1.23.5 and v1.23.6."
+  "releaseNotes": "\u2022 Fix: the playback analyzer now runs correctly on upgraded devices. The database migration for its history table was out of order and silently skipped, so the analyzer threw on every launch without showing any dialog. A new migration guarantees the table exists.\n\u2022 Fix (TV): in multi-view, D-pad focus now moves audio between cells. Moving the remote to a cell assigns it audio, matching touch behaviour."
 }

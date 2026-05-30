@@ -1093,8 +1093,8 @@ class _SettingsState extends State<SettingsView> {
     if (!mounted) return;
     final agg = await Sql.getAggregatedMetrics();
     AppLog.info('PlaybackAnalysis: aggregate '
-        'minutes=\${agg.totalMinutes.round()} streams=\${agg.totalStreams} '
-        'sessions=\${agg.sessionCount} sufficient=\${agg.hasSufficientData}');
+        'minutes=${agg.totalMinutes.round()} streams=${agg.totalStreams} '
+        'sessions=${agg.sessionCount} sufficient=${agg.hasSufficientData}');
     if (!mounted) return;
 
     if (!agg.hasSufficientData) {
@@ -1120,7 +1120,7 @@ class _SettingsState extends State<SettingsView> {
 
     final recs = Recommender.recommend(agg, settings);
 
-    AppLog.info('PlaybackAnalysis: \${recs.length} recommendation(s)');
+    AppLog.info('PlaybackAnalysis: ${recs.length} recommendation(s)');
     if (!mounted) return;
     if (recs.isEmpty) {
       await showDialog<void>(
