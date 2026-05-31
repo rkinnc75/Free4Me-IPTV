@@ -1,7 +1,7 @@
 {
-  "latest": "1.23.11",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.11",
+  "latest": "1.23.12",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.12",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: corrected six escaped string interpolations from the previous build that caused the channel import bulk insert to write literal text instead of row values, and left the progress percentage helper unreachable. Import and progress display now work as intended."
+  "releaseNotes": "\u2022 Fix (critical): upgrading from 1.23.9 or earlier to 1.23.11 froze the app on the logo and required an uninstall. A database migration tried to create a unique index over data that already violated it, causing the migration to fail and preventing the app from starting. Upgrading to 1.23.12 recovers without any data loss or uninstall."
 }

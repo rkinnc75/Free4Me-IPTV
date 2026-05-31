@@ -6,6 +6,13 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.23.12': [
+    'Fix (critical): upgrading from 1.23.9 or earlier to 1.23.11 froze '
+        'the app on the logo and required an uninstall. A database migration '
+        'tried to create a unique index over data that already violated it, '
+        'causing the migration to fail and preventing the app from starting. '
+        'Upgrading to 1.23.12 recovers without any data loss or uninstall.',
+  ],
   '1.23.11': [
     'Fix: corrected six escaped string interpolations from the previous '
         'build that caused the channel import bulk insert to write literal '

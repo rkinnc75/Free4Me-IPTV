@@ -81,6 +81,23 @@ repo, confirm against the SDK docs, or compile.**
    WARNING) or putting garbage in SQL. Grep every code block for `\$` and `\u`; there must
    be none. Prefer literal characters (`•`) over `\u` escapes.
 
+7. **Every SQL column/table reference must be backed by a pasted schema line (added fix178).**
+   If a runbook writes `COALESCE(series_id, '')`, `WHERE stream_id >= 0`, an `ON CONFLICT(...)`
+   target, or any column name, it must include the `grep`/`view` output of that column's
+   declaration from this repo. Sentinel/comparison types must match the declared column type
+   (int column → int sentinel, not `''`). This rule exists because fix174 wrote a TEXT sentinel
+   for an `integer` column from belief — had the declaration line been pasted, the mismatch
+   would have been obvious. **No column reference ships without its declaration shown.**
+
+8. **Any schema/migration change MUST be executed against a seeded old-schema DB before
+   shipping (added fix178).** `flutter analyze` cannot catch UNIQUE-constraint failures or
+   type-affinity surprises at runtime — fix174's index froze the app at launch and analyze
+   was green. Build a DB with the prior schema, seed representative rows (sentinel/-1/NULL
+   ids, duplicate names), run the migration, and confirm it completes. `sqlite3` installs
+   in-container (`apt-get install -y sqlite3`). Paste the before/after row counts and result
+   into the runbook's verification section. **A migration not executed against seeded data
+   is not ready, no matter how clean analyze is.**
+
 ## Per-change checklist (run mentally for each `# Fix N.M` block)
 
 - [ ] Every **new** symbol (class, param, method, enum, color, helper) is repo-read or
@@ -101,10 +118,14 @@ repo, confirm against the SDK docs, or compile.**
       and `'\u'`; every `$` must be a real interpolation, every bullet a literal `•`.
 - [ ] **Compiled:** `flutter analyze --no-fatal-infos` on the edited tree returns only
       known-tolerated INFOs.
+- [ ] **Every SQL column/table reference has its schema declaration pasted** (fix178 rule 7);
+      sentinel/comparison types match the declared column type.
+- [ ] **Schema/migration changes executed against a seeded prior-schema DB** (fix178 rule 8);
+      migration completes without throwing; before/after row counts in the verification section.
 - [ ] Gating/behavioural flags (`hasTouchScreen`, `isTV`, `previewMode`) are referenced
       exactly as they exist in scope at that edit site.
 
-## Doc-verification mechanics (no SDK available)
+## Doc-verification mechanics (use the SDK first; docs to supplement)
 
 - For any Flutter/Dart API in doubt: `web_search` the class, then **`web_fetch` the
   `api.flutter.dev` page** and read the constructor's parameter list. Don't trust the

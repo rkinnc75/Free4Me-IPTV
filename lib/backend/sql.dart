@@ -66,8 +66,7 @@ class Sql {
           catchup_type, catchup_source, catchup_days
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT (source_id, media_type, COALESCE(stream_id, -1), COALESCE(series_id, ''))
-        DO UPDATE SET
+        ON CONFLICT DO UPDATE SET
           url = excluded.url,
           group_name = excluded.group_name,
           media_type = excluded.media_type,
@@ -131,8 +130,7 @@ class Sql {
           catchup_type, catchup_source, catchup_days
         )
         VALUES $values
-        ON CONFLICT (source_id, media_type, COALESCE(stream_id, -1), COALESCE(series_id, ''))
-        DO UPDATE SET
+        ON CONFLICT DO UPDATE SET
           url = excluded.url,
           group_name = excluded.group_name,
           media_type = excluded.media_type,

@@ -344,14 +344,25 @@ class DbFactory {
       // catalog with repeated display names collapsed onto the distinct-
       // name set on import (270k rows → ~46). Re-key on provider stable id.
       ..add(SqliteMigration(14, (tx) async {
+        // fix178: migration 14 originally created a coalesced UNIQUE index
+        // that threw on existing data and froze the app at launch. Neutralised
+        // to a no-op drop; the correct partial indexes are created in mig 15.
+        await tx.execute('DROP INDEX IF EXISTS channels_unique;');
+      }))
+      // fix178: replace the throwing coalesced index with two PARTIAL unique
+      // indexes scoped to real (non-sentinel) ids only, so divider/junk rows
+      // with stream_id=-1/null coexist instead of colliding.
+      ..add(SqliteMigration(15, (tx) async {
         await tx.execute('DROP INDEX IF EXISTS channels_unique;');
         await tx.execute('''
-          CREATE UNIQUE INDEX channels_unique ON channels(
-            source_id,
-            media_type,
-            COALESCE(stream_id, -1),
-            COALESCE(series_id, '')
-          );
+          CREATE UNIQUE INDEX IF NOT EXISTS channels_unique_stream
+          ON channels(source_id, media_type, stream_id)
+          WHERE stream_id IS NOT NULL AND stream_id >= 0;
+        ''');
+        await tx.execute('''
+          CREATE UNIQUE INDEX IF NOT EXISTS channels_unique_series
+          ON channels(source_id, series_id)
+          WHERE series_id IS NOT NULL;
         ''');
       }));
     await migrations.migrate(db);
