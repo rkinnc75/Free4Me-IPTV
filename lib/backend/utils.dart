@@ -29,9 +29,10 @@ class Utils {
   static Future<void> refreshSource(
     Source source, {
     void Function(String)? onProgress,
+    void Function(int done, int total)? onRowProgress,
   }) async {
     refreshedSeries.clear();
-    await processSource(source, true, onProgress);
+    await processSource(source, true, onProgress, onRowProgress);
     // After channels are populated, apply any favorites and last-
     // watched timestamps that an imported backup staged for this
     // if no preserve list is pending.
@@ -48,6 +49,7 @@ class Utils {
     Source source, [
     bool wipe = false,
     void Function(String)? onProgress,
+    void Function(int done, int total)? onRowProgress,
   ]) async {
     switch (source.sourceType) {
       case SourceType.m3u:
@@ -57,7 +59,7 @@ class Utils {
         await processM3UUrl(source, wipe, onProgress);
         break;
       case SourceType.xtream:
-        await getXtream(source, wipe, onProgress);
+        await getXtream(source, wipe, onProgress, onRowProgress);
         break;
     }
   }
@@ -86,6 +88,7 @@ class Utils {
   static Future<void> refreshAllSources({
     void Function(int index, int total, Source source)? onSourceStart,
     void Function(Source source, String status)? onSourceStatus,
+    void Function(Source source, int done, int total)? onSourceRowProgress,
   }) async {
     final enabled = (await Sql.getSources())
         .where((s) => s.enabled)
@@ -104,6 +107,9 @@ class Utils {
           onProgress: onSourceStatus == null
               ? null
               : (msg) => onSourceStatus(s, msg),
+          onRowProgress: onSourceRowProgress == null
+              ? null
+              : (done, total) => onSourceRowProgress(s, done, total),
         );
       }
     } else {

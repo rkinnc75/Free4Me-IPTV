@@ -24,6 +24,20 @@ import 'package:open_tv/models/source.dart';
 /// its first build. The refresh work awaits the completer before
 /// touching any state, so it is guaranteed to run after the dialog is
 /// mounted and the setState reference is valid.
+String _etaSuffix(DateTime? start, int done, int total) {
+  if (start == null || done <= 0 || done >= total) return '';
+  final elapsed = DateTime.now().difference(start).inMilliseconds;
+  if (elapsed < 500) return '';
+  final perRow = elapsed / done;
+  final remainMs = (perRow * (total - done)).round();
+  final s = (remainMs / 1000).round();
+  if (s < 1) return '';
+  if (s < 60) return '  \u2022  ~\${s}s left';
+  final m = s ~/ 60;
+  final r = s % 60;
+  return '  \u2022  ~\${m}m \${r}s left';
+}
+
 Future<void> showSourcesRefreshDialog(BuildContext context) async {
   AppLog.info('SourcesRefreshDialog: showing');
 
@@ -33,6 +47,9 @@ Future<void> showSourcesRefreshDialog(BuildContext context) async {
   int sourceTotal = 0;
   bool done = false;
   Object? error;
+  int rowsDone = 0;
+  int rowsTotal = 0;
+  DateTime? saveStartedAt;
 
   // Resolved by the StatefulBuilder on its first build.
   // The refresh IIFE awaits this before calling setSt.
@@ -59,11 +76,20 @@ Future<void> showSourcesRefreshDialog(BuildContext context) async {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (!done)
-                  sourceTotal > 0
+                  rowsTotal > 0
                       ? LinearProgressIndicator(
-                          value: sourceIndex / sourceTotal,
-                        )
+                          value: rowsDone / rowsTotal)
                       : const LinearProgressIndicator(),
+                if (!done && rowsTotal > 0) ...
+                  [
+                    const SizedBox(height: 4),
+                    Text(
+                      '\${((rowsDone / rowsTotal) * 100).clamp(0, 100).toStringAsFixed(0)}%'
+                      '  \u2022  \${rowsDone.clamp(0, rowsTotal)} / \$rowsTotal'
+                      '\${_etaSuffix(saveStartedAt, rowsDone, rowsTotal)}',
+                      style: Theme.of(sCtx).textTheme.bodySmall,
+                    ),
+                  ],
                 const SizedBox(height: 12),
                 if (sourceTotal > 0)
                   Padding(
@@ -108,6 +134,15 @@ Future<void> showSourcesRefreshDialog(BuildContext context) async {
 
     try {
       await Utils.refreshAllSources(
+        onSourceRowProgress: (Source src, int d, int t) {
+          setSt(() {
+            if (saveStartedAt == null || t != rowsTotal) {
+              saveStartedAt = DateTime.now();
+            }
+            rowsDone = d;
+            rowsTotal = t;
+          });
+        },
         onSourceStart: (int i, int total, Source source) {
           AppLog.info(
             'SourcesRefreshDialog: source $i/$total'

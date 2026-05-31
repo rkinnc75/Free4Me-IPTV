@@ -23,6 +23,7 @@ Future<void> getXtream(
   Source source,
   bool wipe, [
   void Function(String)? onProgress,
+  void Function(int done, int total)? onRowProgress,
 ]) async {
   List<Future<void> Function(SqliteWriteContext, Map<String, String>)>
   statements = [];
@@ -127,7 +128,17 @@ Future<void> getXtream(
     statements.add(Sql.restorePreserve(preserve));
   }
   onProgress?.call('Saving to database…');
-  await Sql.commitWriteBatched(statements);
+  final totalRows = liveCount + movieCount + seriesCount;
+  await Sql.commitWriteBatched(
+    statements,
+    onBatchCommitted: onRowProgress == null
+        ? null
+        : (committedClosures) {
+            final approxRows = committedClosures * bulkInsertRows;
+            onRowProgress(
+                approxRows > totalRows ? totalRows : approxRows, totalRows);
+          },
+  );
 }
 
 List<T> processJsonList<T>(
@@ -169,6 +180,13 @@ void processXtream(
       (x) => MapEntry(x.categoryId ?? "", x.categoryName ?? "Unknown Category"),
     ),
   );
+  // fix174.3: buffer channels into bulk-insert closures
+  final buffer = <Channel>[];
+  void flush() {
+    if (buffer.isEmpty) return;
+    statements.add(Sql.insertChannelsBulk(List<Channel>.from(buffer)));
+    buffer.clear();
+  }
   for (var live in streams) {
     if (live.name == null || live.name!.trim().isEmpty) continue;
     if (mediaType == MediaType.serie) {
@@ -179,7 +197,8 @@ void processXtream(
     var cname = catsMap[live.categoryId ?? ""];
     try {
       var channel = xtreamToChannel(live, source, mediaType, cname);
-      statements.add(Sql.insertChannel(channel));
+      buffer.add(channel);
+      if (buffer.length >= bulkInsertRows) flush();
     } catch (e) {
       if (AppLog.enabled) {
         AppLog.warn(
@@ -189,6 +208,7 @@ void processXtream(
       }
     }
   }
+  flush();
 }
 
 Channel xtreamToChannel(

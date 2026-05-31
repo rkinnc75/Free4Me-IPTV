@@ -21,6 +21,8 @@ import 'package:sqlite_async/sqlite_async.dart';
 
 const int pageSize = 36;
 const int importBatchSize = 500;
+// fix174.3: bulk insert binds 13 params/row; 60×13=780 < 999 (safe on all engines)
+const int bulkInsertRows = 60;
 
 class Sql {
   static Future<void> commitWrite(
@@ -43,12 +45,14 @@ class Sql {
         commits, {
     int batchSize = importBatchSize,
     Map<String, String>? memory,
+    void Function(int committedClosures)? onBatchCommitted,
   }) async {
     if (commits.isEmpty) return;
     final shared = memory ?? <String, String>{};
     for (var i = 0; i < commits.length; i += batchSize) {
       final end = (i + batchSize < commits.length) ? i + batchSize : commits.length;
       await commitWrite(commits.sublist(i, end), memory: shared);
+      onBatchCommitted?.call(end);
     }
   }
 
@@ -62,7 +66,7 @@ class Sql {
           catchup_type, catchup_source, catchup_days
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT (name, source_id)
+        ON CONFLICT (source_id, media_type, COALESCE(stream_id, -1), COALESCE(series_id, ''))
         DO UPDATE SET
           url = excluded.url,
           group_name = excluded.group_name,
@@ -97,6 +101,49 @@ class Sql {
       ]);
       memory['lastChannelId'] =
           (await tx.get("SELECT last_insert_rowid()")).columnAt(0).toString();
+    };
+  }
+
+  /// fix174.3: bulk upsert for large imports. Same ON CONFLICT key as
+  /// insertChannel (fix174.1). Does NOT read last_insert_rowid().
+  static Future<void> Function(SqliteWriteContext, Map<String, String>)
+      insertChannelsBulk(List<Channel> channels) {
+    return (SqliteWriteContext tx, Map<String, String> memory) async {
+      if (channels.isEmpty) return;
+      final sourceId = int.parse(memory['sourceId']!);
+      const cols = 13;
+      final rowPlaceholder = '(${List.filled(cols, '?').join(', ')})';
+      final values = List.filled(channels.length, rowPlaceholder).join(', ');
+      final params = <Object?>[];
+      for (final ch in channels) {
+        params.addAll([
+          ch.name, ch.image, ch.url,
+          ch.sourceId == -1 ? sourceId : ch.sourceId,
+          ch.mediaType.index, ch.seriesId, ch.favorite,
+          ch.streamId, ch.group, ch.epgChannelId,
+          ch.catchupType, ch.catchupSource, ch.catchupDays,
+        ]);
+      }
+      await tx.execute('''
+        INSERT INTO channels (
+          name, image, url, source_id, media_type, series_id, favorite,
+          stream_id, group_name, epg_channel_id,
+          catchup_type, catchup_source, catchup_days
+        )
+        VALUES \$values
+        ON CONFLICT (source_id, media_type, COALESCE(stream_id, -1), COALESCE(series_id, ''))
+        DO UPDATE SET
+          url = excluded.url,
+          group_name = excluded.group_name,
+          media_type = excluded.media_type,
+          stream_id = excluded.stream_id,
+          image = excluded.image,
+          series_id = excluded.series_id,
+          epg_channel_id = COALESCE(channels.epg_channel_id, excluded.epg_channel_id),
+          catchup_type = excluded.catchup_type,
+          catchup_source = excluded.catchup_source,
+          catchup_days = excluded.catchup_days;
+      ''', params);
     };
   }
 

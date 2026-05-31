@@ -6,6 +6,20 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.23.10': [
+    'Fix (critical): a large Xtream source (270k channels) no longer '
+        'collapses to a tiny number of rows on import. The channel database '
+        'was keyed on the display name, so channels sharing a name overwrote '
+        'each other. It is now keyed on the provider stable ID so every '
+        'distinct stream is stored correctly.',
+    'Improvement: source import is significantly faster. Channel rows are '
+        'now written in batches instead of one at a time, reducing the '
+        'database write phase from several minutes to well under a minute.',
+    'Improvement: the import progress bar now shows real percentage, '
+        'channel count, and a time estimate during the database write phase.',
+    'Fix: the settings backup filename now shows the correct timestamp '
+        'on the phone save dialog.',
+  ],
   '1.23.9': [
     'Fix (TV): multi-view D-pad audio focus now works correctly. The previous '
         'build had a syntax error in the cell widget that prevented compilation. '

@@ -135,7 +135,7 @@ class SettingsIo {
 
     final result = await FilePicker.platform.saveFile(
       dialogTitle: 'Save Free4Me-IPTV backup',
-      fileName: 'free4me-backup-\$stamp.json',
+      fileName: 'free4me-backup-$stamp.json',
       bytes: tmpFile.readAsBytesSync(),
     );
 

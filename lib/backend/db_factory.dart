@@ -339,6 +339,20 @@ class DbFactory {
         await tx.execute(
             'CREATE INDEX IF NOT EXISTS idx_pm_session '
             'ON playback_metrics(session_start);');
+      }))
+      // fix174: channel uniqueness was keyed on (name, source_id), so a
+      // catalog with repeated display names collapsed onto the distinct-
+      // name set on import (270k rows → ~46). Re-key on provider stable id.
+      ..add(SqliteMigration(14, (tx) async {
+        await tx.execute('DROP INDEX IF EXISTS channels_unique;');
+        await tx.execute('''
+          CREATE UNIQUE INDEX channels_unique ON channels(
+            source_id,
+            media_type,
+            COALESCE(stream_id, -1),
+            COALESCE(series_id, '')
+          );
+        ''');
       }));
     await migrations.migrate(db);
 
