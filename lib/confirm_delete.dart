@@ -28,6 +28,7 @@ class ConfirmDelete extends StatelessWidget {
             },
             child: const Text("Confirm")),
         TextButton(
+            autofocus: true,
             onPressed: () => Navigator.of(context).pop(),
             child: const Text("Cancel"))
       ],

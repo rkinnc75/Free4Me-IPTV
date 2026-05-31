@@ -6,6 +6,13 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.23.14': [
+    'Improvement (TV): D-pad focus now lands on a sensible control when '
+        'every screen and dialog opens. The first channel tile is focused '
+        'on the home screen, the first settings row is focused in Settings, '
+        'and every dialog opens with focus on the primary action (or the '
+        'safe Cancel option on destructive dialogs).',
+  ],
   '1.23.13': [
     'Improvement: when you update to a new version, the playback history '
         'used by the Analyze playback feature is automatically cleared so '
@@ -1351,6 +1358,7 @@ class WhatsNewModal extends StatelessWidget {
             await SettingsService.updateLastSeenVersion();
             if (context.mounted) Navigator.pop(context, true);
           },
+          autofocus: true,
           child: const Text("Don't show again"),
         ),
       ],

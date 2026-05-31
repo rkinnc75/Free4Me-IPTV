@@ -75,6 +75,7 @@ class Error {
                                     },
                                   ),
                                   TextButton(
+                                    autofocus: true,
                                     style: TextButton.styleFrom(
                                       textStyle: Theme.of(context)
                                           .textTheme

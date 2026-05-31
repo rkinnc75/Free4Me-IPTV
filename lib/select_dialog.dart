@@ -18,7 +18,12 @@ class SelectDialog extends StatelessWidget {
       content: SingleChildScrollView(
           child: Column(
         mainAxisSize: MainAxisSize.min,
-        children: data.map(getItem).toList(),
+        children: [
+          for (var i = 0; i < data.length; i++)
+            i == 0
+                ? Focus(autofocus: true, child: getItem(data[i]))
+                : getItem(data[i]),
+        ],
       )),
     );
   }

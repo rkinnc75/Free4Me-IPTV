@@ -98,6 +98,25 @@ repo, confirm against the SDK docs, or compile.**
    into the runbook's verification section. **A migration not executed against seeded data
    is not ready, no matter how clean analyze is.**
 
+9. **Widget wrapping = ONE atomic edit, never two (added from phone preflight).**
+   Adding a wrapper (`FocusableActionDetector` around a `GestureDetector`, or
+   `DpadFocusEscape` around a field) changes the brace/paren count at BOTH ends.
+   Doing it as two edits — change the opener here, add a closing brace there — is
+   how you get a stray `};` and a build break. **Replace the entire enclosing
+   method/widget as a single block** so the closes are counted once, together.
+
+10. **Verify brace/paren/bracket balance before shipping any structural edit.**
+    Run a Dart-aware bracket checker on the edited file (one that understands
+    `//`, `/* */`, strings, raw strings, and `${...}` interpolation including
+    nested quotes). Validate the checker against the known-good original first.
+
+11. **The deliverable is ONE file: the `fix###.md` runbook. No companion `.dart`
+    files by default.** The runbook must be self-contained — every change
+    expressed as exact current→replacement blocks the build machine applies.
+    Exception: ship a whole source file ONLY when a diff is genuinely unsafe
+    (large atomic structural rewrite) and state the reason explicitly in the
+    runbook. Never ship more than one extra source file without a stated reason.
+
 ## Per-change checklist (run mentally for each `# Fix N.M` block)
 
 - [ ] Every **new** symbol (class, param, method, enum, color, helper) is repo-read or

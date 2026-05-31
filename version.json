@@ -1,7 +1,7 @@
 {
-  "latest": "1.23.13",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.13",
+  "latest": "1.23.14",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.14",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Improvement: when you update to a new version, the playback history used by the Analyze playback feature is automatically cleared so that suggestions reflect only your experience on the current version rather than being skewed by data from older builds."
+  "releaseNotes": "\u2022 Improvement (TV): D-pad focus now lands on a sensible control when every screen and dialog opens. The first channel tile is focused on the home screen, the first settings row is focused in Settings, and every dialog opens with focus on the primary action (or the safe Cancel option on destructive dialogs)."
 }

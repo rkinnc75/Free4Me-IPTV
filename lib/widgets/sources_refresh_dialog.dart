@@ -110,6 +110,7 @@ Future<void> showSourcesRefreshDialog(BuildContext context) async {
             actions: done
                 ? [
                     FilledButton(
+                      autofocus: true,
                       onPressed: () {
                         AppLog.info('SourcesRefreshDialog: user dismissed');
                         Navigator.pop(sCtx);

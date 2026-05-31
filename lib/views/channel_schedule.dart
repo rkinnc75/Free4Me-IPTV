@@ -385,6 +385,7 @@ class _ChannelScheduleViewState extends State<ChannelScheduleView> {
               },
             ),
           TextButton(
+            autofocus: true,
             onPressed: () => Navigator.pop(context),
             child: const Text('Close'),
           ),

@@ -41,6 +41,8 @@ class ChannelTile extends StatefulWidget {
   /// entry is deleted so the parent can refresh its list.
   final bool isHistory;
   final VoidCallback? onRemoveHistory;
+  /// fix182: when true, this tile grabs focus on first build.
+  final bool autofocus;
 
   const ChannelTile({
     super.key,
@@ -50,6 +52,7 @@ class ChannelTile extends StatefulWidget {
     this.onFocusNavbar,
     this.isHistory = false,
     this.onRemoveHistory,
+    this.autofocus = false,
   });
 
   @override
@@ -303,6 +306,7 @@ class _ChannelTileState extends State<ChannelTile> {
       color: Theme.of(context).colorScheme.surfaceContainer,
       child: InkWell(
         focusNode: _focusNode,
+        autofocus: widget.autofocus,
         onLongPress: _onLongPress,
         onTap: () async => await play(),
         child: Row(

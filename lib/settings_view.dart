@@ -336,6 +336,12 @@ class _SettingsState extends State<SettingsView> {
   void initState() {
     super.initState();
     initAsync();
+    // fix182: land D-pad focus on the first settings row when the
+    // screen opens (ExpansionTile has no autofocus; nextFocus() on a
+    // scope with no focused child moves to the first focusable).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) FocusScope.of(context).nextFocus();
+    });
   }
 
   Future<void> initAsync() async {
@@ -546,6 +552,7 @@ class _SettingsState extends State<SettingsView> {
               actions: done
                   ? [
                       FilledButton(
+                          autofocus: true,
                         onPressed: () => Navigator.pop(sCtx),
                         child: const Text('OK'),
                       ),
@@ -760,6 +767,7 @@ class _SettingsState extends State<SettingsView> {
         ),
         actions: [
           FilledButton(
+              autofocus: true,
             onPressed: () => Navigator.pop(ctx),
             child: const Text('OK'),
           ),
@@ -897,6 +905,7 @@ class _SettingsState extends State<SettingsView> {
         ),
         actions: [
           FilledButton(
+              autofocus: true,
             onPressed: () => Navigator.pop(ctx),
             child: const Text('OK'),
           ),
@@ -1006,6 +1015,7 @@ class _SettingsState extends State<SettingsView> {
         ),
         actions: [
           TextButton(
+            autofocus: true,
             onPressed: () async {
               await server.stop();
               if (ctx.mounted) Navigator.pop(ctx);
@@ -1065,10 +1075,12 @@ class _SettingsState extends State<SettingsView> {
           ),
           actions: [
             TextButton(
+                autofocus: true,
               onPressed: () => Navigator.pop(context, false),
               child: const Text('Cancel'),
             ),
             FilledButton(
+                autofocus: true,
               onPressed: () => Navigator.pop(context, true),
               child: const Text('Enable logging'),
             ),
@@ -1110,6 +1122,7 @@ class _SettingsState extends State<SettingsView> {
             '\n\nWatch a few more channels and try again.',
           ),
           actions: [TextButton(
+            autofocus: true,
             onPressed: () => Navigator.pop(context),
             child: const Text('OK'),
           )],
@@ -1134,6 +1147,7 @@ class _SettingsState extends State<SettingsView> {
             '${agg.totalStreams} streams.',
           ),
           actions: [TextButton(
+            autofocus: true,
             onPressed: () => Navigator.pop(context),
             child: const Text('OK'),
           )],
@@ -1179,10 +1193,12 @@ class _SettingsState extends State<SettingsView> {
         ),
         actions: [
           TextButton(
+              autofocus: true,
             onPressed: () => Navigator.pop(context, false),
             child: const Text('Cancel'),
           ),
           FilledButton(
+              autofocus: true,
             onPressed: () => Navigator.pop(context, true),
             child: const Text('Apply all'),
           ),
@@ -1235,6 +1251,7 @@ class _SettingsState extends State<SettingsView> {
         content: SingleChildScrollView(child: Text(body)),
         actions: [
           TextButton(
+              autofocus: true,
             onPressed: () => Navigator.pop(context, false),
             child: const Text('Cancel'),
           ),
@@ -2261,6 +2278,7 @@ class _SettingsState extends State<SettingsView> {
                             // lands on Save, not Cancel.
                             actions: [
                               FilledButton(
+                              autofocus: true,
                                 onPressed: () => Navigator.pop(
                                   ctx,
                                   controller.text.trim(),
@@ -2565,6 +2583,7 @@ class _SettingsState extends State<SettingsView> {
                           ),
                           actions: [
                             TextButton(
+                                autofocus: true,
                               onPressed: () => Navigator.pop(context, false),
                               child: const Text('No (safer)'),
                             ),

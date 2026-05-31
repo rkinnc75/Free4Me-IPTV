@@ -213,6 +213,7 @@ class SettingsIo {
               child: const Text('Cancel'),
             ),
             FilledButton(
+              autofocus: true,
               onPressed: () => Navigator.pop(context, true),
               child: const Text('Import'),
             ),

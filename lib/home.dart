@@ -378,6 +378,7 @@ class _HomeState extends State<Home> {
         ),
         actions: [
           TextButton(
+            autofocus: true,
             onPressed: () {
               _scanCancelled = true;
               Navigator.of(dCtx).pop();
@@ -713,6 +714,7 @@ class _HomeState extends State<Home> {
                               parentContext: context,
                               setNode: setNode,
                               isHistory: isHistory,
+                              autofocus: index == 0,
                               onRemoveHistory:
                                   isHistory ? () => load(false) : null,
                             );

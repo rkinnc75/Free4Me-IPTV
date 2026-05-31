@@ -23,6 +23,7 @@ class SettingHelpDialog {
         ),
         actions: [
           TextButton(
+            autofocus: true,
             onPressed: () => Navigator.pop(context),
             child: const Text('Got it'),
           ),

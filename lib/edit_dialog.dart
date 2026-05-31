@@ -28,6 +28,7 @@ class _EditDialogState extends State<EditDialog> {
       title: Text("Edit source ${widget.source.name}"),
       actions: [
         TextButton(
+            autofocus: true,
             onPressed: () async {
               if (!_formKey.currentState!.saveAndValidate()) {
                 return;

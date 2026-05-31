@@ -200,6 +200,7 @@ class UpdateChecker {
             child: const Text('Skip'),
           ),
           FilledButton(
+            autofocus: true,
             onPressed: () async {
               Navigator.pop(ctx);
               final rawUrl = info['releaseUrl'] as String?;

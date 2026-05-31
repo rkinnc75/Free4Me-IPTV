@@ -12,6 +12,7 @@ class CorrectionModal extends StatelessWidget {
             onPressed: () => Navigator.pop(context, false),
             child: const Text("Proceed anyway")),
         TextButton(
+            autofocus: true,
             onPressed: () => Navigator.pop(context, true),
             child: const Text("Correct URL automatically"))
       ],

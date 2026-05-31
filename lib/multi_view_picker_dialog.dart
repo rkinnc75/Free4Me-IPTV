@@ -50,6 +50,7 @@ class MultiViewPickerDialog extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           TextButton(
+            autofocus: true,
             onPressed: () {
               onSelected(MultiViewLayout.none);
               Navigator.of(context).pop();
