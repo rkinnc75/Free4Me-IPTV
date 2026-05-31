@@ -130,7 +130,7 @@ class Sql {
           stream_id, group_name, epg_channel_id,
           catchup_type, catchup_source, catchup_days
         )
-        VALUES \$values
+        VALUES $values
         ON CONFLICT (source_id, media_type, COALESCE(stream_id, -1), COALESCE(series_id, ''))
         DO UPDATE SET
           url = excluded.url,

@@ -32,10 +32,10 @@ String _etaSuffix(DateTime? start, int done, int total) {
   final remainMs = (perRow * (total - done)).round();
   final s = (remainMs / 1000).round();
   if (s < 1) return '';
-  if (s < 60) return '  \u2022  ~\${s}s left';
+  if (s < 60) return '  •  ~${s}s left';
   final m = s ~/ 60;
   final r = s % 60;
-  return '  \u2022  ~\${m}m \${r}s left';
+  return '  •  ~${m}m ${r}s left';
 }
 
 Future<void> showSourcesRefreshDialog(BuildContext context) async {
@@ -84,9 +84,9 @@ Future<void> showSourcesRefreshDialog(BuildContext context) async {
                   [
                     const SizedBox(height: 4),
                     Text(
-                      '\${((rowsDone / rowsTotal) * 100).clamp(0, 100).toStringAsFixed(0)}%'
-                      '  \u2022  \${rowsDone.clamp(0, rowsTotal)} / \$rowsTotal'
-                      '\${_etaSuffix(saveStartedAt, rowsDone, rowsTotal)}',
+                      '${((rowsDone / rowsTotal) * 100).clamp(0, 100).toStringAsFixed(0)}%'
+                      '  •  ${rowsDone.clamp(0, rowsTotal)} / $rowsTotal'
+                      '${_etaSuffix(saveStartedAt, rowsDone, rowsTotal)}',
                       style: Theme.of(sCtx).textTheme.bodySmall,
                     ),
                   ],

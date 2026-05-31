@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.23.11': [
+    'Fix: corrected six escaped string interpolations from the previous '
+        'build that caused the channel import bulk insert to write literal '
+        'text instead of row values, and left the progress percentage helper '
+        'unreachable. Import and progress display now work as intended.',
+  ],
   '1.23.10': [
     'Fix (critical): a large Xtream source (270k channels) no longer '
         'collapses to a tiny number of rows on import. The channel database '

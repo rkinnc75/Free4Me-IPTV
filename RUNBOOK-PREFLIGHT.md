@@ -1,18 +1,45 @@
 # RUNBOOK PREFLIGHT — verify before every code-touching fix
 
 Add this to the repo root and treat it as a hard gate on the **runbook-writing** side
-(the phone/assistant), *before* the build machine ever runs `flutter analyze`. It exists
-because the runbook author has **no Flutter SDK** and cannot compile — so every API fact
-must be verified by other means. fix164.3 shipped a `ListTileThemeData.focusColor` that
-does not exist and broke CI; this checklist is the fix for that class of error.
+(the phone/assistant), *before* the build machine ever runs `flutter analyze`. fix164.3
+shipped a `ListTileThemeData.focusColor` that does not exist and broke CI; fix174 shipped
+escaped `$` interpolations that broke CI with 6 unused-symbol warnings. This checklist is
+the fix for both classes of error.
+
+## The toolchain IS available — compile before shipping (added fix176)
+
+The earlier premise that the author "has no Flutter SDK and cannot compile" is **false**
+and caused fix174 to ship by inspection. The container network allowlist includes
+`storage.googleapis.com` (Dart SDK + Flutter engine artifacts) and `github.com` (Flutter
+itself). The author **must** run the real analyzer before handing over any code-touching
+runbook:
+
+```bash
+# Dart SDK from an allowlisted host:
+curl -sSL -o /tmp/dartsdk.zip \
+  https://storage.googleapis.com/dart-archive/channels/stable/release/latest/sdk/dartsdk-linux-x64-release.zip
+unzip -q /tmp/dartsdk.zip -d /opt            # → /opt/dart-sdk
+
+# Flutter stable (shallow) from github:
+git clone --depth 1 -b stable https://github.com/flutter/flutter.git /opt/flutter
+export PATH="/opt/flutter/bin:/opt/dart-sdk/bin:$PATH"
+
+# In the edited project tree:
+flutter pub get
+flutter analyze --no-fatal-infos      # MUST be clean except known-tolerated INFOs
+```
+
+This is the authoritative gate. Inspection-based rules below still apply, but they are
+no longer a substitute for running the analyzer. **If you produced code-touching edits
+and did not run `flutter analyze`, the runbook is not ready.**
 
 ## The core problem
 
-The runbook author cannot run `flutter analyze` / `dart analyze`. So an invented
-parameter, a renamed method, a wrong import path, or a deprecated API reads as
-"fine" in prose and only fails on the build machine. Every minute of CI is a minute
-the author could have spent verifying. **Assume nothing about an API you did not
-read in this repo or confirm against the SDK docs.**
+Inspection alone is fallible: an invented parameter, a renamed method, a wrong import,
+a deprecated API, or an escaped string interpolation can read as "fine" in prose. Most
+are now caught by running the analyzer (above); the rules below make the common ones
+obvious before you even compile. **Assume nothing about an API you did not read in this
+repo, confirm against the SDK docs, or compile.**
 
 ## Hard rules (every code-touching runbook)
 
@@ -48,6 +75,12 @@ read in this repo or confirm against the SDK docs.**
    dead code, unnecessary non-null)? If yes, fix it in the runbook. INFOs
    (`use_build_context_synchronously`, etc.) are acceptable and need no action.
 
+6. **No escaped `$` or `\u…` inside Dart string literals in code blocks (added fix176).**
+   `'\$x'` / `'\${expr}'` / `'\u2022'` slip through inspection and get pasted verbatim —
+   `$x` renders as literal text instead of interpolating, leaving the variable unused (fatal
+   WARNING) or putting garbage in SQL. Grep every code block for `\$` and `\u`; there must
+   be none. Prefer literal characters (`•`) over `\u` escapes.
+
 ## Per-change checklist (run mentally for each `# Fix N.M` block)
 
 - [ ] Every **new** symbol (class, param, method, enum, color, helper) is repo-read or
@@ -64,6 +97,10 @@ read in this repo or confirm against the SDK docs.**
 - [ ] Parens/quotes/braces balance in every replacement block (esp. when splitting a
       chained `..` cascade or adding a wrapper widget — the setup.dart `DpadFocusEscape`
       wraps add one `(` and one `)` each).
+- [ ] No escaped `$` / `\u` inside any Dart string literal (fix176 rule 6). Grep `'\$'`
+      and `'\u'`; every `$` must be a real interpolation, every bullet a literal `•`.
+- [ ] **Compiled:** `flutter analyze --no-fatal-infos` on the edited tree returns only
+      known-tolerated INFOs.
 - [ ] Gating/behavioural flags (`hasTouchScreen`, `isTV`, `previewMode`) are referenced
       exactly as they exist in scope at that edit site.
 
@@ -77,7 +114,7 @@ read in this repo or confirm against the SDK docs.**
   can see it was checked, not assumed.
 - When a symbol is repo-sourced, name the file/line you read it from.
 
-## If the build machine still hits analyze errors
+## If analyze still hits errors (author's machine or build machine)
 
 1. Capture the **exact** analyzer output (it names file:line:rule — that's gold).
 2. Triage by severity: ERROR/WARNING must be fixed; INFO is tolerated and shipped as-is.
