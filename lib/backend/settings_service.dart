@@ -320,8 +320,11 @@ class SettingsService {
     if (settingsMap[lastLogClearedVersion] == version) return;
 
     await AppLog.clearLog();
+    // fix180: also wipe Analyze/Suggest history so suggestions aren't biased
+    // by pre-upgrade sessions. Same once-per-version trigger as the log clear.
+    await Sql.clearPlaybackMetrics();
     AppLog.info(
-      'Free4Me-IPTV $version — log cleared on version change',
+      'Free4Me-IPTV $version — log + playback metrics cleared on version change',
     );
     final HashMap<String, String> update = HashMap();
     update[lastLogClearedVersion] = version;

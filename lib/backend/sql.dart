@@ -1519,6 +1519,14 @@ class Sql {
         'streams=${m.streamsOpened} rebuffers=${m.totalRebuffers}');
   }
 
+  /// fix180: wipe all stored Analyze/Suggest sessions — called once per
+  /// new version boot so suggestions aren't biased by pre-upgrade sessions.
+  static Future<void> clearPlaybackMetrics() async {
+    final db = await DbFactory.db;
+    await db.execute('DELETE FROM playback_metrics');
+    AppLog.info('Sql.clearPlaybackMetrics: playback_metrics truncated');
+  }
+
   /// Aggregate all stored sessions into a single weighted summary.
   static Future<AggregatedMetrics> getAggregatedMetrics() async {
     final db = await DbFactory.db;
