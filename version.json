@@ -1,7 +1,7 @@
 {
-  "latest": "1.23.14",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.14",
+  "latest": "1.23.15",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.15",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Improvement (TV): D-pad focus now lands on a sensible control when every screen and dialog opens. The first channel tile is focused on the home screen, the first settings row is focused in Settings, and every dialog opens with focus on the primary action (or the safe Cancel option on destructive dialogs)."
+  "releaseNotes": "\u2022 Improvement: the multi-view layout picker now checks your provider connection limit and only offers layouts it can support. Providers that allow only one connection show a message instead of a silent failed cell. The limit is auto-detected for Xtream providers on add or refresh."
 }

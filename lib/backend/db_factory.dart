@@ -364,6 +364,11 @@ class DbFactory {
           ON channels(source_id, series_id)
           WHERE series_id IS NOT NULL;
         ''');
+      }))
+      // fix184: provider connection limit for multi-view gating.
+      ..add(SqliteMigration(16, (tx) async {
+        await tx.execute(
+            'ALTER TABLE sources ADD COLUMN max_connections INTEGER;');
       }));
     await migrations.migrate(db);
 

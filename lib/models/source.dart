@@ -13,6 +13,9 @@ class Source {
   String? epgUrl;
   /// Default engine for all channels from this source. Null = auto.
   EngineType? defaultEngine;
+  /// fix184: provider connection limit (null = unknown).
+  /// Auto-detected for Xtream; manual for M3U.
+  int? maxConnections;
 
   Source({
     this.id,
@@ -25,5 +28,6 @@ class Source {
     this.enabled = true,
     this.epgUrl,
     this.defaultEngine,
+    this.maxConnections,
   });
 }

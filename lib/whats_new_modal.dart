@@ -6,6 +6,13 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.23.15': [
+    'Improvement: the multi-view layout picker now checks your provider '
+        'connection limit and only offers layouts it can support. Providers '
+        'that allow only one connection show a message instead of a silent '
+        'failed cell. The limit is auto-detected for Xtream providers on '
+        'add or refresh.',
+  ],
   '1.23.14': [
     'Improvement (TV): D-pad focus now lands on a sensible control when '
         'every screen and dialog opens. The first channel tile is focused '
