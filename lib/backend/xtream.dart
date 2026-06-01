@@ -173,6 +173,28 @@ Future<dynamic> getXtreamHttpData(
   }
 }
 
+/// fix184/186: fetch the Xtream account's max_connections from user_info.
+/// Returns null on any failure (unknown → caller leaves the limit unset).
+Future<int?> fetchXtreamMaxConnections(Source source) async {
+  try {
+    // Empty action → base player_api.php auth call that returns user_info.
+    final data = await getXtreamHttpData('', source);
+    if (data is Map && data['user_info'] is Map) {
+      final raw = data['user_info']['max_connections'];
+      final n = raw is int ? raw : int.tryParse(raw?.toString() ?? '');
+      if (n != null && n > 0) {
+        AppLog.info(
+            'Xtream: source "${source.name}" max_connections=\$n');
+        return n;
+      }
+    }
+  } catch (e) {
+    AppLog.warn(
+        'Xtream: max_connections fetch failed for "${source.name}" — \$e');
+  }
+  return null;
+}
+
 void processXtream(
   List<Future<void> Function(SqliteWriteContext, Map<String, String>)>
   statements,

@@ -1,7 +1,7 @@
 {
-  "latest": "1.23.15",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.15",
+  "latest": "1.23.16",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.16",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Improvement: the multi-view layout picker now checks your provider connection limit and only offers layouts it can support. Providers that allow only one connection show a message instead of a silent failed cell. The limit is auto-detected for Xtream providers on add or refresh."
+  "releaseNotes": "\u2022 Fix: source refresh now correctly detects your provider connection limit for multi-view. A missing function prevented the detection from running in the previous build."
 }
