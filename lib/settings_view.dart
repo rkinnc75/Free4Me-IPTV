@@ -17,6 +17,7 @@ import 'package:open_tv/backend/settings_io.dart';
 import 'package:open_tv/views/epg_channel_mapping.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
+import 'package:open_tv/source_color_picker.dart';
 import 'package:open_tv/backend/stream_scanner.dart';
 import 'package:open_tv/backend/update_checker.dart';
 import 'package:open_tv/backend/utils.dart';
@@ -437,7 +438,33 @@ class _SettingsState extends State<SettingsView> {
         margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         elevation: 5,
         child: ListTile(
-          leading: Icon(source.enabled ? Icons.tv : Icons.tv_off),
+          // fix196: tap the monitor icon to pick a per-source tag color.
+          leading: InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: () async {
+              final result =
+                  await showSourceColorPicker(context, current: source.color);
+              if (result == null) return;
+              source.color = result.color;
+              await Sql.updateSource(source);
+              await reloadSources();
+            },
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                if (source.color != null)
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: Color(source.color!),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                Icon(source.enabled ? Icons.tv : Icons.tv_off),
+              ],
+            ),
+          ),
           horizontalTitleGap: 25,
           contentPadding: const EdgeInsets.only(left: 20),
           title: Text(source.name),

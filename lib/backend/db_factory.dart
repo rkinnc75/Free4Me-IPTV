@@ -369,6 +369,10 @@ class DbFactory {
       ..add(SqliteMigration(16, (tx) async {
         await tx.execute(
             'ALTER TABLE sources ADD COLUMN max_connections INTEGER;');
+      }))
+      // fix196: per-source tag color (ARGB int; null = no tint).
+      ..add(SqliteMigration(17, (tx) async {
+        await tx.execute('ALTER TABLE sources ADD COLUMN color INTEGER;');
       }));
     await migrations.migrate(db);
 

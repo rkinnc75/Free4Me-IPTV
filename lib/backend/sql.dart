@@ -22,7 +22,11 @@ import 'package:sqlite_async/sqlite_async.dart';
 const int pageSize = 36;
 const int importBatchSize = 500;
 // fix174.3: bulk insert binds 13 params/row; 60×13=780 < 999 (safe on all engines)
-const int bulkInsertRows = 60;
+// fix194: 60 -> 1000. Each bulk INSERT carries 1000 rows = 13,000 params,
+// well under SQLite's SQLITE_MAX_VARIABLE_NUMBER (32,766). Cuts a ~271k-row
+// Xtream refresh from ~4,516 INSERT statements to ~271, the dominant cost
+// of the wipe-then-reinsert window. Verified via seeded 1000-row upsert test.
+const int bulkInsertRows = 1000;
 
 class Sql {
   static Future<void> commitWrite(
@@ -611,7 +615,7 @@ class Sql {
   static Source rowToSource(Row row) {
     // Column order: id(0) name(1) source_type(2) url(3) username(4)
     //   password(5) enabled(6) epg_url(7) default_engine(8)
-    //   max_connections(9)  ← fix184
+    //   max_connections(9)  ← fix184    color(10)  ← fix196
     return Source(
       id: row.columnAt(0),
       name: row.columnAt(1),
@@ -623,6 +627,7 @@ class Sql {
       epgUrl: row.columnAt(7) as String?,
       defaultEngine: EngineType.fromJson(row.columnAt(8) as String?),
       maxConnections: row.columnAt(9) as int?,
+      color: row.columnAt(10) as int?,
     );
   }
 
@@ -715,7 +720,7 @@ class Sql {
     await db.execute('''
       UPDATE sources
       SET url = ?, username = ?, password = ?, default_engine = ?,
-          max_connections = ?
+          max_connections = ?, color = ?
       WHERE id = ?
     ''', [
       source.url,
@@ -725,6 +730,7 @@ class Sql {
           ? null
           : source.defaultEngine!.toJson(),
       source.maxConnections,
+      source.color,
       source.id,
     ]);
   }

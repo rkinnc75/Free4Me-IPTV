@@ -39,11 +39,16 @@ class _MultiViewPickerDialogState extends State<MultiViewPickerDialog> {
     }
   }
 
-  /// Minimum known maxConnections across enabled sources (null = unknown).
+  /// fix198: SUM of known maxConnections across enabled sources (null =
+  /// none known). Multi-view cells can be filled from different sources, so
+  /// the total simultaneous-stream ceiling is the sum of per-source limits,
+  /// not the minimum. (e.g. a 4-connection source + a 1-connection source =
+  /// 5 total, enough for 1×2 or 2×2.) Per-source over-allocation is prevented
+  /// separately in the channel picker, not here.
   static int? _connectionCeiling(List<Source> enabled) {
     final known = enabled.map((s) => s.maxConnections).whereType<int>().toList();
     if (known.isEmpty) return null;
-    return known.reduce((a, b) => a < b ? a : b);
+    return known.reduce((a, b) => a + b);
   }
 
   @override
@@ -79,7 +84,7 @@ class _MultiViewPickerDialogState extends State<MultiViewPickerDialog> {
           if (!allow1x2) ...[
             const SizedBox(height: 10),
             Text(
-              'This provider allows only $ceiling connection. '
+              'Your enabled sources allow only $ceiling connection total. '
               'Multi-view needs at least 2 simultaneous streams.',
               style: const TextStyle(fontSize: 12, color: Colors.orangeAccent),
               textAlign: TextAlign.center,
@@ -110,7 +115,7 @@ class _MultiViewPickerDialogState extends State<MultiViewPickerDialog> {
                 else
                   _LayoutCardDisabled(
                     layout: MultiViewLayout.twoByTwo,
-                    note: '2×2 needs 4 connections; your plan allows $ceiling.',
+                    note: '2×2 needs 4 connections; your sources allow $ceiling total.',
                   ),
               ],
             ),

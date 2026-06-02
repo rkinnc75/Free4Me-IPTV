@@ -11,6 +11,11 @@ const _changelog = <String, List<String>>{
     'Fix: editing a source now preserves its auto-detected connection limit.',
     'Improvement: the source list now shows each provider connection limit '
         'next to the source type, so you can see the multi-view gating at a glance.',
+    'Improvement: large Xtream source refreshes are 16x faster.',
+    'Improvement: assign a pastel color to each source for quick visual '
+        'identification in the channel list.',
+    'Fix: multi-view layout ceiling now correctly sums connection limits '
+        'across all enabled sources instead of using the minimum.',
   ],
   '1.23.16': [
     'Fix: source refresh now correctly detects your provider connection '

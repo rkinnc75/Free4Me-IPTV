@@ -184,13 +184,13 @@ Future<int?> fetchXtreamMaxConnections(Source source) async {
       final n = raw is int ? raw : int.tryParse(raw?.toString() ?? '');
       if (n != null && n > 0) {
         AppLog.info(
-            'Xtream: source "${source.name}" max_connections=\$n');
+            'Xtream: source "${source.name}" max_connections=$n');
         return n;
       }
     }
   } catch (e) {
     AppLog.warn(
-        'Xtream: max_connections fetch failed for "${source.name}" — \$e');
+        'Xtream: max_connections fetch failed for "${source.name}" — $e');
   }
   return null;
 }

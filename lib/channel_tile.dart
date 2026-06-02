@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:open_tv/source_color_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:open_tv/backend/app_logger.dart';
@@ -43,6 +44,8 @@ class ChannelTile extends StatefulWidget {
   final VoidCallback? onRemoveHistory;
   /// fix182: when true, this tile grabs focus on first build.
   final bool autofocus;
+  /// fix196: source tag color (ARGB int; null = no tint).
+  final int? tintColor;
 
   const ChannelTile({
     super.key,
@@ -53,6 +56,7 @@ class ChannelTile extends StatefulWidget {
     this.isHistory = false,
     this.onRemoveHistory,
     this.autofocus = false,
+    this.tintColor,
   });
 
   @override
@@ -303,7 +307,12 @@ class _ChannelTileState extends State<ChannelTile> {
             ? const BorderSide(color: Colors.greenAccent, width: 2.5)
             : BorderSide.none,
       ),
-      color: Theme.of(context).colorScheme.surfaceContainer,
+      // fix196: tint the whole card with the source's tag color (~35%) so the
+      // channel's source is identifiable at a glance. Null = surface unchanged.
+      color: SourcePalette.tintOver(
+        widget.tintColor,
+        Theme.of(context).colorScheme.surfaceContainer,
+      ),
       child: InkWell(
         focusNode: _focusNode,
         autofocus: widget.autofocus,

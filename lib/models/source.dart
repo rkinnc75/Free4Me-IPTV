@@ -16,6 +16,8 @@ class Source {
   /// fix184: provider connection limit (null = unknown).
   /// Auto-detected for Xtream; manual for M3U.
   int? maxConnections;
+  /// fix196: per-source tag color as ARGB int (null = None/no tint).
+  int? color;
 
   Source({
     this.id,
@@ -29,5 +31,6 @@ class Source {
     this.epgUrl,
     this.defaultEngine,
     this.maxConnections,
+    this.color,
   });
 }

@@ -42,6 +42,8 @@ class Home extends StatefulWidget {
 }
 
 class _HomeState extends State<Home> {
+  /// fix196: sourceId -> tag color (ARGB int or null).
+  Map<int, int?> _sourceColors = {};
   Timer? _debounce;
   // keystroke rate with perceived search latency. Reset whenever the
   // debounce actually fires (i.e. user has stopped typing).
@@ -112,6 +114,13 @@ class _HomeState extends State<Home> {
 
     if (widget.home.filters.sourceIds == null) {
       final sources = await Sql.getEnabledSourcesMinimal();
+      // fix196: build sourceId -> tag color map for channel tiles (one call;
+      // source count is tiny). Null entries simply mean no tint.
+      final fullSources = await Sql.getSources();
+      _sourceColors = {
+        for (final s in fullSources)
+          if (s.id != null) s.id!: s.color,
+      };
       if (!mounted) return;
       widget.home.filters.sourceIds = sources.map((x) => x.id).toList();
     }
@@ -711,6 +720,7 @@ class _HomeState extends State<Home> {
                                 'ch-${channel.id ?? channel.name}-$index',
                               ),
                               channel: channel,
+                              tintColor: _sourceColors[channel.sourceId],
                               parentContext: context,
                               setNode: setNode,
                               isHistory: isHistory,
