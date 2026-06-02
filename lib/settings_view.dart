@@ -441,7 +441,15 @@ class _SettingsState extends State<SettingsView> {
           horizontalTitleGap: 25,
           contentPadding: const EdgeInsets.only(left: 20),
           title: Text(source.name),
-          subtitle: Text(source.sourceType.label),
+          // fix192: show the auto-detected provider connection limit (read-only)
+          // alongside the source type. Hidden when unknown (null).
+          subtitle: Text(
+            source.maxConnections == null
+                ? source.sourceType.label
+                : '${source.sourceType.label} · '
+                    '${source.maxConnections} '
+                    '${source.maxConnections == 1 ? "connection" : "connections"}',
+          ),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [

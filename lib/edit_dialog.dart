@@ -48,6 +48,10 @@ class _EditDialogState extends State<EditDialog> {
                           : null,
                       enabled: widget.source.enabled,
                       epgUrl: widget.source.epgUrl,
+                      // fix190: carry the detected max_connections through edit.
+                      // Without this it defaults to null and updateSource writes
+                      // NULL, wiping the connection limit on every source edit.
+                      maxConnections: widget.source.maxConnections,
                       defaultEngine: widget.source.defaultEngine)),
                   context);
               await widget.afterSave();

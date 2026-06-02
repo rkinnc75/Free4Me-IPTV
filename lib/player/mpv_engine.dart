@@ -163,6 +163,21 @@ class MpvEngine implements PlayerEngine {
       ' previewMode=$previewMode',
     );
 
+    // fix188: mute then stop BEFORE teardown so libmpv audio does not outlive
+    // the async native dispose (~5s of lingering audio on multi-view exit,
+    // onn 4K Plus). setVolume(0) silences immediately; stop() halts decode and
+    // unloads the current media before the controller close + Player.dispose()
+    // below. Both are guarded — a teardown race must never throw out of
+    // dispose(). Player.setVolume(double) and Player.stop() are verified on
+    // media_kit 1.2.6. No volume restore: this instance is being destroyed.
+    try {
+      await _player.setVolume(0);
+      await _player.stop();
+    } catch (e) {
+      AppLog.info('MpvEngine: dispose() mute/stop skipped ($e)'
+          ' eid=${identityHashCode(this)}');
+    }
+
     // fix130: no manual exitFullscreen()/vid=no here. media_kit releases
     // the texture via Player.dispose() release[] callbacks
     // (VideoOutputManager.Dispose, keyed by player handle — confirmed in

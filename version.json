@@ -1,7 +1,7 @@
 {
-  "latest": "1.23.16",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.16",
+  "latest": "1.23.17",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.17",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: source refresh now correctly detects your provider connection limit for multi-view. A missing function prevented the detection from running in the previous build."
+  "releaseNotes": "\u2022 Fix: multi-view audio no longer lingers 5 seconds after exit.\n\u2022 Fix: editing a source now preserves its auto-detected connection limit.\n\u2022 Improvement: the source list now shows each provider connection limit next to the source type, so you can see the multi-view gating at a glance."
 }

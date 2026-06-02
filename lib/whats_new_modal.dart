@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.23.17': [
+    'Fix: multi-view audio no longer lingers 5 seconds after exit.',
+    'Fix: editing a source now preserves its auto-detected connection limit.',
+    'Improvement: the source list now shows each provider connection limit '
+        'next to the source type, so you can see the multi-view gating at a glance.',
+  ],
   '1.23.16': [
     'Fix: source refresh now correctly detects your provider connection '
         'limit for multi-view. A missing function prevented the detection '
