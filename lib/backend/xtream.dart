@@ -38,6 +38,9 @@ Future<void> getXtream(
       ' total=${preserve.length}',
     );
     statements.add(Sql.wipeSource(source.id!));
+    // fix206: drop non-unique indexes + disable FTS trigger before the
+    // bulk reinsert; restored at the end of the statement list below.
+    statements.add(Sql.dropChannelsBulkIndexes());
   }
   source.urlOrigin = Uri.parse(source.url!).origin;
   AppLog.info('Xtream: fetching source="${source.name}" url="${source.url}"');
@@ -126,6 +129,11 @@ Future<void> getXtream(
   statements.add(Sql.updateGroups());
   if (preserve != null) {
     statements.add(Sql.restorePreserve(preserve));
+  }
+  // fix206: recreate the dropped indexes + rebuild FTS once, AFTER all inserts
+  // and the preserve replay. Only meaningful when we actually wiped+dropped.
+  if (wipe) {
+    statements.add(Sql.restoreChannelsBulkIndexes());
   }
   // fix184: detect and persist the provider's connection limit.
   final mc = await fetchXtreamMaxConnections(source);

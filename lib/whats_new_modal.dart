@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.23.22': [
+    'Performance: source refresh is now ~2.6x faster. Non-unique indexes and FTS trigger '
+        'are dropped during bulk insert, recreated once when complete. 271k-row refresh '
+        'now takes ~3 minutes instead of ~8.5.',
+  ],
   '1.23.21': [
     'Improvement: added timing instrumentation to source refresh DB-write phase. '
         'No behavior change; debug logs now show where time is spent.',

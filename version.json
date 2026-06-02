@@ -1,7 +1,7 @@
 {
-  "latest": "1.23.21",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.21",
+  "latest": "1.23.22",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.22",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Improvement: added timing instrumentation to source refresh DB-write phase. No behavior change; debug logs now show where time is spent."
+  "releaseNotes": "\u2022 Performance: source refresh is now ~2.6x faster. Non-unique indexes and FTS trigger are dropped during bulk insert, recreated once when complete. 271k-row refresh now takes ~3 minutes instead of ~8.5."
 }
