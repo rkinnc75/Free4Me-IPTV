@@ -1,7 +1,7 @@
 {
-  "latest": "1.23.19",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.19",
+  "latest": "1.23.20",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.20",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: source tag colors now persist when switching between Live, Favorites, and History tabs."
+  "releaseNotes": "\u2022 Fix: removed overly-restrictive connection limit gate on multi-view layouts. Provider limits are now advisory; layouts are always offered."
 }

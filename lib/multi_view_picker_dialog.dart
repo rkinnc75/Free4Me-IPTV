@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/models/multi_view_layout.dart';
-import 'package:open_tv/models/source.dart';
 
 /// Visual layout picker shown from Settings.
-/// fix184: loads enabled sources and gates layouts by their connection limit.
+/// fix202: connection-limit gating removed. max_connections is a
+/// provider-advertised value, not a client-side ceiling — a 1-connection
+/// provider was observed running a full 2×2 (v1.23.19 log). Both layouts are
+/// always offered; an informational hint notes some cells may fail on strict
+/// providers. Source import no longer needed here.
 class MultiViewPickerDialog extends StatefulWidget {
   const MultiViewPickerDialog({
     super.key,
@@ -20,49 +22,8 @@ class MultiViewPickerDialog extends StatefulWidget {
 }
 
 class _MultiViewPickerDialogState extends State<MultiViewPickerDialog> {
-  int? _ceiling;
-  bool _loaded = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadCeiling();
-  }
-
-  Future<void> _loadCeiling() async {
-    try {
-      final sources = await Sql.getSources();
-      final ceiling = _connectionCeiling(sources.where((s) => s.enabled).toList());
-      if (mounted) setState(() { _ceiling = ceiling; _loaded = true; });
-    } catch (_) {
-      if (mounted) setState(() { _loaded = true; });
-    }
-  }
-
-  /// fix198: SUM of known maxConnections across enabled sources (null =
-  /// none known). Multi-view cells can be filled from different sources, so
-  /// the total simultaneous-stream ceiling is the sum of per-source limits,
-  /// not the minimum. (e.g. a 4-connection source + a 1-connection source =
-  /// 5 total, enough for 1×2 or 2×2.) Per-source over-allocation is prevented
-  /// separately in the channel picker, not here.
-  static int? _connectionCeiling(List<Source> enabled) {
-    final known = enabled.map((s) => s.maxConnections).whereType<int>().toList();
-    if (known.isEmpty) return null;
-    return known.reduce((a, b) => a + b);
-  }
-
   @override
   Widget build(BuildContext context) {
-    if (!_loaded) {
-      return const AlertDialog(
-        content: SizedBox(height: 80, child: Center(child: CircularProgressIndicator())),
-      );
-    }
-
-    final ceiling = _ceiling;
-    final allow1x2 = ceiling == null || ceiling >= 2;
-    final allow2x2 = ceiling == null || ceiling >= 4;
-
     return AlertDialog(
       title: const Text('Multi-view layout'),
       content: Column(
@@ -73,55 +34,37 @@ class _MultiViewPickerDialogState extends State<MultiViewPickerDialog> {
             'Tap a layout to select it.',
             style: TextStyle(fontSize: 13),
           ),
-          if (ceiling == null) ...[
-            const SizedBox(height: 6),
-            const Text(
-              'Multi-view needs 2 connections (1×2) or 4 (2×2). '
-              'If your provider allows fewer, cells may fail to load.',
-              style: TextStyle(fontSize: 11, color: Colors.grey),
-            ),
-          ],
-          if (!allow1x2) ...[
-            const SizedBox(height: 10),
-            Text(
-              'Your enabled sources allow only $ceiling connection total. '
-              'Multi-view needs at least 2 simultaneous streams.',
-              style: const TextStyle(fontSize: 12, color: Colors.orangeAccent),
-              textAlign: TextAlign.center,
-            ),
-          ],
+          const SizedBox(height: 6),
+          const Text(
+            'Some providers limit simultaneous streams; if yours does, '
+            'one or more cells may fail to load.',
+            style: TextStyle(fontSize: 11, color: Colors.grey),
+            textAlign: TextAlign.center,
+          ),
           const SizedBox(height: 16),
-          if (allow1x2)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _LayoutCard(
-                  layout: MultiViewLayout.oneByTwo,
-                  isSelected: widget.current == MultiViewLayout.oneByTwo,
-                  onTap: () {
-                    widget.onSelected(MultiViewLayout.oneByTwo);
-                    Navigator.of(context).pop();
-                  },
-                ),
-                if (allow2x2)
-                  _LayoutCard(
-                    layout: MultiViewLayout.twoByTwo,
-                    isSelected: widget.current == MultiViewLayout.twoByTwo,
-                    onTap: () {
-                      widget.onSelected(MultiViewLayout.twoByTwo);
-                      Navigator.of(context).pop();
-                    },
-                  )
-                else
-                  _LayoutCardDisabled(
-                    layout: MultiViewLayout.twoByTwo,
-                    note: '2×2 needs 4 connections; your sources allow $ceiling total.',
-                  ),
-              ],
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _LayoutCard(
+                layout: MultiViewLayout.oneByTwo,
+                isSelected: widget.current == MultiViewLayout.oneByTwo,
+                onTap: () {
+                  widget.onSelected(MultiViewLayout.oneByTwo);
+                  Navigator.of(context).pop();
+                },
+              ),
+              _LayoutCard(
+                layout: MultiViewLayout.twoByTwo,
+                isSelected: widget.current == MultiViewLayout.twoByTwo,
+                onTap: () {
+                  widget.onSelected(MultiViewLayout.twoByTwo);
+                  Navigator.of(context).pop();
+                },
+              ),
+            ],
+          ),
           const SizedBox(height: 12),
           TextButton(
-            autofocus: !allow1x2,
             onPressed: () {
               widget.onSelected(MultiViewLayout.none);
               Navigator.of(context).pop();
@@ -177,40 +120,6 @@ class _LayoutCard extends StatelessWidget {
                   color: isSelected ? colorScheme.primary : colorScheme.onSurface,
                 )),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _LayoutCardDisabled extends StatelessWidget {
-  const _LayoutCardDisabled({required this.layout, required this.note});
-  final MultiViewLayout layout;
-  final String note;
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: note,
-      child: Opacity(
-        opacity: 0.35,
-        child: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
-              width: 1.5,
-            ),
-          ),
-          child: Column(
-            children: [
-              _GridDiagram(layout: layout),
-              const SizedBox(height: 6),
-              Text(layout.label,
-                  style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurface)),
-            ],
-          ),
         ),
       ),
     );
