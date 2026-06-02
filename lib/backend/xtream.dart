@@ -135,6 +135,11 @@ Future<void> getXtream(
   }
   onProgress?.call('Saving to database…');
   final totalRows = liveCount + movieCount + seriesCount;
+  // fix204: instrumentation only. Log statement composition + commit duration
+  // so the refresh log isolates the DB-write phase (the wipe→restore gap).
+  AppLog.info('getXtream: committing ${statements.length} statement-closures '
+      'for source="${source.name}" totalRows=$totalRows');
+  final swCommit = Stopwatch()..start();
   await Sql.commitWriteBatched(
     statements,
     onBatchCommitted: onRowProgress == null
@@ -145,6 +150,9 @@ Future<void> getXtream(
                 approxRows > totalRows ? totalRows : approxRows, totalRows);
           },
   );
+  swCommit.stop();
+  AppLog.info('getXtream: DB commit phase for source="${source.name}" '
+      'took ${swCommit.elapsedMilliseconds}ms ($totalRows fetched rows)');
 }
 
 List<T> processJsonList<T>(

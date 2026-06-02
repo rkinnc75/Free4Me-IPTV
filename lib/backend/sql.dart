@@ -53,11 +53,26 @@ class Sql {
   }) async {
     if (commits.isEmpty) return;
     final shared = memory ?? <String, String>{};
+    // fix204: instrumentation only (no behavior change). Time the whole batched
+    // commit and each transaction batch so a refresh log shows where the time
+    // goes (bulk inserts vs the trailing restorePreserve/updateGroups closures).
+    final swTotal = Stopwatch()..start();
+    var batchIndex = 0;
     for (var i = 0; i < commits.length; i += batchSize) {
       final end = (i + batchSize < commits.length) ? i + batchSize : commits.length;
+      final swBatch = Stopwatch()..start();
       await commitWrite(commits.sublist(i, end), memory: shared);
+      swBatch.stop();
+      AppLog.info('Sql.commitWriteBatched: batch $batchIndex '
+          'closures=${end - i} (through $end/${commits.length}) '
+          'took ${swBatch.elapsedMilliseconds}ms');
+      batchIndex++;
       onBatchCommitted?.call(end);
     }
+    swTotal.stop();
+    AppLog.info('Sql.commitWriteBatched: DONE ${commits.length} closures '
+        'in $batchIndex batches, total ${swTotal.elapsedMilliseconds}ms '
+        '(bulkInsertRows=$bulkInsertRows, batchSize=$batchSize)');
   }
 
   static Future<void> Function(SqliteWriteContext, Map<String, String> memory)

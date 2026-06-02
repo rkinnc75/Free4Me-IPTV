@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.23.21': [
+    'Improvement: added timing instrumentation to source refresh DB-write phase. '
+        'No behavior change; debug logs now show where time is spent.',
+  ],
   '1.23.20': [
     'Fix: removed overly-restrictive connection limit gate on multi-view layouts. '
         'Provider limits are now advisory; layouts are always offered.',

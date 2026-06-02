@@ -1,7 +1,7 @@
 {
-  "latest": "1.23.20",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.20",
+  "latest": "1.23.21",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.21",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: removed overly-restrictive connection limit gate on multi-view layouts. Provider limits are now advisory; layouts are always offered."
+  "releaseNotes": "\u2022 Improvement: added timing instrumentation to source refresh DB-write phase. No behavior change; debug logs now show where time is spent."
 }
