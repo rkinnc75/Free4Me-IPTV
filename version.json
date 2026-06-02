@@ -1,7 +1,7 @@
 {
-  "latest": "1.23.18",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.18",
+  "latest": "1.23.19",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.19",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: multi-view audio no longer lingers 5 seconds after exit.\n\u2022 Fix: editing a source now preserves its auto-detected connection limit.\n\u2022 Improvement: the source list now shows each provider connection limit next to the source type, so you can see the multi-view gating at a glance.\n\u2022 Improvement: large Xtream source refreshes are 16x faster.\n\u2022 Improvement: assign a pastel color to each source for quick visual identification in the channel list.\n\u2022 Fix: multi-view layout ceiling now correctly sums connection limits across all enabled sources instead of using the minimum.\n\u2022 Fix: source tag colors now persist when switching between Live, Favorites, and History tabs."
+  "releaseNotes": "\u2022 Fix: source tag colors now persist when switching between Live, Favorites, and History tabs."
 }

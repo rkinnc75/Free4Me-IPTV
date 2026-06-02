@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.23.19': [
+    'Fix: source tag colors now persist when switching between Live, Favorites, '
+        'and History tabs.',
+  ],
   '1.23.18': [
     'Fix: multi-view audio no longer lingers 5 seconds after exit.',
     'Fix: editing a source now preserves its auto-detected connection limit.',
@@ -16,8 +20,6 @@ const _changelog = <String, List<String>>{
         'identification in the channel list.',
     'Fix: multi-view layout ceiling now correctly sums connection limits '
         'across all enabled sources instead of using the minimum.',
-    'Fix: source tag colors now persist when switching between Live, Favorites, '
-        'and History tabs.',
   ],
   '1.23.16': [
     'Fix: source refresh now correctly detects your provider connection '
