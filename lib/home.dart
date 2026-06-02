@@ -112,15 +112,20 @@ class _HomeState extends State<Home> {
       if (!mounted) return;
     }
 
+    // fix200: load the source tag-color map on EVERY Home init, not only when
+    // filters are fresh. Tab switches (Live/Favorites/History) rebuild Home but
+    // carry sourceIds forward (see updateViewMode), so the old placement inside
+    // the `sourceIds == null` guard ran only when arriving from Settings — which
+    // is why colors appeared from Settings but vanished on Live→Favorites.
+    final fullSources = await Sql.getSources();
+    _sourceColors = {
+      for (final s in fullSources)
+        if (s.id != null) s.id!: s.color,
+    };
+    if (!mounted) return;
+
     if (widget.home.filters.sourceIds == null) {
       final sources = await Sql.getEnabledSourcesMinimal();
-      // fix196: build sourceId -> tag color map for channel tiles (one call;
-      // source count is tiny). Null entries simply mean no tint.
-      final fullSources = await Sql.getSources();
-      _sourceColors = {
-        for (final s in fullSources)
-          if (s.id != null) s.id!: s.color,
-      };
       if (!mounted) return;
       widget.home.filters.sourceIds = sources.map((x) => x.id).toList();
     }

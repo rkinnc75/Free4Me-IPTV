@@ -16,6 +16,8 @@ const _changelog = <String, List<String>>{
         'identification in the channel list.',
     'Fix: multi-view layout ceiling now correctly sums connection limits '
         'across all enabled sources instead of using the minimum.',
+    'Fix: source tag colors now persist when switching between Live, Favorites, '
+        'and History tabs.',
   ],
   '1.23.16': [
     'Fix: source refresh now correctly detects your provider connection '
