@@ -1,7 +1,7 @@
 {
-  "latest": "1.24.0",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.24.0",
+  "latest": "1.24.1",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.24.1",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Diagnostics: added refresh timing and raw-source export to help investigate slow source refreshes. No user-facing behavior change."
+  "releaseNotes": "\u2022 Performance (major): source refresh now 150x faster for large catalogs. The refresh bottleneck was per-row isolate round-trips in restorePreserve; now batched with a set-based UPDATE...FROM. 21,794-row preserve phase dropped from ~150s to <1s. Measured on Aniel3000 (Samsung S25)."
 }

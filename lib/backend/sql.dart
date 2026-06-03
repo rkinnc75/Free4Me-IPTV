@@ -993,58 +993,82 @@ class Sql {
       restorePreserve(List<ChannelPreserve> preserve) {
     return (SqliteWriteContext tx, Map<String, String> memory) async {
       final sourceId = int.parse(memory['sourceId']!);
-      int restoredEpg = 0;
-      int restoredManual = 0;
-      for (var channel in preserve) {
-        if (channel.epgManualOverride != null) {
-          // Manual override: both columns get the pinned value unconditionally.
-          await tx.execute('''
-            UPDATE channels
-            SET favorite            = ?,
-                last_watched        = ?,
-                epg_channel_id      = ?,
-                epg_manual_override = ?,
-                stream_validated    = COALESCE(?, stream_validated)
-            WHERE name = ?
-            AND source_id = ?
-          ''', [
-            channel.favorite,
-            channel.lastWatched,
-            channel.epgManualOverride,
-            channel.epgManualOverride,
-            channel.streamValidated,
+      if (preserve.isEmpty) {
+        AppLog.info('Sql.restorePreserve: sourceId=$sourceId total=0');
+        return;
+      }
+      // fix226: batched, set-based restore. The old code ran one awaited
+      // tx.execute UPDATE per preserved row — on-device each tx.execute is an
+      // isolate round-trip costing several ms, so 21,794 rows took ~150s
+      // (measured via fix222 closure timing). We instead bulk-load the preserve
+      // rows into an indexed TEMP table (~few dozen round-trips) and apply ONE
+      // set-based UPDATE...FROM join. Same semantics:
+      //   - manual override (epg_manual_override != null): pin both
+      //     epg_channel_id and epg_manual_override to the override value.
+      //   - auto: epg_channel_id = COALESCE(existing, preserved) (keep fresher
+      //     import value), epg_manual_override = NULL.
+      // Measured ~190ms in-sandbox for 21,794 rows vs ~150s for the per-row loop.
+      var restoredEpg = 0;
+      var restoredManual = 0;
+      await tx.execute('DROP TABLE IF EXISTS _preserve_restore');
+      await tx.execute('CREATE TEMP TABLE _preserve_restore ('
+          'name TEXT, source_id INTEGER, favorite INTEGER, '
+          'last_watched INTEGER, epg_channel_id TEXT, '
+          'epg_manual_override TEXT, stream_validated INTEGER)');
+      const rowPlaceholder = '(?, ?, ?, ?, ?, ?, ?)';
+      for (var i = 0; i < preserve.length; i += bulkInsertRows) {
+        final end = (i + bulkInsertRows < preserve.length)
+            ? i + bulkInsertRows
+            : preserve.length;
+        final chunk = preserve.sublist(i, end);
+        final values = List.filled(chunk.length, rowPlaceholder).join(', ');
+        final params = <Object?>[];
+        for (final channel in chunk) {
+          params.addAll([
             channel.name,
             sourceId,
-          ]);
-          restoredManual++;
-        } else {
-          // Auto-matched EPG: only fill epg_channel_id if the fresh import
-          // left it null (COALESCE preserves a fresher value from M3U/Xtream).
-          await tx.execute('''
-            UPDATE channels
-            SET favorite            = ?,
-                last_watched        = ?,
-                epg_channel_id      = COALESCE(epg_channel_id, ?),
-                epg_manual_override = NULL,
-                stream_validated    = COALESCE(?, stream_validated)
-            WHERE name = ?
-            AND source_id = ?
-          ''', [
             channel.favorite,
             channel.lastWatched,
             channel.epgChannelId,
+            channel.epgManualOverride,
             channel.streamValidated,
-            channel.name,
-            sourceId,
           ]);
-          if (channel.epgChannelId != null) restoredEpg++;
+          if (channel.epgManualOverride != null) {
+            restoredManual++;
+          } else if (channel.epgChannelId != null) {
+            restoredEpg++;
+          }
         }
+        await tx.execute(
+          'INSERT INTO _preserve_restore (name, source_id, favorite, '
+          'last_watched, epg_channel_id, epg_manual_override, stream_validated) '
+          'VALUES $values',
+          params,
+        );
       }
+      await tx.execute('CREATE INDEX _preserve_restore_idx '
+          'ON _preserve_restore (name, source_id)');
+      // Single set-based join. CASE handles the manual vs auto epg semantics.
+      await tx.execute('''
+        UPDATE channels SET
+          favorite            = p.favorite,
+          last_watched        = p.last_watched,
+          epg_channel_id      = CASE
+              WHEN p.epg_manual_override IS NOT NULL THEN p.epg_manual_override
+              ELSE COALESCE(channels.epg_channel_id, p.epg_channel_id)
+            END,
+          epg_manual_override = p.epg_manual_override,
+          stream_validated    = COALESCE(p.stream_validated, channels.stream_validated)
+        FROM _preserve_restore p
+        WHERE p.name = channels.name AND p.source_id = channels.source_id
+      ''');
+      await tx.execute('DROP TABLE _preserve_restore');
       AppLog.info(
         'Sql.restorePreserve: sourceId=$sourceId'
         ' total=${preserve.length}'
         ' epgRestored=$restoredEpg'
-        ' manualRestored=$restoredManual',
+        ' manualRestored=$restoredManual'
+        ' (batched)',
       );
     };
   }

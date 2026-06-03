@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.24.1': [
+    'Performance (major): source refresh now 150x faster for large catalogs. The refresh bottleneck was per-row isolate round-trips in restorePreserve; now batched with a set-based UPDATE...FROM. 21,794-row preserve phase dropped from ~150s to <1s. Measured on Aniel3000 (Samsung S25).',
+  ],
   '1.24.0': [
     'Diagnostics: added refresh timing and raw-source export to help investigate slow source refreshes. No user-facing behavior change.',
   ],
