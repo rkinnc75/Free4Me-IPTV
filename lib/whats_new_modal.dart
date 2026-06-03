@@ -6,6 +6,46 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.25.5': [
+    'Fix: added missing detailed changelog entries for releases 1.25.3 and '
+        '1.25.4, so the in-app changelog history is now complete.',
+    'Improvement (TV): D-pad select/center and dedicated menu keys now open the '
+        'cell options menu (Replace channel / Full screen / Close) on filled '
+        'cells, making it no longer exclusive to touch long-press.',
+    'Improvement (TV): the empty-cell "+" button is now clearly highlighted with '
+        'a focus ring and autofocuses on cell 0, making it easier to land on and '
+        'activate with the D-pad.',
+    'Improvement (TV): the channel picker now lands focus on the first tile so you '
+        'can scroll immediately with the D-pad; pressing UP from the top row moves '
+        'to the search bar as intended.',
+  ],
+  '1.25.4': [
+    'Improvement: multi-view now self-heals dropped streams. When a tile loses '
+        'its stream mid-session (common on long viewing sessions when a provider '
+        'cycles a channel), it first does the usual quick retries, then keeps '
+        'trying every 60 seconds for up to 5 more attempts before giving up — so '
+        'tiles that used to go dark for the rest of the session now recover on '
+        'their own.',
+    'Improvement: while a tile is waiting to reconnect it shows a '
+        '"Reconnecting" message instead of a generic error, and a tile that '
+        'comes back and plays steadily resets its retry budget so it can recover '
+        'again later.',
+  ],
+  '1.25.3': [
+    'Performance: the EPG auto-match step during a source refresh is now much '
+        'faster on large catalogs (a targeted database index replaces a full '
+        'scan that took over a second on memory-limited TV boxes).',
+    'Fix: "Analyze playback & suggest settings" no longer recommends values '
+        'outside the slider range. Suggestions are now clamped to the same '
+        'minimum and maximum as the settings sliders, so every recommendation '
+        'can actually be applied.',
+    'Improvement: the in-app default search method is now the fastest '
+        '(in-memory) option for new installs. Existing devices keep whatever '
+        'they had set.',
+    'Improvement: the "What\'s new" summary is now generated automatically from '
+        'the changes in each release, so update notes no longer fall back to a '
+        'generic placeholder.',
+  ],
   '1.25.2': [
     'Diagnostics: added app-wide slow-query logging. When debug logging is enabled, any database statement taking 1000ms or longer is logged so you can identify performance issues.',
   ],

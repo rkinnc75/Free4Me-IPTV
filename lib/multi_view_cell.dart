@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/channel_picker_screen.dart';
@@ -16,6 +17,13 @@ import 'package:open_tv/player/exo_engine.dart';
 import 'package:open_tv/player/mpv_engine.dart';
 import 'package:open_tv/player/player_engine.dart';
 import 'package:open_tv/widgets/now_next_strip.dart';
+
+/// fix250: D-pad select/menu intent that opens a cell's options menu (or, on
+/// an empty cell, the channel picker). Lets TV remotes reach functionality
+/// that was previously only available via touch long-press.
+class _CellMenuIntent extends Intent {
+  const _CellMenuIntent();
+}
 
 /// A single cell in the multi-view grid.
 ///
@@ -125,6 +133,10 @@ class _MultiViewCellState extends State<MultiViewCell> {
   int _recoverySlowRetries = 0;
   static const int _recoverySlowMax = 5;
   static const Duration _recoverySlowInterval = Duration(seconds: 60);
+
+  /// fix250: whether the empty-cell "+" button currently has D-pad focus
+  /// (drives its highlight ring).
+  bool _addButtonFocused = false;
 
   @override
   void initState() {
@@ -700,14 +712,49 @@ class _MultiViewCellState extends State<MultiViewCell> {
   }
 
   Widget _buildEmptyCell() {
+    // fix250: make the "+" reachable and clearly highlighted via D-pad.
+    // FloatingActionButton had no autofocus and a weak focused state, so on
+    // TV it was hard to land on. FocusableActionDetector gives it a visible
+    // focus ring and lets cell 0's "+" be the initial D-pad target when the
+    // grid opens empty.
     return Container(
       color: const Color(0xFF111111),
       child: Center(
-        child: FloatingActionButton(
-          heroTag: null,
-          mini: true,
-          onPressed: _pickChannel,
-          child: const Icon(Icons.add),
+        child: FocusableActionDetector(
+          autofocus: widget.cellIndex == 0,
+          shortcuts: const <ShortcutActivator, Intent>{
+            SingleActivator(LogicalKeyboardKey.select): _CellMenuIntent(),
+            SingleActivator(LogicalKeyboardKey.enter): _CellMenuIntent(),
+            SingleActivator(LogicalKeyboardKey.gameButtonA): _CellMenuIntent(),
+          },
+          actions: <Type, Action<Intent>>{
+            _CellMenuIntent:
+                CallbackAction<_CellMenuIntent>(onInvoke: (_) {
+              _pickChannel();
+              return null;
+            }),
+          },
+          onShowFocusHighlight: (f) => setState(() => _addButtonFocused = f),
+          child: GestureDetector(
+            onTap: _pickChannel,
+            child: Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: _addButtonFocused
+                    ? Theme.of(context).colorScheme.primary
+                    : const Color(0xFF2A2A2A),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: _addButtonFocused
+                      ? Colors.white
+                      : Colors.white24,
+                  width: _addButtonFocused ? 3 : 1,
+                ),
+              ),
+              child: const Icon(Icons.add, color: Colors.white),
+            ),
+          ),
         ),
       ),
     );
@@ -881,6 +928,26 @@ class _MultiViewCellState extends State<MultiViewCell> {
       // calls onFocusTap, so the focused cell plays audio and others mute.
       // fix172: cell 0 autofocuses so the D-pad has an initial target on TV.
       autofocus: widget.cellIndex == 0,
+      // fix250: on a TV remote there is no touch long-press, so the cell
+      // options menu (Replace / Full screen / Close) was unreachable once all
+      // cells were filled. Map the D-pad select/center and the dedicated
+      // context-menu / info keys to open the same menu. Touch long-press
+      // (below) still works on phones/tablets.
+      shortcuts: const <ShortcutActivator, Intent>{
+        SingleActivator(LogicalKeyboardKey.select): _CellMenuIntent(),
+        SingleActivator(LogicalKeyboardKey.enter): _CellMenuIntent(),
+        SingleActivator(LogicalKeyboardKey.gameButtonA): _CellMenuIntent(),
+        SingleActivator(LogicalKeyboardKey.contextMenu): _CellMenuIntent(),
+      },
+      actions: <Type, Action<Intent>>{
+        _CellMenuIntent: CallbackAction<_CellMenuIntent>(
+          onInvoke: (_) {
+            widget.onFocusTap();
+            _showCellMenu();
+            return null;
+          },
+        ),
+      },
       onShowFocusHighlight: (focused) {
         if (focused) widget.onFocusTap();
       },

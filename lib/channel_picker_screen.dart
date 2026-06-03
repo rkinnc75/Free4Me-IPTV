@@ -223,7 +223,8 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
         ),
       );
 
-  Widget _buildTile(BuildContext context, Channel ch, bool scanOk) {
+  Widget _buildTile(BuildContext context, Channel ch, bool scanOk,
+      {bool autofocus = false}) {
     Widget logo = ch.image != null
         ? SizedBox(
             width: 40,
@@ -262,6 +263,7 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
         Theme.of(context).colorScheme.surfaceContainer,
       ),
       child: ListTile(
+        autofocus: autofocus, // fix252: first tile gets initial D-pad focus
         leading: logo,
         title: Text(
           ch.name,
@@ -292,7 +294,12 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
             child: DpadTextField(
               controller: _searchCtrl,
-              autofocus: true,
+              // fix252: do NOT autofocus the search field. On TV the focus
+              // should land on the first channel tile so the user can scroll
+              // immediately; pressing UP from the top row moves to the search
+              // bar (DpadTextField yields up/down to traversal). autofocus
+              // here previously trapped initial focus in the text field.
+              autofocus: false,
               decoration: InputDecoration(
                 hintText: 'Search channels…',
                 prefixIcon: const Icon(Icons.search),
@@ -324,10 +331,10 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
                       return Column(
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [header, _buildTile(context, ch, scanOk)],
+                        children: [header, _buildTile(context, ch, scanOk, autofocus: i == 0)],
                       );
                     }
-                    return _buildTile(context, ch, scanOk);
+                    return _buildTile(context, ch, scanOk, autofocus: i == 0);
                   },
                 ),
     );

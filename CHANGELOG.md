@@ -1,6 +1,23 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v1.25.5+252] - 2026-06-03
+
+**Three fixes:** changelog documentation (fix248) + TV D-pad cell menu (fix250) + TV channel selector focus (fix252).
+
+### Fixed
+- **fix248 — Changelog documentation** — Added missing detailed entries for releases 1.25.3 and 1.25.4 to `_changelog` in `whats_new_modal.dart`. These entries now appear in the "Full changelog" history and the "What's new" summary (1.25.4 release notes). Previously both versions fell back to placeholder text. Regenerated `version.json` with 1.25.4 release notes.
+- **fix250 — TV D-pad access to cell options menu** — On TV, once all cells in a multi-view grid were filled, the cell options menu (Replace channel / Full screen / Close) became unreachable because it was bound to `onLongPress` (touch only). Added D-pad shortcuts: `select`, `enter`, `gameButtonA`, and `contextMenu` keys now open the cell menu via `FocusableActionDetector`. Also improved the empty-cell "+" button: replaced `FloatingActionButton` with a focusable circular button that autofocuses on cell 0 with visible focus ring and highlights.
+- **fix252 — TV channel selector focus** — Channel picker's search field no longer autofocuses, so the first channel tile receives initial D-pad focus. Users can now scroll immediately with the D-pad; pressing UP from the top row moves focus into the search bar (via existing `DpadTextField` traversal). The "UP → search" plumbing already existed; fix252 unblocks it by stopping autofocus trapping.
+
+### Technical
+- **fix248**: Two edits to `lib/whats_new_modal.dart` (added 1.25.4 and 1.25.3 changelog entries); regenerated `version.json` via `scripts/update_version_json.py`
+- **fix250**: Five edits to `lib/multi_view_cell.dart` (services import, `_CellMenuIntent` class, `_addButtonFocused` state, D-pad shortcuts/actions on filled cells, focusable "+" on empty cells)
+- **fix252**: Four edits to `lib/channel_picker_screen.dart` (`autofocus: false` on search field, `autofocus` parameter on `_buildTile`, pass `autofocus: i == 0` at both call sites)
+- `flutter analyze --no-fatal-infos` clean (2 pre-existing tolerated INFOs)
+
+---
+
 ## [v1.25.4+246] - 2026-06-03
 
 **Two fixes:** EPG auto-match performance (fix244) + multi-view cell self-healing (fix246).
