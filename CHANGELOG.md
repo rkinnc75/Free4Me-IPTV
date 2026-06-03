@@ -1,6 +1,20 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v1.25.3+240] - 2026-06-03
+
+**Bug fix** — "Analyze playback & suggest settings" can recommend values outside the slider range.
+
+### Fixed
+- **Analyzer bounds mismatch** — `PlaybackAnalyzer.recommend()` was clamping suggestions to its own hardcoded numbers instead of the settings UI sliders' min/max. Example: `liveCacheSecs` could suggest up to 120 while the slider maxes at 60; `startupGraceMs` could suggest below 100 while the slider floor is 100.
+- **Solution** — introduce `SettingBounds` as the single source of truth for all playback setting min/max values; the analyzer now clamps to these bounds, which exactly match the current sliders.
+
+### Technical
+- New file: `lib/backend/setting_bounds.dart` (SettingBounds class with 5 pairs of min/max constants)
+- Modified: `lib/backend/playback_analyzer.dart` (import SettingBounds; 5 clamp sites updated)
+- Constants are device-dependent where applicable: `bufferSizeMax` is a getter returning `DeviceMemory.maxBufferSizeMb`
+- Future hardening: sliders can be migrated to read their min/max from SettingBounds for guaranteed lock-step (values already match, migration is mechanical)
+
 
 ## [v1.23.29+222] - 2026-06-02
 

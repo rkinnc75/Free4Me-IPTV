@@ -1,4 +1,5 @@
 import 'package:open_tv/backend/device_memory.dart';
+import 'package:open_tv/backend/setting_bounds.dart';
 import 'package:open_tv/models/settings.dart';
 
 // ── Data model ────────────────────────────────────────────────────────────────
@@ -243,7 +244,8 @@ class Recommender {
 
     // Rule A — frequent steady-state rebuffers → bigger cache + buffer
     if (agg.rebuffersPerHour >= 4) {
-      final newCache = (s.liveCacheSecs + 15).clamp(10, 120);
+      final newCache = (s.liveCacheSecs + 15)
+          .clamp(SettingBounds.liveCacheMin, SettingBounds.liveCacheMax);
       if (newCache > s.liveCacheSecs) {
         recs.add(SettingRecommendation(
           settingKey: 'liveCacheSecs',
@@ -257,7 +259,7 @@ class Recommender {
         ));
       }
       final newBuf = (s.bufferSizeMB + 64)
-          .clamp(16, DeviceMemory.maxBufferSizeMb);
+          .clamp(SettingBounds.bufferSizeMin, SettingBounds.bufferSizeMax);
       if (newBuf > s.bufferSizeMB) {
         recs.add(SettingRecommendation(
           settingKey: 'bufferSizeMB',
@@ -275,7 +277,8 @@ class Recommender {
     // Rule B — visible rebuffer right after start → widen startup grace
     if (agg.startupVisibleRebufferRate >= 0.4 &&
         s.startupGraceMs < 2000) {
-      final newGrace = (s.startupGraceMs + 700).clamp(0, 2500);
+      final newGrace = (s.startupGraceMs + 700).clamp(
+          SettingBounds.startupGraceMin, SettingBounds.startupGraceMax);
       recs.add(SettingRecommendation(
         settingKey: 'startupGraceMs',
         label: 'Startup grace (ms)',
@@ -291,7 +294,9 @@ class Recommender {
     if (agg.reconnectsWatchdogPerHour >= 2 &&
         agg.medianRebufferMs < 8000 &&
         s.bufferingWatchdogSecs < 20) {
-      final newWd = (s.bufferingWatchdogSecs + 5).clamp(5, 30);
+      final newWd = (s.bufferingWatchdogSecs + 5).clamp(
+          SettingBounds.bufferingWatchdogMin,
+          SettingBounds.bufferingWatchdogMax);
       recs.add(SettingRecommendation(
         settingKey: 'bufferingWatchdogSecs',
         label: 'Buffering watchdog (s)',
@@ -306,7 +311,8 @@ class Recommender {
 
     // Rule D — slow first frame → longer open timeout
     if (agg.medianFirstFrameMs >= 6000 && s.openTimeoutSecs < 20) {
-      final newTo = (s.openTimeoutSecs + 4).clamp(5, 30);
+      final newTo = (s.openTimeoutSecs + 4).clamp(
+          SettingBounds.openTimeoutMin, SettingBounds.openTimeoutMax);
       recs.add(SettingRecommendation(
         settingKey: 'openTimeoutSecs',
         label: 'Open timeout (s)',

@@ -1,7 +1,7 @@
 {
-  "latest": "1.25.2",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.25.2",
+  "latest": "1.25.3",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.25.3",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Diagnostics: added app-wide slow-query logging. When debug logging is enabled, any database statement taking 1000ms or longer is logged so you can identify performance issues."
+  "releaseNotes": "Version 1.25.3"
 }
