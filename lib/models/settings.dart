@@ -147,8 +147,7 @@ class Settings {
   ContentTypeFilter contentTypeFilter;
 
   /// Which search implementation to use for channel name queries.
-  /// Default: [SearchMethod.ftsAnd] — faster than phrase for multi-word
-  /// queries, same index as the original trigram method.
+  /// Default: [SearchMethod.inMemory] — fastest; served by ChannelSearchCache
   SearchMethod searchMethod;
 
   /// When true, channels and categories whose name or group name contains

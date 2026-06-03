@@ -1,7 +1,7 @@
 {
-  "latest": "1.25.3",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.25.3",
+  "latest": "1.25.4",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.25.4",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "Version 1.25.3"
+  "releaseNotes": "Version 1.25.4"
 }

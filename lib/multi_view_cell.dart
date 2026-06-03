@@ -113,6 +113,19 @@ class _MultiViewCellState extends State<MultiViewCell> {
   /// the player's startup watchdog. Dead streams open but never decode.
   Timer? _startupWatchdog;
 
+  /// fix246: after the fast transient retries are exhausted, a cell that
+  /// dropped mid-session (provider cut the stream after 20–60 min, common
+  /// for long multi-view sessions) used to stay dead until manual retry.
+  /// We now attempt a bounded SLOW recovery: up to [_recoverySlowMax]
+  /// re-opens at [_recoverySlowInterval] apart. The slow cadence is gentle
+  /// on the provider's connection budget (important with a 4-connection
+  /// account and four cells). After these are exhausted the cell shows the
+  /// error UI for good. Cancelled on dispose / channel change.
+  Timer? _recoveryTimer;
+  int _recoverySlowRetries = 0;
+  static const int _recoverySlowMax = 5;
+  static const Duration _recoverySlowInterval = Duration(seconds: 60);
+
   @override
   void initState() {
     super.initState();
@@ -138,8 +151,52 @@ class _MultiViewCellState extends State<MultiViewCell> {
 
   @override
   void dispose() {
+    _recoveryTimer?.cancel(); // fix246
+    _recoveryTimer = null;
     _disposeEngine();
     super.dispose();
+  }
+
+  /// fix246: schedule one slow recovery attempt [_recoverySlowInterval] from
+  /// now. Increments the slow-retry counter and shows a waiting message. If
+  /// the channel changes or the cell is disposed before it fires, the
+  /// generation token / timer cancel makes it a no-op. On the attempt it
+  /// re-opens via _startEngine(isRetry: true) so the fast-retry counter is
+  /// preserved; if that attempt also fails the error handler re-enters this
+  /// scheduler until [_recoverySlowMax] is reached, then surfaces the error.
+  void _scheduleSlowRecovery(Channel ch, int generation) {
+    if (!mounted || generation != _openGeneration) return;
+    _recoverySlowRetries++;
+    final attempt = _recoverySlowRetries;
+    final secs = _recoverySlowInterval.inSeconds;
+    AppLog.info(
+      'MultiViewCell: slow recovery $attempt/$_recoverySlowMax'
+      ' in ${secs}s cell=${widget.cellIndex}'
+      ' channel="${ch.name}"',
+    );
+    if (mounted) {
+      setState(() {
+        _retryMessage = 'Reconnecting (waiting ${secs}s)…';
+        _loading = true;
+        _error = false;
+      });
+    }
+    // Dispose the dead engine now so it isn't holding a provider connection
+    // open while we wait (matters with a small max_connections budget).
+    _disposeEngine();
+    _recoveryTimer?.cancel();
+    _recoveryTimer = Timer(_recoverySlowInterval, () {
+      if (!mounted) return;
+      AppLog.info(
+        'MultiViewCell: slow recovery attempt $attempt/$_recoverySlowMax'
+        ' cell=${widget.cellIndex} channel="${ch.name}"',
+      );
+      if (mounted) setState(() => _retryMessage = null);
+      // Reset the fast-retry counter so this attempt gets a full fast budget
+      // again, but keep the slow-retry counter (carried in the field).
+      _transientRetries = 0;
+      _startEngine(ch, isRetry: true);
+    });
   }
 
   void _disposeEngine() {
@@ -233,6 +290,11 @@ class _MultiViewCellState extends State<MultiViewCell> {
     if (!isRetry) {
       _transientRetries = 0;
       _lastTransientIncrementAt = null;
+      // fix246: a genuinely fresh start (new channel / user retry) clears the
+      // slow-recovery budget and cancels any pending slow-recovery attempt.
+      _recoverySlowRetries = 0;
+      _recoveryTimer?.cancel();
+      _recoveryTimer = null;
     }
     _lastErrorAt = null;
     _lastBufferingState = null;
@@ -404,6 +466,16 @@ class _MultiViewCellState extends State<MultiViewCell> {
       //    (observed: "Could not open codec." fired twice from cell 2).
       //    Guard so we only dispose / setState once.
       if (_error) return;
+      // fix246: fast retries exhausted. Before surfacing the permanent error
+      // UI, attempt a bounded SLOW recovery (up to _recoverySlowMax re-opens
+      // at _recoverySlowInterval). This self-heals long sessions where the
+      // provider drops a stream after 20–60 min. Only start the slow phase
+      // for transient errors; genuine permanent errors (auth/4xx/codec) go
+      // straight to the error UI.
+      if (transient && _recoverySlowRetries < _recoverySlowMax) {
+        _scheduleSlowRecovery(ch, generation);
+        return;
+      }
       setState(() { _error = true; _loading = false; });
       _disposeEngine();
     }));
@@ -442,6 +514,7 @@ class _MultiViewCellState extends State<MultiViewCell> {
           _lastErrorAt != null &&
           DateTime.now().difference(_lastErrorAt!).inSeconds > 15) {
         _transientRetries = 0;
+        _recoverySlowRetries = 0; // fix246: recovered & stable → fresh budget
         _lastErrorAt = null;
       }
 

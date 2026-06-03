@@ -1,6 +1,22 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v1.25.4+246] - 2026-06-03
+
+**Two fixes:** EPG auto-match performance (fix244) + multi-view cell self-healing (fix246).
+
+### Fixed
+- **fix244 — EPG auto-match scan 1.3s → sub-second** — Partial index `idx_epg_unmatched` on `channels(source_id)` with `WHERE media_type=0 AND epg_manual_override IS NULL AND epg_channel_id IS NULL` turns the unmatched-live-channel scan (runs during EPG refresh) from a `media_type` index scan into a targeted lookup. Pre-verified on a 320k catalog: query time 9.05ms → 2.25ms. Storage overhead negligible (index only covers unmatched rows).
+- **fix246 — Multi-view cells self-heal mid-session drops** — After exhausting fast transient retries (5 × 3s), cells now attempt bounded slow recovery: up to 5 re-opens at 60 s intervals, then permanent error UI. Each slow attempt gets a fresh fast budget. Gentle on provider connection limits (important for 4-connection accounts). If the stream recovers and plays stably for 15 s, both budgets reset and it can self-heal again. Cancelled on dispose / channel change. Pre-verified against the TV 2×2 scenario (cells dropped at +22, +28, +56 min).
+
+### Technical
+- **fix244**: Migration 19 in `lib/backend/db_factory.dart` (partial index creation)
+- **fix244**: Comment-only fix to default doc in `lib/models/settings.dart` (no code behavior change)
+- **fix246**: Five edits to `lib/multi_view_cell.dart`: new slow-recovery fields + scheduler; reset on fresh start & stable playback; call scheduler in transient give-up branch
+- `flutter analyze --no-fatal-infos` clean (2 pre-existing tolerated INFOs)
+
+---
+
 ## [v1.25.3+240] - 2026-06-03
 
 **Bug fix** — "Analyze playback & suggest settings" can recommend values outside the slider range.

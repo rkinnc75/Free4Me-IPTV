@@ -388,6 +388,19 @@ class DbFactory {
         await tx.execute(
             'CREATE INDEX IF NOT EXISTS index_channel_name_source '
             'ON channels(name, source_id);');
+      }))
+      // fix244: partial index for the EPG auto-match scan
+      // (getUnmatchedLiveChannels): WHERE source_id=? AND media_type=0
+      // AND epg_manual_override IS NULL AND epg_channel_id IS NULL. The
+      // partial WHERE indexes only the small set of still-unmatched live
+      // channels, so it is tiny and turns a media_type scan (~1.3s on a 2GB
+      // TV with a 320k catalog) into a targeted lookup.
+      ..add(SqliteMigration(19, (tx) async {
+        await tx.execute(
+            'CREATE INDEX IF NOT EXISTS idx_epg_unmatched '
+            'ON channels(source_id) '
+            'WHERE media_type = 0 AND epg_manual_override IS NULL '
+            'AND epg_channel_id IS NULL;');
       }));
     await migrations.migrate(db);
 
