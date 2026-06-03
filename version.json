@@ -1,7 +1,7 @@
 {
-  "latest": "1.23.26",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.26",
+  "latest": "1.23.27",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.27",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Build fix: unescaped apostrophe in 1.23.23 changelog broke the build. Escaped for Dart string safety."
+  "releaseNotes": "\u2022 Re-release: fix for unescaped apostrophe in 1.23.23 changelog entry. Build now succeeds."
 }

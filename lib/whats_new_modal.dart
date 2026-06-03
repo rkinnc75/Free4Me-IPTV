@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.23.27': [
+    'Re-release: fix for unescaped apostrophe in 1.23.23 changelog entry. Build now succeeds.',
+  ],
   '1.23.26': [
     'Build fix: unescaped apostrophe in 1.23.23 changelog broke the build. Escaped for Dart string safety.',
   ],
@@ -20,7 +23,7 @@ const _changelog = <String, List<String>>{
         'now back to ~145s for Aniel3000.',
   ],
   '1.23.23': [
-    'Fix: "What's New" showed stale changelog entries from old patch versions. '
+    'Fix: "What\'s New" showed stale changelog entries from old patch versions. '
         '1.23.22 displayed a 1.23.2-era note due to a string-prefix match bug. Now fixed to compare version components.',
   ],
   '1.23.22': [
