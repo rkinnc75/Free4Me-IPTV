@@ -1,9 +1,12 @@
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/utils.dart';
+import 'package:open_tv/backend/timed_db.dart';
 import 'package:sqlite_async/sqlite_async.dart';
 
 class DbFactory {
   static SqliteDatabase? _db;
+  // fix238: cached timing wrapper handed out by the `db` getter.
+  static TimedWriteContext? _timedDb;
 
   static Future<SqliteDatabase> _createDB() async {
     var db = SqliteDatabase(path: "${await Utils.appDir}/db.sqlite");
@@ -424,9 +427,13 @@ class DbFactory {
     return db;
   }
 
-  static Future<SqliteDatabase> get db async {
+  static Future<SqliteWriteContext> get db async {
     _db ??= await _createDB();
-    return _db!;
+    // fix238: hand callers a timing wrapper (slow-query logging) instead of the
+    // raw database. The wrapper exposes the SqliteWriteContext surface all
+    // callers use; the raw instance is retained in _db for lifecycle.
+    _timedDb ??= TimedWriteContext(_db!);
+    return _timedDb!;
   }
 }
 

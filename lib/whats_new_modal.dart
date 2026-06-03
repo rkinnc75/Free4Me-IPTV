@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.25.2': [
+    'Diagnostics: added app-wide slow-query logging. When debug logging is enabled, any database statement taking 1000ms or longer is logged so you can identify performance issues.',
+  ],
   '1.25.1': [
     'Fix: source refresh failed with a database error on this build. The refresh now completes correctly, and the channel-restore step is fast (an internal index was missing and is now created).',
   ],
