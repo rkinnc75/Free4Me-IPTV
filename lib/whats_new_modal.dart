@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.23.28': [
+    'CI: Release workflow now gates the APK build on analyze passing. If analyze fails, no build is scheduled.',
+  ],
   '1.23.27': [
     'Re-release: fix for unescaped apostrophe in 1.23.23 changelog entry. Build now succeeds.',
   ],

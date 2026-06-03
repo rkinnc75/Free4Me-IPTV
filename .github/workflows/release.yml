@@ -52,7 +52,39 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  analyze:
+    name: flutter analyze (gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.0'
+          channel: stable
+          cache: true
+
+      - name: flutter pub get
+        run: flutter pub get
+
+      - name: Verify version.json is up to date
+        run: |
+          set -euo pipefail
+          python3 scripts/update_version_json.py
+          if ! git diff --quiet version.json; then
+            echo "::error::version.json on the tagged commit is stale."
+            git --no-pager diff version.json
+            exit 1
+          fi
+          echo "version.json is current."
+
   build-and-release:
+    needs: analyze
     name: Build APK and publish release
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -188,9 +220,6 @@ jobs:
           restore-keys: |
             gradle-${{ runner.os }}-
             
-      - name: flutter analyze
-        run: flutter analyze --no-fatal-infos
-
       - name: flutter build apk --release
         env:
           # ubuntu-latest runners have 7 GB RAM. Earlier 2G cap caused

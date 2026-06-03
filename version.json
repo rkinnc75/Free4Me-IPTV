@@ -1,7 +1,7 @@
 {
-  "latest": "1.23.27",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.27",
+  "latest": "1.23.28",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.28",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Re-release: fix for unescaped apostrophe in 1.23.23 changelog entry. Build now succeeds."
+  "releaseNotes": "\u2022 CI: Release workflow now gates the APK build on analyze passing. If analyze fails, no build is scheduled."
 }
