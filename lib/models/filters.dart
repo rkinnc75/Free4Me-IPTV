@@ -30,7 +30,7 @@ class Filters {
     // Default true — AND mode is measurably faster than phrase for
     // multi-word queries (6s vs 17s on 54k channels). Superseded by
     this.useKeywords = true,
-    this.searchMethod = SearchMethod.ftsAnd,
+    this.searchMethod = SearchMethod.inMemory,
     this.safeMode = false,
   });
 

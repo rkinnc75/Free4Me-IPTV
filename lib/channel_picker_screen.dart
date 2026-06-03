@@ -84,7 +84,7 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
       mediaTypes: const [MediaType.livestream],
       viewType: ViewType.all,
       page: page,
-      searchMethod: s?.searchMethod ?? SearchMethod.ftsAnd,
+      searchMethod: s?.searchMethod ?? SearchMethod.inMemory,
       safeMode: s?.safeMode ?? false,
     );
   }

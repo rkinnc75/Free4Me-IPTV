@@ -191,7 +191,7 @@ class Settings {
     this.multiViewCells2x2 = ',,,',
     this.multiViewAutoRestoreChannels = true,
     this.contentTypeFilter = ContentTypeFilter.all,
-    this.searchMethod = SearchMethod.ftsAnd,
+    this.searchMethod = SearchMethod.inMemory,
     this.safeMode = false,
   });
 

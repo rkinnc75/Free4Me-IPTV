@@ -122,6 +122,48 @@ class Sql {
     };
   }
 
+  /// fix212: the FTS index/triggers are only needed for the FTS search methods
+  /// (ftsTrigram/ftsAnd). When the active method is inMemory or likeSubstring,
+  /// the per-row FTS trigram maintenance during a refresh is pure overhead.
+  /// This reconciles the trigger state to [ftsActive]:
+  ///   - ftsActive=false: drop the FTS sync triggers (inserts stay fast).
+  ///   - ftsActive=true : (re)create the triggers; if they were absent, the FTS
+  ///     index is stale, so rebuild it once from the content table first.
+  /// Called from a one-time boot check (main) and on every settings change
+  /// (SettingsService.updateSettings). Idempotent.
+  static Future<void> reconcileFtsTriggers(bool ftsActive) async {
+    final db = await DbFactory.db;
+    final existing = await db.getAll(
+      "SELECT name FROM sqlite_master WHERE type = 'trigger' "
+      "AND name IN ('channels_ai', 'channels_au', 'channels_ad')",
+    );
+    final triggersPresent = existing.length == 3;
+    if (ftsActive) {
+      if (triggersPresent) return;
+      // Triggers were absent => FTS index is stale. Rebuild once, then recreate.
+      await db.execute("INSERT INTO channels_fts(channels_fts) VALUES('rebuild');");
+      await db.execute('CREATE TRIGGER IF NOT EXISTS channels_ai '
+          'AFTER INSERT ON channels BEGIN '
+          'INSERT INTO channels_fts(rowid, name) VALUES (new.id, new.name); END;');
+      await db.execute('CREATE TRIGGER IF NOT EXISTS channels_ad '
+          'AFTER DELETE ON channels BEGIN '
+          "INSERT INTO channels_fts(channels_fts, rowid, name) "
+          "VALUES('delete', old.id, old.name); END;");
+      await db.execute('CREATE TRIGGER IF NOT EXISTS channels_au '
+          'AFTER UPDATE OF name ON channels BEGIN '
+          "INSERT INTO channels_fts(channels_fts, rowid, name) "
+          "VALUES('delete', old.id, old.name); "
+          'INSERT INTO channels_fts(rowid, name) VALUES (new.id, new.name); END;');
+    } else {
+      if (!triggersPresent && existing.isEmpty) {
+        return;
+      }
+      await db.execute('DROP TRIGGER IF EXISTS channels_ai;');
+      await db.execute('DROP TRIGGER IF EXISTS channels_au;');
+      await db.execute('DROP TRIGGER IF EXISTS channels_ad;');
+    }
+  }
+
   /// fix174.3: bulk upsert for large imports. Same ON CONFLICT key as
   /// insertChannel (fix174.1). Does NOT read last_insert_rowid().
   static Future<void> Function(SqliteWriteContext, Map<String, String>)

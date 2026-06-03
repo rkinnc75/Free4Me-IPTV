@@ -479,7 +479,7 @@ class SettingsIo {
     if (m['searchMethod'] is int) {
       s.searchMethod = SearchMethod.values
               .elementAtOrNull(m['searchMethod'] as int) ??
-          SearchMethod.ftsAnd;
+          SearchMethod.inMemory;
     }
     if (m['safeMode'] is bool) s.safeMode = m['safeMode'];
 

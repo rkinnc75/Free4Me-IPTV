@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.23.25': [
+    'Default search method is now In-Memory (fastest). FTS triggers are created on-demand only when '
+        'an FTS search method is active; otherwise they are absent, making refresh inserts naturally fast. '
+        'Switch back to FTS from Settings any time.',
+  ],
   '1.23.24': [
     'Revert: multi-source refresh regression in 1.23.22 (fix206) is reverted. '
         'Single-source refresh on large catalogs was 6x slower due to whole-table index rebuild; '

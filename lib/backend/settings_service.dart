@@ -197,7 +197,7 @@ class SettingsService {
     if (sm != null) {
       settings.searchMethod = SearchMethod.values
               .elementAtOrNull(int.tryParse(sm) ?? 0) ??
-          SearchMethod.ftsAnd;
+          SearchMethod.inMemory;
     }
 
     final sm70 = settingsMap[safeModeProp];
@@ -284,6 +284,13 @@ class SettingsService {
     settingsMap[safeModeProp] = (settings.safeMode ? 1 : 0).toString();
 
     await Sql.updateSettings(settingsMap);
+    // fix212: keep FTS triggers in sync with the chosen search method.
+    // Idempotent: drops triggers for non-FTS methods, (re)creates+rebuilds
+    // for FTS methods. Cheap when already in the right state.
+    await Sql.reconcileFtsTriggers(
+      settings.searchMethod == SearchMethod.ftsAnd ||
+          settings.searchMethod == SearchMethod.ftsTrigram,
+    );
     _cached = settings; // keep the in-memory copy in sync
     AppLog.info(
       'Settings: saved'

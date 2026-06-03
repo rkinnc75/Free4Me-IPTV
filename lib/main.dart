@@ -49,6 +49,15 @@ Future<void> main() async {
   await DeviceMemory.init();
   final settings = await SettingsService.reload();
 
+  // fix212: one-time boot reconcile of FTS triggers to the active search method.
+  // The DB migration creates the triggers on every install, but they are only
+  // needed for FTS search methods; drop them otherwise so refresh inserts stay
+  // fast. Unawaited — not on the critical render path.
+  unawaited(Sql.reconcileFtsTriggers(
+    settings.searchMethod == SearchMethod.ftsAnd ||
+        settings.searchMethod == SearchMethod.ftsTrigram,
+  ));
+
   // unawaited — startup continues immediately; the cache is ready by the time
   // the user first types in the search box.
   if (settings.searchMethod == SearchMethod.inMemory) {
