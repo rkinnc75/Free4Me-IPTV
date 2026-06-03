@@ -1048,9 +1048,13 @@ class Sql {
       }
       await tx.execute('CREATE INDEX _preserve_restore_idx '
           'ON _preserve_restore (name, source_id)');
-      // Single set-based join. CASE handles the manual vs auto epg semantics.
+      // fix230: pin channels_unique. On-device the planner otherwise picks
+      // index_channel_source_id (source_id only) for the name+source_id match,
+      // turning the join into a scan of ALL same-source channels per temp row
+      // (~21,794 x 48,720 = ~1e9 comparisons → ~130s, reproduced). INDEXED BY
+      // forces the (name, source_id) unique index → ~37ms.
       await tx.execute('''
-        UPDATE channels SET
+        UPDATE channels INDEXED BY channels_unique SET
           favorite            = p.favorite,
           last_watched        = p.last_watched,
           epg_channel_id      = CASE

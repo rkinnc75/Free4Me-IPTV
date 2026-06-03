@@ -5,6 +5,7 @@ import 'package:open_tv/widgets/dpad_text_field.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
+import 'package:open_tv/source_color_picker.dart';
 import 'package:open_tv/backend/stream_scanner.dart';
 import 'package:open_tv/models/channel.dart';
 import 'package:open_tv/models/filters.dart';
@@ -63,10 +64,27 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
 
   List<Channel>? _cachedEmptyQuery;
 
+  // fix228: per-source pastel tag colors, so the multi-view channel picker
+  // tints rows by source like the live picker (fix196). Map<sourceId, ARGB?>.
+  Map<int, int?> _sourceColors = {};
+
   @override
   void initState() {
     super.initState();
+    _loadSourceColors();
     _loadInitialBrowse();
+  }
+
+  // fix228: load source tag colors once (mirrors home.dart fix200).
+  Future<void> _loadSourceColors() async {
+    final sources = await Sql.getSources();
+    if (!mounted) return;
+    setState(() {
+      _sourceColors = {
+        for (final src in sources)
+          if (src.id != null) src.id!: src.color,
+      };
+    });
   }
 
   @override
@@ -236,22 +254,30 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
       );
     }
 
-    return ListTile(
-      leading: logo,
-      title: Text(
-        ch.name,
-        style: scanOk ? const TextStyle(color: Colors.greenAccent) : null,
+    // fix228: tint the row by source tag color (~35%), matching the live
+    // picker's ChannelTile (fix196). Null color = surface unchanged.
+    return Container(
+      color: SourcePalette.tintOver(
+        _sourceColors[ch.sourceId],
+        Theme.of(context).colorScheme.surfaceContainer,
       ),
-      trailing: ch.favorite
-          ? const Icon(Icons.star, color: Colors.amberAccent, size: 16)
-          : null,
-      subtitle: ch.group != null
-          ? Text(
-              ch.group!,
-              style: Theme.of(context).textTheme.bodySmall,
-            )
-          : null,
-      onTap: () => Navigator.of(context).pop(ch),
+      child: ListTile(
+        leading: logo,
+        title: Text(
+          ch.name,
+          style: scanOk ? const TextStyle(color: Colors.greenAccent) : null,
+        ),
+        trailing: ch.favorite
+            ? const Icon(Icons.star, color: Colors.amberAccent, size: 16)
+            : null,
+        subtitle: ch.group != null
+            ? Text(
+                ch.group!,
+                style: Theme.of(context).textTheme.bodySmall,
+              )
+            : null,
+        onTap: () => Navigator.of(context).pop(ch),
+      ),
     );
   }
 

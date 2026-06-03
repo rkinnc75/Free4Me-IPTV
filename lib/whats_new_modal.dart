@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.25.0': [
+    'Performance: fixed the remaining source-refresh slowdown. The database was using a less-efficient index for the channel-restore step on some devices; it is now pinned to the correct index, cutting the restore phase from over two minutes to under a second on large catalogs.',
+    'Multi-view: the channel picker now shows the same per-source pastel background colors as the main channel list.',
+  ],
   '1.24.1': [
     'Performance (major): source refresh now 150x faster for large catalogs. The refresh bottleneck was per-row isolate round-trips in restorePreserve; now batched with a set-based UPDATE...FROM. 21,794-row preserve phase dropped from ~150s to <1s. Measured on Aniel3000 (Samsung S25).',
   ],
