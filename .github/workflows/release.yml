@@ -46,7 +46,9 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  # fix224: shared group across analyze.yml + release.yml so a combined
+  # commit+tag push does not run them simultaneously — they queue instead.
+  group: free4me-ci-${{ github.sha }}
   cancel-in-progress: false
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true

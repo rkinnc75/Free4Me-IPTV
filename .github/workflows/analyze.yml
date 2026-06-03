@@ -16,6 +16,12 @@ on:
     branches:
       - main
 
+concurrency:
+  # fix224: shared group with release.yml so the two never run concurrently
+  # for the same commit (a combined commit+tag push triggers both).
+  group: free4me-ci-${{ github.sha }}
+  cancel-in-progress: false
+
 jobs:
   analyze:
     name: flutter analyze
