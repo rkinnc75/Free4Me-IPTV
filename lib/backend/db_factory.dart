@@ -373,6 +373,18 @@ class DbFactory {
       // fix196: per-source tag color (ARGB int; null = no tint).
       ..add(SqliteMigration(17, (tx) async {
         await tx.execute('ALTER TABLE sources ADD COLUMN color INTEGER;');
+      }))
+      // fix236: (name, source_id) index for the refresh restore-preserve join.
+      // Migrations 14/15 dropped the old channels_unique(name, source_id)
+      // index (uniqueness moved to provider stream/series ids), leaving the
+      // name+source_id match in restorePreserve with only single-column
+      // indexes — the planner fell back to source_id-only and scanned all
+      // same-source channels per row (~134s on a 21,794-row preserve set).
+      // Non-unique (display names repeat across a provider's catalog).
+      ..add(SqliteMigration(18, (tx) async {
+        await tx.execute(
+            'CREATE INDEX IF NOT EXISTS index_channel_name_source '
+            'ON channels(name, source_id);');
       }));
     await migrations.migrate(db);
 
@@ -383,6 +395,24 @@ class DbFactory {
       AppLog.info('Sqlite: runtime version=${row.columnAt(0)}');
     } catch (_) {
       // Non-fatal; the rest of the app still works without the log line.
+    }
+
+    // fix236: one-shot read-only index inventory. Logs which indexes actually
+    // exist on the channels/groups/sources tables of THIS (possibly long-
+    // upgraded) database, so a bug report shows real on-device index state
+    // rather than what current migration source implies. Read-only — creates
+    // and drops nothing. Helps catch any index a past migration removed/renamed.
+    try {
+      final idx = await db.getAll(
+        "SELECT name, tbl_name FROM sqlite_master WHERE type = 'index' "
+        "AND tbl_name IN ('channels', 'groups', 'sources') "
+        "ORDER BY tbl_name, name",
+      );
+      final listed =
+          idx.map((r) => '${r.columnAt(1)}.${r.columnAt(0)}').join(', ');
+      AppLog.info('Sqlite indexes (channels/groups/sources): $listed');
+    } catch (_) {
+      // Non-fatal diagnostic.
     }
 
     // Raise WAL auto-checkpoint from 1000 pages (4MB) to 8000 pages

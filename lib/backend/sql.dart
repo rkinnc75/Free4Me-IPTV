@@ -1048,13 +1048,15 @@ class Sql {
       }
       await tx.execute('CREATE INDEX _preserve_restore_idx '
           'ON _preserve_restore (name, source_id)');
-      // fix230: pin channels_unique. On-device the planner otherwise picks
-      // index_channel_source_id (source_id only) for the name+source_id match,
-      // turning the join into a scan of ALL same-source channels per temp row
-      // (~21,794 x 48,720 = ~1e9 comparisons → ~130s, reproduced). INDEXED BY
-      // forces the (name, source_id) unique index → ~37ms.
+      // fix236: match on (name, source_id) using index_channel_name_source
+      // (created in migration 18). The old fix230 hint `INDEXED BY
+      // channels_unique` referenced an index that migrations 14/15 (fix174/178)
+      // DROPPED — re-keying uniqueness to provider stream/series ids — so it
+      // threw "no such index". With a real (name, source_id) index present the
+      // planner picks it automatically (no hint needed): ~25ms vs ~134s when it
+      // fell back to the source_id-only index.
       await tx.execute('''
-        UPDATE channels INDEXED BY channels_unique SET
+        UPDATE channels SET
           favorite            = p.favorite,
           last_watched        = p.last_watched,
           epg_channel_id      = CASE

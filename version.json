@@ -1,7 +1,7 @@
 {
-  "latest": "1.25.0",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.25.0",
+  "latest": "1.25.1",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.25.1",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Performance: fixed the remaining source-refresh slowdown. The database was using a less-efficient index for the channel-restore step on some devices; it is now pinned to the correct index, cutting the restore phase from over two minutes to under a second on large catalogs.\n\u2022 Multi-view: the channel picker now shows the same per-source pastel background colors as the main channel list."
+  "releaseNotes": "\u2022 Fix: source refresh failed with a database error on this build. The refresh now completes correctly, and the channel-restore step is fast (an internal index was missing and is now created)."
 }
