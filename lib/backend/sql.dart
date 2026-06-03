@@ -1,5 +1,4 @@
 import 'dart:collection';
-import 'dart:convert';
 
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/playback_analyzer.dart';
@@ -120,68 +119,6 @@ class Sql {
       ]);
       memory['lastChannelId'] =
           (await tx.get("SELECT last_insert_rowid()")).columnAt(0).toString();
-    };
-  }
-
-  /// fix206: bulk-load optimization. Before a large reinsert, drop the
-  /// NON-UNIQUE secondary indexes on channels and disable the FTS sync trigger,
-  /// so each inserted row does not pay per-row b-tree maintenance + a trigram
-  /// FTS insert. The dropped indexes' exact CREATE SQL is captured from
-  /// sqlite_master and stashed in [memory] for verbatim recreation afterward.
-  /// UNIQUE indexes (channels_unique + the partial unique indexes) are KEPT —
-  /// the bulk INSERT's ON CONFLICT depends on channels_unique, and the partials
-  /// guard integrity. Measured ~2.6x faster on 60k rows (seeded test).
-  static Future<void> Function(SqliteWriteContext, Map<String, String>)
-      dropChannelsBulkIndexes() {
-    return (SqliteWriteContext tx, Map<String, String> memory) async {
-      final rows = await tx.getAll(
-        "SELECT name, sql FROM sqlite_master "
-        "WHERE type = 'index' AND tbl_name = 'channels' "
-        "AND sql IS NOT NULL "
-        "AND name NOT IN (SELECT name FROM sqlite_master "
-        "  WHERE type = 'index' AND sql LIKE 'CREATE UNIQUE%')",
-      );
-      final captured = <String>[];
-      for (final r in rows) {
-        final name = r.columnAt(0) as String;
-        final sql = r.columnAt(1) as String;
-        captured.add(sql);
-        await tx.execute('DROP INDEX IF EXISTS $name;');
-      }
-      memory['fix206_droppedIndexSql'] = jsonEncode(captured);
-      await tx.execute('DROP TRIGGER IF EXISTS channels_ai;');
-      await tx.execute('DROP TRIGGER IF EXISTS channels_au;');
-      await tx.execute('DROP TRIGGER IF EXISTS channels_ad;');
-    };
-  }
-
-  /// fix206: after the bulk reinsert, recreate the non-unique indexes verbatim
-  /// (from the SQL captured in [memory]), rebuild the external-content FTS index
-  /// in one pass, and restore the FTS sync triggers.
-  static Future<void> Function(SqliteWriteContext, Map<String, String>)
-      restoreChannelsBulkIndexes() {
-    return (SqliteWriteContext tx, Map<String, String> memory) async {
-      final raw = memory['fix206_droppedIndexSql'];
-      if (raw != null) {
-        final List<dynamic> sqls = jsonDecode(raw) as List<dynamic>;
-        for (final sql in sqls) {
-          await tx.execute(sql as String);
-        }
-      }
-      await tx.execute(
-          "INSERT INTO channels_fts(channels_fts) VALUES('rebuild');");
-      await tx.execute('CREATE TRIGGER IF NOT EXISTS channels_ai '
-          'AFTER INSERT ON channels BEGIN '
-          'INSERT INTO channels_fts(rowid, name) VALUES (new.id, new.name); END;');
-      await tx.execute('CREATE TRIGGER IF NOT EXISTS channels_ad '
-          'AFTER DELETE ON channels BEGIN '
-          "INSERT INTO channels_fts(channels_fts, rowid, name) "
-          "VALUES('delete', old.id, old.name); END;");
-      await tx.execute('CREATE TRIGGER IF NOT EXISTS channels_au '
-          'AFTER UPDATE OF name ON channels BEGIN '
-          "INSERT INTO channels_fts(channels_fts, rowid, name) "
-          "VALUES('delete', old.id, old.name); "
-          'INSERT INTO channels_fts(rowid, name) VALUES (new.id, new.name); END;');
     };
   }
 

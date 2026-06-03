@@ -6,6 +6,15 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.23.24': [
+    'Revert: multi-source refresh regression in 1.23.22 (fix206) is reverted. '
+        'Single-source refresh on large catalogs was 6x slower due to whole-table index rebuild; '
+        'now back to ~145s for Aniel3000.',
+  ],
+  '1.23.23': [
+    'Fix: "What's New" showed stale changelog entries from old patch versions. '
+        '1.23.22 displayed a 1.23.2-era note due to a string-prefix match bug. Now fixed to compare version components.',
+  ],
   '1.23.22': [
     'Performance: source refresh is now ~2.6x faster. Non-unique indexes and FTS trigger '
         'are dropped during bulk insert, recreated once when complete. 271k-row refresh '
@@ -1322,11 +1331,23 @@ const _changelog = <String, List<String>>{
   ],
 };
 
-/// Returns all changelog entries whose version key is a prefix of [version].
+/// Returns the changelog entries that apply to [version].
+/// fix208: match on dot-delimited version COMPONENTS, not a raw string prefix.
+/// The old `version.startsWith(key)` wrongly matched e.g. key "1.23.2" against
+/// running "1.23.22" (string prefix), leaking an old release's notes into a
+/// newer version's "What's New". A key matches only if it equals the version
+/// exactly, OR it is a minor-only key (major.minor) and the version is a patch
+/// within that minor (starts with key + ".").
 List<MapEntry<String, List<String>>> _entriesForVersion(String version) {
-  return _changelog.entries
-      .where((e) => version.startsWith(e.key))
-      .toList();
+  // Defensive: drop any build suffix (e.g. "1.23.22+208" -> "1.23.22").
+  final v = version.split('+').first;
+  return _changelog.entries.where((e) {
+    final key = e.key;
+    if (key == v) return true;
+    final parts = key.split('.');
+    if (parts.length == 2 && v.startsWith('$key.')) return true;
+    return false;
+  }).toList();
 }
 
 /// All versions sorted newest-first using semver-style comparison.

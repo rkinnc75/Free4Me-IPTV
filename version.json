@@ -1,7 +1,7 @@
 {
-  "latest": "1.23.22",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.22",
+  "latest": "1.23.24",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.24",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Performance: source refresh is now ~2.6x faster. Non-unique indexes and FTS trigger are dropped during bulk insert, recreated once when complete. 271k-row refresh now takes ~3 minutes instead of ~8.5."
+  "releaseNotes": "\u2022 Revert: multi-source refresh regression in 1.23.22 (fix206) is reverted. Single-source refresh on large catalogs was 6x slower due to whole-table index rebuild; now back to ~145s for Aniel3000."
 }
