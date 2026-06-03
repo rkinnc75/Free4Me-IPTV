@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:convert';
+import 'dart:io';
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/export_server.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -1061,6 +1062,65 @@ class _SettingsState extends State<SettingsView> {
       ),
     );
     await server.stop();
+  }
+
+  // fix222: long-press on "Export log file" exports the raw Xtream source
+  // dumps (xtream_dump_*.json written during refresh when debug logging is on),
+  // concatenated into one text file with delimiters so a single SAF save
+  // captures all of them. Diagnostic aid for refresh-perf investigation.
+  Future<void> _exportSourceDumps() async {
+    final dir = await Utils.appDir;
+    final d = Directory(dir);
+    final dumps = <File>[];
+    if (await d.exists()) {
+      await for (final e in d.list()) {
+        if (e is File &&
+            e.path.contains('xtream_dump_') &&
+            e.path.endsWith('.json')) {
+          dumps.add(e);
+        }
+      }
+    }
+    if (!mounted) return;
+    if (dumps.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'No source dumps found. Enable debug logging, refresh a source, '
+              'then try again.'),
+        ),
+      );
+      return;
+    }
+    final buf = StringBuffer();
+    for (final f in dumps) {
+      final name = f.path.split(Platform.pathSeparator).last;
+      buf.writeln('===== FILE: $name =====');
+      buf.writeln(await f.readAsString());
+      buf.writeln();
+    }
+    if (!mounted) return;
+    final isTV = await DeviceDetector.isTV();
+    if (!mounted) return;
+    final stamp = SettingsIo.exportStamp(DateTime.now());
+    if (isTV) {
+      await _showExportServerDialog([
+        ExportItem(
+          key: 'sourcedump',
+          filename: 'free4me-source-dump-$stamp.txt',
+          label: 'Raw source dumps',
+          bytes: utf8.encode(buf.toString()),
+          contentType: 'text/plain; charset=utf-8',
+        ),
+      ], capturedAt: stamp);
+    } else {
+      await SettingsIo.exportStringToFile(
+        // ignore: use_build_context_synchronously
+        context,
+        content: buf.toString(),
+        suggestedName: 'free4me-source-dump-$stamp.txt',
+      );
+    }
   }
 
   // fix158: build backup + log payloads and serve via LAN (TV only).
@@ -2547,7 +2607,8 @@ class _SettingsState extends State<SettingsView> {
                     leading: const Icon(Icons.download_outlined),
                     title: const Text("Export log file"),
                     subtitle: const Text(
-                      "Save the debug log to a file you can share",
+                      "Tap to save the debug log. Long-press to export raw "
+                      "source dumps (diagnostic).",
                     ),
                     onTap: settings.debugLogging
                         ? () async {
@@ -2577,6 +2638,12 @@ class _SettingsState extends State<SettingsView> {
                                     'free4me_log-${SettingsIo.exportStamp(DateTime.now())}.txt',
                               );
                             }
+                          }
+                        : null,
+                    // fix222: long-press exports the raw source dumps (diagnostic).
+                    onLongPress: settings.debugLogging
+                        ? () async {
+                            await _exportSourceDumps();
                           }
                         : null,
                   ),

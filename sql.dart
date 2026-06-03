@@ -22,34 +22,19 @@ import 'package:sqlite_async/sqlite_async.dart';
 const int pageSize = 36;
 const int importBatchSize = 500;
 // fix174.3: bulk insert binds 13 params/row; 60×13=780 < 999 (safe on all engines)
-// fix194: 60 -> 1000. Each bulk INSERT carries 1000 rows = 13,000 params,
-// well under SQLite's SQLITE_MAX_VARIABLE_NUMBER (32,766). Cuts a ~271k-row
-// Xtream refresh from ~4,516 INSERT statements to ~271, the dominant cost
-// of the wipe-then-reinsert window. Verified via seeded 1000-row upsert test.
-const int bulkInsertRows = 1000;
+const int bulkInsertRows = 60;
 
 class Sql {
   static Future<void> commitWrite(
       List<Future<void> Function(SqliteWriteContext, Map<String, String>)>
           commits,
-      {Map<String, String>? memory,
-      void Function(int closureIndex, int millis)? onClosureTimed}) async {
+      {Map<String, String>? memory}) async {
     if (commits.isEmpty) return;
     var db = await DbFactory.db;
     final shared = memory ?? <String, String>{};
     await db.writeTransaction((tx) async {
-      var idx = 0;
       for (var commit in commits) {
-        if (onClosureTimed != null) {
-          // fix222: time each closure to locate the on-device slow phase.
-          final sw = Stopwatch()..start();
-          await commit(tx, shared);
-          sw.stop();
-          onClosureTimed(idx, sw.elapsedMilliseconds);
-        } else {
-          await commit(tx, shared);
-        }
-        idx++;
+        await commit(tx, shared);
       }
     });
   }
@@ -64,80 +49,11 @@ class Sql {
   }) async {
     if (commits.isEmpty) return;
     final shared = memory ?? <String, String>{};
-    // fix222: per-closure timing inside the single write transaction, to locate
-    // the on-device refresh slowness. The exact SQL runs in ~5s in the real
-    // sqlite_async package on a file DB, but the device takes minutes — so the
-    // cost is closure/round-trip level, not the query logic. Logs every closure
-    // slower than 100ms plus a per-run summary. Logging only; no behavior change.
-    // (Over-instrumented on purpose for diagnosis; trim later.)
-    final swTotal = Stopwatch()..start();
-    var batchIndex = 0;
-    var slowCount = 0;
     for (var i = 0; i < commits.length; i += batchSize) {
       final end = (i + batchSize < commits.length) ? i + batchSize : commits.length;
-      final swBatch = Stopwatch()..start();
-      await commitWrite(commits.sublist(i, end), memory: shared,
-          onClosureTimed: (idx, ms) {
-        if (ms >= 100) {
-          slowCount++;
-          AppLog.info('Sql.commitWriteBatched: closure ${i + idx} '
-              'took ${ms}ms');
-        }
-      });
-      swBatch.stop();
-      AppLog.info('Sql.commitWriteBatched: batch $batchIndex '
-          'closures=${end - i} (through $end/${commits.length}) '
-          'took ${swBatch.elapsedMilliseconds}ms');
-      batchIndex++;
+      await commitWrite(commits.sublist(i, end), memory: shared);
       onBatchCommitted?.call(end);
     }
-    swTotal.stop();
-    AppLog.info('Sql.commitWriteBatched: DONE ${commits.length} closures '
-        'in $batchIndex batches, total ${swTotal.elapsedMilliseconds}ms '
-        '($slowCount closures >=100ms, bulkInsertRows=$bulkInsertRows, '
-        'batchSize=$batchSize)');
-  }
-
-  /// fix222: one-shot diagnostic. Logs EXPLAIN QUERY PLAN for the two
-  /// index-sensitive refresh statements (the per-row restorePreserve UPDATE and
-  /// the updateGroups UPDATE+correlated-subquery) so the log shows whether they
-  /// use an index or do a table scan ON-DEVICE. Called once per refresh, NOT
-  /// per row — does not affect timing. SQLite has EXPLAIN QUERY PLAN (index
-  /// usage) but not EXPLAIN ANALYZE. Logging only.
-  static Future<void> logRefreshQueryPlans(int sourceId) async {
-    final db = await DbFactory.db;
-    Future<void> plan(String label, String sql, List<Object?> params) async {
-      try {
-        final rows = await db.getAll('EXPLAIN QUERY PLAN $sql', params);
-        final detail = rows.map((r) => r['detail']).join(' | ');
-        AppLog.info('fix222 QUERYPLAN [$label]: $detail');
-      } catch (e) {
-        AppLog.warn('fix222 QUERYPLAN [$label] failed: $e');
-      }
-    }
-
-    await plan(
-      'restorePreserve.update',
-      'UPDATE channels SET favorite = ?, last_watched = ?, '
-          'epg_channel_id = COALESCE(epg_channel_id, ?), '
-          'epg_manual_override = NULL, '
-          'stream_validated = COALESCE(?, stream_validated) '
-          'WHERE name = ? AND source_id = ?',
-      [0, null, null, null, '__plan_probe__', sourceId],
-    );
-    await plan(
-      'updateGroups.update',
-      'UPDATE channels SET group_id = (SELECT id FROM groups '
-          'WHERE groups.name = channels.group_name '
-          'AND groups.source_id = ? LIMIT 1) WHERE source_id = ?',
-      [sourceId, sourceId],
-    );
-    await plan(
-      'updateGroups.insertSelect',
-      'SELECT group_name, image, media_type FROM channels '
-          'WHERE source_id = ? GROUP BY group_name',
-      [sourceId],
-    );
   }
 
   static Future<void> Function(SqliteWriteContext, Map<String, String> memory)
@@ -150,7 +66,8 @@ class Sql {
           catchup_type, catchup_source, catchup_days
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT DO UPDATE SET
+        ON CONFLICT (source_id, media_type, COALESCE(stream_id, -1), COALESCE(series_id, ''))
+        DO UPDATE SET
           url = excluded.url,
           group_name = excluded.group_name,
           media_type = excluded.media_type,
@@ -187,48 +104,6 @@ class Sql {
     };
   }
 
-  /// fix212: the FTS index/triggers are only needed for the FTS search methods
-  /// (ftsTrigram/ftsAnd). When the active method is inMemory or likeSubstring,
-  /// the per-row FTS trigram maintenance during a refresh is pure overhead.
-  /// This reconciles the trigger state to [ftsActive]:
-  ///   - ftsActive=false: drop the FTS sync triggers (inserts stay fast).
-  ///   - ftsActive=true : (re)create the triggers; if they were absent, the FTS
-  ///     index is stale, so rebuild it once from the content table first.
-  /// Called from a one-time boot check (main) and on every settings change
-  /// (SettingsService.updateSettings). Idempotent.
-  static Future<void> reconcileFtsTriggers(bool ftsActive) async {
-    final db = await DbFactory.db;
-    final existing = await db.getAll(
-      "SELECT name FROM sqlite_master WHERE type = 'trigger' "
-      "AND name IN ('channels_ai', 'channels_au', 'channels_ad')",
-    );
-    final triggersPresent = existing.length == 3;
-    if (ftsActive) {
-      if (triggersPresent) return;
-      // Triggers were absent => FTS index is stale. Rebuild once, then recreate.
-      await db.execute("INSERT INTO channels_fts(channels_fts) VALUES('rebuild');");
-      await db.execute('CREATE TRIGGER IF NOT EXISTS channels_ai '
-          'AFTER INSERT ON channels BEGIN '
-          'INSERT INTO channels_fts(rowid, name) VALUES (new.id, new.name); END;');
-      await db.execute('CREATE TRIGGER IF NOT EXISTS channels_ad '
-          'AFTER DELETE ON channels BEGIN '
-          "INSERT INTO channels_fts(channels_fts, rowid, name) "
-          "VALUES('delete', old.id, old.name); END;");
-      await db.execute('CREATE TRIGGER IF NOT EXISTS channels_au '
-          'AFTER UPDATE OF name ON channels BEGIN '
-          "INSERT INTO channels_fts(channels_fts, rowid, name) "
-          "VALUES('delete', old.id, old.name); "
-          'INSERT INTO channels_fts(rowid, name) VALUES (new.id, new.name); END;');
-    } else {
-      if (!triggersPresent && existing.isEmpty) {
-        return;
-      }
-      await db.execute('DROP TRIGGER IF EXISTS channels_ai;');
-      await db.execute('DROP TRIGGER IF EXISTS channels_au;');
-      await db.execute('DROP TRIGGER IF EXISTS channels_ad;');
-    }
-  }
-
   /// fix174.3: bulk upsert for large imports. Same ON CONFLICT key as
   /// insertChannel (fix174.1). Does NOT read last_insert_rowid().
   static Future<void> Function(SqliteWriteContext, Map<String, String>)
@@ -256,7 +131,8 @@ class Sql {
           catchup_type, catchup_source, catchup_days
         )
         VALUES $values
-        ON CONFLICT DO UPDATE SET
+        ON CONFLICT (source_id, media_type, COALESCE(stream_id, -1), COALESCE(series_id, ''))
+        DO UPDATE SET
           url = excluded.url,
           group_name = excluded.group_name,
           media_type = excluded.media_type,
@@ -737,7 +613,6 @@ class Sql {
   static Source rowToSource(Row row) {
     // Column order: id(0) name(1) source_type(2) url(3) username(4)
     //   password(5) enabled(6) epg_url(7) default_engine(8)
-    //   max_connections(9)  ← fix184    color(10)  ← fix196
     return Source(
       id: row.columnAt(0),
       name: row.columnAt(1),
@@ -748,8 +623,6 @@ class Sql {
       enabled: row.columnAt(6) == 1,
       epgUrl: row.columnAt(7) as String?,
       defaultEngine: EngineType.fromJson(row.columnAt(8) as String?),
-      maxConnections: row.columnAt(9) as int?,
-      color: row.columnAt(10) as int?,
     );
   }
 
@@ -841,8 +714,7 @@ class Sql {
     var db = await DbFactory.db;
     await db.execute('''
       UPDATE sources
-      SET url = ?, username = ?, password = ?, default_engine = ?,
-          max_connections = ?, color = ?
+      SET url = ?, username = ?, password = ?, default_engine = ?
       WHERE id = ?
     ''', [
       source.url,
@@ -851,8 +723,6 @@ class Sql {
       source.defaultEngine == null || source.defaultEngine == EngineType.auto
           ? null
           : source.defaultEngine!.toJson(),
-      source.maxConnections,
-      source.color,
       source.id,
     ]);
   }
@@ -1649,14 +1519,6 @@ class Sql {
     AppLog.info('Sql.insertPlaybackMetrics: session=${m.sessionStart} '
         'minutes=${m.sessionMinutes.toStringAsFixed(1)} '
         'streams=${m.streamsOpened} rebuffers=${m.totalRebuffers}');
-  }
-
-  /// fix180: wipe all stored Analyze/Suggest sessions — called once per
-  /// new version boot so suggestions aren't biased by pre-upgrade sessions.
-  static Future<void> clearPlaybackMetrics() async {
-    final db = await DbFactory.db;
-    await db.execute('DELETE FROM playback_metrics');
-    AppLog.info('Sql.clearPlaybackMetrics: playback_metrics truncated');
   }
 
   /// Aggregate all stored sessions into a single weighted summary.

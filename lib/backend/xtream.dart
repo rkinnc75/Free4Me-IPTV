@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/sql.dart';
+import 'package:open_tv/backend/utils.dart';
 import 'package:open_tv/models/channel.dart';
 import 'package:open_tv/models/channel_preserve.dart';
 import 'package:open_tv/models/media_type.dart';
@@ -139,6 +141,11 @@ Future<void> getXtream(
   // so the refresh log isolates the DB-write phase (the wipe→restore gap).
   AppLog.info('getXtream: committing ${statements.length} statement-closures '
       'for source="${source.name}" totalRows=$totalRows');
+  // fix222: one-shot EXPLAIN QUERY PLAN for the index-sensitive refresh
+  // statements (does not run per row; pure diagnostic).
+  if (source.id != null) {
+    await Sql.logRefreshQueryPlans(source.id!);
+  }
   final swCommit = Stopwatch()..start();
   await Sql.commitWriteBatched(
     statements,
@@ -174,6 +181,21 @@ Future<dynamic> getXtreamHttpData(
     final url = buildXtreamUrl(source, action, extraQueryParams);
     final response = await AppHttp.getWithRetry(url);
     if (response == null) return null;
+    // fix222: when debug logging is on, dump the raw response body to a file in
+    // the app dir so it can be exported and replayed in a sandbox for true
+    // apples-to-apples timing. One file per action+source; overwritten each run.
+    if (AppLog.enabled) {
+      try {
+        final dir = await Utils.appDir;
+        final safeAction = action.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_');
+        final f = File('$dir/xtream_dump_${source.id}_$safeAction.json');
+        await f.writeAsString(response.body);
+        AppLog.info('Xtream: dumped raw response action="$action" '
+            'source=${source.id} bytes=${response.body.length} to ${f.path}');
+      } catch (e) {
+        AppLog.warn('Xtream: raw-dump failed action="$action" error=$e');
+      }
+    }
     return jsonDecode(response.body);
   } catch (e) {
     AppLog.warn('Xtream: HTTP/JSON failed action="$action" error=$e');
