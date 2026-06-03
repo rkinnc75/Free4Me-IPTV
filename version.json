@@ -1,7 +1,7 @@
 {
-  "latest": "1.23.25",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.25",
+  "latest": "1.23.26",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.23.26",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Default search method is now In-Memory (fastest). FTS triggers are created on-demand only when an FTS search method is active; otherwise they are absent, making refresh inserts naturally fast. Switch back to FTS from Settings any time."
+  "releaseNotes": "\u2022 Build fix: unescaped apostrophe in 1.23.23 changelog broke the build. Escaped for Dart string safety."
 }
