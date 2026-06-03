@@ -91,6 +91,17 @@ APK_DOWNLOADS="$HOME/Downloads/$APK_NAME"
 cp "$APK_SRC" "$APK_DOWNLOADS"
 echo " APK copied to ~/Downloads/$APK_NAME"
 
+# ── 3a. Auto-generate a What's New entry from commits if one is missing ──────
+# fix242: the in-app What's New dialog and version.json both read the
+# _changelog map in lib/whats_new_modal.dart. If a release is cut without a
+# hand-written entry, the dialog falls back to a generic placeholder. This
+# generates an entry from the commit subjects since the previous tag (a no-op
+# if a hand-written entry already exists), so every release gets a real
+# automated summary. The previous tag is the most recent v* tag reachable.
+PREV_TAG=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+echo "── changelog ──────────────────────────────────────────────────────────"
+python3 scripts/gen_changelog.py "$VERSION" "$PREV_TAG"
+
 # ── 3b. Update version.json (fetched by the in-app update checker) ───────────
 python3 - <<PYEOF
 import json, pathlib, re

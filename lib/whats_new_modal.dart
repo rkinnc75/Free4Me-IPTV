@@ -1429,7 +1429,7 @@ class WhatsNewModal extends StatelessWidget {
     final entries = _entriesForVersion(version);
 
     final bullets = entries.isEmpty
-        ? ['See the GitHub releases page for details.']
+        ? ['This update includes general improvements and fixes.']
         : entries.expand((e) => e.value).toList();
 
     return AlertDialog(
