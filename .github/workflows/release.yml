@@ -30,6 +30,9 @@
 # "uninstall to update" pain).
 
 name: Release
+# fix234: title the run by the tag/version (and dispatch) instead of the
+# last commit message, which was often a 'move fixNNN.md to runbooks/' chore.
+run-name: "Release ${{ github.event_name == 'workflow_dispatch' && 'manual dispatch' || github.ref_name }}"
 
 on:
   push:

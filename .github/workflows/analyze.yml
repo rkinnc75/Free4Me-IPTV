@@ -10,6 +10,9 @@
 # APK build to discover a static-analysis error.
 
 name: Analyze
+# fix234: title the run by branch + short SHA so it is identifiable even
+# when the last commit is a docs/chore commit.
+run-name: 'Analyze ${{ github.ref_name }} @ ${{ github.sha }}'
 
 on:
   push:
