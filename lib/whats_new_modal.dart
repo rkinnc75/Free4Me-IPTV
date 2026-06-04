@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.8': [
+    'Build fix: fixed the release build process to guarantee version.json is '
+        'committed on the tagged commit, preventing CI stale-version errors that '
+        'affected previous releases.',
+  ],
   '1.26.7': [
     'New: the Categories screen now has a checkbox on each category and '
         'Select all / Unselect all buttons. Unchecked categories are hidden '
