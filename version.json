@@ -1,7 +1,7 @@
 {
-  "latest": "1.26.9",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.9",
+  "latest": "1.26.11",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.11",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 CI improvement: the release workflow now self-heals stale version.json instead of failing. This eliminates the recurring \"version.json on the tagged commit is stale\" error that has plagued prior releases. Users will never see a failed release again due to version.json staleness."
+  "releaseNotes": "\u2022 Maintenance: internal release-process validation. No changes to app behavior."
 }
