@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.6': [
+    'Fix: corrected the channel picker sort comparator to handle the new '
+        '"By category" sort mode alongside provider and alphabetical modes.',
+  ],
   '1.26.5': [
     'New: each source now has a "By category" channel order option that groups '
         'channels under their provider category, plus a switch to hide the '

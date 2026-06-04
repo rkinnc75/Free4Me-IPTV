@@ -1,7 +1,7 @@
 {
-  "latest": "1.26.5",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.5",
+  "latest": "1.26.6",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.6",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 New: each source now has a \"By category\" channel order option that groups channels under their provider category, plus a switch to hide the provider's \"#### \u2026 ####\" section-header rows (which are labels and do not play). Set both when editing a source."
+  "releaseNotes": "\u2022 Fix: corrected the channel picker sort comparator to handle the new \"By category\" sort mode alongside provider and alphabetical modes."
 }
