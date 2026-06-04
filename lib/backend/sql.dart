@@ -530,7 +530,7 @@ class Sql {
       // 6-tier), then provider order. In alpha mode, use the full 6-tier.
       sqlQuery += "\nORDER BY"
           " CASE WHEN ($sortMode) = 'provider'"
-          "   THEN COALESCE(c.favorite, 0) DESC"  // favorites first in provider mode
+          "   THEN (CASE WHEN COALESCE(c.favorite,0)=1 THEN 0 ELSE 1 END)"
           "   ELSE"
           "     CASE"
           "       WHEN COALESCE(c.favorite,0)=1 AND COALESCE(c.stream_validated,0)=1 THEN 0"
@@ -1637,7 +1637,7 @@ class Sql {
       // In alpha mode, use the original favorite/validated/watched tier sort.
       sqlQuery += '\nORDER BY'
           ' CASE WHEN ($sortMode) = \'provider\''
-          '   THEN COALESCE(c.favorite, 0) DESC'
+          '   THEN (CASE WHEN COALESCE(c.favorite, 0) = 1 THEN 0 ELSE 1 END)'
           '   ELSE'
           '     CASE WHEN COALESCE(c.favorite, 0) = 1 THEN 0'
           '       WHEN COALESCE(c.stream_validated, 0) = 1 THEN 1'
