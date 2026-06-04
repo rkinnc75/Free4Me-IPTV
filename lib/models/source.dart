@@ -19,6 +19,10 @@ class Source {
   /// fix196: per-source tag color as ARGB int (null = None/no tint).
   int? color;
 
+  /// fix256: per-source browse sort. 'provider' = use the provider's intended
+  /// order (channels.provider_order); 'alpha' or null = alphabetical by name.
+  String? sortMode;
+
   Source({
     this.id,
     required this.name,
@@ -32,5 +36,6 @@ class Source {
     this.defaultEngine,
     this.maxConnections,
     this.color,
+    this.sortMode,
   });
 }

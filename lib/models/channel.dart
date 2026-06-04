@@ -41,6 +41,11 @@ class Channel {
   /// null = never scanned, true = valid media, false = invalid/unreachable.
   bool? streamValidated;
 
+  /// fix256: the provider's intended display order (Xtream `num`, or import
+  /// sequence). Null for sources imported before this existed. Used to sort
+  /// browse views when the source's sort_mode is 'provider'.
+  int? providerOrder;
+
   Channel({
     this.id,
     required this.name,
@@ -61,6 +66,7 @@ class Channel {
     this.engineOverride,
     this.lastWatched,
     this.streamValidated,
+    this.providerOrder,
   });
 
   /// True iff this channel has any flavor of catchup support.

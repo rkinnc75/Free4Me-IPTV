@@ -73,6 +73,10 @@ Future<void> processM3U(
     onProgress?.call('Loading channels: $channelCount…');
   }
 
+  // fix256: provider order for M3U = line sequence (the playlist lists
+  // channels in the provider's intended order, the M3U analogue of Xtream's
+  // `num`). Increment per committed channel and store as provider_order.
+  var order = 0;
   await for (var line in file) {
     final lineUpper = line.toUpperCase();
     if (lineUpper.startsWith("#EXTINF")) {
@@ -84,6 +88,7 @@ Future<void> processM3U(
           lastLine,
           httpHeadersSet ? headers : null,
           batch,
+          order++,
         );
         if (batch.length >= importBatchSize) await flushBatch();
       }
@@ -103,7 +108,7 @@ Future<void> processM3U(
     }
   }
   if (channelLine != null && lastLine != null && lastLine.trim().isNotEmpty) {
-    commitChannel(channelLine, lastLine, headers, batch);
+    commitChannel(channelLine, lastLine, headers, batch, order++);
   }
   await flushBatch();
 
@@ -132,8 +137,9 @@ void commitChannel(
   ChannelHttpHeaders? headers,
   List<Future<void> Function(SqliteWriteContext, Map<String, String>)>
   statements,
+  int order, // fix256: provider line order
 ) {
-  var channel = getChannelFromLines(l1, last);
+  var channel = getChannelFromLines(l1, last, order);
   if (channel == null) return;
   statements.add(Sql.insertChannel(channel));
   if (headers != null) {
@@ -148,7 +154,7 @@ MediaType getMediaType(String url) {
   return MediaType.livestream;
 }
 
-Channel? getChannelFromLines(String l1, String last) {
+Channel? getChannelFromLines(String l1, String last, int order) {
   var url = last.trim();
   if (url.isEmpty) return null;
 
@@ -176,6 +182,7 @@ Channel? getChannelFromLines(String l1, String last) {
         : null,
     catchupDays:
         catchupDaysStr != null ? int.tryParse(catchupDaysStr) : null,
+    providerOrder: order, // fix256: M3U line sequence
   );
 }
 

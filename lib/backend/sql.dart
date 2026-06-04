@@ -147,9 +147,9 @@ class Sql {
         INSERT INTO channels (
           name, image, url, source_id, media_type, series_id, favorite,
           stream_id, group_name, epg_channel_id,
-          catchup_type, catchup_source, catchup_days
+          catchup_type, catchup_source, catchup_days, provider_order
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT DO UPDATE SET
           url = excluded.url,
           group_name = excluded.group_name,
@@ -162,7 +162,8 @@ class Sql {
           epg_channel_id = COALESCE(channels.epg_channel_id, excluded.epg_channel_id),
           catchup_type = excluded.catchup_type,
           catchup_source = excluded.catchup_source,
-          catchup_days = excluded.catchup_days
+          catchup_days = excluded.catchup_days,
+          provider_order = excluded.provider_order
           -- engine_override intentionally omitted: preserve any user override
           ;
       ''', [
@@ -181,6 +182,7 @@ class Sql {
         channel.catchupType,
         channel.catchupSource,
         channel.catchupDays,
+        channel.providerOrder,
       ]);
       memory['lastChannelId'] =
           (await tx.get("SELECT last_insert_rowid()")).columnAt(0).toString();
@@ -236,7 +238,7 @@ class Sql {
     return (SqliteWriteContext tx, Map<String, String> memory) async {
       if (channels.isEmpty) return;
       final sourceId = int.parse(memory['sourceId']!);
-      const cols = 13;
+      const cols = 14; // fix256: +provider_order
       final rowPlaceholder = '(${List.filled(cols, '?').join(', ')})';
       final values = List.filled(channels.length, rowPlaceholder).join(', ');
       final params = <Object?>[];
@@ -247,13 +249,14 @@ class Sql {
           ch.mediaType.index, ch.seriesId, ch.favorite,
           ch.streamId, ch.group, ch.epgChannelId,
           ch.catchupType, ch.catchupSource, ch.catchupDays,
+          ch.providerOrder, // fix256
         ]);
       }
       await tx.execute('''
         INSERT INTO channels (
           name, image, url, source_id, media_type, series_id, favorite,
           stream_id, group_name, epg_channel_id,
-          catchup_type, catchup_source, catchup_days
+          catchup_type, catchup_source, catchup_days, provider_order
         )
         VALUES $values
         ON CONFLICT DO UPDATE SET
@@ -266,7 +269,8 @@ class Sql {
           epg_channel_id = COALESCE(channels.epg_channel_id, excluded.epg_channel_id),
           catchup_type = excluded.catchup_type,
           catchup_source = excluded.catchup_source,
-          catchup_days = excluded.catchup_days;
+          catchup_days = excluded.catchup_days,
+          provider_order = excluded.provider_order;
       ''', params);
     };
   }
@@ -520,6 +524,11 @@ class Sql {
     } else {
       // fix138: 6-tier sort matching _channelTier in channel_picker_screen.
       // Applies to ALL media-type browse views (Live/Movies/Series/All).
+      // fix256: when the channel's source is in 'provider' sort mode, order by
+      // the provider's intended order (provider_order) within each tier;
+      // otherwise (default 'alpha') order by name. A correlated subquery reads
+      // the per-source mode so multi-source views sort each source correctly
+      // (NULLs last so un-numbered rows fall after numbered ones).
       sqlQuery += "\nORDER BY"
           " CASE"
           "   WHEN COALESCE(c.favorite,0)=1 AND COALESCE(c.stream_validated,0)=1 THEN 0"
@@ -529,6 +538,10 @@ class Sql {
           "   WHEN COALESCE(c.stream_validated,0)=1 THEN 4"
           "   ELSE 5"
           " END ASC,"
+          " CASE WHEN (SELECT sort_mode FROM sources WHERE id = c.source_id) = 'provider'"
+          "   THEN 0 ELSE 1 END ASC,"
+          " CASE WHEN (SELECT sort_mode FROM sources WHERE id = c.source_id) = 'provider'"
+          "   THEN c.provider_order END ASC,"
           " c.name COLLATE NOCASE ASC";
     }
 
@@ -594,6 +607,8 @@ class Sql {
       catchupDays: row.columnAt(16) as int?,
       engineOverride: EngineType.fromJson(row.columnAt(17) as String?),
       streamValidated: sv == null ? null : sv == 1,
+      // fix256: provider_order is the last column added (migration 20).
+      providerOrder: row.columnAt(19) as int?,
     );
   }
 
@@ -750,6 +765,7 @@ class Sql {
       defaultEngine: EngineType.fromJson(row.columnAt(8) as String?),
       maxConnections: row.columnAt(9) as int?,
       color: row.columnAt(10) as int?,
+      sortMode: row.columnAt(11) as String?, // fix256 (migration 20 column)
     );
   }
 
@@ -842,7 +858,7 @@ class Sql {
     await db.execute('''
       UPDATE sources
       SET url = ?, username = ?, password = ?, default_engine = ?,
-          max_connections = ?, color = ?
+          max_connections = ?, color = ?, sort_mode = ?
       WHERE id = ?
     ''', [
       source.url,
@@ -853,6 +869,7 @@ class Sql {
           : source.defaultEngine!.toJson(),
       source.maxConnections,
       source.color,
+      source.sortMode, // fix256
       source.id,
     ]);
   }

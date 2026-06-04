@@ -298,6 +298,7 @@ Channel xtreamToChannel(
     streamId: int.tryParse(stream.streamId ?? "") ?? -1,
     catchupType: hasCatchup ? 'xc' : null,
     catchupDays: hasCatchup ? stream.tvArchiveDuration : null,
+    providerOrder: stream.providerNum, // fix256: preserve provider display order
   );
 }
 

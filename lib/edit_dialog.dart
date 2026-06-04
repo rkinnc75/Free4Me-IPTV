@@ -20,6 +20,9 @@ class EditDialog extends StatefulWidget {
 class _EditDialogState extends State<EditDialog> {
   final _formKey = GlobalKey<FormBuilderState>();
 
+  // fix256: per-source browse order. true = provider order, false = alphabetical.
+  late bool _providerSort = widget.source.sortMode == 'provider';
+
   @override
   Widget build(BuildContext context) {
     return Center(
@@ -52,7 +55,10 @@ class _EditDialogState extends State<EditDialog> {
                       // Without this it defaults to null and updateSource writes
                       // NULL, wiping the connection limit on every source edit.
                       maxConnections: widget.source.maxConnections,
-                      defaultEngine: widget.source.defaultEngine)),
+                      defaultEngine: widget.source.defaultEngine,
+                      // fix256: persist the per-source browse order choice.
+                      color: widget.source.color,
+                      sortMode: _providerSort ? 'provider' : 'alpha')),
                   context);
               await widget.afterSave();
             },
@@ -118,6 +124,19 @@ class _EditDialogState extends State<EditDialog> {
                     ),
                     name: 'password',
                   ))),
+              const SizedBox(height: 10),
+              // fix256: per-source channel order. Provider order preserves the
+              // provider's intended sequence (incl. "#### SECTION ####" header
+              // channels next to their channels); off = alphabetical by name.
+              SwitchListTile(
+                value: _providerSort,
+                onChanged: (v) => setState(() => _providerSort = v),
+                title: const Text('Use provider channel order'),
+                subtitle: const Text(
+                    'Keep the provider\'s order instead of sorting A–Z. '
+                    'Applies to Live, Movies, Series and All.'),
+                secondary: const Icon(Icons.sort),
+              ),
             ],
           ))),
     )));

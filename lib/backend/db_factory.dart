@@ -401,6 +401,18 @@ class DbFactory {
             'ON channels(source_id) '
             'WHERE media_type = 0 AND epg_manual_override IS NULL '
             'AND epg_channel_id IS NULL;');
+      }))
+      // fix256: preserve the provider's intended channel order. Xtream
+      // get_live_streams returns a `num` field (and the response order itself)
+      // that providers use to interleave "#### SECTION ####" header channels
+      // with their channels. provider_order stores that; sources.sort_mode
+      // ('provider' | 'alpha', default 'alpha') chooses per-source whether
+      // browse views sort by provider_order or by name.
+      ..add(SqliteMigration(20, (tx) async {
+        await tx.execute(
+            'ALTER TABLE channels ADD COLUMN provider_order INTEGER;');
+        await tx.execute(
+            "ALTER TABLE sources ADD COLUMN sort_mode TEXT;");
       }));
     await migrations.migrate(db);
 

@@ -8,6 +8,7 @@ class XtreamStream {
   final String? containerExtension;
   final int? tvArchive; // 1 = catchup available, 0 / missing = not
   final int? tvArchiveDuration; // days, when tvArchive == 1
+  final int? providerNum; // fix256: provider's intended display order
 
   XtreamStream({
     this.streamId,
@@ -19,6 +20,7 @@ class XtreamStream {
     this.containerExtension,
     this.tvArchive,
     this.tvArchiveDuration,
+    this.providerNum,
   });
 
   factory XtreamStream.fromJson(Map<String, dynamic> json) {
@@ -39,6 +41,7 @@ class XtreamStream {
       containerExtension: json['container_extension']?.toString(),
       tvArchive: asInt(json['tv_archive']),
       tvArchiveDuration: asInt(json['tv_archive_duration']),
+      providerNum: asInt(json['num']),
     );
   }
 
