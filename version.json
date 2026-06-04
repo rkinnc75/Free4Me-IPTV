@@ -1,7 +1,7 @@
 {
-  "latest": "1.26.3",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.3",
+  "latest": "1.26.4",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.4",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Improvement: \"Clear log\" now also deletes the large diagnostic source files saved during refresh, so debug data no longer builds up on your device."
+  "releaseNotes": "\u2022 Improvement: the source edit screen now shows the provider connection limit and the number of live channels, movies, and series found at the last refresh."
 }
