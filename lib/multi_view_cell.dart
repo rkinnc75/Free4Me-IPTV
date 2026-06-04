@@ -806,36 +806,92 @@ class _MultiViewCellState extends State<MultiViewCell> {
   }
 
   Widget _buildLoadingCell() {
-    return ColoredBox(
-      color: Colors.black,
-      child: Center(
-        child: _retryMessage != null
-            ? Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white54,
+    // fix254: a reconnecting/loading cell is now focusable and its options
+    // menu reachable (D-pad select or touch long-press), so the user can
+    // swap the stream without waiting out the slow-recovery countdown.
+    return _focusableWithMenu(
+      child: ColoredBox(
+        color: Colors.black,
+        child: Center(
+          child: _retryMessage != null
+              ? Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white54,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _retryMessage!,
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                )
+              : const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+        ),
+      ),
+    );
+  }
+
+  /// fix254: wraps a cell's content so it is D-pad focusable and its options
+  /// menu is reachable via the select/center key (filled-cell behaviour from
+  /// fix250). Used for the video AND loading/reconnecting states so a cell is
+  /// never a dead, un-focusable rectangle. Touch long-press also opens the
+  /// menu. A focused cell shows the same primary-color border as a playing
+  /// focused cell.
+  Widget _focusableWithMenu({required Widget child, bool showBorder = true}) {
+    return FocusableActionDetector(
+      autofocus: widget.cellIndex == 0,
+      shortcuts: const <ShortcutActivator, Intent>{
+        SingleActivator(LogicalKeyboardKey.select): _CellMenuIntent(),
+        SingleActivator(LogicalKeyboardKey.enter): _CellMenuIntent(),
+        SingleActivator(LogicalKeyboardKey.gameButtonA): _CellMenuIntent(),
+        SingleActivator(LogicalKeyboardKey.contextMenu): _CellMenuIntent(),
+      },
+      actions: <Type, Action<Intent>>{
+        _CellMenuIntent: CallbackAction<_CellMenuIntent>(
+          onInvoke: (_) {
+            widget.onFocusTap();
+            _showCellMenu();
+            return null;
+          },
+        ),
+      },
+      onShowFocusHighlight: (focused) {
+        if (focused) widget.onFocusTap();
+      },
+      child: GestureDetector(
+        onTap: widget.onFocusTap,
+        onLongPress: _showCellMenu,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            child,
+            if (showBorder && widget.isFocused)
+              IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.primary,
+                      width: 3,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _retryMessage!,
-                    style: const TextStyle(
-                      color: Colors.white54,
-                      fontSize: 11,
-                    ),
-                  ),
-                ],
-              )
-            : const SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(strokeWidth: 2),
+                ),
               ),
+          ],
+        ),
       ),
     );
   }
