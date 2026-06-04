@@ -28,23 +28,20 @@ int _channelTier(Channel ch) {
   return validated ? 4 : 5;
 }
 
-int _pickSort(Channel a, Channel b) {
-  final ta = _channelTier(a);
-  final tb = _channelTier(b);
-  if (ta != tb) return ta.compareTo(tb);
-  return a.name.toLowerCase().compareTo(b.name.toLowerCase());
-}
-
 /// fix258: provider-aware multi-source sort for the channel picker.
-/// For sources in 'provider' mode, order by provider_order (NULLs last);
-/// for 'alpha' mode sources, sort alphabetically. Between sources, group by
-/// provider mode (provider first), then apply within-source sort.
+/// For sources in 'provider' mode: favorites first, then provider_order
+/// (NULLs last) — matching the SQL browse sort. For 'alpha' mode sources,
+/// the 6-tier sort. Between sources, group by provider mode (provider first),
+/// then apply within-source sort.
 int _pickSortWithProvider(Channel a, Channel b, Set<int> providerSourceIds) {
   // Within the same source, apply source-specific sort.
   if (a.sourceId == b.sourceId) {
     final isProvider = providerSourceIds.contains(a.sourceId);
     if (isProvider) {
-      // Provider mode: by provider_order (nulls last), then name.
+      // Provider mode: favorites first, then provider_order (nulls last), then name.
+      final favA = a.favorite ? 0 : 1;
+      final favB = b.favorite ? 0 : 1;
+      if (favA != favB) return favA.compareTo(favB);
       final orderA = a.providerOrder ?? double.infinity.toInt();
       final orderB = b.providerOrder ?? double.infinity.toInt();
       if (orderA != orderB) return orderA.compareTo(orderB);
