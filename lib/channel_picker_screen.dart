@@ -219,7 +219,7 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
       if (pageResults.length < pageSize) break;
       page++;
     }
-    all.sort((a, b) => _pickSortWithProvider(a, b, _providerSources));
+    all.sort((a, b) => _pickSortWithProvider(a, b, _providerSources, _categorySources));
 
     if (_loadInvocation != inv || !mounted) return;
     setState(() {
