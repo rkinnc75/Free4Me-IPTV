@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# fix290: prevent the orphaned-tag / detached-HEAD release bug.
+# Reject (a) pushing from a detached HEAD, and (b) pushing any tag whose
+# commit is not an ancestor of origin/main.
+set -euo pipefail
+remote="$1"
+git fetch -q "$remote" main || true
+while read -r local_ref local_sha remote_ref remote_sha; do
+  # tag push?
+  if [[ "$remote_ref" == refs/tags/* ]]; then
+    if ! git merge-base --is-ancestor "$local_sha" "$remote/main" 2>/dev/null \
+       && ! git merge-base --is-ancestor "$local_sha" origin/main 2>/dev/null; then
+      echo "PRE-PUSH BLOCK: tag ${remote_ref#refs/tags/} points at $local_sha which is NOT on origin/main." >&2
+      echo "Push main first, then tag the commit that is on main. (fix290)" >&2
+      exit 1
+    fi
+  fi
+done
+exit 0
