@@ -58,7 +58,12 @@ class _EditDialogState extends State<EditDialog> {
                       defaultEngine: widget.source.defaultEngine,
                       // fix256: persist the per-source browse order choice.
                       color: widget.source.color,
-                      sortMode: _providerSort ? 'provider' : 'alpha')),
+                      sortMode: _providerSort ? 'provider' : 'alpha',
+                      // fix268: carry refresh counts through edit (else NULL
+                      // wipes them on every manual save, like maxConnections).
+                      lastLiveCount: widget.source.lastLiveCount,
+                      lastMovieCount: widget.source.lastMovieCount,
+                      lastSeriesCount: widget.source.lastSeriesCount)),
                   context);
               await widget.afterSave();
             },
@@ -137,8 +142,64 @@ class _EditDialogState extends State<EditDialog> {
                     'Applies to Live, Movies, Series and All.'),
                 secondary: const Icon(Icons.sort),
               ),
+              // fix268: read-only source info — connection limit + the counts
+              // from the most recent refresh.
+              const Divider(height: 24),
+              _infoRow(
+                Icons.lan_outlined,
+                'Connections',
+                widget.source.maxConnections == null
+                    ? 'Unknown'
+                    : '${widget.source.maxConnections}',
+              ),
+              _infoRow(
+                Icons.live_tv_outlined,
+                'Live TV',
+                _countText(widget.source.lastLiveCount),
+              ),
+              _infoRow(
+                Icons.movie_outlined,
+                'Movies',
+                _countText(widget.source.lastMovieCount),
+              ),
+              _infoRow(
+                Icons.video_library_outlined,
+                'Series',
+                _countText(widget.source.lastSeriesCount),
+              ),
+              if (widget.source.lastLiveCount == null &&
+                  widget.source.lastMovieCount == null &&
+                  widget.source.lastSeriesCount == null)
+                const Padding(
+                  padding: EdgeInsets.only(top: 4, left: 4),
+                  child: Text(
+                    'Counts appear after the next refresh.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ),
             ],
           ))),
     )));
+  }
+
+  /// fix268: a count value, or an en-dash when not yet recorded.
+  String _countText(int? n) => n == null ? '—' : '$n';
+
+  /// fix268: a compact read-only "icon · label · value" row.
+  Widget _infoRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 20),
+          const SizedBox(width: 12),
+          Expanded(child: Text(label)),
+          Text(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+    );
   }
 }

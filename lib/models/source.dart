@@ -23,6 +23,12 @@ class Source {
   /// order (channels.provider_order); 'alpha' or null = alphabetical by name.
   String? sortMode;
 
+  /// fix268: counts from the most recent refresh (null until first refresh
+  /// after this shipped). Shown read-only in the source edit dialog.
+  int? lastLiveCount;
+  int? lastMovieCount;
+  int? lastSeriesCount;
+
   Source({
     this.id,
     required this.name,
@@ -37,5 +43,8 @@ class Source {
     this.maxConnections,
     this.color,
     this.sortMode,
+    this.lastLiveCount,
+    this.lastMovieCount,
+    this.lastSeriesCount,
   });
 }

@@ -469,15 +469,9 @@ class _SettingsState extends State<SettingsView> {
           horizontalTitleGap: 25,
           contentPadding: const EdgeInsets.only(left: 20),
           title: Text(source.name),
-          // fix192: show the auto-detected provider connection limit (read-only)
-          // alongside the source type. Hidden when unknown (null).
-          subtitle: Text(
-            source.maxConnections == null
-                ? source.sourceType.label
-                : '${source.sourceType.label} · '
-                    '${source.maxConnections} '
-                    '${source.maxConnections == 1 ? "connection" : "connections"}',
-          ),
+          // fix268: connection count moved to the source edit dialog; the list
+          // subtitle shows just the source type again.
+          subtitle: Text(source.sourceType.label),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [

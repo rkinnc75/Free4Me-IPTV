@@ -767,6 +767,9 @@ class Sql {
       maxConnections: row.columnAt(9) as int?,
       color: row.columnAt(10) as int?,
       sortMode: row.columnAt(11) as String?, // fix256 (migration 20 column)
+      lastLiveCount: row.columnAt(12) as int?, // fix268 (migration 21)
+      lastMovieCount: row.columnAt(13) as int?,
+      lastSeriesCount: row.columnAt(14) as int?,
     );
   }
 
@@ -859,7 +862,8 @@ class Sql {
     await db.execute('''
       UPDATE sources
       SET url = ?, username = ?, password = ?, default_engine = ?,
-          max_connections = ?, color = ?, sort_mode = ?
+          max_connections = ?, color = ?, sort_mode = ?,
+          last_live_count = ?, last_movie_count = ?, last_series_count = ?
       WHERE id = ?
     ''', [
       source.url,
@@ -871,6 +875,9 @@ class Sql {
       source.maxConnections,
       source.color,
       source.sortMode, // fix256
+      source.lastLiveCount, // fix268
+      source.lastMovieCount,
+      source.lastSeriesCount,
       source.id,
     ]);
   }

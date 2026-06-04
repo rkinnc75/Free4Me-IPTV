@@ -413,6 +413,17 @@ class DbFactory {
             'ALTER TABLE channels ADD COLUMN provider_order INTEGER;');
         await tx.execute(
             "ALTER TABLE sources ADD COLUMN sort_mode TEXT;");
+      }))
+      // fix268: store the live/movie/series counts found by the most recent
+      // refresh, so the source edit dialog can show them. Null until a source
+      // is refreshed after this ships.
+      ..add(SqliteMigration(21, (tx) async {
+        await tx.execute(
+            'ALTER TABLE sources ADD COLUMN last_live_count INTEGER;');
+        await tx.execute(
+            'ALTER TABLE sources ADD COLUMN last_movie_count INTEGER;');
+        await tx.execute(
+            'ALTER TABLE sources ADD COLUMN last_series_count INTEGER;');
       }));
     await migrations.migrate(db);
 

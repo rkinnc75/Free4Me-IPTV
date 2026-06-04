@@ -119,6 +119,14 @@ Future<void> processM3U(
     tail.add(Sql.restorePreserve(preserve));
   }
   await Sql.commitWrite(tail, memory: memory);
+  // fix268: persist the channel count from this refresh. M3U is a flat list
+  // (no movie/series split at parse time), so only the total is recorded.
+  if (source.id != null) {
+    source.lastLiveCount = channelCount;
+    source.lastMovieCount = null;
+    source.lastSeriesCount = null;
+    await Sql.updateSource(source);
+  }
   AppLog.info(
     'M3U: parsed source="${source.name}"'
     ' channels=$channelCount',

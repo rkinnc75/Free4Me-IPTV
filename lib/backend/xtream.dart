@@ -130,9 +130,13 @@ Future<void> getXtream(
     statements.add(Sql.restorePreserve(preserve));
   }
   // fix184: detect and persist the provider's connection limit.
+  // fix268: also persist the live/movie/series counts from this refresh.
   final mc = await fetchXtreamMaxConnections(source);
-  if (mc != null && source.id != null) {
-    source.maxConnections = mc;
+  if (source.id != null) {
+    if (mc != null) source.maxConnections = mc;
+    source.lastLiveCount = liveCount;
+    source.lastMovieCount = movieCount;
+    source.lastSeriesCount = seriesCount;
     await Sql.updateSource(source);
   }
   onProgress?.call('Saving to database…');
