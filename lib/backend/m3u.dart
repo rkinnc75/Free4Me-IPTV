@@ -191,6 +191,7 @@ Channel? getChannelFromLines(String l1, String last, int order) {
     catchupDays:
         catchupDaysStr != null ? int.tryParse(catchupDaysStr) : null,
     providerOrder: order, // fix256: M3U line sequence
+    isDivider: Channel.nameIsDivider(name), // fix272
   );
 }
 

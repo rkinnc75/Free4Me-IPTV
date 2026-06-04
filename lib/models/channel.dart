@@ -46,6 +46,21 @@ class Channel {
   /// browse views when the source's sort_mode is 'provider'.
   int? providerOrder;
 
+  /// fix272: true when this channel is a provider "divider" — a name fully
+  /// wrapped in '#' (e.g. "##### KIDS NETWORK #####") used as a visual section
+  /// header. These have no playable stream; the hide_dividers source toggle
+  /// filters them out.
+  bool isDivider;
+
+  /// fix272: a name fully wrapped in '#' (after trimming) is a provider
+  /// section-divider, not a real channel. Matches "## X ##", "##### X #####",
+  /// etc. Does NOT match names that merely contain '#' (e.g. "US (BTN+ 017)").
+  static bool nameIsDivider(String? name) {
+    if (name == null) return false;
+    final s = name.trim();
+    return s.length >= 2 && s.startsWith('#') && s.endsWith('#');
+  }
+
   Channel({
     this.id,
     required this.name,
@@ -67,6 +82,7 @@ class Channel {
     this.lastWatched,
     this.streamValidated,
     this.providerOrder,
+    this.isDivider = false,
   });
 
   /// True iff this channel has any flavor of catchup support.

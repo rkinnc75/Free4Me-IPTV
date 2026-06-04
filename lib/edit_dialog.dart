@@ -20,8 +20,13 @@ class EditDialog extends StatefulWidget {
 class _EditDialogState extends State<EditDialog> {
   final _formKey = GlobalKey<FormBuilderState>();
 
-  // fix256: per-source browse order. true = provider order, false = alphabetical.
-  late bool _providerSort = widget.source.sortMode == 'provider';
+  // fix256/fix272: per-source sort mode — 'alpha', 'provider', or 'category'.
+  late String _sortMode = (widget.source.sortMode == 'provider' ||
+          widget.source.sortMode == 'category')
+      ? widget.source.sortMode!
+      : 'alpha';
+  // fix272: hide provider divider (#### header ####) channels.
+  late bool _hideDividers = widget.source.hideDividers == 1;
 
   @override
   Widget build(BuildContext context) {
@@ -58,7 +63,8 @@ class _EditDialogState extends State<EditDialog> {
                       defaultEngine: widget.source.defaultEngine,
                       // fix256: persist the per-source browse order choice.
                       color: widget.source.color,
-                      sortMode: _providerSort ? 'provider' : 'alpha',
+                      sortMode: _sortMode,
+                      hideDividers: _hideDividers ? 1 : 0,
                       // fix268: carry refresh counts through edit (else NULL
                       // wipes them on every manual save, like maxConnections).
                       lastLiveCount: widget.source.lastLiveCount,
@@ -130,17 +136,48 @@ class _EditDialogState extends State<EditDialog> {
                     name: 'password',
                   ))),
               const SizedBox(height: 10),
-              // fix256: per-source channel order. Provider order preserves the
-              // provider's intended sequence (incl. "#### SECTION ####" header
-              // channels next to their channels); off = alphabetical by name.
+              // fix256/fix272: per-source channel order.
+              const Padding(
+                padding: EdgeInsets.only(left: 4, bottom: 4),
+                child: Text('Channel order',
+                    style: TextStyle(fontWeight: FontWeight.w600)),
+              ),
+              RadioGroup<String>(
+                groupValue: _sortMode,
+                onChanged: (v) => setState(() => _sortMode = v!),
+                child: const Column(
+                  children: [
+                    RadioListTile<String>(
+                      value: 'alpha',
+                      dense: true,
+                      title: Text('Alphabetical (A–Z)'),
+                    ),
+                    RadioListTile<String>(
+                      value: 'provider',
+                      dense: true,
+                      title: Text('Provider order'),
+                      subtitle: Text(
+                          'The provider\'s exact sequence, including its section headers.'),
+                    ),
+                    RadioListTile<String>(
+                      value: 'category',
+                      dense: true,
+                      title: Text('By category'),
+                      subtitle: Text(
+                          'Group channels by their category, then provider order.'),
+                    ),
+                  ],
+                ),
+              ),
+              // fix272: hide the provider's unplayable "#### header ####" rows.
               SwitchListTile(
-                value: _providerSort,
-                onChanged: (v) => setState(() => _providerSort = v),
-                title: const Text('Use provider channel order'),
+                value: _hideDividers,
+                onChanged: (v) => setState(() => _hideDividers = v),
+                title: const Text('Hide section-header rows'),
                 subtitle: const Text(
-                    'Keep the provider\'s order instead of sorting A–Z. '
-                    'Applies to Live, Movies, Series and All.'),
-                secondary: const Icon(Icons.sort),
+                    'Hide the provider\'s "#### … ####" divider entries, which '
+                    'are labels and do not play.'),
+                secondary: const Icon(Icons.label_off_outlined),
               ),
               // fix268: read-only source info — connection limit + the counts
               // from the most recent refresh.

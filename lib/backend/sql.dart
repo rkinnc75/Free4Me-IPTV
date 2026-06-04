@@ -147,9 +147,9 @@ class Sql {
         INSERT INTO channels (
           name, image, url, source_id, media_type, series_id, favorite,
           stream_id, group_name, epg_channel_id,
-          catchup_type, catchup_source, catchup_days, provider_order
+          catchup_type, catchup_source, catchup_days, provider_order, is_divider
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT DO UPDATE SET
           url = excluded.url,
           group_name = excluded.group_name,
@@ -163,7 +163,8 @@ class Sql {
           catchup_type = excluded.catchup_type,
           catchup_source = excluded.catchup_source,
           catchup_days = excluded.catchup_days,
-          provider_order = excluded.provider_order
+          provider_order = excluded.provider_order,
+          is_divider = excluded.is_divider
           -- engine_override intentionally omitted: preserve any user override
           ;
       ''', [
@@ -183,6 +184,7 @@ class Sql {
         channel.catchupSource,
         channel.catchupDays,
         channel.providerOrder,
+        channel.isDivider ? 1 : 0,
       ]);
       memory['lastChannelId'] =
           (await tx.get("SELECT last_insert_rowid()")).columnAt(0).toString();
@@ -238,7 +240,7 @@ class Sql {
     return (SqliteWriteContext tx, Map<String, String> memory) async {
       if (channels.isEmpty) return;
       final sourceId = int.parse(memory['sourceId']!);
-      const cols = 14; // fix256: +provider_order
+      const cols = 15; // fix256: +provider_order; fix272: +is_divider
       final rowPlaceholder = '(${List.filled(cols, '?').join(', ')})';
       final values = List.filled(channels.length, rowPlaceholder).join(', ');
       final params = <Object?>[];
@@ -250,13 +252,14 @@ class Sql {
           ch.streamId, ch.group, ch.epgChannelId,
           ch.catchupType, ch.catchupSource, ch.catchupDays,
           ch.providerOrder, // fix256
+          ch.isDivider ? 1 : 0, // fix272
         ]);
       }
       await tx.execute('''
         INSERT INTO channels (
           name, image, url, source_id, media_type, series_id, favorite,
           stream_id, group_name, epg_channel_id,
-          catchup_type, catchup_source, catchup_days, provider_order
+          catchup_type, catchup_source, catchup_days, provider_order, is_divider
         )
         VALUES $values
         ON CONFLICT DO UPDATE SET
@@ -270,7 +273,8 @@ class Sql {
           catchup_type = excluded.catchup_type,
           catchup_source = excluded.catchup_source,
           catchup_days = excluded.catchup_days,
-          provider_order = excluded.provider_order;
+          provider_order = excluded.provider_order,
+          is_divider = excluded.is_divider;
       ''', params);
     };
   }
@@ -519,17 +523,25 @@ class Sql {
       );
     }
 
+    // fix272: hide provider divider channels when the source opts in. Indexed
+    // by idx_channel_divider(source_id, is_divider). Correlated subquery so it
+    // works for multi-source views (each source honors its own setting).
+    sqlQuery += "\nAND NOT (COALESCE(c.is_divider,0) = 1 AND "
+        "COALESCE((SELECT hide_dividers FROM sources WHERE id = c.source_id),0) = 1)";
+
     if (filters.viewType == ViewType.history) {
       sqlQuery += "\nORDER BY c.last_watched DESC";
     } else {
       final sortMode = 'select sort_mode from sources where id = c.source_id';
       // fix138: 6-tier sort matching _channelTier in channel_picker_screen.
       // Applies to ALL media-type browse views (Live/Movies/Series/All).
-      // fix256: per-source sort mode (provider | alpha).
+      // fix256: per-source sort mode (provider | category | alpha).
       // fix258: in provider mode, collapse to favorites-first only (not the full
       // 6-tier), then provider order. In alpha mode, use the full 6-tier.
+      // fix272: in category mode, favorites first, then group_name (the provider
+      // category), then provider order within the category, then name.
       sqlQuery += "\nORDER BY"
-          " CASE WHEN ($sortMode) = 'provider'"
+          " CASE WHEN ($sortMode) IN ('provider','category')"
           "   THEN (CASE WHEN COALESCE(c.favorite,0)=1 THEN 0 ELSE 1 END)"
           "   ELSE"
           "     CASE"
@@ -541,7 +553,9 @@ class Sql {
           "       ELSE 5"
           "     END"
           " END ASC,"
-          " CASE WHEN ($sortMode) = 'provider'"
+          " CASE WHEN ($sortMode) = 'category'"
+          "   THEN c.group_name COLLATE NOCASE END ASC,"
+          " CASE WHEN ($sortMode) IN ('provider','category')"
           "   THEN c.provider_order END ASC,"
           " c.name COLLATE NOCASE ASC";
     }
@@ -610,6 +624,7 @@ class Sql {
       streamValidated: sv == null ? null : sv == 1,
       // fix256: provider_order is the last column added (migration 20).
       providerOrder: row.columnAt(19) as int?,
+      isDivider: (row.columnAt(20) as int?) == 1, // fix272 (migration 22)
     );
   }
 
@@ -770,6 +785,7 @@ class Sql {
       lastLiveCount: row.columnAt(12) as int?, // fix268 (migration 21)
       lastMovieCount: row.columnAt(13) as int?,
       lastSeriesCount: row.columnAt(14) as int?,
+      hideDividers: row.columnAt(15) as int?, // fix272 (migration 22)
     );
   }
 
@@ -863,7 +879,8 @@ class Sql {
       UPDATE sources
       SET url = ?, username = ?, password = ?, default_engine = ?,
           max_connections = ?, color = ?, sort_mode = ?,
-          last_live_count = ?, last_movie_count = ?, last_series_count = ?
+          last_live_count = ?, last_movie_count = ?, last_series_count = ?,
+          hide_dividers = ?
       WHERE id = ?
     ''', [
       source.url,
@@ -878,6 +895,7 @@ class Sql {
       source.lastLiveCount, // fix268
       source.lastMovieCount,
       source.lastSeriesCount,
+      source.hideDividers, // fix272
       source.id,
     ]);
   }
@@ -1635,15 +1653,19 @@ class Sql {
     sqlQuery += smClause;
     params.addAll(smParams);
 
+    // fix272: hide divider channels when the source opts in.
+    sqlQuery += "\nAND NOT (COALESCE(c.is_divider,0) = 1 AND "
+        "COALESCE((SELECT hide_dividers FROM sources WHERE id = c.source_id),0) = 1)";
+
     if (filters.viewType == ViewType.history) {
       sqlQuery += '\nORDER BY c.last_watched DESC';
     } else {
       final sortMode = 'select sort_mode from sources where id = c.source_id';
-      // fix256: per-source sort mode (provider | alpha).
-      // fix258: in provider mode, use favorites-first only, then provider order.
-      // In alpha mode, use the original favorite/validated/watched tier sort.
+      // fix256: per-source sort mode (provider | category | alpha).
+      // fix258: in provider mode, favorites-first then provider order.
+      // fix272: in category mode, favorites first, then group_name, then order.
       sqlQuery += '\nORDER BY'
-          ' CASE WHEN ($sortMode) = \'provider\''
+          ' CASE WHEN ($sortMode) IN (\'provider\',\'category\')'
           '   THEN (CASE WHEN COALESCE(c.favorite, 0) = 1 THEN 0 ELSE 1 END)'
           '   ELSE'
           '     CASE WHEN COALESCE(c.favorite, 0) = 1 THEN 0'
@@ -1651,7 +1673,9 @@ class Sql {
           '       WHEN COALESCE(c.last_watched, 0) > 0 THEN 2'
           '       ELSE 3 END'
           ' END ASC,'
-          ' CASE WHEN ($sortMode) = \'provider\''
+          ' CASE WHEN ($sortMode) = \'category\''
+          '   THEN c.group_name COLLATE NOCASE END ASC,'
+          ' CASE WHEN ($sortMode) IN (\'provider\',\'category\')'
           '   THEN c.provider_order END ASC,'
           ' c.name ASC';
     }

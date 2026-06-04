@@ -303,6 +303,7 @@ Channel xtreamToChannel(
     catchupType: hasCatchup ? 'xc' : null,
     catchupDays: hasCatchup ? stream.tvArchiveDuration : null,
     providerOrder: stream.providerNum, // fix256: preserve provider display order
+    isDivider: Channel.nameIsDivider(stream.name), // fix272
   );
 }
 

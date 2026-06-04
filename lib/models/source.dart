@@ -19,8 +19,10 @@ class Source {
   /// fix196: per-source tag color as ARGB int (null = None/no tint).
   int? color;
 
-  /// fix256: per-source browse sort. 'provider' = use the provider's intended
-  /// order (channels.provider_order); 'alpha' or null = alphabetical by name.
+  /// fix256/fix272: per-source browse sort.
+  /// 'provider' = provider's intended order (channels.provider_order);
+  /// 'category' = group by category (group_name) then provider order (fix272);
+  /// 'alpha' or null = alphabetical by name.
   String? sortMode;
 
   /// fix268: counts from the most recent refresh (null until first refresh
@@ -28,6 +30,10 @@ class Source {
   int? lastLiveCount;
   int? lastMovieCount;
   int? lastSeriesCount;
+
+  /// fix272: when 1, hide provider "divider" channels (is_divider=1) from
+  /// browse views. Null/0 = show them.
+  int? hideDividers;
 
   Source({
     this.id,
@@ -46,5 +52,6 @@ class Source {
     this.lastLiveCount,
     this.lastMovieCount,
     this.lastSeriesCount,
+    this.hideDividers,
   });
 }

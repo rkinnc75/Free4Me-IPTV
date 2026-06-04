@@ -424,6 +424,20 @@ class DbFactory {
             'ALTER TABLE sources ADD COLUMN last_movie_count INTEGER;');
         await tx.execute(
             'ALTER TABLE sources ADD COLUMN last_series_count INTEGER;');
+      }))
+      // fix272: provider "divider" channels (name fully wrapped in '#', e.g.
+      // "##### KIDS NETWORK #####") are visual section separators with no
+      // playable stream. is_divider flags them at import so the per-source
+      // hide_dividers toggle can filter them with an indexed WHERE (faster
+      // than a LIKE on every query). sources.hide_dividers drives the toggle.
+      ..add(SqliteMigration(22, (tx) async {
+        await tx.execute(
+            'ALTER TABLE channels ADD COLUMN is_divider INTEGER DEFAULT 0;');
+        await tx.execute(
+            'CREATE INDEX IF NOT EXISTS idx_channel_divider '
+            'ON channels(source_id, is_divider);');
+        await tx.execute(
+            'ALTER TABLE sources ADD COLUMN hide_dividers INTEGER;');
       }));
     await migrations.migrate(db);
 

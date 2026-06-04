@@ -33,11 +33,26 @@ int _channelTier(Channel ch) {
 /// (NULLs last) — matching the SQL browse sort. For 'alpha' mode sources,
 /// the 6-tier sort. Between sources, group by provider mode (provider first),
 /// then apply within-source sort.
-int _pickSortWithProvider(Channel a, Channel b, Set<int> providerSourceIds) {
+int _pickSortWithProvider(Channel a, Channel b, Set<int> providerSourceIds,
+    Set<int> categorySourceIds) {
   // Within the same source, apply source-specific sort.
   if (a.sourceId == b.sourceId) {
     final isProvider = providerSourceIds.contains(a.sourceId);
-    if (isProvider) {
+    final isCategory = categorySourceIds.contains(a.sourceId);
+    if (isCategory) {
+      // fix272 Category mode: favorites first, then category (group), then
+      // provider order within category, then name.
+      final favA = a.favorite ? 0 : 1;
+      final favB = b.favorite ? 0 : 1;
+      if (favA != favB) return favA.compareTo(favB);
+      final gA = (a.group ?? '').toLowerCase();
+      final gB = (b.group ?? '').toLowerCase();
+      if (gA != gB) return gA.compareTo(gB);
+      final orderA = a.providerOrder ?? double.infinity.toInt();
+      final orderB = b.providerOrder ?? double.infinity.toInt();
+      if (orderA != orderB) return orderA.compareTo(orderB);
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    } else if (isProvider) {
       // Provider mode: favorites first, then provider_order (nulls last), then name.
       final favA = a.favorite ? 0 : 1;
       final favB = b.favorite ? 0 : 1;
@@ -55,11 +70,13 @@ int _pickSortWithProvider(Channel a, Channel b, Set<int> providerSourceIds) {
     }
   }
 
-  // Between different sources: provider-mode sources first, then alpha sources.
-  final aIsProvider = providerSourceIds.contains(a.sourceId);
-  final bIsProvider = providerSourceIds.contains(b.sourceId);
-  if (aIsProvider != bIsProvider) {
-    return aIsProvider ? -1 : 1; // Provider sources come first.
+  // Between different sources: provider/category sources first, then alpha.
+  final aOrdered = providerSourceIds.contains(a.sourceId) ||
+      categorySourceIds.contains(a.sourceId);
+  final bOrdered = providerSourceIds.contains(b.sourceId) ||
+      categorySourceIds.contains(b.sourceId);
+  if (aOrdered != bOrdered) {
+    return aOrdered ? -1 : 1; // Ordered sources come first.
   }
 
   // Same mode: fall back to 6-tier (cross-source sorting is still tier-based).
@@ -106,6 +123,9 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
   // sort each source correctly. Set<sourceId> containing source IDs with
   // sort_mode='provider'.
   Set<int> _providerSources = {};
+  // fix272: sources in 'category' sort mode. (Divider hiding is applied by the
+  // SQL query in Sql.search, so the picker needs no separate divider set.)
+  Set<int> _categorySources = {};
 
   @override
   void initState() {
@@ -115,7 +135,7 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
   }
 
   // fix228: load source tag colors once (mirrors home.dart fix200).
-  // fix258: also track which sources use provider sort mode.
+  // fix258/fix272: also track per-source sort mode.
   Future<void> _loadSourceColors() async {
     final sources = await Sql.getSources();
     if (!mounted) return;
@@ -124,10 +144,13 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
         for (final src in sources)
           if (src.id != null) src.id!: src.color,
       };
-      // fix258: populate _providerSources with IDs of sources in 'provider' mode.
       _providerSources = {
         for (final src in sources)
           if (src.id != null && src.sortMode == 'provider') src.id!,
+      };
+      _categorySources = {
+        for (final src in sources)
+          if (src.id != null && src.sortMode == 'category') src.id!,
       };
     });
   }
@@ -168,7 +191,7 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
     if (_loadInvocation != inv || !mounted) return;
 
     final sorted = List<Channel>.from(pageResults)
-        ..sort((a, b) => _pickSortWithProvider(a, b, _providerSources));
+        ..sort((a, b) => _pickSortWithProvider(a, b, _providerSources, _categorySources));
     _cachedEmptyQuery = List.unmodifiable(sorted);
     _initialBrowseLoaded = true;
 
