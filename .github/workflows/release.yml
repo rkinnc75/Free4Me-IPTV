@@ -93,9 +93,13 @@ jobs:
           git --no-pager diff version.json || true
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          # fix284: park the just-regenerated version.json so the branch switch
+          # below cannot be blocked by "local changes would be overwritten".
+          git stash --include-untracked || true
           # Commit the regenerated version.json onto main, then point the tag here.
           git fetch origin main
           git checkout -B main origin/main
+          git stash drop || true
           python3 scripts/update_version_json.py
           if ! git diff --quiet version.json; then
             git add version.json
