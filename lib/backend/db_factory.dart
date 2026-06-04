@@ -438,6 +438,13 @@ class DbFactory {
             'ON channels(source_id, is_divider);');
         await tx.execute(
             'ALTER TABLE sources ADD COLUMN hide_dividers INTEGER;');
+      }))
+      // fix278: per-category enable/disable. groups.enabled = 1 (shown) by
+      // default; the Categories view checkboxes flip it. Disabled categories
+      // are hidden from the Categories grid AND from Live/All browse views.
+      ..add(SqliteMigration(23, (tx) async {
+        await tx.execute(
+            'ALTER TABLE groups ADD COLUMN enabled INTEGER DEFAULT 1;');
       }));
     await migrations.migrate(db);
 

@@ -15,6 +15,7 @@ import 'package:open_tv/loading.dart';
 import 'package:open_tv/widgets/dpad_text_field.dart';
 import 'package:open_tv/models/channel.dart';
 import 'package:open_tv/models/filters.dart';
+import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/home_manager.dart';
 import 'package:open_tv/models/no_push_animation_material_page_route.dart';
 import 'package:open_tv/models/node.dart';
@@ -476,6 +477,19 @@ class _HomeState extends State<Home> {
     );
   }
 
+  // fix278: Select All / Unselect All for categories. Updates every category
+  // for the current sources + media types, then reloads the grid.
+  Future<void> _setAllCategories(bool enabled) async {
+    final sourceIds = widget.home.filters.sourceIds
+            ?.whereType<int>()
+            .toList() ??
+        const <int>[];
+    final mediaTypes =
+        widget.home.filters.mediaTypes ?? const <MediaType>[];
+    await Sql.setAllGroupsEnabled(sourceIds, mediaTypes, enabled);
+    await load(false);
+  }
+
   void setNode(Node node) {
     final home = HomeManager(
       node: node,
@@ -655,6 +669,33 @@ class _HomeState extends State<Home> {
                       ),
                     ),
                   ),
+                  // fix278: Select All / Unselect All for the Categories view.
+                  if (widget.home.filters.viewType == ViewType.categories &&
+                      channels.isNotEmpty)
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding:
+                            const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            TextButton.icon(
+                              icon: const Icon(Icons.check_box_outlined,
+                                  size: 18),
+                              label: const Text('Select all'),
+                              onPressed: () => _setAllCategories(true),
+                            ),
+                            const SizedBox(width: 8),
+                            TextButton.icon(
+                              icon: const Icon(
+                                  Icons.check_box_outline_blank, size: 18),
+                              label: const Text('Unselect all'),
+                              onPressed: () => _setAllCategories(false),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   if (channels.isEmpty)
                     SliverFillRemaining(
                       hasScrollBody: false,
@@ -732,6 +773,17 @@ class _HomeState extends State<Home> {
                               autofocus: index == 0,
                               onRemoveHistory:
                                   isHistory ? () => load(false) : null,
+                              // fix278: category tiles get an enable checkbox.
+                              onToggleEnabled: channel.mediaType ==
+                                          MediaType.group &&
+                                      channel.id != null
+                                  ? (enabled) async {
+                                      await Sql.setGroupEnabled(
+                                          channel.id!, enabled);
+                                      setState(() =>
+                                          channel.groupEnabled = enabled);
+                                    }
+                                  : null,
                             );
                           },
                           childCount: channels.length,

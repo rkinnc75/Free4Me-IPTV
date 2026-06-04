@@ -40,17 +40,14 @@ int _pickSortWithProvider(Channel a, Channel b, Set<int> providerSourceIds,
     final isProvider = providerSourceIds.contains(a.sourceId);
     final isCategory = categorySourceIds.contains(a.sourceId);
     if (isCategory) {
-      // fix272 Category mode: favorites first, then category (group), then
-      // provider order within category, then name.
+      // fix278 Category mode: favorites first, then category (group), then
+      // alphabetical by name within the category.
       final favA = a.favorite ? 0 : 1;
       final favB = b.favorite ? 0 : 1;
       if (favA != favB) return favA.compareTo(favB);
       final gA = (a.group ?? '').toLowerCase();
       final gB = (b.group ?? '').toLowerCase();
       if (gA != gB) return gA.compareTo(gB);
-      final orderA = a.providerOrder ?? double.infinity.toInt();
-      final orderB = b.providerOrder ?? double.infinity.toInt();
-      if (orderA != orderB) return orderA.compareTo(orderB);
       return a.name.toLowerCase().compareTo(b.name.toLowerCase());
     } else if (isProvider) {
       // Provider mode: favorites first, then provider_order (nulls last), then name.

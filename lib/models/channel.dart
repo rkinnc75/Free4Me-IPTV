@@ -52,6 +52,10 @@ class Channel {
   /// filters them out.
   bool isDivider;
 
+  /// fix278: for category (group) tiles only — whether the category is enabled
+  /// (shown). Null for normal channels. Toggled by the Categories view.
+  bool? groupEnabled;
+
   /// fix272: a name fully wrapped in '#' (after trimming) is a provider
   /// section-divider, not a real channel. Matches "## X ##", "##### X #####",
   /// etc. Does NOT match names that merely contain '#' (e.g. "US (BTN+ 017)").
@@ -83,6 +87,7 @@ class Channel {
     this.streamValidated,
     this.providerOrder,
     this.isDivider = false,
+    this.groupEnabled,
   });
 
   /// True iff this channel has any flavor of catchup support.

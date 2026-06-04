@@ -529,6 +529,11 @@ class Sql {
     sqlQuery += "\nAND NOT (COALESCE(c.is_divider,0) = 1 AND "
         "COALESCE((SELECT hide_dividers FROM sources WHERE id = c.source_id),0) = 1)";
 
+    // fix278: hide channels whose category (group) is disabled in the
+    // Categories view. enabled defaults to 1, so untouched categories show.
+    sqlQuery += "\nAND COALESCE("
+        "(SELECT g.enabled FROM groups g WHERE g.id = c.group_id), 1) = 1";
+
     if (filters.viewType == ViewType.history) {
       sqlQuery += "\nORDER BY c.last_watched DESC";
     } else {
@@ -555,7 +560,7 @@ class Sql {
           " END ASC,"
           " CASE WHEN ($sortMode) = 'category'"
           "   THEN c.group_name COLLATE NOCASE END ASC,"
-          " CASE WHEN ($sortMode) IN ('provider','category')"
+          " CASE WHEN ($sortMode) = 'provider'"
           "   THEN c.provider_order END ASC,"
           " c.name COLLATE NOCASE ASC";
     }
@@ -684,6 +689,33 @@ class Sql {
     return List.generate(size, (_) => "name LIKE ?").join(" AND ");
   }
 
+  // fix278: toggle one category's enabled flag.
+  static Future<void> setGroupEnabled(int groupId, bool enabled) async {
+    final db = await DbFactory.db;
+    await db.execute(
+      'UPDATE groups SET enabled = ? WHERE id = ?',
+      [enabled ? 1 : 0, groupId],
+    );
+  }
+
+  // fix278: enable/disable ALL categories for the given sources (Select All /
+  // Unselect All). Honors the same media-type filter the grid is showing.
+  static Future<void> setAllGroupsEnabled(
+    List<int> sourceIds,
+    List<MediaType> mediaTypes,
+    bool enabled,
+  ) async {
+    if (sourceIds.isEmpty) return;
+    final db = await DbFactory.db;
+    final mt = mediaTypes.map((x) => x.index).toList();
+    await db.execute(
+      'UPDATE groups SET enabled = ?'
+      ' WHERE source_id IN (${generatePlaceholders(sourceIds.length)})'
+      ' AND (media_type IS NULL OR media_type IN (${generatePlaceholders(mt.length)}))',
+      [enabled ? 1 : 0, ...sourceIds, ...mt],
+    );
+  }
+
   static Future<List<Channel>> searchGroup(Filters filters) async {
     final rawGroupQuery = (filters.query ?? "").trim();
     if (rawGroupQuery.isNotEmpty) {
@@ -734,6 +766,7 @@ class Sql {
         image: row.columnAt(2),
         sourceId: row.columnAt(3),
         favorite: false,
+        groupEnabled: (row.columnAt(5) as int?) != 0, // fix278 (col 5 = enabled)
         mediaType: MediaType.group);
   }
 
@@ -1657,6 +1690,10 @@ class Sql {
     sqlQuery += "\nAND NOT (COALESCE(c.is_divider,0) = 1 AND "
         "COALESCE((SELECT hide_dividers FROM sources WHERE id = c.source_id),0) = 1)";
 
+    // fix278: hide channels whose category (group) is disabled.
+    sqlQuery += "\nAND COALESCE("
+        "(SELECT g.enabled FROM groups g WHERE g.id = c.group_id), 1) = 1";
+
     if (filters.viewType == ViewType.history) {
       sqlQuery += '\nORDER BY c.last_watched DESC';
     } else {
@@ -1675,7 +1712,7 @@ class Sql {
           ' END ASC,'
           ' CASE WHEN ($sortMode) = \'category\''
           '   THEN c.group_name COLLATE NOCASE END ASC,'
-          ' CASE WHEN ($sortMode) IN (\'provider\',\'category\')'
+          ' CASE WHEN ($sortMode) = \'provider\''
           '   THEN c.provider_order END ASC,'
           ' c.name ASC';
     }

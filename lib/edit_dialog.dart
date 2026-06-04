@@ -164,7 +164,7 @@ class _EditDialogState extends State<EditDialog> {
                       dense: true,
                       title: Text('By category'),
                       subtitle: Text(
-                          'Group channels by their category, then provider order.'),
+                          'Group channels by their category, then A–Z within each.'),
                     ),
                   ],
                 ),

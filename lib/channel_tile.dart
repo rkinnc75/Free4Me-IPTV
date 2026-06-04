@@ -46,6 +46,9 @@ class ChannelTile extends StatefulWidget {
   final bool autofocus;
   /// fix196: source tag color (ARGB int; null = no tint).
   final int? tintColor;
+  /// fix278: for category tiles — toggle the category's enabled flag. Null for
+  /// non-category tiles.
+  final Future<void> Function(bool enabled)? onToggleEnabled;
 
   const ChannelTile({
     super.key,
@@ -57,6 +60,7 @@ class ChannelTile extends StatefulWidget {
     this.onRemoveHistory,
     this.autofocus = false,
     this.tintColor,
+    this.onToggleEnabled, // fix278: category tiles only
   });
 
   @override
@@ -386,6 +390,18 @@ class _ChannelTileState extends State<ChannelTile> {
                 padding: const EdgeInsets.only(right: 8.0),
                 child: Center(
                   child: const Icon(Icons.star, size: 25, color: Colors.amber),
+                ),
+              ),
+            // fix278: per-category enable checkbox (Categories view only).
+            if (widget.channel.mediaType == MediaType.group &&
+                widget.onToggleEnabled != null)
+              Padding(
+                padding: const EdgeInsets.only(right: 8.0),
+                child: Checkbox(
+                  value: widget.channel.groupEnabled ?? true,
+                  onChanged: (v) async {
+                    await widget.onToggleEnabled!(v ?? true);
+                  },
                 ),
               ),
           ],

@@ -6,6 +6,14 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.7': [
+    'New: the Categories screen now has a checkbox on each category and '
+        'Select all / Unselect all buttons. Unchecked categories are hidden '
+        'from Live and All, so you can hide ones you do not watch. All '
+        'categories are shown by default.',
+    'Improvement: the "By category" channel order now sorts channels A–Z '
+        'within each category instead of by provider number.',
+  ],
   '1.26.6': [
     'Fix: corrected the channel picker sort comparator to handle the new '
         '"By category" sort mode alongside provider and alphabetical modes.',
