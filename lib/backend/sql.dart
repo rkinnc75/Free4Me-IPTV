@@ -522,25 +522,26 @@ class Sql {
     if (filters.viewType == ViewType.history) {
       sqlQuery += "\nORDER BY c.last_watched DESC";
     } else {
+      final sortMode = 'select sort_mode from sources where id = c.source_id';
       // fix138: 6-tier sort matching _channelTier in channel_picker_screen.
       // Applies to ALL media-type browse views (Live/Movies/Series/All).
-      // fix256: when the channel's source is in 'provider' sort mode, order by
-      // the provider's intended order (provider_order) within each tier;
-      // otherwise (default 'alpha') order by name. A correlated subquery reads
-      // the per-source mode so multi-source views sort each source correctly
-      // (NULLs last so un-numbered rows fall after numbered ones).
+      // fix256: per-source sort mode (provider | alpha).
+      // fix258: in provider mode, collapse to favorites-first only (not the full
+      // 6-tier), then provider order. In alpha mode, use the full 6-tier.
       sqlQuery += "\nORDER BY"
-          " CASE"
-          "   WHEN COALESCE(c.favorite,0)=1 AND COALESCE(c.stream_validated,0)=1 THEN 0"
-          "   WHEN COALESCE(c.favorite,0)=1 THEN 1"
-          "   WHEN c.last_watched IS NOT NULL AND COALESCE(c.stream_validated,0)=1 THEN 2"
-          "   WHEN c.last_watched IS NOT NULL THEN 3"
-          "   WHEN COALESCE(c.stream_validated,0)=1 THEN 4"
-          "   ELSE 5"
+          " CASE WHEN ($sortMode) = 'provider'"
+          "   THEN COALESCE(c.favorite, 0) DESC"  // favorites first in provider mode
+          "   ELSE"
+          "     CASE"
+          "       WHEN COALESCE(c.favorite,0)=1 AND COALESCE(c.stream_validated,0)=1 THEN 0"
+          "       WHEN COALESCE(c.favorite,0)=1 THEN 1"
+          "       WHEN c.last_watched IS NOT NULL AND COALESCE(c.stream_validated,0)=1 THEN 2"
+          "       WHEN c.last_watched IS NOT NULL THEN 3"
+          "       WHEN COALESCE(c.stream_validated,0)=1 THEN 4"
+          "       ELSE 5"
+          "     END"
           " END ASC,"
-          " CASE WHEN (SELECT sort_mode FROM sources WHERE id = c.source_id) = 'provider'"
-          "   THEN 0 ELSE 1 END ASC,"
-          " CASE WHEN (SELECT sort_mode FROM sources WHERE id = c.source_id) = 'provider'"
+          " CASE WHEN ($sortMode) = 'provider'"
           "   THEN c.provider_order END ASC,"
           " c.name COLLATE NOCASE ASC";
     }
@@ -1630,10 +1631,21 @@ class Sql {
     if (filters.viewType == ViewType.history) {
       sqlQuery += '\nORDER BY c.last_watched DESC';
     } else {
+      final sortMode = 'select sort_mode from sources where id = c.source_id';
+      // fix256: per-source sort mode (provider | alpha).
+      // fix258: in provider mode, use favorites-first only, then provider order.
+      // In alpha mode, use the original favorite/validated/watched tier sort.
       sqlQuery += '\nORDER BY'
-          ' COALESCE(c.favorite, 0) DESC,'
-          ' COALESCE(c.stream_validated, 0) DESC,'
-          ' COALESCE(c.last_watched, 0) DESC,'
+          ' CASE WHEN ($sortMode) = \'provider\''
+          '   THEN COALESCE(c.favorite, 0) DESC'
+          '   ELSE'
+          '     CASE WHEN COALESCE(c.favorite, 0) = 1 THEN 0'
+          '       WHEN COALESCE(c.stream_validated, 0) = 1 THEN 1'
+          '       WHEN COALESCE(c.last_watched, 0) > 0 THEN 2'
+          '       ELSE 3 END'
+          ' END ASC,'
+          ' CASE WHEN ($sortMode) = \'provider\''
+          '   THEN c.provider_order END ASC,'
           ' c.name ASC';
     }
 

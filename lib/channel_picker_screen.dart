@@ -35,6 +35,43 @@ int _pickSort(Channel a, Channel b) {
   return a.name.toLowerCase().compareTo(b.name.toLowerCase());
 }
 
+/// fix258: provider-aware multi-source sort for the channel picker.
+/// For sources in 'provider' mode, order by provider_order (NULLs last);
+/// for 'alpha' mode sources, sort alphabetically. Between sources, group by
+/// provider mode (provider first), then apply within-source sort.
+int _pickSortWithProvider(Channel a, Channel b, Set<int> providerSourceIds) {
+  // Within the same source, apply source-specific sort.
+  if (a.sourceId == b.sourceId) {
+    final isProvider = providerSourceIds.contains(a.sourceId);
+    if (isProvider) {
+      // Provider mode: by provider_order (nulls last), then name.
+      final orderA = a.providerOrder ?? double.infinity.toInt();
+      final orderB = b.providerOrder ?? double.infinity.toInt();
+      if (orderA != orderB) return orderA.compareTo(orderB);
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    } else {
+      // Alpha mode: use the 6-tier sort.
+      final ta = _channelTier(a);
+      final tb = _channelTier(b);
+      if (ta != tb) return ta.compareTo(tb);
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    }
+  }
+
+  // Between different sources: provider-mode sources first, then alpha sources.
+  final aIsProvider = providerSourceIds.contains(a.sourceId);
+  final bIsProvider = providerSourceIds.contains(b.sourceId);
+  if (aIsProvider != bIsProvider) {
+    return aIsProvider ? -1 : 1; // Provider sources come first.
+  }
+
+  // Same mode: fall back to 6-tier (cross-source sorting is still tier-based).
+  final ta = _channelTier(a);
+  final tb = _channelTier(b);
+  if (ta != tb) return ta.compareTo(tb);
+  return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+}
+
 /// Lightweight channel picker for multi-view cell assignment.
 ///
 /// Returns the selected [Channel] via [Navigator.pop]. Does not modify
@@ -68,6 +105,11 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
   // tints rows by source like the live picker (fix196). Map<sourceId, ARGB?>.
   Map<int, int?> _sourceColors = {};
 
+  // fix258: track which sources are in provider sort mode so the picker can
+  // sort each source correctly. Set<sourceId> containing source IDs with
+  // sort_mode='provider'.
+  Set<int> _providerSources = {};
+
   @override
   void initState() {
     super.initState();
@@ -76,6 +118,7 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
   }
 
   // fix228: load source tag colors once (mirrors home.dart fix200).
+  // fix258: also track which sources use provider sort mode.
   Future<void> _loadSourceColors() async {
     final sources = await Sql.getSources();
     if (!mounted) return;
@@ -83,6 +126,11 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
       _sourceColors = {
         for (final src in sources)
           if (src.id != null) src.id!: src.color,
+      };
+      // fix258: populate _providerSources with IDs of sources in 'provider' mode.
+      _providerSources = {
+        for (final src in sources)
+          if (src.id != null && src.sortMode == 'provider') src.id!,
       };
     });
   }
@@ -122,7 +170,8 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
     );
     if (_loadInvocation != inv || !mounted) return;
 
-    final sorted = List<Channel>.from(pageResults)..sort(_pickSort);
+    final sorted = List<Channel>.from(pageResults)
+        ..sort((a, b) => _pickSortWithProvider(a, b, _providerSources));
     _cachedEmptyQuery = List.unmodifiable(sorted);
     _initialBrowseLoaded = true;
 
@@ -150,7 +199,7 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
       if (pageResults.length < pageSize) break;
       page++;
     }
-    all.sort(_pickSort);
+    all.sort((a, b) => _pickSortWithProvider(a, b, _providerSources));
 
     if (_loadInvocation != inv || !mounted) return;
     setState(() {

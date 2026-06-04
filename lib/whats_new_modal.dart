@@ -6,8 +6,28 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.0': [
+    'Improvement: the channel picker and browse view now correctly sort by the '
+        'per-source channel order setting. In "Use provider channel order" mode, '
+        'favorites are listed first, then provider order. In alphabetical mode, '
+        'the full 6-tier sort (favorites / history / validated) is used.',
+    'Fix: multi-source browse views with a mix of provider and alphabetical '
+        'sources now sort each source correctly according to its own setting, '
+        'and the channel picker respects this per-source sort mode.',
+  ],
+  '1.25.7': [
+    'Improvement: added per-source channel sort mode toggle. Go to source settings '
+        'and enable "Use provider channel order" to list channels in the provider\'s '
+        'intended order (e.g., section headers next to their channels in Xtream sources). '
+        'Disable it to sort alphabetically (A–Z). Each source can use a different mode, '
+        'and the setting applies to Live, Movies, Series, and All views.',
+    'Note: channel picker now shows per-source colors to match the main channel list.',
+  ],
   '1.25.6': [
-    'Maintenance and stability improvements.',
+    'Fix: multi-view now self-heals focused/reconnecting cells. While a tile is '
+        'waiting to reconnect, you can now open the cell menu with D-pad select or '
+        'touch long-press to replace the stream without waiting for recovery. The menu '
+        'is fully interactive during reconnection.',
   ],
   '1.25.5': [
     'Fix: added missing detailed changelog entries for releases 1.25.3 and '

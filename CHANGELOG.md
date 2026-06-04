@@ -1,6 +1,28 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v1.25.7+256] - 2026-06-04
+
+**Per-source channel order toggle:** preserve provider order vs sort alphabetically.
+
+### Fixed
+- **fix256 — Per-source provider channel order toggle** — Providers like Z2U (barfik.org) ship channels in curated order using inline headers (e.g. `#### ABC ####` → ABC Alabama → ABC Alaska). After import, headers floated to the top (they sort first alphabetically), breaking the intended interleave. Now captures the provider's order (Xtream `num` field or M3U line sequence) in `channels.provider_order`, and adds a per-source 'Use provider channel order' toggle in the source edit dialog that switches between provider order and alphabetical (default). Browse views (Live / Movies / Series / All) sort per-source mode; existing sources unaffected (default alphabetical). Migration 20 adds `channels.provider_order INTEGER` and `sources.sort_mode TEXT`.
+
+### Technical
+- **fix256**: 12-part systematic fix across 8 files
+  - Migration 20: `channels.provider_order` + `sources.sort_mode` columns (`lib/backend/db_factory.dart`)
+  - Parser: `XtreamStream.providerNum` from `num` field (`lib/models/xtream_types.dart`)
+  - Models: `Channel.providerOrder` + `Source.sortMode` (`lib/models/channel.dart`, `lib/models/source.dart`)
+  - Import: `xtreamToChannel` sets `providerOrder`; both `insertChannel` (M3U) and `insertChannelsBulk` (Xtream CRITICAL) write `provider_order` (`lib/backend/xtream.dart`, `lib/backend/sql.dart`)
+  - M3U: line-sequence counter passed to `getChannelFromLines` → `providerOrder` (`lib/backend/m3u.dart`)
+  - Read: `rowToChannel` maps column 19; `rowToSource` maps column 11 (`lib/backend/sql.dart`)
+  - Sort: browse `ORDER BY` mode-aware via correlated subquery on `sources.sort_mode` (`lib/backend/sql.dart`)
+  - Persist: `updateSource` writes `sort_mode`; also fixes latent color-wipe bug (omitted color in edit) (`lib/backend/sql.dart`)
+  - UI: toggle "Use provider channel order" in edit dialog; state management + color preservation (`lib/edit_dialog.dart`)
+- `flutter analyze --no-fatal-infos` clean (2 pre-existing tolerated INFOs)
+
+---
+
 ## [v1.25.5+252] - 2026-06-03
 
 **Three fixes:** changelog documentation (fix248) + TV D-pad cell menu (fix250) + TV channel selector focus (fix252).

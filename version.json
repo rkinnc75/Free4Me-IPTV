@@ -1,7 +1,7 @@
 {
-  "latest": "1.25.7",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.25.7",
+  "latest": "1.26.0",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.0",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "Version 1.25.7"
+  "releaseNotes": "\u2022 Improvement: the channel picker and browse view now correctly sort by the per-source channel order setting. In \"Use provider channel order\" mode, favorites are listed first, then provider order. In alphabetical mode, the full 6-tier sort (favorites / history / validated) is used.\n\u2022 Fix: multi-source browse views with a mix of provider and alphabetical sources now sort each source correctly according to its own setting, and the channel picker respects this per-source sort mode."
 }
