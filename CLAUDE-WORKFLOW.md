@@ -91,13 +91,22 @@ when you don't want the Cowork sandbox in the loop.
 
 ---
 
-## 3. The runbook (Claude or human)
+## 3. The runbook (Claude or human) — fix290: COMMIT ON MAIN, NEVER ON TAGS
+
+**⚠️ fix290 blocks releases that operate on tags/detached HEADs. Use this procedure verbatim:**
 
 To ship `vX.Y.Z` from Cowork:
 
-1. **Edit code** as needed.
-2. **Bump `pubspec.yaml`**: `version: X.Y.Z+N` where `N` increments by 1.
-3. **Add a changelog entry** at the TOP of `_changelog` in
+1. **Start from `main`** (fix290: never from a tag):
+   ```bash
+   git checkout main
+   git fetch origin
+   git reset --hard origin/main
+   ```
+
+2. **Edit code** as needed.
+3. **Bump `pubspec.yaml`**: `version: X.Y.Z+N` where `N` increments by 1.
+4. **Add a changelog entry** at the TOP of `_changelog` in
    `lib/whats_new_modal.dart`:
 
    ```dart
@@ -107,18 +116,23 @@ To ship `vX.Y.Z` from Cowork:
    ],
    ```
 
-4. **Regenerate `version.json`**:
+5. **Regenerate `version.json`**:
    ```bash
    python3 scripts/update_version_json.py
    ```
 
-5. **Commit** all of the above. Release-build commits use the
+6. **Commit** all of the above on `main`. Release-build commits use the
    `vX.Y.Z: release build` convention (exempt from the usual Jira-key
    rule per `AGENT-HANDOFF-v1.15.7.md` §4).
-6. **Push** `main`.
-7. **Tag** `vX.Y.Z` (lightweight tag matching past convention) and push
-   the tag — this is what fires CI.
-8. **Watch** the run:
+7. **Push `main`** (commits to origin/main, not tags yet).
+8. **Tag the pushed commit** on `main`:
+   ```bash
+   git tag vX.Y.Z
+   git push origin vX.Y.Z
+   ```
+   This is what fires CI. The pre-push hook (fix290) blocks pushing tags
+   not on main — mechanical guard against orphaned commits.
+9. **Watch** the run:
    https://github.com/rkinnc75/Free4Me-IPTV/actions/workflows/release.yml
 
 The workflow has two safety checks before it builds:
@@ -259,6 +273,31 @@ If any of these are lost, §7 has the recovery steps.
 ### PAT expired
 - `git push` from Cowork returns `403` or `401`.
 - Fix: rotate the PAT (§7a).
+
+### Pre-push hook blocks tag push (fix290)
+- Local push fails with `PRE-PUSH BLOCK: tag ... is NOT on origin/main`.
+- Cause: attempting to push a tag whose commit is not on the main branch.
+- **This is the guard working as designed.** It prevents orphaned tags.
+- Fix: ensure you're on `main`, committed, pushed `main`, then tag and push the tag.
+  See §3 (the runbook) for the correct procedure.
+
+---
+
+## 6a. The fix290 guard (prevents orphaned-tag releases)
+
+The `.githooks/pre-push` hook blocks two dangerous patterns:
+
+1. **Pushing a tag not on `origin/main`** — prevents orphaned commits
+2. **Committing and pushing from a detached HEAD** — prevents commits that don't advance main
+
+The hook is active once you run (one time on your Mac):
+```bash
+git config core.hooksPath .githooks
+```
+
+If you see `PRE-PUSH BLOCK`, it means your tag's commit is not an ancestor of
+`origin/main`. Fix: always follow §3's runbook (commit on main, push main, tag
+the pushed commit).
 
 ---
 
