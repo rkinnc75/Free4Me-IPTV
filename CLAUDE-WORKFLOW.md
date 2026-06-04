@@ -1,12 +1,19 @@
 # CLAUDE-WORKFLOW.md — How Claude ships Free4Me-IPTV
 
+## 🔴 Core Rule: Every fix or group of fixes must be tagged and released
+
+This ensures each change is immutable, trackable, and incrementally available to users.
+No code changes go in without a corresponding version bump and GitHub release.
+
+---
+
 This doc captures the workflow used to take a code change from idea to a
 published GitHub release, with specific attention to **which steps require
 which environment**. Read alongside [`AGENTS.md`](AGENTS.md) (canonical
 session guide) and [`BUILD-ENV.md`](BUILD-ENV.md) (host-Mac build
 environment that CI mirrors).
 
-Last updated: 2026-05-23.
+Last updated: 2026-06-04.
 
 ---
 
