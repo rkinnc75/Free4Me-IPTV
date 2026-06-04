@@ -169,8 +169,32 @@ if ! git diff --cached --quiet; then
   git commit -m "${TAG}: release build"
 fi
 
+# fix280: HARD GUARD — version.json on HEAD must match the generator, else the
+# tag would point at a commit with stale version.json (the recurring CI failure).
+python3 scripts/update_version_json.py
+if ! git diff --quiet version.json; then
+  git add version.json
+  git commit -m "${TAG}: sync version.json"
+fi
+python3 scripts/update_version_json.py
+if ! git diff --quiet version.json; then
+  echo "ERROR: version.json does not match generator after commit — aborting before tag." >&2
+  git --no-pager diff version.json >&2
+  exit 1
+fi
+
 echo " Pushing to GitHub"
 git push origin main
+
+# fix280: create the tag LOCALLY on the exact commit that contains version.json,
+# then push it. This pins the tag to the right commit instead of letting the
+# GitHub release API create it at the server's branch HEAD (which raced to the
+# PREVIOUS commit and caused every "version.json on the tagged commit is stale"
+# failure: 1.26.2, 1.26.4, 1.26.5, 1.26.7).
+RELEASE_SHA="$(git rev-parse HEAD)"
+git tag -f "${TAG}" "${RELEASE_SHA}"
+git push -f origin "refs/tags/${TAG}"
+echo " Tagged ${TAG} at ${RELEASE_SHA} (commit with current version.json)"
 
 #  5. Read GitHub token from keychain 
 GITHUB_TOKEN=$(security find-internet-password -s "api.github.com" -a "rkinnc75" -w 2>/dev/null)
@@ -204,10 +228,13 @@ Install \`${APK_NAME}\` by sideloading on your Android TV device.
 See [DEVELOPMENT-HANDBOOK.md](https://github.com/rkinnc75/Free4Me-IPTV/blob/main/DEVELOPMENT-HANDBOOK.md) for the full feature roadmap and changelog."
 
   # Build JSON payload safely  avoid shell quoting nightmares
+  # fix280: target_commitish pins the release/tag to the exact commit that has
+  # the current version.json, so it can never resolve to a stale commit.
   JSON_PAYLOAD=$(python3 - <<PYEOF
 import json
 print(json.dumps({
   "tag_name": "${TAG}",
+  "target_commitish": "${RELEASE_SHA}",
   "name": "${TAG}",
   "body": """${RELEASE_BODY}""",
   "draft": False,
