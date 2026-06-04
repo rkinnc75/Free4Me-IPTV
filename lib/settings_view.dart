@@ -2658,7 +2658,7 @@ class _SettingsState extends State<SettingsView> {
                             // ignore: use_build_context_synchronously
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
-                                content: Text('Log cleared.'),
+                                content: Text('Log and source dumps cleared.'),
                               ),
                             );
                           }

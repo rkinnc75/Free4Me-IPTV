@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.3': [
+    'Improvement: "Clear log" now also deletes the large diagnostic source '
+        'files saved during refresh, so debug data no longer builds up on your '
+        'device.',
+  ],
   '1.26.2': [
     'Fix: channel lists could fail to load with a database error after the '
         'provider-order update. Browsing now works correctly again.',

@@ -80,8 +80,38 @@ class AppLogger {
     final path = await logPath;
     final f = File(path);
     if (await f.exists()) await f.delete();
+    // fix266: "Clear log" also removes the raw Xtream source dumps
+    // (xtream_dump_*.json) written to the same app dir during refresh. These
+    // can grow very large (tens to hundreds of MB) and previously had no way
+    // to be purged from the UI, so the log dir grew without bound.
+    await _clearXtreamDumps();
     if (_enabled) await _ensureOpen();
     log('--- Log cleared ---', level: LogLevel.info);
+  }
+
+  /// fix266: delete every `xtream_dump_*.json` in the app dir. Best-effort —
+  /// a failure on one file does not stop the rest, and a failure of the whole
+  /// sweep does not block clearing the text log.
+  Future<void> _clearXtreamDumps() async {
+    try {
+      final dir = await Utils.appDir;
+      final d = Directory(dir);
+      if (!await d.exists()) return;
+      await for (final entry in d.list(followLinks: false)) {
+        if (entry is File) {
+          final name = entry.path.split('/').last;
+          if (name.startsWith('xtream_dump_') && name.endsWith('.json')) {
+            try {
+              await entry.delete();
+            } catch (_) {
+              // ignore a single stubborn file; keep deleting the others
+            }
+          }
+        }
+      }
+    } catch (_) {
+      // ignore: clearing the dumps must never block clearing the log
+    }
   }
 
 
