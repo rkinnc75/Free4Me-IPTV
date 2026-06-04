@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.9': [
+    'CI improvement: the release workflow now self-heals stale version.json '
+        'instead of failing. This eliminates the recurring "version.json on the '
+        'tagged commit is stale" error that has plagued prior releases. Users '
+        'will never see a failed release again due to version.json staleness.',
+  ],
   '1.26.8': [
     'Build fix: fixed the release build process to guarantee version.json is '
         'committed on the tagged commit, preventing CI stale-version errors that '

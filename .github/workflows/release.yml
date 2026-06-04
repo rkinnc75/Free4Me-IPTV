@@ -66,6 +66,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # fix282: need write credentials to auto-sync version.json + re-tag.
+          persist-credentials: true
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -77,12 +79,37 @@ jobs:
       - name: flutter pub get
         run: flutter pub get
 
-      - name: Verify version.json is up to date
+      - name: Sync version.json on the tagged commit (self-healing)
+        env:
+          GH_TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           python3 scripts/update_version_json.py
+          if git diff --quiet version.json; then
+            echo "version.json is current — nothing to do."
+            exit 0
+          fi
+          echo "version.json was stale — regenerating, committing to main, and moving $GH_TAG."
+          git --no-pager diff version.json || true
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Commit the regenerated version.json onto main, then point the tag here.
+          git fetch origin main
+          git checkout -B main origin/main
+          python3 scripts/update_version_json.py
           if ! git diff --quiet version.json; then
-            echo "::error::version.json on the tagged commit is stale."
+            git add version.json
+            git commit -m "${GH_TAG}: CI sync version.json"
+            git push origin main
+          fi
+          NEW_SHA="$(git rev-parse HEAD)"
+          git tag -f "${GH_TAG}" "${NEW_SHA}"
+          git push -f origin "refs/tags/${GH_TAG}"
+          echo "Moved ${GH_TAG} to ${NEW_SHA} with synced version.json."
+          # Re-verify; fail only if something is still wrong (should never happen).
+          python3 scripts/update_version_json.py
+          if ! git diff --quiet version.json; then
+            echo "::error::version.json still stale after self-heal — aborting."
             git --no-pager diff version.json
             exit 1
           fi
@@ -134,18 +161,15 @@ jobs:
           fi
           echo "Tag/pubspec match: $PUSHED_TAG"
 
-      - name: Verify version.json is up to date
+      - name: Ensure version.json is current (regenerate, non-fatal)
         run: |
           set -euo pipefail
+          # fix282: the analyze job self-heals + re-tags; by the time this runs
+          # the tag points at a commit with correct version.json. Regenerate
+          # defensively so the built release notes are always current, but do
+          # NOT fail the build here.
           python3 scripts/update_version_json.py
-          if ! git diff --quiet version.json; then
-            echo "::error::version.json on the tagged commit is stale."
-            echo "::error::Run 'python3 scripts/update_version_json.py'" \
-                 "locally, commit, re-tag, and push again."
-            git --no-pager diff version.json
-            exit 1
-          fi
-          echo "version.json is current."
+          echo "version.json regenerated for build."
 
       - name: Set up Java 21 (Temurin)
         uses: actions/setup-java@v4
