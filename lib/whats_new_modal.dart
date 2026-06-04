@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.11': [
+    'Maintenance: internal release-process validation. No changes to app behavior.',
+  ],
   '1.26.10': [
     'CI fix: fixed a git mechanics issue in the 1.26.9 self-heal that prevented '
         'version.json regeneration when switching branches. The fix adds a stash '

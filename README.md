@@ -154,3 +154,4 @@ content-type filter cycling, a consistent multi-key channel sort, persistent str
 validation, live-TV-only multi-view, advanced EPG matching, a separate EPG database,
 stream scanner, collapsible settings groups, and numerous reliability and performance
 improvements. All additions are released under the same license as the original project.
+<!-- Release pipeline validated on v1.26.11 (no functional changes). -->
