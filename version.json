@@ -1,7 +1,7 @@
 {
-  "latest": "1.26.1",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.1",
+  "latest": "1.26.2",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.2",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: in the multi-view channel picker, favorites now appear first under provider channel order, matching the main channel list."
+  "releaseNotes": "\u2022 Fix: channel lists could fail to load with a database error after the provider-order update. Browsing now works correctly again."
 }
