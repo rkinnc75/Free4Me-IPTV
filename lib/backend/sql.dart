@@ -1,4 +1,5 @@
 import 'dart:collection';
+import 'dart:convert';
 
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/playback_analyzer.dart';
@@ -292,6 +293,20 @@ class Sql {
         ON CONFLICT(name, source_id) DO UPDATE SET
           media_type = excluded.media_type
       ''', [sourceId, sourceId]);
+      // fix298: re-apply the categories that were disabled before this refresh
+      // (captured by wipeSource). Newly-appeared categories keep DEFAULT 1.
+      final stashed = memory['disabledGroupNames'];
+      if (stashed != null && stashed.isNotEmpty) {
+        final names = (jsonDecode(stashed) as List).cast<String>();
+        if (names.isNotEmpty) {
+          await tx.execute(
+            'UPDATE groups SET enabled = 0'
+            ' WHERE source_id = ?'
+            ' AND name IN (${generatePlaceholders(names.length)})',
+            [sourceId, ...names],
+          );
+        }
+      }
       await tx.execute('''
         UPDATE channels
         SET group_id = (
@@ -647,14 +662,16 @@ class Sql {
   ///
   /// Includes stream validation so cache ordering can match SQL search.
   static Future<
-      List<(int, String, String, int, int, bool, int?, int?, int?, bool?)>>
+      List<(int, String, String, int, int, bool, int?, int?, int?, bool?,
+          bool, bool)>>
       getAllChannelNamesForCache() async {
     final db = await DbFactory.db;
     final rows = await db.getAll(
-      'SELECT id, name, COALESCE(group_name, \'\'), media_type, source_id,'
-      '       COALESCE(favorite, 0), last_watched, group_id, series_id,'
-      '       stream_validated'
-      ' FROM channels WHERE url IS NOT NULL',
+      'SELECT c.id, c.name, COALESCE(c.group_name, \'\'), c.media_type, c.source_id,'
+      '       COALESCE(c.favorite, 0), c.last_watched, c.group_id, c.series_id,'
+      '       c.stream_validated, COALESCE(c.is_divider, 0),'
+      '       COALESCE((SELECT hide_dividers FROM sources s WHERE s.id = c.source_id), 0)'
+      ' FROM channels c WHERE c.url IS NOT NULL',
     );
     return rows
         .map((r) => (
@@ -670,6 +687,8 @@ class Sql {
               (r.columnAt(9) as int?) == null
                   ? null
                   : (r.columnAt(9) as int) == 1,
+              (r.columnAt(10) as int) == 1,       // isDivider
+              (r.columnAt(11) as int) == 1,       // hideDividers (source flag)
             ))
         .toList(growable: false);
   }
@@ -696,6 +715,18 @@ class Sql {
       'UPDATE groups SET enabled = ? WHERE id = ?',
       [enabled ? 1 : 0, groupId],
     );
+    // fix298: keep the in-memory search cache's disabled set in sync so the
+    // keystroke search reflects the toggle immediately (no rebuild needed).
+    ChannelSearchCache.setGroupEnabled(groupId, enabled);
+  }
+
+  /// fix298: ids of all groups with enabled = 0, for the search cache to
+  /// exclude before pagination.
+  static Future<Set<int>> getDisabledGroupIds() async {
+    final db = await DbFactory.db;
+    final rows =
+        await db.getAll('SELECT id FROM groups WHERE COALESCE(enabled, 1) = 0');
+    return {for (final r in rows) r.columnAt(0) as int};
   }
 
   // fix278: enable/disable ALL categories for the given sources (Select All /
@@ -719,6 +750,19 @@ class Sql {
       ' WHERE source_id IN (${generatePlaceholders(sourceIds.length)})'
       '$mediaClause',
       [enabled ? 1 : 0, ...sourceIds, ...mt],
+    );
+    // fix298: resync the search cache's disabled set for the affected groups.
+    // Re-query the exact rows the UPDATE touched (same WHERE) and apply the new
+    // state to the cache so keystroke search reflects it without a rebuild.
+    final affected = await db.getAll(
+      'SELECT id FROM groups'
+      ' WHERE source_id IN (${generatePlaceholders(sourceIds.length)})'
+      '$mediaClause',
+      [...sourceIds, ...mt],
+    );
+    ChannelSearchCache.setGroupsEnabledBulk(
+      [for (final r in affected) r.columnAt(0) as int],
+      enabled,
     );
   }
 
@@ -900,6 +944,18 @@ class Sql {
       final countRow = await tx.getOptional(
         'SELECT COUNT(*) FROM channels WHERE source_id = ?', [sourceId]);
       final before = countRow?.columnAt(0) ?? 0;
+      // fix298: preserve per-category enabled state across refresh. wipeSource
+      // deletes the groups rows, so without this the recreated groups would all
+      // default to enabled=1 and the user's disabled categories would silently
+      // turn back on every refresh. Stash the disabled group NAMES (keyed by
+      // name, which survives re-import) for updateGroups to restore.
+      final disabledRows = await tx.getAll(
+        'SELECT name FROM groups WHERE source_id = ? AND COALESCE(enabled,1) = 0',
+        [sourceId],
+      );
+      final disabledNames =
+          [for (final r in disabledRows) r.columnAt(0) as String];
+      memory['disabledGroupNames'] = jsonEncode(disabledNames);
       await tx.execute('''
         DELETE FROM channels
         WHERE source_id = ?
@@ -1618,45 +1674,15 @@ class Sql {
     if (ids.isEmpty) return [];
 
     final db = await DbFactory.db;
-    // fix294: apply the same divider + disabled-category filters the SQL browse
-    // path uses, so the in-memory (keystroke) search does not surface hidden
-    // categories or unplayable "#### ####" divider rows.
+    // fix298: the cache now applies the divider + disabled-category exclusions
+    // BEFORE pagination (in ChannelSearchCache.search), so the returned ids are
+    // already the correct, playable, enabled page. This fetch is pure hydration
+    // by id — no post-fetch filtering (the old fix294 filter ran after the page
+    // was capped, letting dividers/disabled rows hide real channels). The
+    // fix296 diagnostic block is removed now that the cause is fixed.
     final sqlQuery =
-        'SELECT * FROM channels c WHERE c.id IN (${generatePlaceholders(ids.length)})'
-        ' AND c.url IS NOT NULL'
-        '\nAND NOT (COALESCE(c.is_divider,0) = 1 AND '
-        'COALESCE((SELECT hide_dividers FROM sources WHERE id = c.source_id),0) = 1)'
-        '\nAND COALESCE('
-        '(SELECT g.enabled FROM groups g WHERE g.id = c.group_id), 1) = 1';
+        'SELECT * FROM channels c WHERE c.id IN (${generatePlaceholders(ids.length)})';
     final rows = await db.getAll(sqlQuery, [...ids]);
-
-    // fix296 DIAGNOSTIC (temporary): if the cache returned candidate ids but the
-    // filter dropped some/all, dump per-id raw values so we can see WHICH clause
-    // excluded them (group_id / is_divider / enabled lookup / hide_dividers).
-    // Only fires for an actual query when rows < ids, to avoid log spam.
-    if (AppLog.enabled && rawQuery.trim().isNotEmpty && rows.length < ids.length) {
-      try {
-        final diag = await db.getAll(
-          'SELECT c.id, c.name, c.group_id, c.is_divider, c.url IS NOT NULL AS has_url,'
-          ' (SELECT g.enabled FROM groups g WHERE g.id = c.group_id) AS enabled_lookup,'
-          ' (SELECT g.name FROM groups g WHERE g.id = c.group_id) AS group_match,'
-          ' (SELECT hide_dividers FROM sources s WHERE s.id = c.source_id) AS hide_div'
-          ' FROM channels c WHERE c.id IN (${generatePlaceholders(ids.length)})',
-          [...ids],
-        );
-        AppLog.info('fix296 DIAG: query="$rawQuery" cacheIds=${ids.length} '
-            'passedFilter=${rows.length} droppedCandidates below:');
-        for (final r in diag) {
-          AppLog.info('fix296 DIAG: id=${r.columnAt(0)} '
-              'name="${r.columnAt(1)}" group_id=${r.columnAt(2)} '
-              'is_divider=${r.columnAt(3)} has_url=${r.columnAt(4)} '
-              'enabled_lookup=${r.columnAt(5)} group_match="${r.columnAt(6)}" '
-              'hide_dividers=${r.columnAt(7)}');
-        }
-      } catch (e) {
-        AppLog.info('fix296 DIAG: diagnostic query failed: $e');
-      }
-    }
 
     // Preserve the cache's result order — WHERE IN does not guarantee ordering.
     final byId = <int, Channel>{};

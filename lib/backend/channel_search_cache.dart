@@ -24,6 +24,10 @@ class _CacheEntry {
   /// True when name or group matches any [safeModeBlocklist] term.
   /// Computed once at build time so safe mode toggling never needs a rebuild.
   final bool adultBlocked;
+  /// True when this channel's name is a "#### divider ####" label (fix272).
+  final bool isDivider;
+  /// True when this channel's source has hide_dividers enabled (fix272).
+  final bool hideDividers;
 
   const _CacheEntry({
     required this.id,
@@ -37,6 +41,8 @@ class _CacheEntry {
     required this.seriesId,
     required this.streamValidated,
     required this.adultBlocked,
+    required this.isDivider,
+    required this.hideDividers,
   });
 
   /// Creates a copy with specific fields overridden.
@@ -64,6 +70,8 @@ class _CacheEntry {
           ? this.streamValidated
           : streamValidated as bool?,
       adultBlocked:    adultBlocked,
+      isDivider:       isDivider,
+      hideDividers:    hideDividers,
     );
   }
 }
@@ -89,6 +97,12 @@ class ChannelSearchCache {
   static Map<int, int> _indexById = {};
 
   static bool _built = false;
+
+  /// fix298: ids of groups with enabled=0. Checked in [search] BEFORE the
+  /// limit so disabled categories don't consume page slots. Mutable at runtime
+  /// (category toggle) via [setGroupEnabled]/[setGroupsEnabledBulk] without a
+  /// full rebuild — enabled state lives only here, not on each entry.
+  static Set<int> _disabledGroupIds = {};
 
   /// Generation token — incremented on [invalidate] to abort stale rebuilds.
   static int _generation = 0;
@@ -132,6 +146,9 @@ class ChannelSearchCache {
     final generation = _generation;
     final t = DateTime.now();
     final rows = await Sql.getAllChannelNamesForCache();
+    // fix298: snapshot which groups are currently disabled so search can
+    // exclude them before pagination. Kept current on toggle by setGroupEnabled.
+    final disabled = await Sql.getDisabledGroupIds();
 
     if (generation != _generation) {
       AppLog.info('ChannelSearchCache: rebuild discarded (generation changed)');
@@ -155,6 +172,8 @@ class ChannelSearchCache {
         seriesId:        r.$9,
         streamValidated: r.$10,
         adultBlocked:    adultBlocked,
+        isDivider:       r.$11,
+        hideDividers:    r.$12,
       );
     }).toList(growable: false);
 
@@ -166,6 +185,7 @@ class ChannelSearchCache {
     }
 
     _entries = entries;
+    _disabledGroupIds = disabled;
     _indexById = {
       for (var i = 0; i < _entries.length; i++) _entries[i].id: i
     };
@@ -208,6 +228,27 @@ class ChannelSearchCache {
   /// Update [favorite] for a single channel in the cache after a DB write.
   static void updateFavorite(int id, bool favorite) {
     _replaceEntry(id, (e) => e.copyWith(favorite: favorite));
+  }
+
+  /// fix298: keep the disabled-category set current after a single category
+  /// toggle, without rebuilding the cache. Enabled state lives only in
+  /// [_disabledGroupIds], so this is O(1).
+  static void setGroupEnabled(int groupId, bool enabled) {
+    if (enabled) {
+      _disabledGroupIds.remove(groupId);
+    } else {
+      _disabledGroupIds.add(groupId);
+    }
+  }
+
+  /// fix298: bulk variant for Select all / Unselect all. [groupIds] is the full
+  /// set of group ids the action covered; [enabled] is their new state.
+  static void setGroupsEnabledBulk(Iterable<int> groupIds, bool enabled) {
+    if (enabled) {
+      _disabledGroupIds.removeAll(groupIds);
+    } else {
+      _disabledGroupIds.addAll(groupIds);
+    }
   }
 
   /// Update [lastWatched] for a single channel after addToHistory /
@@ -276,6 +317,12 @@ class ChannelSearchCache {
       if (viewType == ViewType.favorites && !e.favorite) continue;
       if (seriesId != null && e.seriesId != seriesId) continue;
       if (groupId != null && e.groupId != groupId) continue;
+      // fix298: apply the divider + disabled-category exclusions HERE, before
+      // the limit, so they don't consume page slots (the old post-fetch SQL
+      // filter ran after the cache had already capped at `limit`, which let
+      // dividers/disabled rows fill the page and hide real channels).
+      if (e.isDivider && e.hideDividers) continue;
+      if (e.groupId != null && _disabledGroupIds.contains(e.groupId)) continue;
       if (terms.isNotEmpty && !terms.every((t) => e.nameLower.contains(t))) {
         continue;
       }
