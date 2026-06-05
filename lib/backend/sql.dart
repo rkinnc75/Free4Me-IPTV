@@ -708,10 +708,16 @@ class Sql {
     if (sourceIds.isEmpty) return;
     final db = await DbFactory.db;
     final mt = mediaTypes.map((x) => x.index).toList();
+    // fix296: when no media-type filter is active (mt empty), do NOT emit
+    // "media_type IN ()" — that is a SQLite syntax error (peer Finding 1).
+    // Empty filter means "all media types", so omit the media_type predicate.
+    final mediaClause = mt.isEmpty
+        ? ''
+        : ' AND (media_type IS NULL OR media_type IN (${generatePlaceholders(mt.length)}))';
     await db.execute(
       'UPDATE groups SET enabled = ?'
       ' WHERE source_id IN (${generatePlaceholders(sourceIds.length)})'
-      ' AND (media_type IS NULL OR media_type IN (${generatePlaceholders(mt.length)}))',
+      '$mediaClause',
       [enabled ? 1 : 0, ...sourceIds, ...mt],
     );
   }
@@ -1623,6 +1629,34 @@ class Sql {
         '\nAND COALESCE('
         '(SELECT g.enabled FROM groups g WHERE g.id = c.group_id), 1) = 1';
     final rows = await db.getAll(sqlQuery, [...ids]);
+
+    // fix296 DIAGNOSTIC (temporary): if the cache returned candidate ids but the
+    // filter dropped some/all, dump per-id raw values so we can see WHICH clause
+    // excluded them (group_id / is_divider / enabled lookup / hide_dividers).
+    // Only fires for an actual query when rows < ids, to avoid log spam.
+    if (AppLog.enabled && rawQuery.trim().isNotEmpty && rows.length < ids.length) {
+      try {
+        final diag = await db.getAll(
+          'SELECT c.id, c.name, c.group_id, c.is_divider, c.url IS NOT NULL AS has_url,'
+          ' (SELECT g.enabled FROM groups g WHERE g.id = c.group_id) AS enabled_lookup,'
+          ' (SELECT g.name FROM groups g WHERE g.id = c.group_id) AS group_match,'
+          ' (SELECT hide_dividers FROM sources s WHERE s.id = c.source_id) AS hide_div'
+          ' FROM channels c WHERE c.id IN (${generatePlaceholders(ids.length)})',
+          [...ids],
+        );
+        AppLog.info('fix296 DIAG: query="$rawQuery" cacheIds=${ids.length} '
+            'passedFilter=${rows.length} droppedCandidates below:');
+        for (final r in diag) {
+          AppLog.info('fix296 DIAG: id=${r.columnAt(0)} '
+              'name="${r.columnAt(1)}" group_id=${r.columnAt(2)} '
+              'is_divider=${r.columnAt(3)} has_url=${r.columnAt(4)} '
+              'enabled_lookup=${r.columnAt(5)} group_match="${r.columnAt(6)}" '
+              'hide_dividers=${r.columnAt(7)}');
+        }
+      } catch (e) {
+        AppLog.info('fix296 DIAG: diagnostic query failed: $e');
+      }
+    }
 
     // Preserve the cache's result order — WHERE IN does not guarantee ordering.
     final byId = <int, Channel>{};

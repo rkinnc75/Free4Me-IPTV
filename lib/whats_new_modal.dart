@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.13': [
+    'Fix: the Select all / Unselect all buttons on the Categories screen no longer fail when no media-type filter is active.',
+    'Maintenance: added temporary diagnostics to investigate a search issue. No change to app behavior.',
+  ],
   '1.26.12': [
     'Fix: searching no longer shows channels from categories you have hidden, '
         'or the provider\'s "#### … ####" section-header rows.',
