@@ -1,7 +1,7 @@
 {
-  "latest": "1.26.12",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.12",
+  "latest": "1.26.13",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.13",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: searching no longer shows channels from categories you have hidden, or the provider's \"#### \u2026 ####\" section-header rows.\n\u2022 Fix: the channel picker no longer shows duplicate \"Favourites\" and \"History\" sections \u2014 each appears once, with all its channels grouped together."
+  "releaseNotes": "\u2022 Fix: the Select all / Unselect all buttons on the Categories screen no longer fail when no media-type filter is active.\n\u2022 Maintenance: added temporary diagnostics to investigate a search issue. No change to app behavior."
 }
