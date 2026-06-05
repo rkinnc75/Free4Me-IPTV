@@ -1,7 +1,7 @@
 {
-  "latest": "1.26.14",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.14",
+  "latest": "1.26.15",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.15",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: searching now finds channels in your enabled categories. Previously, divider labels and disabled categories could fill the results and hide real channels.\n\u2022 Fix: enabling or disabling categories now persists across source refreshes instead of resetting."
+  "releaseNotes": "\u2022 Fix: categories that your provider references but does not name now appear on the Categories screen, so you can enable them. They are named from the channel name prefix."
 }
