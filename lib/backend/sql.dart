@@ -148,9 +148,10 @@ class Sql {
         INSERT INTO channels (
           name, image, url, source_id, media_type, series_id, favorite,
           stream_id, group_name, epg_channel_id,
-          catchup_type, catchup_source, catchup_days, provider_order, is_divider
+          catchup_type, catchup_source, catchup_days, provider_order, is_divider,
+          is_adult
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT DO UPDATE SET
           url = excluded.url,
           group_name = excluded.group_name,
@@ -165,7 +166,8 @@ class Sql {
           catchup_source = excluded.catchup_source,
           catchup_days = excluded.catchup_days,
           provider_order = excluded.provider_order,
-          is_divider = excluded.is_divider
+          is_divider = excluded.is_divider,
+          is_adult = excluded.is_adult
           -- engine_override intentionally omitted: preserve any user override
           ;
       ''', [
@@ -186,6 +188,7 @@ class Sql {
         channel.catchupDays,
         channel.providerOrder,
         channel.isDivider ? 1 : 0,
+        channel.isAdult ? 1 : 0,
       ]);
       memory['lastChannelId'] =
           (await tx.get("SELECT last_insert_rowid()")).columnAt(0).toString();
@@ -241,7 +244,7 @@ class Sql {
     return (SqliteWriteContext tx, Map<String, String> memory) async {
       if (channels.isEmpty) return;
       final sourceId = int.parse(memory['sourceId']!);
-      const cols = 15; // fix256: +provider_order; fix272: +is_divider
+      const cols = 16; // fix256: +provider_order; fix272: +is_divider; fix300: +is_adult
       final rowPlaceholder = '(${List.filled(cols, '?').join(', ')})';
       final values = List.filled(channels.length, rowPlaceholder).join(', ');
       final params = <Object?>[];
@@ -254,13 +257,15 @@ class Sql {
           ch.catchupType, ch.catchupSource, ch.catchupDays,
           ch.providerOrder, // fix256
           ch.isDivider ? 1 : 0, // fix272
+          ch.isAdult ? 1 : 0, // fix300
         ]);
       }
       await tx.execute('''
         INSERT INTO channels (
           name, image, url, source_id, media_type, series_id, favorite,
           stream_id, group_name, epg_channel_id,
-          catchup_type, catchup_source, catchup_days, provider_order, is_divider
+          catchup_type, catchup_source, catchup_days, provider_order, is_divider,
+          is_adult
         )
         VALUES $values
         ON CONFLICT DO UPDATE SET
@@ -275,7 +280,8 @@ class Sql {
           catchup_source = excluded.catchup_source,
           catchup_days = excluded.catchup_days,
           provider_order = excluded.provider_order,
-          is_divider = excluded.is_divider;
+          is_divider = excluded.is_divider,
+          is_adult = excluded.is_adult;
       ''', params);
     };
   }
@@ -663,14 +669,15 @@ class Sql {
   /// Includes stream validation so cache ordering can match SQL search.
   static Future<
       List<(int, String, String, int, int, bool, int?, int?, int?, bool?,
-          bool, bool)>>
+          bool, bool, bool)>>
       getAllChannelNamesForCache() async {
     final db = await DbFactory.db;
     final rows = await db.getAll(
       'SELECT c.id, c.name, COALESCE(c.group_name, \'\'), c.media_type, c.source_id,'
       '       COALESCE(c.favorite, 0), c.last_watched, c.group_id, c.series_id,'
       '       c.stream_validated, COALESCE(c.is_divider, 0),'
-      '       COALESCE((SELECT hide_dividers FROM sources s WHERE s.id = c.source_id), 0)'
+      '       COALESCE((SELECT hide_dividers FROM sources s WHERE s.id = c.source_id), 0),'
+      '       COALESCE(c.is_adult, 0)'
       ' FROM channels c WHERE c.url IS NOT NULL',
     );
     return rows
@@ -689,6 +696,7 @@ class Sql {
                   : (r.columnAt(9) as int) == 1,
               (r.columnAt(10) as int) == 1,       // isDivider
               (r.columnAt(11) as int) == 1,       // hideDividers (source flag)
+              (r.columnAt(12) as int) == 1,       // isAdult (fix300)
             ))
         .toList(growable: false);
   }
@@ -1626,16 +1634,10 @@ class Sql {
   /// channels table as `c`. Returns ('', []) when [safeMode] is false.
   static (String, List<String>) safeModeClause(bool safeMode) {
     if (!safeMode) return ('', []);
-    final conditions = safeModeBlocklist
-        .expand((_) => [
-              'LOWER(COALESCE(c.group_name, \'\')) NOT LIKE ?',
-              'LOWER(COALESCE(c.name, \'\')) NOT LIKE ?',
-            ])
-        .join(' AND ');
-    final params = safeModeBlocklist
-        .expand((t) => ['%${t.toLowerCase()}%', '%${t.toLowerCase()}%'])
-        .toList();
-    return ('\nAND ($conditions)', params);
+    // fix300: adult status is precomputed into channels.is_adult at import
+    // (provider is_adult OR safeModeBlocklist name match), so the filter is a
+    // single indexed check instead of a per-term LIKE chain.
+    return ('\nAND COALESCE(c.is_adult, 0) = 0', []);
   }
 
   /// Same as [safeModeClause] but for the groups table (Categories view).

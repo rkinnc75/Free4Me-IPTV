@@ -174,9 +174,10 @@ Channel? getChannelFromLines(String l1, String last, int order) {
   final catchupSource = catchupSourceRegex.firstMatch(l1)?[1]?.trim();
   final catchupDaysStr = catchupDaysRegex.firstMatch(l1)?[1]?.trim();
 
+  final group = groupRegex.firstMatch(l1)?[1]?.trim();
   return Channel(
     name: name,
-    group: groupRegex.firstMatch(l1)?[1]?.trim(),
+    group: group,
     image: logoRegex.firstMatch(l1)?[1]?.trim(),
     favorite: false,
     mediaType: getMediaType(url),
@@ -192,6 +193,7 @@ Channel? getChannelFromLines(String l1, String last, int order) {
         catchupDaysStr != null ? int.tryParse(catchupDaysStr) : null,
     providerOrder: order, // fix256: M3U line sequence
     isDivider: Channel.nameIsDivider(name), // fix272
+    isAdult: Channel.nameIsAdult(name, group), // fix300 (M3U has no is_adult)
   );
 }
 

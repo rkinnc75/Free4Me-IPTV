@@ -366,6 +366,8 @@ Channel xtreamToChannel(
     catchupDays: hasCatchup ? stream.tvArchiveDuration : null,
     providerOrder: stream.providerNum, // fix256: preserve provider display order
     isDivider: Channel.nameIsDivider(stream.name), // fix272
+    isAdult: stream.isAdult == 1 ||
+        Channel.nameIsAdult(stream.name, categoryName), // fix300
   );
 }
 

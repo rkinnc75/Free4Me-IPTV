@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.16': [
+    'Safe mode now also hides channels your provider marks as adult, in addition to the built-in keyword list.',
+  ],
   '1.26.15': [
     'Fix: categories that your provider references but does not name now appear on the Categories screen, so you can enable them. They are named from the channel name prefix.',
   ],

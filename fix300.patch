@@ -1,0 +1,305 @@
+diff --git a/lib/backend/channel_search_cache.dart b/lib/backend/channel_search_cache.dart
+index 3164faa..61782d8 100644
+--- a/lib/backend/channel_search_cache.dart
++++ b/lib/backend/channel_search_cache.dart
+@@ -1,6 +1,5 @@
+ import 'package:open_tv/backend/app_logger.dart';
+ import 'package:open_tv/backend/sql.dart';
+-import 'package:open_tv/models/settings.dart' show safeModeBlocklist;
+ import 'package:open_tv/models/view_type.dart';
+
+ // Sentinel for copyWith — distinguishes "explicitly null" from "not provided".
+@@ -158,8 +157,9 @@ class ChannelSearchCache {
+     final entries = rows.map((r) {
+       final nameLower  = r.$2.toLowerCase();
+       final groupLower = r.$3.toLowerCase();
+-      final adultBlocked = safeModeBlocklist
+-          .any((b) => nameLower.contains(b) || groupLower.contains(b));
++      // fix300: adult status is precomputed into channels.is_adult at import,
++      // so the cache reads it directly instead of re-scanning the blocklist.
++      final adultBlocked = r.$13;
+       return _CacheEntry(
+         id:              r.$1,
+         nameLower:       nameLower,
+diff --git a/lib/backend/db_factory.dart b/lib/backend/db_factory.dart
+index 84aafd2..319571d 100644
+--- a/lib/backend/db_factory.dart
++++ b/lib/backend/db_factory.dart
+@@ -445,6 +445,17 @@ class DbFactory {
+       ..add(SqliteMigration(23, (tx) async {
+         await tx.execute(
+             'ALTER TABLE groups ADD COLUMN enabled INTEGER DEFAULT 1;');
++      }))
++      // fix300: unified adult flag. Set at import to (provider is_adult) OR
++      // (name matches the hardcoded safeModeBlocklist), so every safe-mode
++      // filter becomes a single indexed "is_adult = 0" check instead of a
++      // per-term LIKE chain. Providers without is_adult contribute 0.
++      ..add(SqliteMigration(24, (tx) async {
++        await tx.execute(
++            'ALTER TABLE channels ADD COLUMN is_adult INTEGER DEFAULT 0;');
++        await tx.execute(
++            'CREATE INDEX IF NOT EXISTS idx_channel_adult '
++            'ON channels(source_id, is_adult);');
+       }));
+     await migrations.migrate(db);
+
+diff --git a/lib/backend/m3u.dart b/lib/backend/m3u.dart
+index cf339b0..b05e9cf 100644
+--- a/lib/backend/m3u.dart
++++ b/lib/backend/m3u.dart
+@@ -174,9 +174,10 @@ Channel? getChannelFromLines(String l1, String last, int order) {
+   final catchupSource = catchupSourceRegex.firstMatch(l1)?[1]?.trim();
+   final catchupDaysStr = catchupDaysRegex.firstMatch(l1)?[1]?.trim();
+
++  final group = groupRegex.firstMatch(l1)?[1]?.trim();
+   return Channel(
+     name: name,
+-    group: groupRegex.firstMatch(l1)?[1]?.trim(),
++    group: group,
+     image: logoRegex.firstMatch(l1)?[1]?.trim(),
+     favorite: false,
+     mediaType: getMediaType(url),
+@@ -192,6 +193,7 @@ Channel? getChannelFromLines(String l1, String last, int order) {
+         catchupDaysStr != null ? int.tryParse(catchupDaysStr) : null,
+     providerOrder: order, // fix256: M3U line sequence
+     isDivider: Channel.nameIsDivider(name), // fix272
++    isAdult: Channel.nameIsAdult(name, group), // fix300 (M3U has no is_adult)
+   );
+ }
+
+diff --git a/lib/backend/sql.dart b/lib/backend/sql.dart
+index 24c58d0..a8e9929 100644
+--- a/lib/backend/sql.dart
++++ b/lib/backend/sql.dart
+@@ -148,9 +148,10 @@ class Sql {
+         INSERT INTO channels (
+           name, image, url, source_id, media_type, series_id, favorite,
+           stream_id, group_name, epg_channel_id,
+-          catchup_type, catchup_source, catchup_days, provider_order, is_divider
++          catchup_type, catchup_source, catchup_days, provider_order, is_divider,
++          is_adult
+         )
+-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
++        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT DO UPDATE SET
+           url = excluded.url,
+           group_name = excluded.group_name,
+@@ -165,7 +166,8 @@ class Sql {
+           catchup_source = excluded.catchup_source,
+           catchup_days = excluded.catchup_days,
+           provider_order = excluded.provider_order,
+-          is_divider = excluded.is_divider
++          is_divider = excluded.is_divider,
++          is_adult = excluded.is_adult
+           -- engine_override intentionally omitted: preserve any user override
+           ;
+       ''', [
+@@ -186,6 +188,7 @@ class Sql {
+         channel.catchupDays,
+         channel.providerOrder,
+         channel.isDivider ? 1 : 0,
++        channel.isAdult ? 1 : 0,
+       ]);
+       memory['lastChannelId'] =
+           (await tx.get("SELECT last_insert_rowid()")).columnAt(0).toString();
+@@ -241,7 +244,7 @@ class Sql {
+     return (SqliteWriteContext tx, Map<String, String> memory) async {
+       if (channels.isEmpty) return;
+       final sourceId = int.parse(memory['sourceId']!);
+-      const cols = 15; // fix256: +provider_order; fix272: +is_divider
++      const cols = 16; // fix256: +provider_order; fix272: +is_divider; fix300: +is_adult
+       final rowPlaceholder = '(${List.filled(cols, '?').join(', ')})';
+       final values = List.filled(channels.length, rowPlaceholder).join(', ');
+       final params = <Object?>[];
+@@ -254,13 +257,15 @@ class Sql {
+           ch.catchupType, ch.catchupSource, ch.catchupDays,
+           ch.providerOrder, // fix256
+           ch.isDivider ? 1 : 0, // fix272
++          ch.isAdult ? 1 : 0, // fix300
+         ]);
+       }
+       await tx.execute('''
+         INSERT INTO channels (
+           name, image, url, source_id, media_type, series_id, favorite,
+           stream_id, group_name, epg_channel_id,
+-          catchup_type, catchup_source, catchup_days, provider_order, is_divider
++          catchup_type, catchup_source, catchup_days, provider_order, is_divider,
++          is_adult
+         )
+         VALUES $values
+         ON CONFLICT DO UPDATE SET
+@@ -275,7 +280,8 @@ class Sql {
+           catchup_source = excluded.catchup_source,
+           catchup_days = excluded.catchup_days,
+           provider_order = excluded.provider_order,
+-          is_divider = excluded.is_divider;
++          is_divider = excluded.is_divider,
++          is_adult = excluded.is_adult;
+       ''', params);
+     };
+   }
+@@ -663,14 +669,15 @@ class Sql {
+   /// Includes stream validation so cache ordering can match SQL search.
+   static Future<
+       List<(int, String, String, int, int, bool, int?, int?, int?, bool?,
+-          bool, bool)>>
++          bool, bool, bool)>>
+       getAllChannelNamesForCache() async {
+     final db = await DbFactory.db;
+     final rows = await db.getAll(
+       'SELECT c.id, c.name, COALESCE(c.group_name, \'\'), c.media_type, c.source_id,'
+       '       COALESCE(c.favorite, 0), c.last_watched, c.group_id, c.series_id,'
+       '       c.stream_validated, COALESCE(c.is_divider, 0),'
+-      '       COALESCE((SELECT hide_dividers FROM sources s WHERE s.id = c.source_id), 0)'
++      '       COALESCE((SELECT hide_dividers FROM sources s WHERE s.id = c.source_id), 0),'
++      '       COALESCE(c.is_adult, 0)'
+       ' FROM channels c WHERE c.url IS NOT NULL',
+     );
+     return rows
+@@ -689,6 +696,7 @@ class Sql {
+                   : (r.columnAt(9) as int) == 1,
+               (r.columnAt(10) as int) == 1,       // isDivider
+               (r.columnAt(11) as int) == 1,       // hideDividers (source flag)
++              (r.columnAt(12) as int) == 1,       // isAdult (fix300)
+             ))
+         .toList(growable: false);
+   }
+@@ -1626,16 +1634,10 @@ class Sql {
+   /// channels table as `c`. Returns ('', []) when [safeMode] is false.
+   static (String, List<String>) safeModeClause(bool safeMode) {
+     if (!safeMode) return ('', []);
+-    final conditions = safeModeBlocklist
+-        .expand((_) => [
+-              'LOWER(COALESCE(c.group_name, \'\')) NOT LIKE ?',
+-              'LOWER(COALESCE(c.name, \'\')) NOT LIKE ?',
+-            ])
+-        .join(' AND ');
+-    final params = safeModeBlocklist
+-        .expand((t) => ['%${t.toLowerCase()}%', '%${t.toLowerCase()}%'])
+-        .toList();
+-    return ('\nAND ($conditions)', params);
++    // fix300: adult status is precomputed into channels.is_adult at import
++    // (provider is_adult OR safeModeBlocklist name match), so the filter is a
++    // single indexed check instead of a per-term LIKE chain.
++    return ('\nAND COALESCE(c.is_adult, 0) = 0', []);
+   }
+
+   /// Same as [safeModeClause] but for the groups table (Categories view).
+diff --git a/lib/backend/xtream.dart b/lib/backend/xtream.dart
+index 779917d..0b1e514 100644
+--- a/lib/backend/xtream.dart
++++ b/lib/backend/xtream.dart
+@@ -366,6 +366,8 @@ Channel xtreamToChannel(
+     catchupDays: hasCatchup ? stream.tvArchiveDuration : null,
+     providerOrder: stream.providerNum, // fix256: preserve provider display order
+     isDivider: Channel.nameIsDivider(stream.name), // fix272
++    isAdult: stream.isAdult == 1 ||
++        Channel.nameIsAdult(stream.name, categoryName), // fix300
+   );
+ }
+
+diff --git a/lib/models/channel.dart b/lib/models/channel.dart
+index ba8c4ae..72fe731 100644
+--- a/lib/models/channel.dart
++++ b/lib/models/channel.dart
+@@ -1,5 +1,6 @@
+ import 'package:open_tv/models/engine_type.dart';
+ import 'package:open_tv/models/media_type.dart';
++import 'package:open_tv/models/settings.dart' show safeModeBlocklist;
+
+ class Channel {
+   int? id;
+@@ -52,6 +53,10 @@ class Channel {
+   /// filters them out.
+   bool isDivider;
+
++  /// fix300: 1 = adult content (from provider is_adult OR a safeModeBlocklist
++  /// name match, computed at import). Drives the unified safe-mode filter.
++  bool isAdult;
++
+   /// fix278: for category (group) tiles only — whether the category is enabled
+   /// (shown). Null for normal channels. Toggled by the Categories view.
+   bool? groupEnabled;
+@@ -65,6 +70,19 @@ class Channel {
+     return s.length >= 2 && s.startsWith('#') && s.endsWith('#');
+   }
+
++  /// fix300: true if [name] or [group] contains any safeModeBlocklist term.
++  /// Used at import to bake the hardcoded blocklist into the is_adult column so
++  /// every safe-mode filter is a single indexed check.
++  static bool nameIsAdult(String? name, String? group) {
++    final n = (name ?? '').toLowerCase();
++    final g = (group ?? '').toLowerCase();
++    for (final t in safeModeBlocklist) {
++      final lt = t.toLowerCase();
++      if (n.contains(lt) || g.contains(lt)) return true;
++    }
++    return false;
++  }
++
+   Channel({
+     this.id,
+     required this.name,
+@@ -87,6 +105,7 @@ class Channel {
+     this.streamValidated,
+     this.providerOrder,
+     this.isDivider = false,
++    this.isAdult = false,
+     this.groupEnabled,
+   });
+
+diff --git a/lib/models/xtream_types.dart b/lib/models/xtream_types.dart
+index 433d4f6..df9fa11 100644
+--- a/lib/models/xtream_types.dart
++++ b/lib/models/xtream_types.dart
+@@ -9,6 +9,7 @@ class XtreamStream {
+   final int? tvArchive; // 1 = catchup available, 0 / missing = not
+   final int? tvArchiveDuration; // days, when tvArchive == 1
+   final int? providerNum; // fix256: provider's intended display order
++  final int? isAdult; // fix300: 1 = provider-flagged adult; null/0 = not
+
+   XtreamStream({
+     this.streamId,
+@@ -21,6 +22,7 @@ class XtreamStream {
+     this.tvArchive,
+     this.tvArchiveDuration,
+     this.providerNum,
++    this.isAdult,
+   });
+
+   factory XtreamStream.fromJson(Map<String, dynamic> json) {
+@@ -42,6 +44,7 @@ class XtreamStream {
+       tvArchive: asInt(json['tv_archive']),
+       tvArchiveDuration: asInt(json['tv_archive_duration']),
+       providerNum: asInt(json['num']),
++      isAdult: asInt(json['is_adult']),
+     );
+   }
+
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 368480e..010d6e8 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.26.16': [
++    'Safe mode now also hides channels your provider marks as adult, in addition to the built-in keyword list.',
++  ],
+   '1.26.15': [
+     'Fix: categories that your provider references but does not name now appear on the Categories screen, so you can enable them. They are named from the channel name prefix.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 874da0c..70867cc 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.26.15+299
++version: 1.26.16+300
+
+ environment:
+   sdk: ^3.10.7

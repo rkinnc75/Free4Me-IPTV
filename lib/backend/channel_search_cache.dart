@@ -1,6 +1,5 @@
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/sql.dart';
-import 'package:open_tv/models/settings.dart' show safeModeBlocklist;
 import 'package:open_tv/models/view_type.dart';
 
 // Sentinel for copyWith — distinguishes "explicitly null" from "not provided".
@@ -158,8 +157,9 @@ class ChannelSearchCache {
     final entries = rows.map((r) {
       final nameLower  = r.$2.toLowerCase();
       final groupLower = r.$3.toLowerCase();
-      final adultBlocked = safeModeBlocklist
-          .any((b) => nameLower.contains(b) || groupLower.contains(b));
+      // fix300: adult status is precomputed into channels.is_adult at import,
+      // so the cache reads it directly instead of re-scanning the blocklist.
+      final adultBlocked = r.$13;
       return _CacheEntry(
         id:              r.$1,
         nameLower:       nameLower,

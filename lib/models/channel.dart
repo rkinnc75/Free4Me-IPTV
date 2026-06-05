@@ -1,5 +1,6 @@
 import 'package:open_tv/models/engine_type.dart';
 import 'package:open_tv/models/media_type.dart';
+import 'package:open_tv/models/settings.dart' show safeModeBlocklist;
 
 class Channel {
   int? id;
@@ -52,6 +53,10 @@ class Channel {
   /// filters them out.
   bool isDivider;
 
+  /// fix300: 1 = adult content (from provider is_adult OR a safeModeBlocklist
+  /// name match, computed at import). Drives the unified safe-mode filter.
+  bool isAdult;
+
   /// fix278: for category (group) tiles only — whether the category is enabled
   /// (shown). Null for normal channels. Toggled by the Categories view.
   bool? groupEnabled;
@@ -63,6 +68,19 @@ class Channel {
     if (name == null) return false;
     final s = name.trim();
     return s.length >= 2 && s.startsWith('#') && s.endsWith('#');
+  }
+
+  /// fix300: true if [name] or [group] contains any safeModeBlocklist term.
+  /// Used at import to bake the hardcoded blocklist into the is_adult column so
+  /// every safe-mode filter is a single indexed check.
+  static bool nameIsAdult(String? name, String? group) {
+    final n = (name ?? '').toLowerCase();
+    final g = (group ?? '').toLowerCase();
+    for (final t in safeModeBlocklist) {
+      final lt = t.toLowerCase();
+      if (n.contains(lt) || g.contains(lt)) return true;
+    }
+    return false;
   }
 
   Channel({
@@ -87,6 +105,7 @@ class Channel {
     this.streamValidated,
     this.providerOrder,
     this.isDivider = false,
+    this.isAdult = false,
     this.groupEnabled,
   });
 

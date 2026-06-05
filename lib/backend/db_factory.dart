@@ -445,6 +445,17 @@ class DbFactory {
       ..add(SqliteMigration(23, (tx) async {
         await tx.execute(
             'ALTER TABLE groups ADD COLUMN enabled INTEGER DEFAULT 1;');
+      }))
+      // fix300: unified adult flag. Set at import to (provider is_adult) OR
+      // (name matches the hardcoded safeModeBlocklist), so every safe-mode
+      // filter becomes a single indexed "is_adult = 0" check instead of a
+      // per-term LIKE chain. Providers without is_adult contribute 0.
+      ..add(SqliteMigration(24, (tx) async {
+        await tx.execute(
+            'ALTER TABLE channels ADD COLUMN is_adult INTEGER DEFAULT 0;');
+        await tx.execute(
+            'CREATE INDEX IF NOT EXISTS idx_channel_adult '
+            'ON channels(source_id, is_adult);');
       }));
     await migrations.migrate(db);
 
