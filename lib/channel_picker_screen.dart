@@ -28,6 +28,17 @@ int _channelTier(Channel ch) {
   return validated ? 4 : 5;
 }
 
+/// fix294: the picker's section grouping (Favourites → History → All channels)
+/// in _sectionHeader assumes the list is contiguously ordered by these three
+/// tiers. If it isn't, the same header (e.g. "Favourites") repeats wherever a
+/// tier resumes. This returns that global section rank so it can be the PRIMARY
+/// sort key across ALL sources/modes, keeping each section contiguous.
+int _sectionRank(Channel ch) {
+  if (ch.favorite) return 0;
+  if (ch.lastWatched != null) return 1;
+  return 2;
+}
+
 /// fix258: provider-aware multi-source sort for the channel picker.
 /// For sources in 'provider' mode: favorites first, then provider_order
 /// (NULLs last) — matching the SQL browse sort. For 'alpha' mode sources,
@@ -35,6 +46,13 @@ int _channelTier(Channel ch) {
 /// then apply within-source sort.
 int _pickSortWithProvider(Channel a, Channel b, Set<int> providerSourceIds,
     Set<int> categorySourceIds) {
+  // fix294: section grouping first — ALL favourites, then ALL history, then ALL
+  // others, globally. Without this, favourites from different sources/modes
+  // scatter and _sectionHeader emits duplicate "Favourites"/"History" headers.
+  final secA = _sectionRank(a);
+  final secB = _sectionRank(b);
+  if (secA != secB) return secA.compareTo(secB);
+
   // Within the same source, apply source-specific sort.
   if (a.sourceId == b.sourceId) {
     final isProvider = providerSourceIds.contains(a.sourceId);

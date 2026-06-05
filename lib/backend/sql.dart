@@ -1612,9 +1612,16 @@ class Sql {
     if (ids.isEmpty) return [];
 
     final db = await DbFactory.db;
+    // fix294: apply the same divider + disabled-category filters the SQL browse
+    // path uses, so the in-memory (keystroke) search does not surface hidden
+    // categories or unplayable "#### ####" divider rows.
     final sqlQuery =
-        'SELECT * FROM channels WHERE id IN (${generatePlaceholders(ids.length)})'
-        ' AND url IS NOT NULL';
+        'SELECT * FROM channels c WHERE c.id IN (${generatePlaceholders(ids.length)})'
+        ' AND c.url IS NOT NULL'
+        '\nAND NOT (COALESCE(c.is_divider,0) = 1 AND '
+        'COALESCE((SELECT hide_dividers FROM sources WHERE id = c.source_id),0) = 1)'
+        '\nAND COALESCE('
+        '(SELECT g.enabled FROM groups g WHERE g.id = c.group_id), 1) = 1';
     final rows = await db.getAll(sqlQuery, [...ids]);
 
     // Preserve the cache's result order — WHERE IN does not guarantee ordering.

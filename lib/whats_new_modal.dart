@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.12': [
+    'Fix: searching no longer shows channels from categories you have hidden, '
+        'or the provider\'s "#### … ####" section-header rows.',
+    'Fix: the channel picker no longer shows duplicate "Favourites" and '
+        '"History" sections — each appears once, with all its channels grouped together.',
+  ],
   '1.26.11': [
     'Maintenance: internal release-process validation. No changes to app behavior.',
   ],
