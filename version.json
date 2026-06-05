@@ -1,7 +1,7 @@
 {
-  "latest": "1.26.13",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.13",
+  "latest": "1.26.14",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.14",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: the Select all / Unselect all buttons on the Categories screen no longer fail when no media-type filter is active.\n\u2022 Maintenance: added temporary diagnostics to investigate a search issue. No change to app behavior."
+  "releaseNotes": "\u2022 Fix: searching now finds channels in your enabled categories. Previously, divider labels and disabled categories could fill the results and hide real channels.\n\u2022 Fix: enabling or disabling categories now persists across source refreshes instead of resetting."
 }
