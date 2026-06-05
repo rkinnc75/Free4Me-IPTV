@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.15': [
+    'Fix: categories that your provider references but does not name now appear on the Categories screen, so you can enable them. They are named from the channel name prefix.',
+  ],
   '1.26.14': [
     'Fix: searching now finds channels in your enabled categories. Previously, divider labels and disabled categories could fill the results and hide real channels.',
     'Fix: enabling or disabling categories now persists across source refreshes instead of resetting.',

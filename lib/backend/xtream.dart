@@ -229,6 +229,61 @@ Future<int?> fetchXtreamMaxConnections(Source source) async {
   return null;
 }
 
+// fix299: derive a clean category-name prefix from a stream name. Splits on the
+// first '|', then collapses a trailing feed-number tail like "(Peacock 016)" to
+// "(Peacock)" so numbered feeds of one category share a prefix instead of
+// fragmenting into one tile per feed.
+String _categoryPrefix(String name) {
+  var p = name.contains('|') ? name.split('|').first.trim() : name.trim();
+  // "US (Peacock 016)" -> "US (Peacock)"; "Foo (Bar)" stays "Foo (Bar)".
+  p = p
+      .replaceAllMapped(
+        RegExp(r'\s*\(([^)]*?)\s+\d+\)\s*$'),
+        (m) => ' (${m[1]})',
+      )
+      .trim();
+  return p;
+}
+
+// fix299: for every category_id referenced by a stream but missing from
+// [catsMap], pick the dominant [_categoryPrefix] among that category's streams
+// and add it to [catsMap] as the synthetic name. Streams whose name has no
+// usable prefix fall back to "Category <id>". Mutates [catsMap] in place.
+void _resolveMissingCategories(
+  List<XtreamStream> streams,
+  Map<String, String> catsMap,
+) {
+  // categoryId -> (prefix -> count)
+  final prefixCounts = <String, Map<String, int>>{};
+  for (final s in streams) {
+    final cid = s.categoryId ?? "";
+    if (cid.isEmpty || catsMap.containsKey(cid)) continue;
+    final name = s.name?.trim() ?? "";
+    if (name.isEmpty) continue;
+    final prefix = _categoryPrefix(name);
+    if (prefix.isEmpty) continue;
+    (prefixCounts[cid] ??= <String, int>{})
+        .update(prefix, (c) => c + 1, ifAbsent: () => 1);
+  }
+  for (final entry in prefixCounts.entries) {
+    String? best;
+    int bestCount = -1;
+    entry.value.forEach((prefix, count) {
+      if (count > bestCount) {
+        best = prefix;
+        bestCount = count;
+      }
+    });
+    catsMap[entry.key] = best ?? 'Category ${entry.key}';
+  }
+  if (AppLog.enabled && prefixCounts.isNotEmpty) {
+    AppLog.info(
+      'Xtream.fix299: synthesized ${prefixCounts.length} missing'
+      ' category name(s) from stream prefixes',
+    );
+  }
+}
+
 void processXtream(
   List<Future<void> Function(SqliteWriteContext, Map<String, String>)>
   statements,
@@ -242,6 +297,13 @@ void processXtream(
       (x) => MapEntry(x.categoryId ?? "", x.categoryName ?? "Unknown Category"),
     ),
   );
+  // fix299: some providers reference category_ids on streams that are absent
+  // from get_*_categories. Those channels would otherwise get a null group and
+  // become invisible/un-enable-able on the Categories screen. Synthesize a name
+  // for each missing category from the dominant cleaned name-prefix of its
+  // streams (grouping stays whole because all streams of that category get the
+  // same synthetic name; same-prefix orphans merge into one tile by design).
+  _resolveMissingCategories(streams, catsMap);
   // fix174.3: buffer channels into bulk-insert closures
   final buffer = <Channel>[];
   void flush() {
