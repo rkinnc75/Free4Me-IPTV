@@ -76,13 +76,27 @@ Future<void> getXtream(
   }
   if (results[2] != null && results[3] != null) {
     try {
-      final vods = processJsonList(results[2], XtreamStream.fromJson);
+      final vodCats = processJsonList(results[3], XtreamCategory.fromJson);
+      var vods = processJsonList(results[2], XtreamStream.fromJson);
+      // fix301: some providers (e.g. trex) cap the unfiltered get_vod_streams
+      // response far below their real catalog, while per-category fetches
+      // return everything. When the bulk count looks truncated relative to the
+      // number of VOD categories, refetch per category_id and merge (dedup by
+      // stream_id). Providers that already return the full catalog in one call
+      // (emjay, dino) skip this — the heuristic only fires on a short response.
+      if (_vodLooksTruncated(vods.length, vodCats.length)) {
+        AppLog.info(
+          'Xtream.fix301: bulk VOD count ${vods.length} looks short for'
+          ' ${vodCats.length} categories — refetching per category',
+        );
+        vods = await _fetchVodPerCategory(source, vodCats, vods, onProgress);
+      }
       movieCount = vods.length;
       onProgress?.call('Loading $movieCount movies…');
       processXtream(
         statements,
         vods,
-        processJsonList(results[3], XtreamCategory.fromJson),
+        vodCats,
         source,
         MediaType.movie,
       );
@@ -282,6 +296,57 @@ void _resolveMissingCategories(
       ' category name(s) from stream prefixes',
     );
   }
+}
+
+// fix301: heuristic for a truncated bulk get_vod_streams response. Fires only
+// when the provider lists many VOD categories but returned very few movies —
+// an average well below what a real catalog of that many categories holds.
+// Tuned to avoid firing on small/legit providers: needs >20 categories AND an
+// average of fewer than 15 movies per category.
+bool _vodLooksTruncated(int movieCount, int categoryCount) {
+  if (categoryCount <= 20) return false;
+  return movieCount < categoryCount * 15;
+}
+
+// fix301: refetch VOD per category_id and merge with the bulk result, deduped
+// by stream_id. Returns the merged list. On a category fetch failure, that
+// category is skipped (best-effort — we keep whatever we got).
+Future<List<XtreamStream>> _fetchVodPerCategory(
+  Source source,
+  List<XtreamCategory> vodCats,
+  List<XtreamStream> bulk,
+  void Function(String)? onProgress,
+) async {
+  final byId = <String, XtreamStream>{};
+  void add(XtreamStream s) {
+    final id = s.streamId;
+    if (id != null && id.isNotEmpty) byId[id] = s;
+  }
+
+  for (final s in bulk) {
+    add(s);
+  }
+  var done = 0;
+  for (final cat in vodCats) {
+    final cid = cat.categoryId;
+    if (cid == null || cid.isEmpty) continue;
+    final raw =
+        await getXtreamHttpData(getVods, source, {'category_id': cid});
+    if (raw != null) {
+      try {
+        for (final s in processJsonList(raw, XtreamStream.fromJson)) {
+          add(s);
+        }
+      } catch (_) {
+        // skip a malformed category response
+      }
+    }
+    done++;
+    if (done % 25 == 0) {
+      onProgress?.call('Loading movies… ${byId.length} so far');
+    }
+  }
+  return byId.values.toList(growable: false);
 }
 
 void processXtream(

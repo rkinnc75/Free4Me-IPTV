@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.17': [
+    'Fix: providers that limit the all-movies response now load their full movie catalog by fetching each movie category.',
+  ],
   '1.26.16': [
     'Safe mode now also hides channels your provider marks as adult, in addition to the built-in keyword list.',
   ],
