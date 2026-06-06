@@ -1,7 +1,7 @@
 {
-  "latest": "1.26.16",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.16",
+  "latest": "1.26.17",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.17",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Safe mode now also hides channels your provider marks as adult, in addition to the built-in keyword list."
+  "releaseNotes": "\u2022 Fix: providers that limit the all-movies response now load their full movie catalog by fetching each movie category."
 }
