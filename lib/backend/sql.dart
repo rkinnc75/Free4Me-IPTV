@@ -552,8 +552,14 @@ class Sql {
 
     // fix278: hide channels whose category (group) is disabled in the
     // Categories view. enabled defaults to 1, so untouched categories show.
-    sqlQuery += "\nAND COALESCE("
-        "(SELECT g.enabled FROM groups g WHERE g.id = c.group_id), 1) = 1";
+    // fix302: but when the user has explicitly tapped INTO a category
+    // (groupId set), show all of its channels regardless of the enabled
+    // checkbox — the checkbox governs aggregated views (All/search), not
+    // browsing a category you deliberately opened.
+    if (filters.groupId == null) {
+      sqlQuery += "\nAND COALESCE("
+          "(SELECT g.enabled FROM groups g WHERE g.id = c.group_id), 1) = 1";
+    }
 
     if (filters.viewType == ViewType.history) {
       sqlQuery += "\nORDER BY c.last_watched DESC";

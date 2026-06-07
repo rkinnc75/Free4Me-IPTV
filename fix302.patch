@@ -1,0 +1,48 @@
+diff --git a/lib/backend/sql.dart b/lib/backend/sql.dart
+index a8e9929..34724ad 100644
+--- a/lib/backend/sql.dart
++++ b/lib/backend/sql.dart
+@@ -552,8 +552,14 @@ class Sql {
+
+     // fix278: hide channels whose category (group) is disabled in the
+     // Categories view. enabled defaults to 1, so untouched categories show.
+-    sqlQuery += "\nAND COALESCE("
+-        "(SELECT g.enabled FROM groups g WHERE g.id = c.group_id), 1) = 1";
++    // fix302: but when the user has explicitly tapped INTO a category
++    // (groupId set), show all of its channels regardless of the enabled
++    // checkbox — the checkbox governs aggregated views (All/search), not
++    // browsing a category you deliberately opened.
++    if (filters.groupId == null) {
++      sqlQuery += "\nAND COALESCE("
++          "(SELECT g.enabled FROM groups g WHERE g.id = c.group_id), 1) = 1";
++    }
+
+     if (filters.viewType == ViewType.history) {
+       sqlQuery += "\nORDER BY c.last_watched DESC";
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index d51688c..ff8c143 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.26.18': [
++    'Fix: opening a category now shows all of its channels, even if that category is unchecked. The checkbox still controls Live and search.',
++  ],
+   '1.26.17': [
+     'Fix: providers that limit the all-movies response now load their full movie catalog by fetching each movie category.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 14a22f0..389efb4 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.26.17+301
++version: 1.26.18+302
+
+ environment:
+   sdk: ^3.10.7
