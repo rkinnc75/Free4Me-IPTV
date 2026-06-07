@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.19': [
+    'Fix: the multi-view channel picker now loads more channels as you scroll, so the full list is reachable instead of just the first page.',
+  ],
   '1.26.18': [
     'Fix: opening a category now shows all of its channels, even if that category is unchecked. The checkbox still controls Live and search.',
   ],

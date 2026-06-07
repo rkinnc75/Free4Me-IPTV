@@ -130,6 +130,14 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
 
   List<Channel>? _cachedEmptyQuery;
 
+  // fix303: scroll pagination for the empty-query browse so the multi-view
+  // picker can reach the whole catalogue, not just page 1. Search already
+  // paginates fully in _loadSearch; this mirrors it for browse.
+  final ScrollController _scrollCtrl = ScrollController();
+  int _browsePage = 1;
+  bool _browseHasMore = true;
+  bool _browseLoadingMore = false;
+
   // fix228: per-source pastel tag colors, so the multi-view channel picker
   // tints rows by source like the live picker (fix196). Map<sourceId, ARGB?>.
   Map<int, int?> _sourceColors = {};
@@ -147,6 +155,21 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
     super.initState();
     _loadSourceColors();
     _loadInitialBrowse();
+    _scrollCtrl.addListener(_onScroll);
+  }
+
+  // fix303: when the user nears the bottom during an empty-query browse, load
+  // the next page. No-op during search (which loads all pages up front) or when
+  // there's nothing more / a load is already in flight.
+  void _onScroll() {
+    if (_activeQuery.isNotEmpty || !_browseHasMore || _browseLoadingMore) {
+      return;
+    }
+    if (!_scrollCtrl.hasClients) return;
+    final pos = _scrollCtrl.position;
+    if (pos.pixels >= pos.maxScrollExtent - 600) {
+      _loadMoreBrowse();
+    }
   }
 
   // fix228: load source tag colors once (mirrors home.dart fix200).
@@ -174,6 +197,7 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
   void dispose() {
     _debounce?.cancel();
     _searchCtrl.dispose();
+    _scrollCtrl.dispose();
     super.dispose();
   }
 
@@ -190,10 +214,10 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
     );
   }
 
-  /// The SQL ORDER BY already surfaces favorites and validated
-  /// channels first, so paginating the entire catalogue is unnecessary.
-  /// A single page loads in <60ms instead of minutes. The cached result
-  /// is reused whenever the search box is cleared.
+  /// The SQL ORDER BY surfaces favorites and validated channels first. We load
+  /// page 1 immediately (fast), then fix303 loads further pages on scroll so the
+  /// whole catalogue is reachable. The cached page-1 result is reused whenever
+  /// the search box is cleared.
   Future<void> _loadInitialBrowse() async {
     if (!mounted || _initialBrowseLoaded) return;
     final inv = ++_loadInvocation;
@@ -209,11 +233,40 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
         ..sort((a, b) => _pickSortWithProvider(a, b, _providerSources, _categorySources));
     _cachedEmptyQuery = List.unmodifiable(sorted);
     _initialBrowseLoaded = true;
+    _browsePage = 1;
+    _browseHasMore = pageResults.length >= pageSize;
 
     setState(() {
       _channels = _cachedEmptyQuery!;
       _loading = false;
     });
+  }
+
+  // fix303: append the next browse page (empty-query only), dedup by id, and
+  // re-sort so favorites/history stay pinned above the growing tail.
+  Future<void> _loadMoreBrowse() async {
+    if (_browseLoadingMore || !_browseHasMore) return;
+    _browseLoadingMore = true;
+    final inv = _loadInvocation; // do not bump: a query change invalidates us
+    final nextPage = _browsePage + 1;
+    final pageResults = await Sql.search(
+      _liveTvPickerFilters(query: null, page: nextPage),
+      invocation: inv,
+    );
+    if (_loadInvocation != inv || !mounted || _activeQuery.isNotEmpty) {
+      _browseLoadingMore = false;
+      return;
+    }
+    final seen = _channels.map((c) => c.id).toSet();
+    final merged = List<Channel>.from(_channels)
+      ..addAll(pageResults.where((c) => !seen.contains(c.id)));
+    merged.sort((a, b) =>
+        _pickSortWithProvider(a, b, _providerSources, _categorySources));
+    _browsePage = nextPage;
+    _browseHasMore = pageResults.length >= pageSize;
+    _cachedEmptyQuery = List.unmodifiable(merged);
+    _browseLoadingMore = false;
+    setState(() => _channels = _cachedEmptyQuery!);
   }
 
   Future<void> _loadSearch(String query) async {
@@ -404,6 +457,7 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
           : _channels.isEmpty
               ? const Center(child: Text('No channels found'))
               : ListView.builder(
+                  controller: _scrollCtrl,
                   itemCount: _channels.length,
                   itemBuilder: (context, i) {
                     final ch = _channels[i];
