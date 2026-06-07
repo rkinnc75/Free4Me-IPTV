@@ -1,7 +1,7 @@
 {
-  "latest": "1.26.17",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.17",
+  "latest": "1.26.18",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.18",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: providers that limit the all-movies response now load their full movie catalog by fetching each movie category."
+  "releaseNotes": "\u2022 Fix: opening a category now shows all of its channels, even if that category is unchecked. The checkbox still controls Live and search."
 }
