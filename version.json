@@ -1,7 +1,7 @@
 {
-  "latest": "1.26.18",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.18",
+  "latest": "1.26.19",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.19",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: opening a category now shows all of its channels, even if that category is unchecked. The checkbox still controls Live and search."
+  "releaseNotes": "\u2022 Fix: the multi-view channel picker now loads more channels as you scroll, so the full list is reachable instead of just the first page."
 }
