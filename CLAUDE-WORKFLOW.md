@@ -121,19 +121,25 @@ To ship `vX.Y.Z` from Cowork:
    python3 scripts/update_version_json.py
    ```
 
-6. **Commit** all of the above on `main`. Release-build commits use the
+6. **Move any fix*.md and fix*.patch files to `/runbooks`** (after applying them but before release):
+   ```bash
+   mv fix*.md fix*.patch runbooks/ 2>/dev/null || true
+   ```
+   This keeps the repo root clean; all runbooks live in `/runbooks/`.
+
+7. **Commit** all of the above on `main`. Release-build commits use the
    `vX.Y.Z: release build` convention (exempt from the usual Jira-key
    rule per `AGENT-HANDOFF-v1.15.7.md` §4).
-7. **Push `main`** (commits to origin/main, not tags yet).
-8. **Tag the pushed commit** on `main`:
+8. **Push `main`** (commits to origin/main, not tags yet).
+9. **Tag the pushed commit** on `main`:
    ```bash
    git tag vX.Y.Z
    git push origin vX.Y.Z
    ```
    This is what fires CI. The pre-push hook (fix290) blocks pushing tags
    not on main — mechanical guard against orphaned commits.
-9. **Watch** the run:
-   https://github.com/rkinnc75/Free4Me-IPTV/actions/workflows/release.yml
+10. **Watch** the run:
+    https://github.com/rkinnc75/Free4Me-IPTV/actions/workflows/release.yml
 
 The workflow has two safety checks before it builds:
 
@@ -395,6 +401,7 @@ The phone is for **deciding**; the desktop is for **doing**.
 | `scripts/update_version_json.py` | Standalone changelog → `version.json` extractor. Callable from local + CI. |
 | `scripts/build_and_release.sh` | Local Mac release script (Cursor's path; unchanged). |
 | `.github-token` | Local PAT for sandbox-to-GitHub push. **Gitignored.** Never commit. |
+| `/runbooks/` | Fix runbooks: all `fix*.md` and `fix*.patch` files after they've been applied and released. Keeps repo root clean. |
 | `BUILD-ENV.md` | Documents the local Mac build environment that CI mirrors. |
 | `AGENTS.md` | Canonical session guide for AI agents. Updated when state changes. |
 | `AGENT-HANDOFF-v1.15.7.md` | Historical handoff with codebase patterns + invariants. |
