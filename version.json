@@ -1,7 +1,7 @@
 {
-  "latest": "1.26.19",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.19",
+  "latest": "1.26.20",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.20",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: the multi-view channel picker now loads more channels as you scroll, so the full list is reachable instead of just the first page."
+  "releaseNotes": "\u2022 The search bar and the radar/multi-view buttons now stay pinned at the top while you scroll.\n\u2022 The stream scanner now starts at the first visible channel and scans downward from there."
 }
