@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:archive/archive.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -1110,15 +1111,13 @@ class _SettingsState extends State<SettingsView> {
     if (!mounted) return;
     final stamp = SettingsIo.exportStamp(DateTime.now());
     if (isTV) {
-      await _showExportServerDialog([
-        ExportItem(
-          key: 'sourcedump',
-          filename: 'free4me-source-dump-$stamp.txt',
-          label: 'Raw source dumps',
-          bytes: utf8.encode(buf.toString()),
-          contentType: 'text/plain; charset=utf-8',
-        ),
-      ], capturedAt: stamp);
+      // fix311: regardless of entry point, the LAN server exports all three
+      // files (source dump, debug log, settings) plus a combined zip.
+      final items = await _buildExportBundle(
+        stamp: stamp,
+        sourceDump: buf.toString(),
+      );
+      await _showExportServerDialog(items, capturedAt: stamp);
     } else {
       await SettingsIo.exportStringToFile(
         // ignore: use_build_context_synchronously
@@ -1129,34 +1128,100 @@ class _SettingsState extends State<SettingsView> {
     }
   }
 
-  // fix158: build backup + log payloads and serve via LAN (TV only).
-  Future<void> _exportEverythingViaServer(
-      {required bool includeCredentials}) async {
+  // fix311: build the full export bundle — source dump, debug log, settings
+  // backup — all sharing one timestamp, plus a zip containing all three. Each
+  // file is offered individually AND in the combined zip (4 download options).
+  // Any file that can't be produced (e.g. no source dump yet) is simply
+  // omitted, and the zip contains whatever was produced.
+  Future<List<ExportItem>> _buildExportBundle({
+    required String stamp,
+    String? sourceDump,
+    bool includeCredentials = false,
+  }) async {
     final items = <ExportItem>[];
-    // fix166: one stamp shared by backup + log.
-    final captured = DateTime.now();
-    final stamp = SettingsIo.exportStamp(captured);
+    final archive = Archive();
+
+    void addFile(String key, String filename, String label, String content,
+        String contentType) {
+      final bytes = utf8.encode(content);
+      items.add(ExportItem(
+        key: key,
+        filename: filename,
+        label: label,
+        bytes: bytes,
+        contentType: contentType,
+      ));
+      archive.addFile(ArchiveFile(filename, bytes.length, bytes));
+    }
+
+    // 1. Source dump (passed in, or gathered if not provided).
+    final dump = sourceDump ?? await _gatherSourceDump();
+    if (dump != null && dump.isNotEmpty) {
+      addFile('sourcedump', 'free4me-source-dump-$stamp.txt',
+          'Raw source dumps', dump, 'text/plain; charset=utf-8');
+    }
+    // 2. Debug log.
+    final log = await AppLog.readLog();
+    if (log.isNotEmpty) {
+      addFile('log', 'free4me_log-$stamp.txt', 'Debug log', log,
+          'text/plain; charset=utf-8');
+    }
+    // 3. Settings backup.
     final backup = await SettingsIo.buildBackupPayload(
         includeCredentials: includeCredentials);
-    items.add(ExportItem(
-      key: 'backup',
-      filename: 'free4me-backup-$stamp.json',
-      label: 'Settings backup',
-      bytes: utf8.encode(backup),
-      contentType: 'application/json',
-    ));
-    if (settings.debugLogging) {
-      final log = await AppLog.readLog();
-      if (log.isNotEmpty) {
+    addFile('settings', 'free4me-settings-$stamp.json', 'Settings backup',
+        backup, 'application/json');
+
+    // 4. Combined zip of everything above.
+    if (archive.isNotEmpty) {
+      final zipped = ZipEncoder().encode(archive);
+      if (zipped != null) {
         items.add(ExportItem(
-          key: 'log',
-          filename: 'free4me_log-$stamp.txt',
-          label: 'Debug log',
-          bytes: utf8.encode(log),
-          contentType: 'text/plain; charset=utf-8',
+          key: 'bundle',
+          filename: 'free4me-export-$stamp.zip',
+          label: 'All files (zip)',
+          bytes: zipped,
+          contentType: 'application/zip',
         ));
       }
     }
+    return items;
+  }
+
+  // fix311: gather + concatenate the raw Xtream source dumps, or null if none.
+  Future<String?> _gatherSourceDump() async {
+    final dir = await Utils.appDir;
+    final d = Directory(dir);
+    if (!await d.exists()) return null;
+    final dumps = <File>[];
+    await for (final e in d.list()) {
+      if (e is File &&
+          e.path.contains('xtream_dump_') &&
+          e.path.endsWith('.json')) {
+        dumps.add(e);
+      }
+    }
+    if (dumps.isEmpty) return null;
+    final buf = StringBuffer();
+    for (final f in dumps) {
+      final name = f.path.split(Platform.pathSeparator).last;
+      buf.writeln('===== FILE: $name =====');
+      buf.writeln(await f.readAsString());
+      buf.writeln();
+    }
+    return buf.toString();
+  }
+
+  // fix158: build backup + log payloads and serve via LAN (TV only).
+  // fix311: now exports the full bundle (source dump + log + settings + zip).
+  Future<void> _exportEverythingViaServer(
+      {required bool includeCredentials}) async {
+    final captured = DateTime.now();
+    final stamp = SettingsIo.exportStamp(captured);
+    final items = await _buildExportBundle(
+      stamp: stamp,
+      includeCredentials: includeCredentials,
+    );
     if (!mounted) return;
     final capturedLabel = captured.toString().split('.').first;
     await _showExportServerDialog(items, capturedAt: capturedLabel);

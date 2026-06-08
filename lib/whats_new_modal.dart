@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.27': [
+    'On TV, the LAN export now always offers all three files — source dump, debug log, and settings — each individually plus a combined zip, all sharing one timestamp.',
+  ],
   '1.26.26': [
     'New: when an update is available, the app can now download and install it for you in one tap, instead of opening the download page in a browser.',
   ],

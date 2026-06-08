@@ -157,6 +157,9 @@ android/app/.cxx
 # Local PAT used by the sandbox agent for HTTPS push. Never commit.
 .github-token
 
+# Credential management doc — contains a live PAT in plaintext. Never commit.
+CREDENTIALS-AND-SECRETS.md
+
 # Release keystore secrets (fix31). Never commit.
 .release-keystore-secrets
 
