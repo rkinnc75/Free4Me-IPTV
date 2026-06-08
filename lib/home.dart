@@ -435,6 +435,16 @@ class _HomeState extends State<Home> {
 
     if (mounted) {
       if (!_scanCancelled) Navigator.of(context, rootNavigator: true).pop();
+      // fix306: copy the freshly-persisted validation results onto the
+      // in-memory channel objects so the validated flag is reflected on every
+      // scanned tile even after StreamScanner.results is later cleared. Done in
+      // place — no reload, so the scroll position is preserved.
+      for (final ch in channels) {
+        final id = ch.id;
+        if (id != null && StreamScanner.results.containsKey(id)) {
+          ch.streamValidated = StreamScanner.results[id];
+        }
+      }
       setState(() => _isScanning = false);
     }
   }

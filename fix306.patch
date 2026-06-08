@@ -1,0 +1,48 @@
+diff --git a/lib/home.dart b/lib/home.dart
+index 0dc4647..c2993a8 100644
+--- a/lib/home.dart
++++ b/lib/home.dart
+@@ -435,6 +435,16 @@ class _HomeState extends State<Home> {
+
+     if (mounted) {
+       if (!_scanCancelled) Navigator.of(context, rootNavigator: true).pop();
++      // fix306: copy the freshly-persisted validation results onto the
++      // in-memory channel objects so the validated flag is reflected on every
++      // scanned tile even after StreamScanner.results is later cleared. Done in
++      // place — no reload, so the scroll position is preserved.
++      for (final ch in channels) {
++        final id = ch.id;
++        if (id != null && StreamScanner.results.containsKey(id)) {
++          ch.streamValidated = StreamScanner.results[id];
++        }
++      }
+       setState(() => _isScanning = false);
+     }
+   }
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 96e6abb..0b0923f 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.26.22': [
++    'After a stream scan, validation outlines now stay correct on all scanned channels without changing your scroll position.',
++  ],
+   '1.26.21': [
+     'Fix: the stream scanner now correctly starts at the first tile actually visible on screen.',
+     'Long-pressing a channel now shows which category it came from at the top of the menu.',
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 06e40ac..1cd9285 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.26.21+305
++version: 1.26.22+306
+
+ environment:
+   sdk: ^3.10.7

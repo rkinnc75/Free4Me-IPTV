@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.22': [
+    'After a stream scan, validation outlines now stay correct on all scanned channels without changing your scroll position.',
+  ],
   '1.26.21': [
     'Fix: the stream scanner now correctly starts at the first tile actually visible on screen.',
     'Long-pressing a channel now shows which category it came from at the top of the menu.',
