@@ -1,7 +1,7 @@
 {
-  "latest": "1.26.24",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.24",
+  "latest": "1.26.25",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.25",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 New: long-press a category to favorite it, sorting it to the top of the Categories list (the channels inside are not affected).\n\u2022 New: in a channel's long-press menu, tap the category name to jump to that category in the Categories list."
+  "releaseNotes": "\u2022 Long-pressing a movie or series (e.g. in the All view) now opens the same menu as live channels, with favorite and category options, instead of silently toggling favorite."
 }
