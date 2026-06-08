@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.20': [
+    'The search bar and the radar/multi-view buttons now stay pinned at the top while you scroll.',
+    'The stream scanner now starts at the first visible channel and scans downward from there.',
+  ],
   '1.26.19': [
     'Fix: the multi-view channel picker now loads more channels as you scroll, so the full list is reachable instead of just the first page.',
   ],

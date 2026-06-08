@@ -354,7 +354,19 @@ class _HomeState extends State<Home> {
     final timeout = Duration(
       seconds: settings.streamScanTimeoutSecs.clamp(3, 60),
     );
-    final initialTotal = channels.length.clamp(1, maxCount);
+    // fix304: begin scanning at the first on-screen tile and work downward,
+    // rather than always from index 0. Tiles are mainAxisExtent=100 high in a
+    // grid of `crossAxisCount` columns; the search bar is now pinned outside the
+    // scroll view, so scroll offset maps directly to tile rows.
+    final width = MediaQuery.of(context).size.width;
+    final cols = (width / 350).floor().clamp(1, 3);
+    var startIndex = 0;
+    if (_scrollController.hasClients) {
+      final row = (_scrollController.offset / 100).floor();
+      startIndex = (row * cols).clamp(0, channels.length - 1);
+    }
+    final scanList = channels.sublist(startIndex);
+    final initialTotal = scanList.length.clamp(1, maxCount);
 
     // Clear prior results so the new scan is authoritative.
     StreamScanner.clearResults();
@@ -405,7 +417,7 @@ class _HomeState extends State<Home> {
     );
 
     await StreamScanner.scan(
-      channels: channels,
+      channels: scanList,
       maxChannels: maxCount,
       timeout: timeout,
       isCancelled: () => _scanCancelled,
@@ -530,273 +542,279 @@ class _HomeState extends State<Home> {
             builder: (context, constraints) {
               final double width = constraints.maxWidth;
               final int crossAxisCount = (width / 350).floor().clamp(1, 3);
-              return CustomScrollView(
-                controller: _scrollController,
-                slivers: [
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: DpadTextField(
-                              style: TextStyle(
+              return Column(
+                children: [
+                  // fix304: search bar + radar/multi-view icons pinned
+                  // above the scrolling grid instead of scrolling away.
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: DpadTextField(
+                            style: TextStyle(
+                              fontSize: Theme.of(
+                                context,
+                              ).textTheme.titleMedium?.fontSize ?? 16,
+                            ),
+                            controller: searchController,
+                            enabled: _searchReady,
+                            onChanged: (query) {
+                              // relative to the burst so we can see how long the
+                              // user has been typing before the debounce fires,
+                              // and how stale the on-screen results are.
+                              final now = DateTime.now();
+                              if (AppLog.enabled) {
+                                final firstAt = _firstKeystrokeAt ??= now;
+                                final sinceFirst =
+                                    now.difference(firstAt).inMilliseconds;
+                                final sincePrev = _lastKeystrokeAt == null
+                                    ? 0
+                                    : now
+                                        .difference(_lastKeystrokeAt!)
+                                        .inMilliseconds;
+                                _keystrokeCountInBurst++;
+                                AppLog.info(
+                                  'Search.keystroke: chars=${query.length}'
+                                  ' burst=$_keystrokeCountInBurst'
+                                  ' sinceFirst=${sinceFirst}ms'
+                                  ' sincePrev=${sincePrev}ms'
+                                  ' query="$query"',
+                                );
+                              }
+                              _lastKeystrokeAt = now;
+
+                              _debounce?.cancel();
+                              // that a fast typist sees results update mid-word;
+                              // long enough that a single typing burst doesn't
+                              // fire ~4 queries per character.
+                              final scheduledFor = now.add(
+                                const Duration(milliseconds: 200),
+                              );
+                              _debounce = Timer(
+                                const Duration(milliseconds: 200),
+                                () {
+                                  if (!mounted) return;
+                                  if (AppLog.enabled) {
+                                    final firedAt = DateTime.now();
+                                    final scheduledLatency = firedAt
+                                        .difference(scheduledFor)
+                                        .inMilliseconds;
+                                    final burstDuration =
+                                        _firstKeystrokeAt == null
+                                            ? 0
+                                            : firedAt
+                                                .difference(_firstKeystrokeAt!)
+                                                .inMilliseconds;
+                                    AppLog.info(
+                                      'Search.debounce-fired:'
+                                      ' keystrokes=$_keystrokeCountInBurst'
+                                      ' burstDuration=${burstDuration}ms'
+                                      ' scheduledLatency=${scheduledLatency}ms'
+                                      ' query="$query"',
+                                    );
+                                  }
+                                  // Reset burst tracking now that we're firing.
+                                  _firstKeystrokeAt = null;
+                                  _keystrokeCountInBurst = 0;
+                                  widget.home.filters.query = query;
+                                  load(false);
+                                },
+                              );
+                            },
+                            decoration: InputDecoration(
+                              hintText: _searchReady
+                                  ? 'Search…'
+                                  : 'Preparing search…',
+                              hintStyle: TextStyle(
                                 fontSize: Theme.of(
                                   context,
                                 ).textTheme.titleMedium?.fontSize ?? 16,
                               ),
-                              controller: searchController,
-                              enabled: _searchReady,
-                              onChanged: (query) {
-                                // relative to the burst so we can see how long the
-                                // user has been typing before the debounce fires,
-                                // and how stale the on-screen results are.
-                                final now = DateTime.now();
-                                if (AppLog.enabled) {
-                                  final firstAt = _firstKeystrokeAt ??= now;
-                                  final sinceFirst =
-                                      now.difference(firstAt).inMilliseconds;
-                                  final sincePrev = _lastKeystrokeAt == null
-                                      ? 0
-                                      : now
-                                          .difference(_lastKeystrokeAt!)
-                                          .inMilliseconds;
-                                  _keystrokeCountInBurst++;
-                                  AppLog.info(
-                                    'Search.keystroke: chars=${query.length}'
-                                    ' burst=$_keystrokeCountInBurst'
-                                    ' sinceFirst=${sinceFirst}ms'
-                                    ' sincePrev=${sincePrev}ms'
-                                    ' query="$query"',
-                                  );
-                                }
-                                _lastKeystrokeAt = now;
-
-                                _debounce?.cancel();
-                                // that a fast typist sees results update mid-word;
-                                // long enough that a single typing burst doesn't
-                                // fire ~4 queries per character.
-                                final scheduledFor = now.add(
-                                  const Duration(milliseconds: 200),
-                                );
-                                _debounce = Timer(
-                                  const Duration(milliseconds: 200),
-                                  () {
-                                    if (!mounted) return;
-                                    if (AppLog.enabled) {
-                                      final firedAt = DateTime.now();
-                                      final scheduledLatency = firedAt
-                                          .difference(scheduledFor)
-                                          .inMilliseconds;
-                                      final burstDuration =
-                                          _firstKeystrokeAt == null
-                                              ? 0
-                                              : firedAt
-                                                  .difference(_firstKeystrokeAt!)
-                                                  .inMilliseconds;
-                                      AppLog.info(
-                                        'Search.debounce-fired:'
-                                        ' keystrokes=$_keystrokeCountInBurst'
-                                        ' burstDuration=${burstDuration}ms'
-                                        ' scheduledLatency=${scheduledLatency}ms'
-                                        ' query="$query"',
-                                      );
-                                    }
-                                    // Reset burst tracking now that we're firing.
-                                    _firstKeystrokeAt = null;
-                                    _keystrokeCountInBurst = 0;
-                                    widget.home.filters.query = query;
-                                    load(false);
-                                  },
-                                );
-                              },
-                              decoration: InputDecoration(
-                                hintText: _searchReady
-                                    ? 'Search…'
-                                    : 'Preparing search…',
-                                hintStyle: TextStyle(
-                                  fontSize: Theme.of(
-                                    context,
-                                  ).textTheme.titleMedium?.fontSize ?? 16,
-                                ),
-                                prefixIcon: const Icon(Icons.search),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide.none,
-                                ),
-                                // suffixIcon removed — keyword vs phrase mode
-                                // is now controlled by the search method
-                                filled: true,
+                              prefixIcon: const Icon(Icons.search),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: BorderSide.none,
+                              ),
+                              // suffixIcon removed — keyword vs phrase mode
+                              // is now controlled by the search method
+                              filled: true,
+                            ),
+                          ),
+                        ),
+                        // Radar scan button — only shown when there are
+                        // channels visible (active search or normal listing).
+                        if (channels.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 8),
+                            child: Tooltip(
+                              message: 'Scan stream validity',
+                              child: IconButton.filled(
+                                icon: const Icon(Icons.radar),
+                                onPressed:
+                                    _isScanning ? null : _startScan,
                               ),
                             ),
                           ),
-                          // Radar scan button — only shown when there are
-                          // channels visible (active search or normal listing).
-                          if (channels.isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(left: 8),
-                              child: Tooltip(
-                                message: 'Scan stream validity',
-                                child: IconButton.filled(
-                                  icon: const Icon(Icons.radar),
-                                  onPressed:
-                                      _isScanning ? null : _startScan,
-                                ),
+                        // Multi-view button — only shown when a layout is
+                        // selected in Settings.
+                        Builder(builder: (context) {
+                          final mvLayout = (SettingsService.cached
+                                      ?.multiViewLayout ??
+                                  MultiViewLayout.none);
+                          if (mvLayout == MultiViewLayout.none) {
+                            return const SizedBox.shrink();
+                          }
+                          return Padding(
+                            padding: const EdgeInsets.only(left: 8),
+                            child: Tooltip(
+                              message: 'Multi-view',
+                              child: IconButton.filled(
+                                icon: const Icon(Icons.grid_view),
+                                onPressed: () =>
+                                    _openMultiView(mvLayout),
                               ),
                             ),
-                          // Multi-view button — only shown when a layout is
-                          // selected in Settings.
-                          Builder(builder: (context) {
-                            final mvLayout = (SettingsService.cached
-                                        ?.multiViewLayout ??
-                                    MultiViewLayout.none);
-                            if (mvLayout == MultiViewLayout.none) {
-                              return const SizedBox.shrink();
-                            }
-                            return Padding(
-                              padding: const EdgeInsets.only(left: 8),
-                              child: Tooltip(
-                                message: 'Multi-view',
-                                child: IconButton.filled(
-                                  icon: const Icon(Icons.grid_view),
-                                  onPressed: () =>
-                                      _openMultiView(mvLayout),
-                                ),
-                              ),
-                            );
-                          }),
-                        ],
-                      ),
+                          );
+                        }),
+                      ],
                     ),
                   ),
-                  // fix278: Select All / Unselect All for the Categories view.
-                  if (widget.home.filters.viewType == ViewType.categories &&
-                      channels.isNotEmpty)
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding:
-                            const EdgeInsets.fromLTRB(16, 0, 16, 4),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            TextButton.icon(
-                              icon: const Icon(Icons.check_box_outlined,
-                                  size: 18),
-                              label: const Text('Select all'),
-                              onPressed: () => _setAllCategories(true),
-                            ),
-                            const SizedBox(width: 8),
-                            TextButton.icon(
-                              icon: const Icon(
-                                  Icons.check_box_outline_blank, size: 18),
-                              label: const Text('Unselect all'),
-                              onPressed: () => _setAllCategories(false),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  if (channels.isEmpty)
-                    SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(32),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                (widget.home.filters.query?.isNotEmpty == true)
-                                    ? Icons.search_off
-                                    : Icons.tv_off,
-                                size: 48,
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurface
-                                    .withAlpha(80),
+                  Expanded(
+                    child: CustomScrollView(
+                      controller: _scrollController,
+                      slivers: [
+                        // fix278: Select All / Unselect All for the Categories view.
+                        if (widget.home.filters.viewType == ViewType.categories &&
+                            channels.isNotEmpty)
+                          SliverToBoxAdapter(
+                            child: Padding(
+                              padding:
+                                  const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  TextButton.icon(
+                                    icon: const Icon(Icons.check_box_outlined,
+                                        size: 18),
+                                    label: const Text('Select all'),
+                                    onPressed: () => _setAllCategories(true),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  TextButton.icon(
+                                    icon: const Icon(
+                                        Icons.check_box_outline_blank, size: 18),
+                                    label: const Text('Unselect all'),
+                                    onPressed: () => _setAllCategories(false),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(height: 16),
-                              Text(
-                                (widget.home.filters.query?.isNotEmpty == true)
-                                    ? 'No results found'
-                                    : 'No channels available',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleMedium
-                                    ?.copyWith(
+                            ),
+                          ),
+                        if (channels.isEmpty)
+                          SliverFillRemaining(
+                            hasScrollBody: false,
+                            child: Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(32),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      (widget.home.filters.query?.isNotEmpty == true)
+                                          ? Icons.search_off
+                                          : Icons.tv_off,
+                                      size: 48,
                                       color: Theme.of(context)
                                           .colorScheme
                                           .onSurface
-                                          .withAlpha(128),
+                                          .withAlpha(80),
                                     ),
-                              ),
-                              if (widget.home.filters.query?.isNotEmpty == true)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 8),
-                                  child: Text(
-                                    'Try a shorter or different search term',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodySmall
-                                        ?.copyWith(
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .onSurface
-                                              .withAlpha(100),
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      (widget.home.filters.query?.isNotEmpty == true)
+                                          ? 'No results found'
+                                          : 'No channels available',
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium
+                                          ?.copyWith(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .onSurface
+                                                .withAlpha(128),
+                                          ),
+                                    ),
+                                    if (widget.home.filters.query?.isNotEmpty == true)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 8),
+                                        child: Text(
+                                          'Try a shorter or different search term',
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall
+                                              ?.copyWith(
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .onSurface
+                                                    .withAlpha(100),
+                                              ),
+                                          textAlign: TextAlign.center,
                                         ),
-                                    textAlign: TextAlign.center,
-                                  ),
+                                      ),
+                                  ],
                                 ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    )
-                  else
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(10, 5, 10, 10),
-                      sliver: SliverGrid(
-                        delegate: SliverChildBuilderDelegate(
-                          (context, index) {
-                            final channel = channels[index];
-                            final isHistory = widget.home.filters.viewType ==
-                                ViewType.history;
-                            return ChannelTile(
-                              key: ValueKey(
-                                'ch-${channel.id ?? channel.name}-$index',
                               ),
-                              channel: channel,
-                              tintColor: _sourceColors[channel.sourceId],
-                              parentContext: context,
-                              setNode: setNode,
-                              isHistory: isHistory,
-                              autofocus: index == 0,
-                              onRemoveHistory:
-                                  isHistory ? () => load(false) : null,
-                              // fix278: category tiles get an enable checkbox.
-                              onToggleEnabled: channel.mediaType ==
-                                          MediaType.group &&
-                                      channel.id != null
-                                  ? (enabled) async {
-                                      await Sql.setGroupEnabled(
-                                          channel.id!, enabled);
-                                      setState(() =>
-                                          channel.groupEnabled = enabled);
-                                    }
-                                  : null,
-                            );
-                          },
-                          childCount: channels.length,
-                          addRepaintBoundaries: true,
-                        ),
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: crossAxisCount,
-                          mainAxisExtent: 100,
-                          mainAxisSpacing: 12,
-                          crossAxisSpacing: 12,
-                        ),
-                      ),
+                            ),
+                          )
+                        else
+                          SliverPadding(
+                            padding: const EdgeInsets.fromLTRB(10, 5, 10, 10),
+                            sliver: SliverGrid(
+                              delegate: SliverChildBuilderDelegate(
+                                (context, index) {
+                                  final channel = channels[index];
+                                  final isHistory = widget.home.filters.viewType ==
+                                      ViewType.history;
+                                  return ChannelTile(
+                                    key: ValueKey(
+                                      'ch-${channel.id ?? channel.name}-$index',
+                                    ),
+                                    channel: channel,
+                                    tintColor: _sourceColors[channel.sourceId],
+                                    parentContext: context,
+                                    setNode: setNode,
+                                    isHistory: isHistory,
+                                    autofocus: index == 0,
+                                    onRemoveHistory:
+                                        isHistory ? () => load(false) : null,
+                                    // fix278: category tiles get an enable checkbox.
+                                    onToggleEnabled: channel.mediaType ==
+                                                MediaType.group &&
+                                            channel.id != null
+                                        ? (enabled) async {
+                                            await Sql.setGroupEnabled(
+                                                channel.id!, enabled);
+                                            setState(() =>
+                                                channel.groupEnabled = enabled);
+                                          }
+                                        : null,
+                                  );
+                                },
+                                childCount: channels.length,
+                                addRepaintBoundaries: true,
+                              ),
+                              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: crossAxisCount,
+                                mainAxisExtent: 100,
+                                mainAxisSpacing: 12,
+                                crossAxisSpacing: 12,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
+                  ),
                 ],
               );
             },
