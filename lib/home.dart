@@ -354,15 +354,19 @@ class _HomeState extends State<Home> {
     final timeout = Duration(
       seconds: settings.streamScanTimeoutSecs.clamp(3, 60),
     );
-    // fix304: begin scanning at the first on-screen tile and work downward,
-    // rather than always from index 0. Tiles are mainAxisExtent=100 high in a
-    // grid of `crossAxisCount` columns; the search bar is now pinned outside the
-    // scroll view, so scroll offset maps directly to tile rows.
+    // fix305: begin scanning at the first on-screen tile. The grid row pitch is
+    // mainAxisExtent(100) + mainAxisSpacing(12) = 112, after a 5px top padding
+    // (SliverPadding fromLTRB(10,5,10,10)). fix304 used 100 and no padding, so
+    // the computed row ran ahead of the real first-visible tile.
     final width = MediaQuery.of(context).size.width;
     final cols = (width / 350).floor().clamp(1, 3);
     var startIndex = 0;
     if (_scrollController.hasClients) {
-      final row = (_scrollController.offset / 100).floor();
+      const topPad = 5.0;
+      const rowPitch = 112.0; // 100 extent + 12 spacing
+      final row = ((_scrollController.offset - topPad) / rowPitch)
+          .floor()
+          .clamp(0, 1 << 30);
       startIndex = (row * cols).clamp(0, channels.length - 1);
     }
     final scanList = channels.sublist(startIndex);

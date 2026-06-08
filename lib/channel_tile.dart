@@ -142,6 +142,32 @@ class _ChannelTileState extends State<ChannelTile> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                // fix305: non-interactive header showing which category this
+                // channel came from. Display-only — no tap action.
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.folder_outlined,
+                        size: 18,
+                        color: Theme.of(ctx).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          (widget.channel.group?.trim().isNotEmpty ?? false)
+                              ? widget.channel.group!.trim()
+                              : 'Uncategorized',
+                          style: Theme.of(ctx).textTheme.labelLarge?.copyWith(
+                                color: Theme.of(ctx).colorScheme.primary,
+                              ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
                 ListTile(
                   leading: Icon(
                     widget.channel.favorite ? Icons.star : Icons.star_border,
