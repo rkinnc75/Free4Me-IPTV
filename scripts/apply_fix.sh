@@ -236,11 +236,23 @@ fi
 log_step "7" "Committing to main"
 
 git add -A
-COMMIT_MSG="${FIX_NAME}: in-app auto-update — download APK + launch installer (${VERSION})"
+# Generic fallback if the fix doc has no Release section.
+COMMIT_MSG="${FIX_NAME}: release ${VERSION}"
 
-# Read commit message from fix*.md if available
+# Prefer the commit message from the fix doc's "## Release — EXECUTE" section.
+# IMPORTANT: scope the search to that section. The embedded patch (section A)
+# can itself contain `git commit -m` lines (e.g. a CI step), so a naive
+# `grep ... | head -1` over the whole file grabs the wrong message.
 if grep -q "^## Release — EXECUTE" "${FIX_NAME}.md"; then
-  COMMIT_MSG=$(grep "git commit -m" "${FIX_NAME}.md" | head -1 | sed 's/.*git commit -m "//' | sed 's/"$//')
+  EXTRACTED=$(awk '/^## Release — EXECUTE/{f=1} f && /git commit -m/{print; exit}' "${FIX_NAME}.md" \
+    | sed 's/.*git commit -m "//' | sed 's/"$//')
+  # Reject empty matches or unexpanded shell templates (e.g. ${GH_TAG}),
+  # which indicate the line came from inside a patch, not the release recipe.
+  if [[ -n "$EXTRACTED" && "$EXTRACTED" != *'${'* ]]; then
+    COMMIT_MSG="$EXTRACTED"
+  else
+    log_warn "Could not extract a clean commit message from ${FIX_NAME}.md; using fallback"
+  fi
 fi
 
 git commit -m "$COMMIT_MSG"
