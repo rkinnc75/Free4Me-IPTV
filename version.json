@@ -1,7 +1,7 @@
 {
-  "latest": "1.26.21",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.21",
+  "latest": "1.26.22",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.22",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fix: the stream scanner now correctly starts at the first tile actually visible on screen.\n\u2022 Long-pressing a channel now shows which category it came from at the top of the menu."
+  "releaseNotes": "\u2022 After a stream scan, validation outlines now stay correct on all scanned channels without changing your scroll position."
 }
