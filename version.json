@@ -1,8 +1,8 @@
 {
-  "latest": "1.26.27",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.27",
+  "latest": "1.26.28",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.28",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 On TV, the LAN export now always offers all three files \u2014 source dump, debug log, and settings \u2014 each individually plus a combined zip, all sharing one timestamp.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.27/Free4Me-IPTV-1.26.27-arm64.apk"
+  "releaseNotes": "\u2022 Release reliability: the update feed now publishes only after the new version's install file is confirmed available, preventing a brief window where the updater could fail to download.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.28/Free4Me-IPTV-1.26.28-arm64.apk"
 }
