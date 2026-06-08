@@ -1,7 +1,7 @@
 {
-  "latest": "1.26.23",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.23",
+  "latest": "1.26.24",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.24",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 When a source is disabled, its refresh, edit, delete, and color actions are now disabled too. The enable/disable switch stays active."
+  "releaseNotes": "\u2022 New: long-press a category to favorite it, sorting it to the top of the Categories list (the channels inside are not affected).\n\u2022 New: in a channel's long-press menu, tap the category name to jump to that category in the Categories list."
 }
