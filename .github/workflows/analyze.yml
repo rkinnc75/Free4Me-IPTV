@@ -25,6 +25,15 @@ concurrency:
   group: free4me-ci-${{ github.sha }}
   cancel-in-progress: false
 
+# fix312 follow-up: mirror release.yml's publish-late toggle. When 'true',
+# release.yml commits version.json to main only AFTER the APK is uploaded, so
+# main/version.json is intentionally stale during the build window — the
+# "Verify version.json is up to date" step below would false-positive on that
+# expected lag, so it is skipped. To ROLL BACK to eager publishing, set
+# APK_BEFORE_VERSIONJSON to 'false' here AND in release.yml (both must match).
+env:
+  APK_BEFORE_VERSIONJSON: 'true'
+
 jobs:
   analyze:
     name: flutter analyze
@@ -46,6 +55,9 @@ jobs:
         run: flutter analyze --no-fatal-infos
 
       - name: Verify version.json is up to date
+        # fix312 follow-up: skip while publish-late is active — version.json is
+        # intentionally behind pubspec until release.yml publishes it post-APK.
+        if: env.APK_BEFORE_VERSIONJSON != 'true'
         run: |
           python3 scripts/update_version_json.py
           if ! git diff --quiet version.json; then
