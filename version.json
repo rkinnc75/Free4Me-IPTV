@@ -1,7 +1,7 @@
 {
-  "latest": "1.26.22",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.22",
+  "latest": "1.26.23",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.23",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 After a stream scan, validation outlines now stay correct on all scanned channels without changing your scroll position."
+  "releaseNotes": "\u2022 When a source is disabled, its refresh, edit, delete, and color actions are now disabled too. The enable/disable switch stays active."
 }
