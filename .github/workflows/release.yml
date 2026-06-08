@@ -86,6 +86,14 @@ jobs:
       - name: flutter pub get
         run: flutter pub get
 
+      - name: flutter analyze
+        # HARD GATE: build-and-release `needs: analyze`, so a failure here blocks
+        # the APK build and the entire release on this tagged commit. This makes
+        # the job live up to its "(gate)" name — previously it only ran pub get +
+        # version.json sync and never actually analyzed. Mirrors analyze.yml's
+        # invocation (2 tolerated settings_view.dart INFOs; warnings/errors fail).
+        run: flutter analyze --no-fatal-infos
+
       - name: Sync version.json on the tagged commit (self-healing)
         # fix312: only when ROLLED BACK to the original ordering. When the
         # reorder is active ('true'), version.json is committed after the APK

@@ -49,22 +49,18 @@ that are already automated — or flag intentional behavior as errors.
 
 ---
 
-## Release gating — "does Release only run after a successful Analyze?"
+## Release gating — Release is HARD-GATED on `flutter analyze`
 
-Short answer: **not as a hard CI gate, and the workarounds did not change that.**
+**`release.yml`'s `analyze` job now actually runs `flutter analyze --no-fatal-infos`**, and
+`build-and-release` has `needs: analyze`. So if static analysis fails on the tagged commit, the
+APK build and the entire release are **skipped** — a true hard gate, self-contained within
+`release.yml` (it does not depend on the separate `analyze.yml` workflow).
 
-- `release.yml` (trigger: tag push `v*`) and `analyze.yml` (trigger: push to `main`) are
-  **separate workflows**. GitHub Actions cannot make one workflow's run depend on another's result.
-- Inside `release.yml`, `build-and-release` has `needs: analyze`, but that internal `analyze` job
-  (display name "flutter analyze (gate)") **does not actually run `flutter analyze`** — it does
-  `flutter pub get` plus a version.json self-heal step (skipped under publish-late). The real
-  `flutter analyze` runs **only in `analyze.yml`**.
-- The two workflows share one concurrency group (`free4me-ci-${{ github.sha }}`, `cancel-in-progress: false`),
-  so for a combined commit+tag push (same SHA) they **queue instead of overlapping** — but queueing
-  does not guarantee Analyze runs *first*.
-- So "Analyze before Release" is a **procedural convention** (push main, watch the ~2-min Analyze
-  pass, then push the tag) plus concurrency serialization — not an enforced dependency.
-
-If a true hard gate is wanted (Release blocked unless `flutter analyze` passed), that is a separate
-change — e.g. add a real `flutter analyze` step to `release.yml`'s gate job, or have `release.yml`
-invoke analyze as a reusable workflow. It has not been done.
+- Previously the `analyze` job (display name "flutter analyze (gate)") only ran `flutter pub get`
+  plus a version.json self-heal step and **never actually analyzed** — the real check lived only in
+  `analyze.yml`, which (being a separate workflow on a different trigger) could not gate Release.
+  That step has now been added, so the job lives up to its name.
+- `analyze.yml` (trigger: push to `main`) still exists as the fast ~2-min feedback check before you
+  push a tag. It and `release.yml` share a concurrency group (`free4me-ci-${{ github.sha }}`,
+  `cancel-in-progress: false`) so they queue rather than overlap for the same SHA.
+- The 2 tolerated `settings_view.dart` INFOs pass (`--no-fatal-infos`); warnings/errors fail the gate.
