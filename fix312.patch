@@ -1,0 +1,129 @@
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index 6f30979..d00f2a1 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -55,6 +55,13 @@ concurrency:
+   cancel-in-progress: false
+ env:
+   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
++  # fix312: when 'true', version.json is committed to main AFTER the APK is
++  # uploaded to the release (closes the 404 window where the in-app updater saw
++  # the new version before its APK asset existed). To ROLL BACK to the original
++  # fix290 ordering (version.json synced early in the analyze job), set this to
++  # 'false' — that fully restores the previous, proven behavior with no other
++  # change required.
++  APK_BEFORE_VERSIONJSON: 'true'
+ 
+ jobs:
+   analyze:
+@@ -80,6 +87,10 @@ jobs:
+         run: flutter pub get
+ 
+       - name: Sync version.json on the tagged commit (self-healing)
++        # fix312: only when ROLLED BACK to the original ordering. When the
++        # reorder is active ('true'), version.json is committed after the APK
++        # upload in the build-and-release job instead.
++        if: env.APK_BEFORE_VERSIONJSON != 'true'
+         env:
+           GH_TAG: ${{ github.ref_name }}
+         run: |
+@@ -131,6 +142,9 @@ jobs:
+         with:
+           # Needed by the version.json freshness check.
+           fetch-depth: 0
++          # fix312: this job now commits version.json + moves the tag after the
++          # APK upload, so it needs write credentials persisted.
++          persist-credentials: true
+ 
+       - name: Resolve version from pubspec.yaml
+         id: ver
+@@ -329,6 +343,62 @@ jobs:
+           echo "Done. Release live at:"
+           echo "  https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
+ 
++      # fix312: with the reorder active, commit version.json to main and move the
++      # tag onto that commit ONLY NOW — after the APK asset is uploaded above.
++      # This closes the window where the in-app updater saw the new version
++      # before its APK existed (HTTP 404). Verifies the APK is actually
++      # downloadable first. Preserves fix290: version.json lands on main and the
++      # tag is moved to that same commit (tag stays at main's tip).
++      - name: Sync version.json AFTER APK upload (reorder)
++        if: env.APK_BEFORE_VERSIONJSON == 'true' && (github.event_name == 'push' || inputs.dry_run != 'true')
++        env:
++          GH_TOKEN: ${{ github.token }}
++          GH_TAG: ${{ steps.ver.outputs.tag }}
++          APK_NAME: ${{ steps.ver.outputs.apk_name }}
++        run: |
++          set -euo pipefail
++          # 1. Confirm the APK asset is actually downloadable before advertising.
++          ASSET_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GH_TAG}/${APK_NAME}"
++          echo "Verifying APK is live: $ASSET_URL"
++          for i in 1 2 3 4 5 6; do
++            CODE="$(curl -s -o /dev/null -w '%{http_code}' -L "$ASSET_URL" || echo 000)"
++            echo "  attempt $i: HTTP $CODE"
++            if [ "$CODE" = "200" ]; then APK_OK=1; break; fi
++            sleep 5
++          done
++          if [ "${APK_OK:-0}" != "1" ]; then
++            echo "::error::APK asset not downloadable after upload — NOT advertising version.json."
++            exit 1
++          fi
++          echo "APK confirmed live."
++
++          # 2. Now commit version.json to main and move the tag onto that commit.
++          git config user.name "github-actions[bot]"
++          git config user.email "github-actions[bot]@users.noreply.github.com"
++          git fetch origin main
++          git checkout -B main origin/main
++          python3 scripts/update_version_json.py
++          if ! git diff --quiet version.json; then
++            git add version.json
++            git commit -m "${GH_TAG}: CI sync version.json (after APK upload, fix312)"
++            git push origin main
++            echo "version.json committed to main."
++          else
++            echo "version.json already current on main."
++          fi
++          NEW_SHA="$(git rev-parse HEAD)"
++          git tag -f "${GH_TAG}" "${NEW_SHA}"
++          git push -f origin "refs/tags/${GH_TAG}"
++          echo "Moved ${GH_TAG} to ${NEW_SHA} (main tip, version.json present)."
++          # 3. Final guard — version.json must be current.
++          python3 scripts/update_version_json.py
++          if ! git diff --quiet version.json; then
++            echo "::error::version.json still stale after sync — aborting."
++            git --no-pager diff version.json
++            exit 1
++          fi
++          echo "version.json is current."
++
+       - name: Dry-run summary (skipped release)
+         if: github.event_name == 'workflow_dispatch' && inputs.dry_run == 'true'
+         run: |
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index fdcea36..d6a8a85 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.26.28': [
++    'Release reliability: the update feed now publishes only after the new version\'s install file is confirmed available, preventing a brief window where the updater could fail to download.',
++  ],
+   '1.26.27': [
+     'On TV, the LAN export now always offers all three files — source dump, debug log, and settings — each individually plus a combined zip, all sharing one timestamp.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 7526d00..69f407e 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.26.27+311
++version: 1.26.28+312
+ 
+ environment:
+   sdk: ^3.10.7
