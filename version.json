@@ -1,8 +1,8 @@
 {
-  "latest": "1.26.28",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.28",
+  "latest": "1.26.29",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.29",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Release reliability: the update feed now publishes only after the new version's install file is confirmed available, preventing a brief window where the updater could fail to download.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.28/Free4Me-IPTV-1.26.28-arm64.apk"
+  "releaseNotes": "\u2022 Documentation: refreshed and condensed the README with the latest features.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.29/Free4Me-IPTV-1.26.29-arm64.apk"
 }
