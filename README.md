@@ -1,128 +1,73 @@
 # Free4Me-IPTV
 
-A feature-rich IPTV player for Android and Android TV, forked from the excellent open-source
-[open-tv](https://github.com/Fredolx/open-tv) project by [@Fredolx](https://github.com/Fredolx).
+A feature-rich IPTV player for Android and Android TV, forked from
+[open-tv](https://github.com/Fredolx/open-tv) by [@Fredolx](https://github.com/Fredolx).
 
 ---
 
 ## Features
 
 ### Sources
-- **Xtream Codes**, **M3U URL**, and **M3U file** source types
-- Add multiple sources; each can be individually **enabled or disabled**
-- Per-source **EPG URL** — configure at add time or later in Settings
-- Per-source **engine override** — force libmpv or ExoPlayer for a specific provider
-- Live progress dialog during source refresh (channel/movie/series counts with status text)
-- URL auto-correction (missing `http://` prefix is added automatically)
-- Xtream: automatic correction of `player_api.php` path
-- **Credential-safe backup import** — restoring a backup without username/password fields
-  leaves existing credentials intact (no accidental wipe)
+- **Xtream Codes**, **M3U URL**, and **M3U file** sources; add multiple, each individually enable/disable-able
+- Per-source **EPG URL** and **engine override** (force libmpv or ExoPlayer)
+- Live refresh progress (channel/movie/series counts); URL auto-correction incl. Xtream `player_api.php`
+- Categories the provider references but doesn't name are auto-named from channel prefixes so they stay usable
+- Providers that cap the all-movies response are back-filled per category to load the full catalog
+- Credential-safe backup import (restoring without credentials never wipes existing ones)
+- Disabling a source disables its other actions (refresh/edit/delete); enable/disable stays available
 
 ### Channels, Movies & Series
-- Unified channel grid with **search** — FTS5 trigram index for fast partial matching;
-  short queries (1–2 chars) are skipped to avoid full-table scans on large sources
-- **Content-type filter on the All tab** — tap to cycle All → Live → Movies → Series → All;
-  limits search to the selected type, making 250k+ channel sources instantly snappy
-- **Consistent multi-key sort** across the channel list and the multi-view picker:
-  Favourites first, then recently watched (History), then all channels — with validated
-  streams ordered to the top of each group and alphabetical ordering within. Applies to
-  every media-type view (Live, Movies, Series, All)
-- Section headers show **Favourites**, **History**, and **All channels**; a green circle
-  badge marks validated streams
-- Categories, Favorites, History, and All views
-- History sorted most-recent-first; long-press to remove an entry
-- **Stream scanner** — tap the radar icon to probe visible streams for validity
-  (configurable count 1–100, timeout 3–30 s); valid streams get a green outline that
-  **persists across app restarts** (validation is stored in the database, not just in memory)
-- Infinite scroll with lazy loading; stale pagination results are dropped when a
-  newer search starts
+- Unified grid with fast **FTS5 trigram search** (1–2 char queries skipped); divider/disabled-category rows are filtered before pagination so real channels are never hidden
+- **Content-type cycle** on the All tab (All → Live → Movies → Series) for snappy 250k+ sources
+- Consistent multi-key sort everywhere: Favourites → History → All, validated-first then alphabetical
+- **Favorite a category** (long-press) to pin it to the top of the Categories list — channels inside are untouched
+- Opening a category shows all its channels regardless of the enable checkbox
+- Long-press any tile (live, movie, or series) for the same menu: favorite, plus a tappable link to its category
+- **Stream scanner** (radar): probes from the first visible tile downward, configurable count/timeout; valid streams get a green outline that **persists across restarts** and is reapplied after each scan
+- Categories, Favorites, History, All views; infinite scroll with stale-result guarding
 
 ### Player
-- Dual-engine: **libmpv** (media_kit) and **ExoPlayer** (video_player)
-- Engine auto-selection per stream type, or force a global engine in Settings
-- Per-channel engine override stored in the database
-- Hardware decoding via `mediacodec` (phones) / `mediacodec-copy` (Android TV)
-- Chromecast / Google Cast support for compatible streams
-- **Dual-stream Picture-in-Picture** — watch two channels simultaneously:
-  one full-screen with audio, one muted in a draggable corner window; swap with one tap
-- App-managed fullscreen (immersive system UI + orientation) for a single, predictable
-  navigation stack — no hidden duplicate routes
-- Native Android PiP (background playback)
-- Reconnect logic with configurable watchdog, stable-playback threshold, startup
-  grace window, and stream-completed reconnect delay — all tunable in Settings
-- Graceful give-up: after the configured reconnect attempts a dead stream auto-closes
-  and restores the previous audio rather than hanging
-- Pre-warm on focus (HEAD request) to reduce channel-switch latency on D-pad navigation
+- Dual-engine **libmpv** (media_kit) + **ExoPlayer** (video_player); auto-select per stream or force globally / per-channel
+- Hardware decoding (`mediacodec` phones / `mediacodec-copy` TV); Chromecast / Google Cast
+- **Dual-stream Picture-in-Picture** — two channels at once (one full-screen with audio, one muted/draggable; one-tap swap)
+- App-managed fullscreen + native Android PiP; pre-warm on focus to cut switch latency
+- Tunable reconnect (watchdog, stable threshold, startup grace, completed-reconnect delay); graceful give-up restores prior audio
 
 ### Multi-view
-- 1×2 and 2×2 layouts for watching multiple channels at once
-- **Live TV only** — movies and series are never loaded into multi-view cells, and a saved
-  cell whose stream was reassigned to non-live content by a source refresh opens empty
-  instead of loading the wrong stream
-- Optional restore-last-channels on entry
-- Independent engines per cell with their own reconnect handling
+- 1×2 and 2×2 layouts, **live-TV only**; independent engine + reconnect per cell
+- Channel picker scroll-loads the full catalog; optional restore-last-channels on entry
 
 ### EPG (Electronic Programme Guide)
-- Streaming XMLTV parser — handles plain and gzip-compressed feeds; sniffs compression
-  from magic bytes rather than trusting `Content-Encoding` headers
-- Fuzzy channel matching (tiered: exact → normalised → stripped → token → token-subset)
-- **Incremental matching** — only unmatched channels re-processed on each refresh;
-  manual overrides are always preserved
-- Manual channel-to-EPG mapping with persistent override; override survives backup/restore
-- Now/Next strip on channel tiles; full schedule in channel detail view
-- Configurable refresh interval (1–168 h), refresh hour, past-day and forecast-day windows
-- **Re-match all channels** button to force a full re-match after a feed change
-- Background refresh via WorkManager (runs at the configured hour, requires network)
-- EPG data stored in a **separate `epg.sqlite` database** so large WAL writes
-  (600k+ programme inserts) never block channel-search reads in the main DB
-- WAL checkpointed explicitly after each EPG write phase — searches are fast
-  immediately after a refresh completes
+- Streaming XMLTV parser (plain + gzip, sniffed from magic bytes); tiered fuzzy channel matching
+- **Incremental matching** — only unmatched channels reprocessed; manual overrides always preserved (survive backup/restore)
+- Now/Next on tiles, full schedule in detail; configurable interval/hour/past/forecast windows; Re-match-all button
+- Background refresh via WorkManager; stored in a **separate `epg.sqlite`** (WAL-checkpointed) so large writes never block search
+
+### Safe mode
+- Unified adult filter: a single indexed flag set at import from the provider's `is_adult` **or** the built-in keyword list
 
 ### Backup & Restore
-- Export settings + sources as a JSON backup file
-- Backup includes EPG channel assignments and manual overrides so EPG is preserved
-  across a restore without requiring a full re-match
-- Selective restore: favorites, watch history, EPG IDs, and manual overrides are
-  applied per-channel after the source refresh populates the channel list
-- Debug log activated immediately when a backup with `debugLogging: true` is imported
+- JSON export of settings + sources, including EPG assignments/overrides
+- Selective per-channel restore (favorites, history, EPG IDs, overrides) applied after refresh
 
 ### Settings — collapsible groups
-Settings are organised into expandable groups to reduce scrolling.
-Tap a group header to expand/collapse it.
-
-- **Default view** (flat) — choose which tab opens on launch
-- **Playback** — force TV mode, low-latency mode, hardware decode, pre-warm on focus,
-  player engine picker
-- **Buffering** — live cache, VOD cache, demuxer cache sizes; open timeout, buffering
-  watchdog, stable threshold, startup grace window, stream-completed reconnect delay
-- **Multi-view** — layout picker, restore-last-channels toggle
-- **Content** — show/hide livestreams, movies, and series; refresh on start; stream scanner
-- **EPG / Program Guide** — auto-refresh toggle, refresh interval, refresh hour,
-  past/forecast day windows, Refresh EPG Now button, Re-match All Channels button
-- **Diagnostics** (flat) — debug logging toggle, save/clear log
-- **Backup & Restore** (flat) — export and import JSON backup
-- **Reset** (flat) — restore all settings to optimised defaults
-- **App** (flat) — version, changelog, open-source credits
-- **Sources** (flat) — add, edit, enable/disable, and per-source refresh
+Expandable groups to reduce scrolling: **Default view**, **Playback**, **Buffering**, **Multi-view**,
+**Content**, **EPG**, **Diagnostics**, **Backup & Restore**, **Reset**, **App**, **Sources**.
 
 ### Android TV
-- D-pad navigation throughout
-- Focus-aware channel grid, settings menus, and dialogs
-- Separate TV home layout with side menu
+- Full D-pad navigation; focus-aware grid/menus/dialogs; dedicated TV home with side menu
+- **LAN export** (QR + port 9479) serves source dump, debug log, and settings — each individually plus a combined zip
 
 ### Updates
-- Built-in update check against the project's `version.json`; surfaces a "what's new"
-  summary on version change
+- Built-in update check against `version.json` with a "what's new" summary
+- **In-app auto-update**: one-tap download of the new APK and launch the installer
 
 ---
 
 ## Installation
 
-Download the latest APK from the
-[GitHub Releases](https://github.com/rkinnc75/Free4Me-IPTV/releases) page
+Download the latest APK from [GitHub Releases](https://github.com/rkinnc75/Free4Me-IPTV/releases)
 and sideload it onto your Android device or Android TV.
-
----
 
 ## Building from source
 
@@ -138,20 +83,12 @@ flutter build apk --release
 
 ## Credits & License
 
-Free4Me-IPTV is a fork of **[open-tv](https://github.com/Fredolx/open-tv)**,
-created and maintained by [@Fredolx](https://github.com/Fredolx).
+Free4Me-IPTV is a fork of **[open-tv](https://github.com/Fredolx/open-tv)** by
+[@Fredolx](https://github.com/Fredolx). If you find open-tv useful, please support the original author:
+⭐ [Star](https://github.com/Fredolx/open-tv) · 💖 [Sponsor](https://github.com/sponsors/Fredolx) ·
+❤️ [Patreon](https://www.patreon.com/fredol) · 💸 [PayPal](https://paypal.me/fredolx)
 
-The original project is an excellent open-source IPTV client for Android and
-iOS. If you find open-tv useful, please consider supporting the original author:
-
-- ⭐ Star the [open-tv repository](https://github.com/Fredolx/open-tv)
-- 💖 Sponsor on [GitHub](https://github.com/sponsors/Fredolx)
-- ❤️ Support on [Patreon](https://www.patreon.com/fredol)
-- 💸 Donate via [PayPal](https://paypal.me/fredolx)
-
-This fork adds Android TV support, ExoPlayer integration, Chromecast, dual-stream PiP,
-content-type filter cycling, a consistent multi-key channel sort, persistent stream
-validation, live-TV-only multi-view, advanced EPG matching, a separate EPG database,
-stream scanner, collapsible settings groups, and numerous reliability and performance
-improvements. All additions are released under the same license as the original project.
-<!-- Release pipeline validated on v1.26.11 (no functional changes). -->
+This fork adds Android TV support, ExoPlayer, Chromecast, dual-stream PiP, content-type cycling,
+consistent multi-key sort, persistent stream validation, favorite categories, live-TV-only multi-view,
+advanced/incremental EPG with a separate database, unified safe mode, in-app auto-update, LAN export
+bundles, and many reliability and performance improvements. Released under the original project's license.
