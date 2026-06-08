@@ -182,9 +182,10 @@ class _ChannelTileState extends State<ChannelTile> {
       return;
     }
 
-    // For livestreams offer "Favorite" + "Watch in mini-player"
-    // + "Remove from history" when in the history view.
-    if (widget.channel.mediaType == MediaType.livestream) {
+    // fix309: show the same long-press menu for livestream, movie, and serie
+    // tiles (favorite + category link), so the All view behaves like Live TV.
+    // Mini-player and Remove-from-history remain livestream/history-only inside.
+    if (widget.channel.mediaType != MediaType.group) {
       await showModalBottomSheet<void>(
         context: context,
         builder: (ctx) {
@@ -256,14 +257,16 @@ class _ChannelTileState extends State<ChannelTile> {
                     favorite();
                   },
                 ),
-                ListTile(
-                  leading: const Icon(Icons.picture_in_picture),
-                  title: const Text('Watch in mini-player'),
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    await _watchInMiniPlayer();
-                  },
-                ),
+                // fix309: mini-player only applies to live channels.
+                if (widget.channel.mediaType == MediaType.livestream)
+                  ListTile(
+                    leading: const Icon(Icons.picture_in_picture),
+                    title: const Text('Watch in mini-player'),
+                    onTap: () async {
+                      Navigator.pop(ctx);
+                      await _watchInMiniPlayer();
+                    },
+                  ),
                 if (widget.isHistory && widget.channel.id != null)
                   ListTile(
                     leading: const Icon(Icons.history_toggle_off,
@@ -282,9 +285,6 @@ class _ChannelTileState extends State<ChannelTile> {
       );
       return;
     }
-
-    // For movies / series, keep original behavior (favorite toggle)
-    await favorite();
   }
 
   Future<void> _watchInMiniPlayer() async {
