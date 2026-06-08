@@ -5,6 +5,8 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Free4Me-IPTV: detect mobile/Wi-Fi changes for reconnect. -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- fix310: allow the in-app updater to launch the APK installer. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <!-- Free4Me-IPTV: declare PIP support so Google TV exposes it. -->

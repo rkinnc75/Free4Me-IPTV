@@ -123,6 +123,12 @@ def main() -> None:
     data["releaseUrl"] = (
         f"https://github.com/{GITHUB_REPO}/releases/tag/{tag}"
     )
+    # fix310: direct APK download URL for the in-app auto-updater. Asset name
+    # matches release.yml: Free4Me-IPTV-${VERSION}-arm64.apk
+    data["apkUrl"] = (
+        f"https://github.com/{GITHUB_REPO}/releases/download/{tag}/"
+        f"Free4Me-IPTV-{version}-arm64.apk"
+    )
     data["releaseNotes"] = notes
 
     # Match the formatting the local `scripts/build_and_release.sh` Python

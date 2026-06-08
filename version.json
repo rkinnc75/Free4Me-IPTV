@@ -1,7 +1,8 @@
 {
-  "latest": "1.26.25",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.25",
+  "latest": "1.26.26",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.26",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Long-pressing a movie or series (e.g. in the All view) now opens the same menu as live channels, with favorite and category options, instead of silently toggling favorite."
+  "releaseNotes": "\u2022 New: when an update is available, the app can now download and install it for you in one tap, instead of opening the download page in a browser.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.26/Free4Me-IPTV-1.26.26-arm64.apk"
 }

@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.26': [
+    'New: when an update is available, the app can now download and install it for you in one tap, instead of opening the download page in a browser.',
+  ],
   '1.26.25': [
     'Long-pressing a movie or series (e.g. in the All view) now opens the same menu as live channels, with favorite and category options, instead of silently toggling favorite.',
   ],

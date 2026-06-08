@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/http_client.dart';
+import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -158,6 +159,109 @@ class UpdateChecker {
     return File('${dir.path}/$_cacheFilename');
   }
 
+  // fix310: download the release APK with a progress dialog, then hand it to
+  // the Android package installer (OpenFilex). The user confirms the system
+  // install prompt and must have granted "install unknown apps" once. On any
+  // failure, falls back to opening the release page in the browser.
+  static Future<void> _downloadAndInstall(
+    BuildContext context,
+    String apkUrl,
+    String version,
+  ) async {
+    final uri = Uri.tryParse(apkUrl);
+    if (uri == null) {
+      AppLog.warn('UpdateChecker: invalid apkUrl');
+      return;
+    }
+    final progress = ValueNotifier<double>(0);
+    var cancelled = false;
+    if (context.mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          title: Text('Downloading v$version'),
+          content: ValueListenableBuilder<double>(
+            valueListenable: progress,
+            builder: (context, p, child) => Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                LinearProgressIndicator(value: p > 0 ? p : null),
+                const SizedBox(height: 12),
+                Text(p > 0 ? '${(p * 100).toStringAsFixed(0)}%' : 'Starting…'),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                cancelled = true;
+                Navigator.pop(ctx);
+              },
+              child: const Text('Cancel'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    File? outFile;
+    try {
+      final dir = await getApplicationSupportDirectory();
+      outFile = File('${dir.path}/Free4Me-IPTV-$version.apk');
+      final client = HttpClient();
+      final request = await client.getUrl(uri);
+      final response = await request.close();
+      if (response.statusCode != 200) {
+        throw 'HTTP ${response.statusCode}';
+      }
+      final total = response.contentLength;
+      var received = 0;
+      final sink = outFile.openWrite();
+      await for (final chunk in response) {
+        if (cancelled) {
+          await sink.close();
+          await outFile.delete().catchError((_) => outFile!);
+          client.close(force: true);
+          AppLog.info('UpdateChecker: download cancelled');
+          return;
+        }
+        received += chunk.length;
+        sink.add(chunk);
+        if (total > 0) progress.value = received / total;
+      }
+      await sink.close();
+      client.close();
+      AppLog.info('UpdateChecker: downloaded $received bytes to ${outFile.path}');
+    } catch (e) {
+      AppLog.warn('UpdateChecker: download failed — $e');
+      if (context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop(); // dismiss progress
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Download failed: $e')),
+        );
+      }
+      return;
+    }
+
+    if (context.mounted) {
+      Navigator.of(context, rootNavigator: true).pop(); // dismiss progress
+    }
+    // Hand off to the Android installer. The user confirms the install prompt.
+    final result = await OpenFilex.open(outFile.path);
+    AppLog.info('UpdateChecker: installer result ${result.type} ${result.message}');
+    if (result.type != ResultType.done && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Could not open the installer. Enable "install unknown apps" for '
+            'Free4Me-IPTV in Android settings, then try again.',
+          ),
+        ),
+      );
+    }
+  }
+
   static bool _isNewer(String remote, String local) {
     final r = _parseSemver(remote);
     final l = _parseSemver(local);
@@ -203,6 +307,14 @@ class UpdateChecker {
             autofocus: true,
             onPressed: () async {
               Navigator.pop(ctx);
+              // fix310: prefer the in-app download + installer flow. Fall back
+              // to opening the release page if no direct apkUrl is present.
+              final apkUrl = info['apkUrl'] as String?;
+              final remoteVersion = info['latest'] as String? ?? '';
+              if (apkUrl != null && apkUrl.isNotEmpty) {
+                await _downloadAndInstall(context, apkUrl, remoteVersion);
+                return;
+              }
               final rawUrl = info['releaseUrl'] as String?;
               if (rawUrl == null) return;
               final url = Uri.tryParse(rawUrl);
@@ -210,7 +322,7 @@ class UpdateChecker {
                 await launchUrl(url, mode: LaunchMode.externalApplication);
               }
             },
-            child: const Text('Download'),
+            child: const Text('Update'),
           ),
         ],
       ),
