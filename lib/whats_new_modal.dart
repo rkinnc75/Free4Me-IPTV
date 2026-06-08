@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.23': [
+    'When a source is disabled, its refresh, edit, delete, and color actions are now disabled too. The enable/disable switch stays active.',
+  ],
   '1.26.22': [
     'After a stream scan, validation outlines now stay correct on all scanned channels without changing your scroll position.',
   ],

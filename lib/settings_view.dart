@@ -440,9 +440,12 @@ class _SettingsState extends State<SettingsView> {
         elevation: 5,
         child: ListTile(
           // fix196: tap the monitor icon to pick a per-source tag color.
+          // fix307: only when the source is enabled.
           leading: InkWell(
             borderRadius: BorderRadius.circular(8),
-            onTap: () async {
+            onTap: !source.enabled
+                ? null
+                : () async {
               final result =
                   await showSourceColorPicker(context, current: source.color);
               if (result == null) return;
@@ -475,16 +478,21 @@ class _SettingsState extends State<SettingsView> {
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Enable/disable toggle — explicit switch for discoverability
+              // Enable/disable toggle — always active (fix307).
               Switch(
                 value: source.enabled,
                 onChanged: (_) => toggleSource(source),
               ),
+              // fix307: when a source is disabled, its other actions
+              // (refresh / edit / delete / color) are disabled too — only the
+              // enable/disable switch above stays usable.
               Offstage(
                 offstage: source.sourceType == SourceType.m3u,
                 child: IconButton(
                   icon: const Icon(Icons.refresh),
-                  onPressed: () async {
+                  onPressed: !source.enabled
+                      ? null
+                      : () async {
                     await _refreshSingleSource(source);
                     if (mounted) await reloadSources();
                   },
@@ -494,12 +502,16 @@ class _SettingsState extends State<SettingsView> {
                 offstage: source.sourceType == SourceType.m3u,
                 child: IconButton(
                   icon: const Icon(Icons.edit),
-                  onPressed: () async => await showEditDialog(context, source),
+                  onPressed: !source.enabled
+                      ? null
+                      : () async => await showEditDialog(context, source),
                 ),
               ),
               IconButton(
                 icon: const Icon(Icons.delete),
-                onPressed: () async => await showConfirmDeleteDialog(source),
+                onPressed: !source.enabled
+                    ? null
+                    : () async => await showConfirmDeleteDialog(source),
               ),
             ],
           ),

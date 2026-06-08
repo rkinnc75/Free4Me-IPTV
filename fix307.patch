@@ -1,0 +1,88 @@
+diff --git a/lib/settings_view.dart b/lib/settings_view.dart
+index 546a2b5..d57dc78 100644
+--- a/lib/settings_view.dart
++++ b/lib/settings_view.dart
+@@ -440,9 +440,12 @@ class _SettingsState extends State<SettingsView> {
+         elevation: 5,
+         child: ListTile(
+           // fix196: tap the monitor icon to pick a per-source tag color.
++          // fix307: only when the source is enabled.
+           leading: InkWell(
+             borderRadius: BorderRadius.circular(8),
+-            onTap: () async {
++            onTap: !source.enabled
++                ? null
++                : () async {
+               final result =
+                   await showSourceColorPicker(context, current: source.color);
+               if (result == null) return;
+@@ -475,16 +478,21 @@ class _SettingsState extends State<SettingsView> {
+           trailing: Row(
+             mainAxisSize: MainAxisSize.min,
+             children: [
+-              // Enable/disable toggle — explicit switch for discoverability
++              // Enable/disable toggle — always active (fix307).
+               Switch(
+                 value: source.enabled,
+                 onChanged: (_) => toggleSource(source),
+               ),
++              // fix307: when a source is disabled, its other actions
++              // (refresh / edit / delete / color) are disabled too — only the
++              // enable/disable switch above stays usable.
+               Offstage(
+                 offstage: source.sourceType == SourceType.m3u,
+                 child: IconButton(
+                   icon: const Icon(Icons.refresh),
+-                  onPressed: () async {
++                  onPressed: !source.enabled
++                      ? null
++                      : () async {
+                     await _refreshSingleSource(source);
+                     if (mounted) await reloadSources();
+                   },
+@@ -494,12 +502,16 @@ class _SettingsState extends State<SettingsView> {
+                 offstage: source.sourceType == SourceType.m3u,
+                 child: IconButton(
+                   icon: const Icon(Icons.edit),
+-                  onPressed: () async => await showEditDialog(context, source),
++                  onPressed: !source.enabled
++                      ? null
++                      : () async => await showEditDialog(context, source),
+                 ),
+               ),
+               IconButton(
+                 icon: const Icon(Icons.delete),
+-                onPressed: () async => await showConfirmDeleteDialog(source),
++                onPressed: !source.enabled
++                    ? null
++                    : () async => await showConfirmDeleteDialog(source),
+               ),
+             ],
+           ),
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 0b0923f..1f406a2 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.26.23': [
++    'When a source is disabled, its refresh, edit, delete, and color actions are now disabled too. The enable/disable switch stays active.',
++  ],
+   '1.26.22': [
+     'After a stream scan, validation outlines now stay correct on all scanned channels without changing your scroll position.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 1cd9285..eea4b6d 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.26.22+306
++version: 1.26.23+307
+
+ environment:
+   sdk: ^3.10.7
