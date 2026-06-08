@@ -456,6 +456,12 @@ class DbFactory {
         await tx.execute(
             'CREATE INDEX IF NOT EXISTS idx_channel_adult '
             'ON channels(source_id, is_adult);');
+      }))
+      // fix308: per-category favorite. groups.favorite = 1 sorts that category
+      // to the top of the Categories list (does NOT favorite its channels).
+      ..add(SqliteMigration(25, (tx) async {
+        await tx.execute(
+            'ALTER TABLE groups ADD COLUMN favorite INTEGER DEFAULT 0;');
       }));
     await migrations.migrate(db);
 

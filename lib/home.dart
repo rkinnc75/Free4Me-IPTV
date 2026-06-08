@@ -54,7 +54,8 @@ class _HomeState extends State<Home> {
   int _searchInvocation = 0; // monotonic; correlates debounce → SQL → setState lines
   bool reachedMax = false;
   List<Channel> channels = [];
-  late final TextEditingController searchController = TextEditingController();
+  late final TextEditingController searchController =
+      TextEditingController(text: widget.home.filters.query ?? '');
   final ScrollController _scrollController = ScrollController();
   bool isLoading = false;
   bool blockSettings = false;
@@ -516,6 +517,26 @@ class _HomeState extends State<Home> {
     await load(false);
   }
 
+  // fix308: open the Categories list filtered to [categoryName]. Pushes a fresh
+  // Categories-view Home with the search box pre-filled, so the tapped
+  // category surfaces at the top of the list (reusing existing search + the
+  // favorite-first sort). No fragile scroll-to-index needed.
+  void _openCategoryByName(String categoryName) {
+    final home = HomeManager(
+      filters: Filters(
+        viewType: ViewType.categories,
+        query: categoryName,
+        mediaTypes: widget.home.filters.mediaTypes,
+        sourceIds: widget.home.filters.sourceIds,
+        safeMode: widget.home.filters.safeMode,
+        searchMethod: widget.home.filters.searchMethod,
+      ),
+    );
+    Navigator.of(context).push(
+      NoPushAnimationMaterialPageRoute(builder: (context) => Home(home: home)),
+    );
+  }
+
   void setNode(Node node) {
     final home = HomeManager(
       node: node,
@@ -813,6 +834,22 @@ class _HomeState extends State<Home> {
                                                 channel.groupEnabled = enabled);
                                           }
                                         : null,
+                                    // fix308: long-press a category tile to
+                                    // favorite it (sorts to top of Categories).
+                                    onFavoriteGroup: channel.mediaType ==
+                                                MediaType.group &&
+                                            channel.id != null
+                                        ? (favorite) async {
+                                            await Sql.favoriteGroup(
+                                                channel.id!, favorite);
+                                            channel.favorite = favorite;
+                                            await load(false);
+                                          }
+                                        : null,
+                                    // fix308: tap the category name in a
+                                    // channel's long-press menu to open the
+                                    // Categories list filtered to it.
+                                    onOpenCategory: _openCategoryByName,
                                   );
                                 },
                                 childCount: channels.length,

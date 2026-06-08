@@ -50,6 +50,14 @@ class ChannelTile extends StatefulWidget {
   /// non-category tiles.
   final Future<void> Function(bool enabled)? onToggleEnabled;
 
+  /// fix308: for category tiles — toggle the category's favorite flag (sorts it
+  /// to the top of the Categories list). Null for non-category tiles.
+  final Future<void> Function(bool favorite)? onFavoriteGroup;
+
+  /// fix308: tapping the category name in a channel's long-press menu opens the
+  /// Categories list filtered to that category name. Null disables the tap.
+  final void Function(String categoryName)? onOpenCategory;
+
   const ChannelTile({
     super.key,
     required this.channel,
@@ -61,6 +69,8 @@ class ChannelTile extends StatefulWidget {
     this.autofocus = false,
     this.tintColor,
     this.onToggleEnabled, // fix278: category tiles only
+    this.onFavoriteGroup, // fix308: category tiles only
+    this.onOpenCategory, // fix308: channel long-press category link
   });
 
   @override
@@ -129,8 +139,48 @@ class _ChannelTileState extends State<ChannelTile> {
   }
 
   Future<void> _onLongPress() async {
-    // For groups, long-press does nothing
-    if (widget.channel.mediaType == MediaType.group) return;
+    // fix308: category tiles — long-press toggles favorite (sorts the category
+    // to the top of the list; does not favorite its channels).
+    if (widget.channel.mediaType == MediaType.group) {
+      if (widget.onFavoriteGroup == null) return;
+      final fav = widget.channel.favorite;
+      await showModalBottomSheet<void>(
+        context: context,
+        builder: (ctx) {
+          return SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Text(
+                    widget.channel.name,
+                    style: Theme.of(ctx).textTheme.labelLarge,
+                  ),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: Icon(
+                    fav ? Icons.star : Icons.star_border,
+                    color: Colors.amber,
+                  ),
+                  title: Text(
+                    fav
+                        ? 'Remove category from favorites'
+                        : 'Favorite category (sort to top)',
+                  ),
+                  onTap: () async {
+                    Navigator.of(ctx).pop();
+                    await widget.onFavoriteGroup!(!fav);
+                  },
+                ),
+              ],
+            ),
+          );
+        },
+      );
+      return;
+    }
 
     // For livestreams offer "Favorite" + "Watch in mini-player"
     // + "Remove from history" when in the history view.
@@ -142,31 +192,54 @@ class _ChannelTileState extends State<ChannelTile> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // fix305: non-interactive header showing which category this
-                // channel came from. Display-only — no tap action.
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.folder_outlined,
-                        size: 18,
-                        color: Theme.of(ctx).colorScheme.primary,
+                // fix305: header showing which category this channel came from.
+                // fix308: now tappable — opens the Categories list filtered to
+                // that category name.
+                Builder(builder: (ctx2) {
+                  final catName =
+                      (widget.channel.group?.trim().isNotEmpty ?? false)
+                          ? widget.channel.group!.trim()
+                          : 'Uncategorized';
+                  final canOpen = widget.onOpenCategory != null &&
+                      catName != 'Uncategorized';
+                  return InkWell(
+                    onTap: !canOpen
+                        ? null
+                        : () {
+                            Navigator.of(ctx).pop();
+                            widget.onOpenCategory!(catName);
+                          },
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.folder_outlined,
+                            size: 18,
+                            color: Theme.of(ctx).colorScheme.primary,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              catName,
+                              style:
+                                  Theme.of(ctx).textTheme.labelLarge?.copyWith(
+                                        color:
+                                            Theme.of(ctx).colorScheme.primary,
+                                      ),
+                            ),
+                          ),
+                          if (canOpen)
+                            Icon(
+                              Icons.chevron_right,
+                              size: 18,
+                              color: Theme.of(ctx).colorScheme.primary,
+                            ),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          (widget.channel.group?.trim().isNotEmpty ?? false)
-                              ? widget.channel.group!.trim()
-                              : 'Uncategorized',
-                          style: Theme.of(ctx).textTheme.labelLarge?.copyWith(
-                                color: Theme.of(ctx).colorScheme.primary,
-                              ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                    ),
+                  );
+                }),
                 const Divider(height: 1),
                 ListTile(
                   leading: Icon(

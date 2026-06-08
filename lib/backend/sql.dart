@@ -816,6 +816,10 @@ class Sql {
     sqlQuery += smGroupClause;
     params.addAll(smGroupParams);
 
+    // fix308: favorited categories sort to the top; existing order (rowid)
+    // is preserved below via the stable secondary sort.
+    sqlQuery += '\nORDER BY COALESCE(favorite, 0) DESC, id ASC';
+
     sqlQuery += '\nLIMIT ?, ?';
     params.add(offset);
     params.add(pageSize);
@@ -829,9 +833,19 @@ class Sql {
         name: row.columnAt(1),
         image: row.columnAt(2),
         sourceId: row.columnAt(3),
-        favorite: false,
+        favorite: (row.columnAt(6) as int?) == 1, // fix308 (col 6 = favorite)
         groupEnabled: (row.columnAt(5) as int?) != 0, // fix278 (col 5 = enabled)
         mediaType: MediaType.group);
+  }
+
+  // fix308: toggle a category's favorite flag (sorts it to the top of the
+  // Categories list; does NOT touch the channels inside it).
+  static Future<void> favoriteGroup(int groupId, bool favorite) async {
+    final db = await DbFactory.db;
+    await db.execute(
+      'UPDATE groups SET favorite = ? WHERE id = ?',
+      [favorite ? 1 : 0, groupId],
+    );
   }
 
   static Future<bool> sourceNameExists(String? name) async {
