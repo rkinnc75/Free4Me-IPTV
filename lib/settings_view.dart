@@ -11,7 +11,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:open_tv/backend/playback_analyzer.dart';
 import 'package:open_tv/backend/device_memory.dart';
 import 'package:open_tv/models/device_detector.dart';
-import 'package:open_tv/models/engine_type.dart';
+import 'package:open_tv/models/engine_preference.dart';
 import 'package:open_tv/models/multi_view_layout.dart';
 import 'package:open_tv/models/multi_view_decode.dart';
 import 'package:open_tv/multi_view_picker_dialog.dart';
@@ -1602,7 +1602,7 @@ class _SettingsState extends State<SettingsView> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              _engineShortLabel(settings.forcedEngine),
+              settings.enginePreference.label,
               style: Theme.of(context).textTheme.bodyMedium,
             ),
             const SizedBox(width: 4),
@@ -1613,11 +1613,14 @@ class _SettingsState extends State<SettingsView> {
     );
   }
 
-  String _engineShortLabel(EngineType engine) => switch (engine) {
-        EngineType.auto => 'Auto',
-        EngineType.libmpv => 'libmpv',
-        EngineType.exoplayer => 'ExoPlayer',
-      };
+  // fix315: global engine preference picker — explicit primary + fallback
+  // order, replacing the old Auto/libmpv/ExoPlayer list.
+  static const _enginePreferenceOptions = [
+    EnginePreference.libmpvExo,
+    EnginePreference.exoLibmpv,
+    EnginePreference.libmpvOnly,
+    EnginePreference.exoOnly,
+  ];
 
   Future<void> _showEnginePickerDialog(BuildContext context) async {
     await showDialog(
@@ -1626,12 +1629,14 @@ class _SettingsState extends State<SettingsView> {
       builder: (BuildContext context) {
         return SelectDialog(
           title: 'Player engine',
-          data: EngineType.values
-              .map((e) => IdData(id: e.index, data: _engineShortLabel(e)))
+          data: _enginePreferenceOptions
+              .asMap()
+              .entries
+              .map((e) => IdData(id: e.key, data: e.value.label))
               .toList(),
           action: (idx) {
             setState(() {
-              settings.forcedEngine = EngineType.values[idx];
+              settings.enginePreference = _enginePreferenceOptions[idx];
               updateSettings();
             });
             Navigator.of(context).pop();
@@ -2723,92 +2728,19 @@ class _SettingsState extends State<SettingsView> {
 
                   const Divider(),
 
-                  _sectionHeader("Diagnostics"),
-                  _switchTile(
-                    label: "Enable debug logging",
-                    value: settings.debugLogging,
-                    help: (
-                      title: 'Debug Logging',
-                      body:
-                          'Writes a timestamped log of every significant action '
-                          '(EPG refresh, source reload, errors, settings changes) '
-                          'to a file in app storage. Turn ON only when '
-                          'troubleshooting — leaves a file you can export and '
-                          'share. Auto-rotates at 2 MB. Default: OFF.',
+                  ExpansionTile(
+                    key: const PageStorageKey('backuprestore'),
+                    leading: const Icon(Icons.settings_backup_restore),
+                    title: Text(
+                      'Backup & Restore',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
-                    onChanged: (v) async {
-                      setState(() => settings.debugLogging = v);
-                      await AppLog.setEnabled(v);
-                      AppLog.info('Debug logging ${v ? "enabled" : "disabled"}');
-                      updateSettings();
-                    },
-                  ),
-                  ListTile(
-                    enabled: settings.debugLogging,
-                    leading: const Icon(Icons.download_outlined),
-                    title: const Text("Export log file"),
-                    subtitle: const Text(
-                      "Tap to save the debug log. Long-press to export raw "
-                      "source dumps (diagnostic).",
-                    ),
-                    onTap: settings.debugLogging
-                        ? () async {
-                            final log = await AppLog.readLog();
-                            if (!mounted) return;
-                            if (log.isEmpty) {
-                              // ignore: use_build_context_synchronously
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Log file is empty.'),
-                                ),
-                              );
-                              return;
-                            }
-                            // fix158: TV has no SAF — use local server
-                            final isTV = await DeviceDetector.isTV();
-                            if (!mounted) return;
-                            if (isTV) {
-                              await _exportEverythingViaServer(
-                                  includeCredentials: false);
-                            } else {
-                              await SettingsIo.exportStringToFile(
-                                // ignore: use_build_context_synchronously
-                                context,
-                                content: log,
-                                suggestedName:
-                                    'free4me_log-${SettingsIo.exportStamp(DateTime.now())}.txt',
-                              );
-                            }
-                          }
-                        : null,
-                    // fix222: long-press exports the raw source dumps (diagnostic).
-                    onLongPress: settings.debugLogging
-                        ? () async {
-                            await _exportSourceDumps();
-                          }
-                        : null,
-                  ),
-                  ListTile(
-                    enabled: settings.debugLogging,
-                    leading: const Icon(Icons.delete_outline),
-                    title: const Text("Clear log"),
-                    onTap: settings.debugLogging
-                        ? () async {
-                            await AppLog.clearLog();
-                            if (!mounted) return;
-                            // ignore: use_build_context_synchronously
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Log and source dumps cleared.'),
-                              ),
-                            );
-                          }
-                        : null,
-                  ),
-
-                  const Divider(),
-
-                  _sectionHeader("Backup & Restore"),
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+                    childrenPadding: EdgeInsets.zero,
+                    initiallyExpanded: false,
+                    children: [
                   ListTile(
                     leading: const Icon(Icons.upload_file),
                     title: const Text("Export settings to file"),
@@ -2871,9 +2803,24 @@ class _SettingsState extends State<SettingsView> {
                     },
                   ),
 
+                    ],
+                  ),
+
                   const Divider(),
 
-                  _sectionHeader("Reset"),
+                  ExpansionTile(
+                    key: const PageStorageKey('reset'),
+                    leading: const Icon(Icons.restart_alt),
+                    title: Text(
+                      'Reset',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+                    childrenPadding: EdgeInsets.zero,
+                    initiallyExpanded: false,
+                    children: [
                   ListTile(
                     leading: const Icon(Icons.refresh),
                     title: const Text("Reset settings to defaults"),
@@ -2981,6 +2928,9 @@ class _SettingsState extends State<SettingsView> {
                     },
                   ),
 
+                    ],
+                  ),
+
                   const Divider(),
 
                   _sectionHeader("App"),
@@ -3011,7 +2961,9 @@ class _SettingsState extends State<SettingsView> {
                         : const Icon(Icons.chevron_right),
                   ),
 
+
                   const Divider(),
+
 
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -3053,6 +3005,107 @@ class _SettingsState extends State<SettingsView> {
                   ),
                   const SizedBox(height: 10),
                   ...sources.map(getSource),
+
+                  const Divider(),
+
+                  ExpansionTile(
+                    key: const PageStorageKey('diagnostics'),
+                    leading: const Icon(Icons.bug_report_outlined),
+                    title: Text(
+                      'Diagnostics',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+                    childrenPadding: EdgeInsets.zero,
+                    initiallyExpanded: false,
+                    children: [
+                  _switchTile(
+                    label: "Enable debug logging",
+                    value: settings.debugLogging,
+                    help: (
+                      title: 'Debug Logging',
+                      body:
+                          'Writes a timestamped log of every significant action '
+                          '(EPG refresh, source reload, errors, settings changes) '
+                          'to a file in app storage. Turn ON only when '
+                          'troubleshooting — leaves a file you can export and '
+                          'share. Auto-rotates at 2 MB. Default: OFF.',
+                    ),
+                    onChanged: (v) async {
+                      setState(() => settings.debugLogging = v);
+                      await AppLog.setEnabled(v);
+                      AppLog.info('Debug logging ${v ? "enabled" : "disabled"}');
+                      updateSettings();
+                    },
+                  ),
+                  ListTile(
+                    enabled: settings.debugLogging,
+                    leading: const Icon(Icons.download_outlined),
+                    title: const Text("Export log file"),
+                    subtitle: const Text(
+                      "Tap to save the debug log. Long-press to export raw "
+                      "source dumps (diagnostic).",
+                    ),
+                    onTap: settings.debugLogging
+                        ? () async {
+                            final log = await AppLog.readLog();
+                            if (!mounted) return;
+                            if (log.isEmpty) {
+                              // ignore: use_build_context_synchronously
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Log file is empty.'),
+                                ),
+                              );
+                              return;
+                            }
+                            // fix158: TV has no SAF — use local server
+                            final isTV = await DeviceDetector.isTV();
+                            if (!mounted) return;
+                            if (isTV) {
+                              await _exportEverythingViaServer(
+                                  includeCredentials: false);
+                            } else {
+                              await SettingsIo.exportStringToFile(
+                                // ignore: use_build_context_synchronously
+                                context,
+                                content: log,
+                                suggestedName:
+                                    'free4me_log-${SettingsIo.exportStamp(DateTime.now())}.txt',
+                              );
+                            }
+                          }
+                        : null,
+                    // fix222: long-press exports the raw source dumps (diagnostic).
+                    onLongPress: settings.debugLogging
+                        ? () async {
+                            await _exportSourceDumps();
+                          }
+                        : null,
+                  ),
+                  ListTile(
+                    enabled: settings.debugLogging,
+                    leading: const Icon(Icons.delete_outline),
+                    title: const Text("Clear log"),
+                    onTap: settings.debugLogging
+                        ? () async {
+                            await AppLog.clearLog();
+                            if (!mounted) return;
+                            // ignore: use_build_context_synchronously
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Log and source dumps cleared.'),
+                              ),
+                            );
+                          }
+                        : null,
+                  ),
+
+                    ],
+                  ),
+
                 ],
               ),
               ),

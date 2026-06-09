@@ -1,6 +1,7 @@
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/models/channel.dart';
 import 'package:open_tv/models/engine_type.dart';
+import 'package:open_tv/models/engine_preference.dart';
 import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/source.dart';
 
@@ -30,13 +31,17 @@ class EnginePicker {
       return chanOverride;
     }
 
-    // 2. Global override
-    if (settings.forcedEngine != EngineType.auto) {
+    // 2. Global preference (fix315). libmpvExo is the default "let the URL
+    // heuristic decide" mode (old Auto behaviour), so it is NOT a hard
+    // override — the heuristic below still runs. The other three modes set an
+    // explicit primary engine.
+    if (settings.enginePreference != EnginePreference.libmpvExo) {
+      final primary = settings.enginePreference.primary;
       AppLog.info(
-        'EnginePicker: global-override → ${settings.forcedEngine.name}'
-        ' channel="${channel.name}"',
+        'EnginePicker: global-preference → ${primary.name}'
+        ' (${settings.enginePreference.name}) channel="${channel.name}"',
       );
-      return settings.forcedEngine;
+      return primary;
     }
 
     // 3. Source-level default

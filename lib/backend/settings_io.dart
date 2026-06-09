@@ -9,6 +9,7 @@ import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/models/channel_preserve.dart';
 import 'package:open_tv/models/engine_type.dart';
+import 'package:open_tv/models/engine_preference.dart';
 import 'package:open_tv/models/multi_view_layout.dart';
 import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/source.dart';
@@ -386,6 +387,7 @@ class SettingsIo {
         'bufferingWatchdogSecs': s.bufferingWatchdogSecs,
         'stableThresholdSecs': s.stableThresholdSecs,
         'forcedEngine': s.forcedEngine.toJson(),
+        'enginePreference': s.enginePreference.toJson(), // fix315
         // EPG & debug (schema v2)
         'debugLogging': s.debugLogging,
         'epgAutoRefresh': s.epgAutoRefresh,
@@ -432,6 +434,8 @@ class SettingsIo {
       bufferingWatchdogSecs: m['bufferingWatchdogSecs'] as int? ?? 12,
       stableThresholdSecs: m['stableThresholdSecs'] as int? ?? 30,
       forcedEngine: EngineType.fromJson(m['forcedEngine'] as String?),
+      enginePreference:
+          EnginePreference.fromJson(m['enginePreference'] as String?),
       debugLogging: m['debugLogging'] as bool? ?? false,
       epgAutoRefresh: m['epgAutoRefresh'] as bool? ?? true,
       epgRefreshHours: m['epgRefreshHours'] as int? ?? 24,

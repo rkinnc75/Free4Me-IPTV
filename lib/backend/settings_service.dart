@@ -7,6 +7,7 @@ import 'package:open_tv/models/engine_type.dart';
 import 'package:open_tv/models/multi_view_layout.dart';
 import 'package:open_tv/models/multi_view_decode.dart';
 import 'package:open_tv/models/settings.dart';
+import 'package:open_tv/models/engine_preference.dart';
 import 'package:open_tv/models/view_type.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -32,6 +33,7 @@ const preWarmOnFocusProp = "preWarmOnFocus";
 
 // Engine override (v1.4)
 const forcedEngineProp = "forcedEngine";
+const enginePreferenceProp = "enginePreference"; // fix315
 
 // Reconnect stability (v1.11.9)
 const stableThresholdSecsProp = "stableThresholdSecs";
@@ -156,6 +158,11 @@ class SettingsService {
     if (forcedEngine != null) {
       settings.forcedEngine = EngineType.fromJson(forcedEngine);
     }
+    // fix315: global engine preference (primary + fallback order).
+    final enginePref = settingsMap[enginePreferenceProp];
+    if (enginePref != null) {
+      settings.enginePreference = EnginePreference.fromJson(enginePref);
+    }
     if (stableThreshold != null) {
       settings.stableThresholdSecs = int.parse(stableThreshold);
     }
@@ -267,6 +274,7 @@ class SettingsService {
     settingsMap[epgPastDaysProp] = settings.epgPastDays.toString();
     settingsMap[epgForecastDaysProp] = settings.epgForecastDays.toString();
     settingsMap[forcedEngineProp] = settings.forcedEngine.toJson();
+    settingsMap[enginePreferenceProp] = settings.enginePreference.toJson(); // fix315
     settingsMap[stableThresholdSecsProp] =
         settings.stableThresholdSecs.toString();
     settingsMap[startupGraceMsProp] = settings.startupGraceMs.toString();
