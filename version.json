@@ -1,8 +1,8 @@
 {
-  "latest": "1.26.36",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.36",
+  "latest": "1.26.37",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.37",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fixed: a source refresh could fail partway (leaving series/VOD empty) when a provider returned a channel with no category. Such channels are now grouped under \u201cUncategorized\u201d instead of erroring out.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.36/Free4Me-IPTV-1.26.36-arm64.apk"
+  "releaseNotes": "\u2022 More reliable refreshes: if a provider returns an empty list for one content type (live, movies, or series) that it previously had \u2014 often a temporary hiccup, especially in the background \u2014 that type is retried once and, if still empty, its existing channels are kept instead of being wiped. The other content types still update normally.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.37/Free4Me-IPTV-1.26.37-arm64.apk"
 }
