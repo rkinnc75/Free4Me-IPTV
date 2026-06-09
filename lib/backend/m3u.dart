@@ -177,7 +177,7 @@ Channel? getChannelFromLines(String l1, String last, int order) {
   final group = groupRegex.firstMatch(l1)?[1]?.trim();
   return Channel(
     name: name,
-    group: group,
+    group: (group == null || group.isEmpty) ? 'Uncategorized' : group,
     image: logoRegex.firstMatch(l1)?[1]?.trim(),
     favorite: false,
     mediaType: getMediaType(url),

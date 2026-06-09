@@ -985,8 +985,16 @@ class Sql {
         'SELECT name FROM groups WHERE source_id = ? AND COALESCE(enabled,1) = 0',
         [sourceId],
       );
-      final disabledNames =
-          [for (final r in disabledRows) r.columnAt(0) as String];
+      // fix320: a group can have a NULL name (e.g. a provider stream with a
+      // null category_id produced a nameless category). columnAt(0) as String
+      // then throws and aborts the whole refresh mid-wipe (observed on Dino,
+      // crashing the series fetch). Treat a null name as "Uncategorized" so the
+      // disabled state is still tracked by that name (matching the synthetic
+      // name xtreamToChannel now assigns to null categories).
+      final disabledNames = [
+        for (final r in disabledRows)
+          (r.columnAt(0) as String?) ?? 'Uncategorized'
+      ];
       memory['disabledGroupNames'] = jsonEncode(disabledNames);
       await tx.execute('''
         DELETE FROM channels

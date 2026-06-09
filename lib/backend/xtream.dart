@@ -416,7 +416,11 @@ Channel xtreamToChannel(
     mediaType: streamType,
     sourceId: -1,
     favorite: false,
-    group: categoryName,
+    // fix320: providers occasionally return a stream with a null category_id,
+    // which would otherwise create a nameless group (null group_name). Default
+    // to "Uncategorized" so the channel stays browsable and groups never carry
+    // a null name (which crashed wipeSource).
+    group: categoryName ?? 'Uncategorized',
     image: stream.streamIcon?.trim() ?? stream.cover?.trim(),
     url: streamType == MediaType.serie
         ? (stream.seriesId ?? "").toString()
