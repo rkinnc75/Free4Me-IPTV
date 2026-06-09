@@ -63,6 +63,11 @@ jobs:
       - name: flutter analyze
         run: flutter analyze --no-fatal-infos
 
+      # fix325: unit tests (Rule 8 suites: xtream retry/preserve table,
+      # wipeSource vs real sqlite, EnginePreference, deviceTag sanitizer).
+      - name: flutter test
+        run: flutter test
+
       - name: Verify version.json is up to date
         # fix312 follow-up: skip while publish-late is active — version.json is
         # intentionally behind pubspec until release.yml publishes it post-APK.

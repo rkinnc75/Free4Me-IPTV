@@ -1,0 +1,450 @@
+diff --git a/.github/workflows/analyze.yml b/.github/workflows/analyze.yml
+index 4e311ff..c480f58 100644
+--- a/.github/workflows/analyze.yml
++++ b/.github/workflows/analyze.yml
+@@ -63,6 +63,11 @@ jobs:
+       - name: flutter analyze
+         run: flutter analyze --no-fatal-infos
+ 
++      # fix325: unit tests (Rule 8 suites: xtream retry/preserve table,
++      # wipeSource vs real sqlite, EnginePreference, deviceTag sanitizer).
++      - name: flutter test
++        run: flutter test
++
+       - name: Verify version.json is up to date
+         # fix312 follow-up: skip while publish-late is active — version.json is
+         # intentionally behind pubspec until release.yml publishes it post-APK.
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index 181a058..6ebe822 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -94,6 +94,11 @@ jobs:
+         # invocation (2 tolerated settings_view.dart INFOs; warnings/errors fail).
+         run: flutter analyze --no-fatal-infos
+ 
++      # fix325: tests are part of the hard gate — a failure here blocks the
++      # build (build-and-release `needs: analyze`).
++      - name: flutter test
++        run: flutter test
++
+       - name: Sync version.json on the tagged commit (self-healing)
+         # fix312: only when ROLLED BACK to the original ordering. When the
+         # reorder is active ('true'), version.json is committed after the APK
+diff --git a/lib/backend/xtream.dart b/lib/backend/xtream.dart
+index 049de73..2abdb1a 100644
+--- a/lib/backend/xtream.dart
++++ b/lib/backend/xtream.dart
+@@ -3,6 +3,7 @@ import 'dart:io';
+ 
+ import 'package:open_tv/backend/app_logger.dart';
+ import 'package:open_tv/backend/sql.dart';
++import 'package:open_tv/backend/xtream_refresh_logic.dart';
+ import 'package:open_tv/backend/utils.dart';
+ import 'package:open_tv/models/channel.dart';
+ import 'package:open_tv/models/channel_preserve.dart';
+@@ -171,7 +172,8 @@ Future<void> getXtream(
+       }
+     }
+ 
+-    if (liveCount == 0 && (source.lastLiveCount ?? 0) > 0) {
++    if (XtreamRefreshLogic.shouldRetryType(
++        count: liveCount, lastCount: source.lastLiveCount)) {
+       liveCount = await retryType(
+           getLiveStreams, getLiveStreamCategories, MediaType.livestream);
+       if (liveCount == 0) {
+@@ -180,25 +182,27 @@ Future<void> getXtream(
+         // fix322: retry recovered this type — undo the initial failCount so a
+         // successful retry can't leave us at the 3/3 throw with real data in
+         // hand (observed: Z2U recovered on retry but was still thrown away).
+-        if (failCount > 0) failCount--;
++        failCount = XtreamRefreshLogic.reconcileFailCount(failCount);
+       }
+     }
+-    if (movieCount == 0 && (source.lastMovieCount ?? 0) > 0) {
++    if (XtreamRefreshLogic.shouldRetryType(
++        count: movieCount, lastCount: source.lastMovieCount)) {
+       movieCount =
+           await retryType(getVods, getVodCategories, MediaType.movie);
+       if (movieCount == 0) {
+         keepMediaTypes.add(MediaType.movie.index);
+-      } else if (failCount > 0) {
+-        failCount--;
++      } else {
++        failCount = XtreamRefreshLogic.reconcileFailCount(failCount);
+       }
+     }
+-    if (seriesCount == 0 && (source.lastSeriesCount ?? 0) > 0) {
++    if (XtreamRefreshLogic.shouldRetryType(
++        count: seriesCount, lastCount: source.lastSeriesCount)) {
+       seriesCount =
+           await retryType(getSeries, getSeriesCategories, MediaType.serie);
+       if (seriesCount == 0) {
+         keepMediaTypes.add(MediaType.serie.index);
+-      } else if (failCount > 0) {
+-        failCount--;
++      } else {
++        failCount = XtreamRefreshLogic.reconcileFailCount(failCount);
+       }
+     }
+     if (keepMediaTypes.isNotEmpty) {
+@@ -220,7 +224,8 @@ Future<void> getXtream(
+   // a successful no-op for those types — keep the old catalogue, don't throw a
+   // scary error or abort the commit of any type that did come back.
+   final everythingFailedWithNothingToKeep =
+-      failCount >= 3 && keepMediaTypes.isEmpty;
++      XtreamRefreshLogic.shouldThrowAllFailed(
++          failCount: failCount, keepMediaTypes: keepMediaTypes);
+   if (everythingFailedWithNothingToKeep) {
+     AppLog.warn(
+       'Xtream: fetch failed source="${source.name}"'
+diff --git a/lib/backend/xtream_refresh_logic.dart b/lib/backend/xtream_refresh_logic.dart
+new file mode 100644
+index 0000000..5b0c6c7
+--- /dev/null
++++ b/lib/backend/xtream_refresh_logic.dart
+@@ -0,0 +1,29 @@
++/// fix325: pure decision logic for the Xtream refresh retry/preserve/throw
++/// flow (fix321/fix322), extracted from getXtream so it can be unit-tested.
++/// Keep this file free of I/O and Flutter imports — `flutter test` exercises
++/// it directly (see test/xtream_refresh_logic_test.dart).
++class XtreamRefreshLogic {
++  XtreamRefreshLogic._();
++
++  /// A content type qualifies for the fix321 retry when its fresh fetch came
++  /// back empty but the previous refresh recorded rows for it (a brand-new or
++  /// genuinely empty type never retries).
++  static bool shouldRetryType({required int count, required int? lastCount}) =>
++      count == 0 && (lastCount ?? 0) > 0;
++
++  /// fix322: a retry that recovered data undoes one initial failure so a
++  /// successful retry can never leave failCount at the 3/3 throw with real
++  /// data in hand (the Z2U bug). Never goes below zero.
++  static int reconcileFailCount(int failCount) =>
++      failCount > 0 ? failCount - 1 : 0;
++
++  /// fix322: hard-fail ONLY when every content type failed AND nothing was
++  /// preserved from a prior refresh — i.e. a genuinely dead or brand-new
++  /// source. If any type was preserved, the refresh is a successful no-op for
++  /// those types and must commit without throwing.
++  static bool shouldThrowAllFailed({
++    required int failCount,
++    required Set<int> keepMediaTypes,
++  }) =>
++      failCount >= 3 && keepMediaTypes.isEmpty;
++}
+diff --git a/lib/models/device_detector.dart b/lib/models/device_detector.dart
+index 1a63013..9167085 100644
+--- a/lib/models/device_detector.dart
++++ b/lib/models/device_detector.dart
+@@ -28,6 +28,15 @@ class DeviceDetector {
+   /// so exports from different devices are distinguishable. Derived from the
+   /// Android model/device; cached after first read. Empty string on failure /
+   /// non-Android (callers should then omit the tag).
++  /// fix325: pure filename-safe sanitizer behind [deviceTag], extracted so it
++  /// can be unit-tested without a device: lowercase, strip to [a-z0-9], cap at
++  /// 16 chars, empty string when nothing survives.
++  static String sanitizeDeviceTag(String raw) {
++    final cleaned = raw.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
++    if (cleaned.isEmpty) return '';
++    return cleaned.length > 16 ? cleaned.substring(0, 16) : cleaned;
++  }
++
+   static String? _deviceTag;
+   static Future<String> deviceTag() async {
+     if (_deviceTag != null) return _deviceTag!;
+@@ -37,12 +46,8 @@ class DeviceDetector {
+     }
+     try {
+       final a = await _deviceInfo.androidInfo;
+-      // Prefer model, fall back to device; strip to [a-z0-9], cap length.
+-      final raw = (a.model.isNotEmpty ? a.model : a.device).toLowerCase();
+-      final cleaned = raw.replaceAll(RegExp(r'[^a-z0-9]'), '');
+-      _deviceTag = cleaned.isEmpty
+-          ? ''
+-          : (cleaned.length > 16 ? cleaned.substring(0, 16) : cleaned);
++      // Prefer model, fall back to device.
++      _deviceTag = sanitizeDeviceTag(a.model.isNotEmpty ? a.model : a.device);
+     } catch (_) {
+       _deviceTag = '';
+     }
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 5d73b8e..be41830 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.26.41': [
++    'Internal: added an automated test suite (refresh retry/preserve logic, database wipe behaviour, player-engine preferences, export device tags) that now runs in CI and gates every release.',
++  ],
+   '1.26.40': [
+     'Fixed the Edit Source screen on TV: the form is now scrollable, so the channel-order options, the hide-headers switch, the source info, and the Save/Cancel buttons are all reachable instead of being cut off at the bottom.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 11015b8..0f65817 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.26.40+324
++version: 1.26.41+325
+ 
+ environment:
+   sdk: ^3.10.7
+diff --git a/test/device_tag_test.dart b/test/device_tag_test.dart
+new file mode 100644
+index 0000000..9ef3125
+--- /dev/null
++++ b/test/device_tag_test.dart
+@@ -0,0 +1,27 @@
++// fix325: deviceTag sanitization (fix322) — pure string logic.
++import 'package:flutter_test/flutter_test.dart';
++import 'package:open_tv/models/device_detector.dart';
++
++void main() {
++  group('DeviceDetector.sanitizeDeviceTag', () {
++    test('lowercases and strips non-alphanumerics', () {
++      expect(DeviceDetector.sanitizeDeviceTag('SM-S938U'), 'sms938u');
++      expect(DeviceDetector.sanitizeDeviceTag('onn. 4K Plus'), 'onn4kplus');
++      expect(DeviceDetector.sanitizeDeviceTag('SHIELD Android TV'),
++          'shieldandroidtv');
++    });
++
++    test('caps at 16 characters', () {
++      expect(
++        DeviceDetector.sanitizeDeviceTag('A Very Long Device Model Name 9000'),
++        'averylongdevicem',
++      );
++      expect(DeviceDetector.sanitizeDeviceTag('x' * 40).length, 16);
++    });
++
++    test('empty when nothing survives', () {
++      expect(DeviceDetector.sanitizeDeviceTag(''), '');
++      expect(DeviceDetector.sanitizeDeviceTag('--- ___ !!!'), '');
++    });
++  });
++}
+diff --git a/test/engine_preference_test.dart b/test/engine_preference_test.dart
+new file mode 100644
+index 0000000..d203864
+--- /dev/null
++++ b/test/engine_preference_test.dart
+@@ -0,0 +1,45 @@
++// fix325: lock in the EnginePreference contract (fix315/fix316).
++import 'package:flutter_test/flutter_test.dart';
++import 'package:open_tv/models/engine_preference.dart';
++import 'package:open_tv/models/engine_type.dart';
++
++void main() {
++  group('EnginePreference', () {
++    test('primary engine per preference', () {
++      expect(EnginePreference.libmpvExo.primary, EngineType.libmpv);
++      expect(EnginePreference.libmpvOnly.primary, EngineType.libmpv);
++      expect(EnginePreference.exoLibmpv.primary, EngineType.exoplayer);
++      expect(EnginePreference.exoOnly.primary, EngineType.exoplayer);
++    });
++
++    test('fallback engine per preference', () {
++      expect(EnginePreference.libmpvExo.fallback, EngineType.exoplayer);
++      expect(EnginePreference.exoLibmpv.fallback, EngineType.libmpv);
++      // Single-engine prefs report their own engine as "fallback".
++      expect(EnginePreference.libmpvOnly.fallback, EngineType.libmpv);
++      expect(EnginePreference.exoOnly.fallback, EngineType.exoplayer);
++    });
++
++    test('hasFallback only for two-engine preferences', () {
++      expect(EnginePreference.libmpvExo.hasFallback, isTrue);
++      expect(EnginePreference.exoLibmpv.hasFallback, isTrue);
++      expect(EnginePreference.libmpvOnly.hasFallback, isFalse);
++      expect(EnginePreference.exoOnly.hasFallback, isFalse);
++    });
++
++    test('fromJson: legacy "auto" and unknowns map to default libmpvExo', () {
++      expect(EnginePreference.fromJson('auto'), EnginePreference.libmpvExo);
++      expect(EnginePreference.fromJson(null), EnginePreference.libmpvExo);
++      expect(EnginePreference.fromJson('garbage'), EnginePreference.libmpvExo);
++      expect(EnginePreference.fromJson('exoLibmpv'), EnginePreference.exoLibmpv);
++      expect(EnginePreference.fromJson('libmpvOnly'), EnginePreference.libmpvOnly);
++      expect(EnginePreference.fromJson('exoOnly'), EnginePreference.exoOnly);
++    });
++
++    test('toJson/fromJson round-trip', () {
++      for (final p in EnginePreference.values) {
++        expect(EnginePreference.fromJson(p.toJson()), p);
++      }
++    });
++  });
++}
+diff --git a/test/wipe_source_test.dart b/test/wipe_source_test.dart
+new file mode 100644
+index 0000000..236143b
+--- /dev/null
++++ b/test/wipe_source_test.dart
+@@ -0,0 +1,96 @@
++// fix325: Rule 8 in CI — Sql.wipeSource against a real seeded sqlite DB.
++// Skips cleanly if the host has no loadable libsqlite3 (the Mac build
++// machine and GitHub ubuntu runners both have it).
++import 'dart:convert';
++import 'dart:io';
++
++import 'package:flutter_test/flutter_test.dart';
++import 'package:open_tv/backend/sql.dart';
++import 'package:sqlite3/sqlite3.dart' as s3;
++import 'package:sqlite_async/sqlite_async.dart';
++
++bool _sqliteAvailable() {
++  try {
++    s3.sqlite3.openInMemory().dispose();
++    return true;
++  } catch (_) {
++    return false;
++  }
++}
++
++void main() {
++  final available = _sqliteAvailable();
++
++  group('Sql.wipeSource', () {
++    late Directory dir;
++    late SqliteDatabase db;
++
++    setUp(() async {
++      dir = await Directory.systemTemp.createTemp('wipe_source_test');
++      db = SqliteDatabase(path: '${dir.path}/t.sqlite');
++      await db.execute('''
++        CREATE TABLE channels (
++          id INTEGER PRIMARY KEY AUTOINCREMENT,
++          name TEXT, source_id INTEGER, media_type INTEGER, group_id INTEGER
++        )''');
++      await db.execute('''
++        CREATE TABLE groups (
++          id INTEGER PRIMARY KEY AUTOINCREMENT,
++          name TEXT, source_id INTEGER, enabled INTEGER
++        )''');
++      // Source 7: live group (id 1, disabled), vod group (id 2), and a
++      // NULL-name disabled group (id 3, the fix320 case). Source 9: untouched.
++      await db.execute(
++          "INSERT INTO groups (id, name, source_id, enabled) VALUES "
++          "(1,'Live A',7,0),(2,'Movies A',7,1),(3,NULL,7,0),(4,'Other',9,1)");
++      await db.execute(
++          "INSERT INTO channels (name, source_id, media_type, group_id) VALUES "
++          "('L1',7,0,1),('L2',7,0,1),('M1',7,1,2),('S1',7,2,NULL),('X1',9,0,4)");
++    });
++
++    tearDown(() async {
++      await db.close();
++      await dir.delete(recursive: true);
++    });
++
++    test('empty keep set = full wipe of the source, others untouched',
++        () async {
++      final memory = <String, String>{};
++      await db.writeTransaction(
++          (tx) => Sql.wipeSource(7, keepMediaTypes: {})(tx, memory));
++      final c7 = await db.get(
++          'SELECT COUNT(*) c FROM channels WHERE source_id = 7');
++      final g7 =
++          await db.get('SELECT COUNT(*) c FROM groups WHERE source_id = 7');
++      final c9 = await db.get(
++          'SELECT COUNT(*) c FROM channels WHERE source_id = 9');
++      expect(c7['c'], 0);
++      expect(g7['c'], 0);
++      expect(c9['c'], 1);
++    });
++
++    test('keepMediaTypes preserves those rows + their groups only', () async {
++      final memory = <String, String>{};
++      // Preserve live (0); wipe movies (1) and series (2).
++      await db.writeTransaction(
++          (tx) => Sql.wipeSource(7, keepMediaTypes: {0})(tx, memory));
++      final rows = await db.getAll(
++          'SELECT name, media_type FROM channels WHERE source_id = 7 ORDER BY name');
++      expect(rows.map((r) => r['name']), ['L1', 'L2']);
++      // Group 1 (live, has surviving channels) kept; groups 2 and 3 gone.
++      final gids = await db
++          .getAll('SELECT id FROM groups WHERE source_id = 7 ORDER BY id');
++      expect(gids.map((r) => r['id']), [1]);
++    });
++
++    test('stashes disabled group names, NULL name -> Uncategorized (fix320)',
++        () async {
++      final memory = <String, String>{};
++      await db.writeTransaction(
++          (tx) => Sql.wipeSource(7, keepMediaTypes: {})(tx, memory));
++      final names =
++          (jsonDecode(memory['disabledGroupNames']!) as List).cast<String>();
++      expect(names.toSet(), {'Live A', 'Uncategorized'});
++    });
++  }, skip: available ? false : 'libsqlite3 not loadable on this host');
++}
+diff --git a/test/xtream_refresh_logic_test.dart b/test/xtream_refresh_logic_test.dart
+new file mode 100644
+index 0000000..711961a
+--- /dev/null
++++ b/test/xtream_refresh_logic_test.dart
+@@ -0,0 +1,62 @@
++// fix325: the fix321/fix322 retry/preserve/throw decision table, as proven
++// on-device 2026-06-09 (Z2U retry-recovery, Emjay partial preserve).
++import 'package:flutter_test/flutter_test.dart';
++import 'package:open_tv/backend/xtream_refresh_logic.dart';
++
++void main() {
++  group('shouldRetryType', () {
++    test('retries only empty-now + had-rows-before', () {
++      expect(XtreamRefreshLogic.shouldRetryType(count: 0, lastCount: 55000),
++          isTrue);
++      expect(XtreamRefreshLogic.shouldRetryType(count: 0, lastCount: 0),
++          isFalse);
++      expect(XtreamRefreshLogic.shouldRetryType(count: 0, lastCount: null),
++          isFalse); // brand-new source: never retry/preserve
++      expect(XtreamRefreshLogic.shouldRetryType(count: 100, lastCount: 55000),
++          isFalse);
++    });
++  });
++
++  group('reconcileFailCount', () {
++    test('successful retry undoes one failure, floor at zero', () {
++      expect(XtreamRefreshLogic.reconcileFailCount(3), 2);
++      expect(XtreamRefreshLogic.reconcileFailCount(1), 0);
++      expect(XtreamRefreshLogic.reconcileFailCount(0), 0);
++    });
++  });
++
++  group('shouldThrowAllFailed', () {
++    test('Z2U bug: all empty but all recovered on retry -> no throw', () {
++      // 3 initial failures, 3 successful retries: failCount 3 -> 0.
++      var f = 3;
++      for (var i = 0; i < 3; i++) {
++        f = XtreamRefreshLogic.reconcileFailCount(f);
++      }
++      expect(
++          XtreamRefreshLogic.shouldThrowAllFailed(
++              failCount: f, keepMediaTypes: {}),
++          isFalse);
++    });
++
++    test('all empty, retries fail, prior data preserved -> no throw', () {
++      expect(
++          XtreamRefreshLogic.shouldThrowAllFailed(
++              failCount: 3, keepMediaTypes: {0, 1, 2}),
++          isFalse);
++    });
++
++    test('new source, all empty, nothing to preserve -> throw', () {
++      expect(
++          XtreamRefreshLogic.shouldThrowAllFailed(
++              failCount: 3, keepMediaTypes: {}),
++          isTrue);
++    });
++
++    test('Emjay case: one type live, two preserved -> no throw', () {
++      expect(
++          XtreamRefreshLogic.shouldThrowAllFailed(
++              failCount: 2, keepMediaTypes: {1, 2}),
++          isFalse);
++    });
++  });
++}

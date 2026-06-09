@@ -28,6 +28,15 @@ class DeviceDetector {
   /// so exports from different devices are distinguishable. Derived from the
   /// Android model/device; cached after first read. Empty string on failure /
   /// non-Android (callers should then omit the tag).
+  /// fix325: pure filename-safe sanitizer behind [deviceTag], extracted so it
+  /// can be unit-tested without a device: lowercase, strip to [a-z0-9], cap at
+  /// 16 chars, empty string when nothing survives.
+  static String sanitizeDeviceTag(String raw) {
+    final cleaned = raw.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+    if (cleaned.isEmpty) return '';
+    return cleaned.length > 16 ? cleaned.substring(0, 16) : cleaned;
+  }
+
   static String? _deviceTag;
   static Future<String> deviceTag() async {
     if (_deviceTag != null) return _deviceTag!;
@@ -37,12 +46,8 @@ class DeviceDetector {
     }
     try {
       final a = await _deviceInfo.androidInfo;
-      // Prefer model, fall back to device; strip to [a-z0-9], cap length.
-      final raw = (a.model.isNotEmpty ? a.model : a.device).toLowerCase();
-      final cleaned = raw.replaceAll(RegExp(r'[^a-z0-9]'), '');
-      _deviceTag = cleaned.isEmpty
-          ? ''
-          : (cleaned.length > 16 ? cleaned.substring(0, 16) : cleaned);
+      // Prefer model, fall back to device.
+      _deviceTag = sanitizeDeviceTag(a.model.isNotEmpty ? a.model : a.device);
     } catch (_) {
       _deviceTag = '';
     }

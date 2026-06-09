@@ -94,6 +94,11 @@ jobs:
         # invocation (2 tolerated settings_view.dart INFOs; warnings/errors fail).
         run: flutter analyze --no-fatal-infos
 
+      # fix325: tests are part of the hard gate — a failure here blocks the
+      # build (build-and-release `needs: analyze`).
+      - name: flutter test
+        run: flutter test
+
       - name: Sync version.json on the tagged commit (self-healing)
         # fix312: only when ROLLED BACK to the original ordering. When the
         # reorder is active ('true'), version.json is committed after the APK

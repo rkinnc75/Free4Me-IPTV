@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/sql.dart';
+import 'package:open_tv/backend/xtream_refresh_logic.dart';
 import 'package:open_tv/backend/utils.dart';
 import 'package:open_tv/models/channel.dart';
 import 'package:open_tv/models/channel_preserve.dart';
@@ -171,7 +172,8 @@ Future<void> getXtream(
       }
     }
 
-    if (liveCount == 0 && (source.lastLiveCount ?? 0) > 0) {
+    if (XtreamRefreshLogic.shouldRetryType(
+        count: liveCount, lastCount: source.lastLiveCount)) {
       liveCount = await retryType(
           getLiveStreams, getLiveStreamCategories, MediaType.livestream);
       if (liveCount == 0) {
@@ -180,25 +182,27 @@ Future<void> getXtream(
         // fix322: retry recovered this type — undo the initial failCount so a
         // successful retry can't leave us at the 3/3 throw with real data in
         // hand (observed: Z2U recovered on retry but was still thrown away).
-        if (failCount > 0) failCount--;
+        failCount = XtreamRefreshLogic.reconcileFailCount(failCount);
       }
     }
-    if (movieCount == 0 && (source.lastMovieCount ?? 0) > 0) {
+    if (XtreamRefreshLogic.shouldRetryType(
+        count: movieCount, lastCount: source.lastMovieCount)) {
       movieCount =
           await retryType(getVods, getVodCategories, MediaType.movie);
       if (movieCount == 0) {
         keepMediaTypes.add(MediaType.movie.index);
-      } else if (failCount > 0) {
-        failCount--;
+      } else {
+        failCount = XtreamRefreshLogic.reconcileFailCount(failCount);
       }
     }
-    if (seriesCount == 0 && (source.lastSeriesCount ?? 0) > 0) {
+    if (XtreamRefreshLogic.shouldRetryType(
+        count: seriesCount, lastCount: source.lastSeriesCount)) {
       seriesCount =
           await retryType(getSeries, getSeriesCategories, MediaType.serie);
       if (seriesCount == 0) {
         keepMediaTypes.add(MediaType.serie.index);
-      } else if (failCount > 0) {
-        failCount--;
+      } else {
+        failCount = XtreamRefreshLogic.reconcileFailCount(failCount);
       }
     }
     if (keepMediaTypes.isNotEmpty) {
@@ -220,7 +224,8 @@ Future<void> getXtream(
   // a successful no-op for those types — keep the old catalogue, don't throw a
   // scary error or abort the commit of any type that did come back.
   final everythingFailedWithNothingToKeep =
-      failCount >= 3 && keepMediaTypes.isEmpty;
+      XtreamRefreshLogic.shouldThrowAllFailed(
+          failCount: failCount, keepMediaTypes: keepMediaTypes);
   if (everythingFailedWithNothingToKeep) {
     AppLog.warn(
       'Xtream: fetch failed source="${source.name}"'

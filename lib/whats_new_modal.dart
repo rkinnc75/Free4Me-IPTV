@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.41': [
+    'Internal: added an automated test suite (refresh retry/preserve logic, database wipe behaviour, player-engine preferences, export device tags) that now runs in CI and gates every release.',
+  ],
   '1.26.40': [
     'Fixed the Edit Source screen on TV: the form is now scrollable, so the channel-order options, the hide-headers switch, the source info, and the Save/Cancel buttons are all reachable instead of being cut off at the bottom.',
   ],
