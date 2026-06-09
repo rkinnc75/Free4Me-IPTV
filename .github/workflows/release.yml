@@ -368,11 +368,13 @@ jobs:
           # 1. Confirm the APK asset is actually downloadable before advertising.
           ASSET_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GH_TAG}/${APK_NAME}"
           echo "Verifying APK is live: $ASSET_URL"
-          for i in 1 2 3 4 5 6; do
+          # fix: GitHub release-asset propagation can lag behind the upload;
+          # give it longer (12 × 10s ≈ 2 min) before declaring failure.
+          for i in $(seq 1 12); do
             CODE="$(curl -s -o /dev/null -w '%{http_code}' -L "$ASSET_URL" || echo 000)"
             echo "  attempt $i: HTTP $CODE"
             if [ "$CODE" = "200" ]; then APK_OK=1; break; fi
-            sleep 5
+            sleep 10
           done
           if [ "${APK_OK:-0}" != "1" ]; then
             echo "::error::APK asset not downloadable after upload — NOT advertising version.json."
