@@ -5,6 +5,7 @@ import 'package:open_tv/backend/device_memory.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/models/engine_type.dart';
 import 'package:open_tv/models/multi_view_layout.dart';
+import 'package:open_tv/models/multi_view_decode.dart';
 import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/view_type.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -50,6 +51,7 @@ const streamScanTimeoutSecsProp = "streamScanTimeoutSecs";
 
 // Multi-view (v1.14)
 const multiViewLayoutProp = "multiViewLayout";
+const multiViewDecodeProp = "multiViewDecode"; // fix314
 const multiViewCells1x2Prop = "multiViewCells1x2";
 const multiViewCells2x2Prop = "multiViewCells2x2";
 const multiViewAutoRestoreChannelsProp = "multiViewAutoRestoreChannels";
@@ -169,6 +171,11 @@ class SettingsService {
     if (mvLayout != null) {
       settings.multiViewLayout = MultiViewLayout.fromJson(mvLayout);
     }
+    // fix314: multi-view decode mode.
+    final mvDecode = settingsMap[multiViewDecodeProp];
+    if (mvDecode != null) {
+      settings.multiViewDecode = MultiViewDecode.fromJson(mvDecode);
+    }
     if (mvCells1x2 != null) settings.multiViewCells1x2 = mvCells1x2;
     if (mvCells2x2 != null) settings.multiViewCells2x2 = mvCells2x2;
     if (mvAutoRestore != null) {
@@ -268,6 +275,7 @@ class SettingsService {
     settingsMap[streamScanTimeoutSecsProp] =
         settings.streamScanTimeoutSecs.toString();
     settingsMap[multiViewLayoutProp] = settings.multiViewLayout.toJson();
+    settingsMap[multiViewDecodeProp] = settings.multiViewDecode.toJson(); // fix314
     settingsMap[multiViewCells1x2Prop] = settings.multiViewCells1x2;
     settingsMap[multiViewCells2x2Prop] = settings.multiViewCells2x2;
     settingsMap[multiViewAutoRestoreChannelsProp] =

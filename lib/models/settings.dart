@@ -2,6 +2,7 @@ import 'package:open_tv/backend/device_memory.dart';
 import 'package:open_tv/models/engine_type.dart';
 import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/multi_view_layout.dart';
+import 'package:open_tv/models/multi_view_decode.dart';
 import 'package:open_tv/models/view_type.dart';
 
 /// Content-type filter for the All tab in the bottom navigation bar.
@@ -124,6 +125,8 @@ class Settings {
 
   /// Which multi-view grid layout is active (or none).
   MultiViewLayout multiViewLayout;
+  /// fix314: decode mode for multi-view preview cells (Tegra/Shield colour fix).
+  MultiViewDecode multiViewDecode;
 
   /// Persisted channel IDs for the 1×2 layout (2 cells), stored as a
   /// comma-separated string. Null entries are stored as empty string.
@@ -186,6 +189,7 @@ class Settings {
     this.streamCompletedDelayMs = 2000,
     this.maxReconnectAttempts = 3,
     this.multiViewLayout = MultiViewLayout.none,
+    this.multiViewDecode = MultiViewDecode.auto,
     this.multiViewCells1x2 = ',',
     this.multiViewCells2x2 = ',,,',
     this.multiViewAutoRestoreChannels = true,

@@ -13,6 +13,7 @@ import 'package:open_tv/backend/device_memory.dart';
 import 'package:open_tv/models/device_detector.dart';
 import 'package:open_tv/models/engine_type.dart';
 import 'package:open_tv/models/multi_view_layout.dart';
+import 'package:open_tv/models/multi_view_decode.dart';
 import 'package:open_tv/multi_view_picker_dialog.dart';
 import 'package:open_tv/backend/epg_service.dart';
 import 'package:open_tv/backend/settings_io.dart';
@@ -1686,6 +1687,74 @@ class _SettingsState extends State<SettingsView> {
         MultiViewLayout.twoByTwo => '2×2',
       };
 
+  // fix314: decode-mode picker for multi-view cells (Tegra/Shield colour fix).
+  Widget _multiViewDecodeTile(Settings s) {
+    return ListTile(
+      title: Row(
+        children: [
+          const Text('Multi-view decode'),
+          const SizedBox(width: 4),
+          _helpIcon(
+            title: 'Multi-view decode',
+            body: 'Controls how multi-view cells decode video.\n\n'
+                'Default: Auto.\n\n'
+                'Auto: Uses hardware decode on most devices, but switches to '
+                'software decode on NVIDIA Shield / Tegra boxes, where running '
+                'several hardware decoders at once can corrupt the colours '
+                '(rainbow / wrong tint) in the 2×2 grid.\n\n'
+                'Hardware (copy): Forces hardware decode for all cells. Lowest '
+                'CPU use, but may show colour corruption on Shield/Tegra.\n\n'
+                'Software: Forces CPU decode for all cells. Fixes colour '
+                'problems at the cost of higher CPU use; best on strong '
+                'devices or with lower-bitrate streams.',
+          ),
+        ],
+      ),
+      trailing: TextButton(
+        onPressed: () => _showMultiViewDecodeDialog(context),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              s.multiViewDecode.label,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(width: 4),
+            const Icon(Icons.arrow_drop_down),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static const _multiViewDecodeOptions = [
+    MultiViewDecode.auto,
+    MultiViewDecode.hardwareCopy,
+    MultiViewDecode.software,
+  ];
+
+  Future<void> _showMultiViewDecodeDialog(BuildContext context) async {
+    await showDialog(
+      barrierDismissible: true,
+      context: context,
+      builder: (_) => SelectDialog(
+        title: 'Multi-view decode',
+        data: _multiViewDecodeOptions
+            .asMap()
+            .entries
+            .map((e) => IdData(id: e.key, data: e.value.label))
+            .toList(),
+        action: (idx) {
+          setState(() {
+            settings.multiViewDecode = _multiViewDecodeOptions[idx];
+            updateSettings();
+          });
+          Navigator.of(context).pop();
+        },
+      ),
+    );
+  }
+
 
   String _searchMethodShortLabel(SearchMethod m) => switch (m) {
         SearchMethod.ftsAnd => 'FTS AND',
@@ -2137,6 +2206,7 @@ class _SettingsState extends State<SettingsView> {
                     initiallyExpanded: false,
                     children: [
                       _multiViewTile(settings),
+                      _multiViewDecodeTile(settings),
                       SwitchListTile(
                         title: Row(
                           children: [

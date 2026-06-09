@@ -8,6 +8,7 @@ import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/models/channel.dart';
 import 'package:open_tv/models/device_detector.dart';
 import 'package:open_tv/models/media_type.dart';
+import 'package:open_tv/models/multi_view_decode.dart';
 import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/player/player_engine.dart';
 
@@ -320,8 +321,25 @@ class MpvEngine implements PlayerEngine {
     // multiple players share the decoder pool. This is the same mode used for
     // Android TV (line below) and is safe for concurrent preview windows.
     if (previewMode && Platform.isAndroid && s.hwDecode) {
-      await np.setProperty('hwdec', 'mediacodec-copy');
-      AppLog.info('Player: hwdec=mediacodec-copy (preview) channel="${channel.name}"');
+      // fix314: Tegra/Shield corrupts colour with concurrent mediacodec-copy
+      // (2×2 grid → rainbow planes). The multiViewDecode setting controls this:
+      //   auto         → software on Tegra/Shield, mediacodec-copy elsewhere
+      //   hardwareCopy → force mediacodec-copy (pre-fix314 behaviour)
+      //   software     → force CPU decode
+      final wantSoftware = switch (s.multiViewDecode) {
+        MultiViewDecode.software => true,
+        MultiViewDecode.hardwareCopy => false,
+        MultiViewDecode.auto => await DeviceDetector.isTegra(),
+      };
+      if (wantSoftware) {
+        await np.setProperty('hwdec', 'no');
+        AppLog.info('Player: hwdec=no (preview, multiViewDecode='
+            '${s.multiViewDecode.name}) channel="${channel.name}"');
+      } else {
+        await np.setProperty('hwdec', 'mediacodec-copy');
+        AppLog.info('Player: hwdec=mediacodec-copy (preview, multiViewDecode='
+            '${s.multiViewDecode.name}) channel="${channel.name}"');
+      }
     } else if (previewMode && Platform.isIOS && s.hwDecode) {
       // videotoolbox supports concurrent decode sessions on iOS.
       await np.setProperty('hwdec', 'videotoolbox');

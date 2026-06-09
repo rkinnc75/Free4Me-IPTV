@@ -80,6 +80,13 @@ Future<void> main() async {
     'App started — version=${packageInfo.version}'
     ' build=${packageInfo.buildNumber}',
   );
+  // fix314: log SoC/board + Tegra detection so multi-view decode routing is
+  // verifiable on real hardware (Shield colour-corruption investigation).
+  unawaited(() async {
+    final board = await DeviceDetector.boardInfo();
+    final tegra = await DeviceDetector.isTegra();
+    AppLog.info('fix314 device: $board | isTegra=$tegra');
+  }());
   unawaited(EpgService.scheduleBackgroundRefresh());
   runApp(
     MyApp(

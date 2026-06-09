@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.30': [
+    'New: Multi-view decode setting (Auto / Hardware / Software). On NVIDIA Shield / Tegra, Auto now uses software decode to fix the colour corruption seen in the 2×2 grid.',
+  ],
   '1.26.29': [
     'Documentation: refreshed and condensed the README with the latest features.',
   ],

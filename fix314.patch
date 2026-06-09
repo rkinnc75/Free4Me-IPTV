@@ -1,0 +1,330 @@
+diff --git a/lib/backend/settings_service.dart b/lib/backend/settings_service.dart
+index ca4b70a..b081a83 100644
+--- a/lib/backend/settings_service.dart
++++ b/lib/backend/settings_service.dart
+@@ -5,6 +5,7 @@ import 'package:open_tv/backend/device_memory.dart';
+ import 'package:open_tv/backend/sql.dart';
+ import 'package:open_tv/models/engine_type.dart';
+ import 'package:open_tv/models/multi_view_layout.dart';
++import 'package:open_tv/models/multi_view_decode.dart';
+ import 'package:open_tv/models/settings.dart';
+ import 'package:open_tv/models/view_type.dart';
+ import 'package:package_info_plus/package_info_plus.dart';
+@@ -50,6 +51,7 @@ const streamScanTimeoutSecsProp = "streamScanTimeoutSecs";
+ 
+ // Multi-view (v1.14)
+ const multiViewLayoutProp = "multiViewLayout";
++const multiViewDecodeProp = "multiViewDecode"; // fix314
+ const multiViewCells1x2Prop = "multiViewCells1x2";
+ const multiViewCells2x2Prop = "multiViewCells2x2";
+ const multiViewAutoRestoreChannelsProp = "multiViewAutoRestoreChannels";
+@@ -169,6 +171,11 @@ class SettingsService {
+     if (mvLayout != null) {
+       settings.multiViewLayout = MultiViewLayout.fromJson(mvLayout);
+     }
++    // fix314: multi-view decode mode.
++    final mvDecode = settingsMap[multiViewDecodeProp];
++    if (mvDecode != null) {
++      settings.multiViewDecode = MultiViewDecode.fromJson(mvDecode);
++    }
+     if (mvCells1x2 != null) settings.multiViewCells1x2 = mvCells1x2;
+     if (mvCells2x2 != null) settings.multiViewCells2x2 = mvCells2x2;
+     if (mvAutoRestore != null) {
+@@ -268,6 +275,7 @@ class SettingsService {
+     settingsMap[streamScanTimeoutSecsProp] =
+         settings.streamScanTimeoutSecs.toString();
+     settingsMap[multiViewLayoutProp] = settings.multiViewLayout.toJson();
++    settingsMap[multiViewDecodeProp] = settings.multiViewDecode.toJson(); // fix314
+     settingsMap[multiViewCells1x2Prop] = settings.multiViewCells1x2;
+     settingsMap[multiViewCells2x2Prop] = settings.multiViewCells2x2;
+     settingsMap[multiViewAutoRestoreChannelsProp] =
+diff --git a/lib/main.dart b/lib/main.dart
+index 7d118be..efc0d84 100644
+--- a/lib/main.dart
++++ b/lib/main.dart
+@@ -80,6 +80,13 @@ Future<void> main() async {
+     'App started — version=${packageInfo.version}'
+     ' build=${packageInfo.buildNumber}',
+   );
++  // fix314: log SoC/board + Tegra detection so multi-view decode routing is
++  // verifiable on real hardware (Shield colour-corruption investigation).
++  unawaited(() async {
++    final board = await DeviceDetector.boardInfo();
++    final tegra = await DeviceDetector.isTegra();
++    AppLog.info('fix314 device: $board | isTegra=$tegra');
++  }());
+   unawaited(EpgService.scheduleBackgroundRefresh());
+   runApp(
+     MyApp(
+diff --git a/lib/models/device_detector.dart b/lib/models/device_detector.dart
+index a5e834d..a79f917 100644
+--- a/lib/models/device_detector.dart
++++ b/lib/models/device_detector.dart
+@@ -23,4 +23,41 @@ class DeviceDetector {
+     return iosInfo.model.toLowerCase().contains('appletv') ||
+         iosInfo.utsname.machine.toLowerCase().contains('appletv');
+   }
++
++  /// fix314: detect NVIDIA Tegra / Shield, where concurrent mediacodec-copy
++  /// decode sessions (2×2 multi-view) corrupt colour output. Matches on
++  /// manufacturer/brand/board/hardware/model so it covers Shield TV variants.
++  static Future<bool> isTegra() async {
++    if (!Platform.isAndroid) return false;
++    try {
++      final a = await _deviceInfo.androidInfo;
++      final hay = [
++        a.manufacturer,
++        a.brand,
++        a.board,
++        a.hardware,
++        a.model,
++        a.device,
++      ].map((s) => s.toLowerCase()).join('|');
++      return hay.contains('tegra') ||
++          hay.contains('shield') ||
++          hay.contains('nvidia');
++    } catch (_) {
++      return false;
++    }
++  }
++
++  /// fix314: human-readable Android board/SoC info for the startup diagnostic,
++  /// so we can confirm Tegra detection on real hardware.
++  static Future<String> boardInfo() async {
++    if (!Platform.isAndroid) return 'non-android';
++    try {
++      final a = await _deviceInfo.androidInfo;
++      return 'manufacturer=${a.manufacturer} brand=${a.brand} '
++          'model=${a.model} device=${a.device} board=${a.board} '
++          'hardware=${a.hardware}';
++    } catch (e) {
++      return 'boardInfo error: $e';
++    }
++  }
+ }
+diff --git a/lib/models/multi_view_decode.dart b/lib/models/multi_view_decode.dart
+new file mode 100644
+index 0000000..0b5b384
+--- /dev/null
++++ b/lib/models/multi_view_decode.dart
+@@ -0,0 +1,29 @@
++/// Decode mode for multi-view preview cells (fix314).
++///
++/// On some SoCs — notably NVIDIA Tegra / Shield — running several concurrent
++/// `mediacodec-copy` decode sessions for the 2×2 grid corrupts colour output
++/// (rainbow / swapped chroma planes). Software decode avoids the bug at the
++/// cost of CPU. This setting lets the user pick per device.
++///
++/// [auto]         — software decode on Tegra/Shield, mediacodec-copy elsewhere.
++/// [hardwareCopy] — force mediacodec-copy (the pre-fix314 behaviour).
++/// [software]     — force CPU decode (hwdec=no) for all cells.
++enum MultiViewDecode {
++  auto,
++  hardwareCopy,
++  software;
++
++  String toJson() => name;
++
++  static MultiViewDecode fromJson(String? v) => switch (v) {
++        'hardwareCopy' => hardwareCopy,
++        'software' => software,
++        _ => auto,
++      };
++
++  String get label => switch (this) {
++        auto => 'Auto (recommended)',
++        hardwareCopy => 'Hardware (copy)',
++        software => 'Software',
++      };
++}
+diff --git a/lib/models/settings.dart b/lib/models/settings.dart
+index 55a3624..ce348b1 100644
+--- a/lib/models/settings.dart
++++ b/lib/models/settings.dart
+@@ -2,6 +2,7 @@ import 'package:open_tv/backend/device_memory.dart';
+ import 'package:open_tv/models/engine_type.dart';
+ import 'package:open_tv/models/media_type.dart';
+ import 'package:open_tv/models/multi_view_layout.dart';
++import 'package:open_tv/models/multi_view_decode.dart';
+ import 'package:open_tv/models/view_type.dart';
+ 
+ /// Content-type filter for the All tab in the bottom navigation bar.
+@@ -124,6 +125,8 @@ class Settings {
+ 
+   /// Which multi-view grid layout is active (or none).
+   MultiViewLayout multiViewLayout;
++  /// fix314: decode mode for multi-view preview cells (Tegra/Shield colour fix).
++  MultiViewDecode multiViewDecode;
+ 
+   /// Persisted channel IDs for the 1×2 layout (2 cells), stored as a
+   /// comma-separated string. Null entries are stored as empty string.
+@@ -186,6 +189,7 @@ class Settings {
+     this.streamCompletedDelayMs = 2000,
+     this.maxReconnectAttempts = 3,
+     this.multiViewLayout = MultiViewLayout.none,
++    this.multiViewDecode = MultiViewDecode.auto,
+     this.multiViewCells1x2 = ',',
+     this.multiViewCells2x2 = ',,,',
+     this.multiViewAutoRestoreChannels = true,
+diff --git a/lib/player/mpv_engine.dart b/lib/player/mpv_engine.dart
+index cbb06e2..94c4c3e 100644
+--- a/lib/player/mpv_engine.dart
++++ b/lib/player/mpv_engine.dart
+@@ -8,6 +8,7 @@ import 'package:open_tv/backend/app_logger.dart';
+ import 'package:open_tv/models/channel.dart';
+ import 'package:open_tv/models/device_detector.dart';
+ import 'package:open_tv/models/media_type.dart';
++import 'package:open_tv/models/multi_view_decode.dart';
+ import 'package:open_tv/models/settings.dart';
+ import 'package:open_tv/player/player_engine.dart';
+ 
+@@ -320,8 +321,25 @@ class MpvEngine implements PlayerEngine {
+     // multiple players share the decoder pool. This is the same mode used for
+     // Android TV (line below) and is safe for concurrent preview windows.
+     if (previewMode && Platform.isAndroid && s.hwDecode) {
+-      await np.setProperty('hwdec', 'mediacodec-copy');
+-      AppLog.info('Player: hwdec=mediacodec-copy (preview) channel="${channel.name}"');
++      // fix314: Tegra/Shield corrupts colour with concurrent mediacodec-copy
++      // (2×2 grid → rainbow planes). The multiViewDecode setting controls this:
++      //   auto         → software on Tegra/Shield, mediacodec-copy elsewhere
++      //   hardwareCopy → force mediacodec-copy (pre-fix314 behaviour)
++      //   software     → force CPU decode
++      final wantSoftware = switch (s.multiViewDecode) {
++        MultiViewDecode.software => true,
++        MultiViewDecode.hardwareCopy => false,
++        MultiViewDecode.auto => await DeviceDetector.isTegra(),
++      };
++      if (wantSoftware) {
++        await np.setProperty('hwdec', 'no');
++        AppLog.info('Player: hwdec=no (preview, multiViewDecode='
++            '${s.multiViewDecode.name}) channel="${channel.name}"');
++      } else {
++        await np.setProperty('hwdec', 'mediacodec-copy');
++        AppLog.info('Player: hwdec=mediacodec-copy (preview, multiViewDecode='
++            '${s.multiViewDecode.name}) channel="${channel.name}"');
++      }
+     } else if (previewMode && Platform.isIOS && s.hwDecode) {
+       // videotoolbox supports concurrent decode sessions on iOS.
+       await np.setProperty('hwdec', 'videotoolbox');
+diff --git a/lib/settings_view.dart b/lib/settings_view.dart
+index 6651afc..b402431 100644
+--- a/lib/settings_view.dart
++++ b/lib/settings_view.dart
+@@ -13,6 +13,7 @@ import 'package:open_tv/backend/device_memory.dart';
+ import 'package:open_tv/models/device_detector.dart';
+ import 'package:open_tv/models/engine_type.dart';
+ import 'package:open_tv/models/multi_view_layout.dart';
++import 'package:open_tv/models/multi_view_decode.dart';
+ import 'package:open_tv/multi_view_picker_dialog.dart';
+ import 'package:open_tv/backend/epg_service.dart';
+ import 'package:open_tv/backend/settings_io.dart';
+@@ -1686,6 +1687,74 @@ class _SettingsState extends State<SettingsView> {
+         MultiViewLayout.twoByTwo => '2×2',
+       };
+ 
++  // fix314: decode-mode picker for multi-view cells (Tegra/Shield colour fix).
++  Widget _multiViewDecodeTile(Settings s) {
++    return ListTile(
++      title: Row(
++        children: [
++          const Text('Multi-view decode'),
++          const SizedBox(width: 4),
++          _helpIcon(
++            title: 'Multi-view decode',
++            body: 'Controls how multi-view cells decode video.\n\n'
++                'Default: Auto.\n\n'
++                'Auto: Uses hardware decode on most devices, but switches to '
++                'software decode on NVIDIA Shield / Tegra boxes, where running '
++                'several hardware decoders at once can corrupt the colours '
++                '(rainbow / wrong tint) in the 2×2 grid.\n\n'
++                'Hardware (copy): Forces hardware decode for all cells. Lowest '
++                'CPU use, but may show colour corruption on Shield/Tegra.\n\n'
++                'Software: Forces CPU decode for all cells. Fixes colour '
++                'problems at the cost of higher CPU use; best on strong '
++                'devices or with lower-bitrate streams.',
++          ),
++        ],
++      ),
++      trailing: TextButton(
++        onPressed: () => _showMultiViewDecodeDialog(context),
++        child: Row(
++          mainAxisSize: MainAxisSize.min,
++          children: [
++            Text(
++              s.multiViewDecode.label,
++              style: Theme.of(context).textTheme.bodyMedium,
++            ),
++            const SizedBox(width: 4),
++            const Icon(Icons.arrow_drop_down),
++          ],
++        ),
++      ),
++    );
++  }
++
++  static const _multiViewDecodeOptions = [
++    MultiViewDecode.auto,
++    MultiViewDecode.hardwareCopy,
++    MultiViewDecode.software,
++  ];
++
++  Future<void> _showMultiViewDecodeDialog(BuildContext context) async {
++    await showDialog(
++      barrierDismissible: true,
++      context: context,
++      builder: (_) => SelectDialog(
++        title: 'Multi-view decode',
++        data: _multiViewDecodeOptions
++            .asMap()
++            .entries
++            .map((e) => IdData(id: e.key, data: e.value.label))
++            .toList(),
++        action: (idx) {
++          setState(() {
++            settings.multiViewDecode = _multiViewDecodeOptions[idx];
++            updateSettings();
++          });
++          Navigator.of(context).pop();
++        },
++      ),
++    );
++  }
++
+ 
+   String _searchMethodShortLabel(SearchMethod m) => switch (m) {
+         SearchMethod.ftsAnd => 'FTS AND',
+@@ -2137,6 +2206,7 @@ class _SettingsState extends State<SettingsView> {
+                     initiallyExpanded: false,
+                     children: [
+                       _multiViewTile(settings),
++                      _multiViewDecodeTile(settings),
+                       SwitchListTile(
+                         title: Row(
+                           children: [
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 86800f2..f228ca8 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.26.30': [
++    'New: Multi-view decode setting (Auto / Hardware / Software). On NVIDIA Shield / Tegra, Auto now uses software decode to fix the colour corruption seen in the 2×2 grid.',
++  ],
+   '1.26.29': [
+     'Documentation: refreshed and condensed the README with the latest features.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 34e93bf..3048217 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.26.29+313
++version: 1.26.30+314
+ 
+ environment:
+   sdk: ^3.10.7
