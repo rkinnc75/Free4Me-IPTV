@@ -64,3 +64,18 @@ APK build and the entire release are **skipped** — a true hard gate, self-cont
   push a tag. It and `release.yml` share a concurrency group (`free4me-ci-${{ github.sha }}`,
   `cancel-in-progress: false`) so they queue rather than overlap for the same SHA.
 - The 2 tolerated `settings_view.dart` INFOs pass (`--no-fatal-infos`); warnings/errors fail the gate.
+
+### Why a release used to produce TWO "Analyze main" runs (and why it now produces one)
+
+`apply_fix.sh` pushes to `main` twice per release: the fix **code** commit (step 8), then a separate
+**"move fix files to runbooks/"** housekeeping commit (step 10). Each push to `main` triggers
+`analyze.yml`, so you'd see `Analyze (code) → Release → Analyze (runbooks move)`. The second one was
+redundant — the runbooks-move is a pure file rename (`0` code lines changed), so it re-analyzed
+byte-identical code.
+
+`analyze.yml`'s push trigger now has a **`paths-ignore`** for `runbooks/**`, `fix*.md`, and
+`fix*.patch`. A push is skipped only if *every* changed path matches, so:
+- the runbooks-move commit (only touches those paths) → **Analyze skipped**;
+- the fix code commit (also touches `lib/`, `pubspec.yaml`, …) → **Analyze still runs**.
+
+Net: one "Analyze main" per release instead of two, with no loss of coverage.

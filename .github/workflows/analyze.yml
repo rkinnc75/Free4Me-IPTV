@@ -18,6 +18,15 @@ on:
   push:
     branches:
       - main
+    # fix314 follow-up: skip the redundant Analyze run triggered by the
+    # "move fix files to runbooks/" housekeeping commit (apply_fix.sh step 10),
+    # which is a pure file rename and re-analyzes byte-identical code. A push is
+    # skipped only if EVERY changed path matches these patterns, so the fix CODE
+    # commit (which also touches lib/) still triggers Analyze normally.
+    paths-ignore:
+      - 'runbooks/**'
+      - 'fix*.md'
+      - 'fix*.patch'
 
 concurrency:
   # fix224: shared group with release.yml so the two never run concurrently
