@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.33': [
+    'New: the TV export web page (QR portal) can now also import a settings file to add its sources to this device. Only sources are imported (other settings are skipped), and sources refresh automatically afterward.',
+  ],
   '1.26.32': [
     'Playback: if the chosen engine opens a stream but fails to show video (black screen / no frames) or fails to open, the app now automatically tries your fallback engine once (when your Player engine setting has one, e.g. libmpv → ExoPlayer).',
   ],

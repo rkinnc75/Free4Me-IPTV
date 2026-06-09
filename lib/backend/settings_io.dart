@@ -157,6 +157,75 @@ class SettingsIo {
   /// module doesn't have to import `utils.dart` (which would create
   /// an import cycle, since utils.dart imports this module for
   /// `applyPendingPreserves`).
+  /// fix317: import ONLY the sources from a backup payload, merging them into
+  /// the existing source list (by name) and skipping all other settings —
+  /// device-specific values (buffering, decode, multi-view, etc.) should not be
+  /// carried across devices. Returns the number of sources imported, or -1 on
+  /// a parse/schema error. Channel preserves (favorites/history/EPG ids) are
+  /// staged for re-application after the next refresh, exactly like a full
+  /// import. The caller is responsible for triggering the source refresh.
+  static Future<int> importSourcesOnly(List<int> jsonBytes) async {
+    final Map<String, dynamic> payload;
+    try {
+      payload = jsonDecode(utf8.decode(jsonBytes)) as Map<String, dynamic>;
+    } catch (e) {
+      AppLog.warn('SettingsIo.importSourcesOnly: parse failed — $e');
+      return -1;
+    }
+    final version = payload['schemaVersion'] as int? ?? 0;
+    if (version > _schemaVersion) {
+      AppLog.warn(
+        'SettingsIo.importSourcesOnly: backup schema v$version newer than '
+        'app schema v$_schemaVersion — refusing',
+      );
+      return -1;
+    }
+    final rawSources = payload['sources'] as List<dynamic>?;
+    if (rawSources == null || rawSources.isEmpty) {
+      AppLog.warn('SettingsIo.importSourcesOnly: no sources in payload');
+      return 0;
+    }
+    var count = 0;
+    for (final raw in rawSources) {
+      final map = raw as Map<String, dynamic>;
+      final source = Source(
+        name: map['name'] as String,
+        url: map['url'] as String?,
+        username: map['username'] as String?,
+        password: map['password'] as String?,
+        sourceType: SourceType.values[map['sourceType'] as int? ?? 0],
+        enabled: map['enabled'] as bool? ?? true,
+        epgUrl: map['epgUrl'] as String?,
+        defaultEngine: EngineType.fromJson(map['defaultEngine'] as String?),
+      );
+      // getOrCreateSourceByName merges by name — existing sources are reused,
+      // new ones created. Other settings are intentionally NOT touched.
+      await Sql.commitWrite([Sql.getOrCreateSourceByName(source)]);
+      count++;
+      AppLog.info(
+        'SettingsIo.importSourcesOnly: source "${source.name}"'
+        ' type=${source.sourceType.name} enabled=${source.enabled}',
+      );
+      final preserveRaw = map['preserve'] as List<dynamic>?;
+      if (preserveRaw != null && preserveRaw.isNotEmpty) {
+        _pendingPreserves[source.name] = preserveRaw
+            .map((p) {
+              final m = p as Map<String, dynamic>;
+              return ChannelPreserve(
+                name: m['name'] as String,
+                favorite: m['favorite'] as int?,
+                lastWatched: m['lastWatched'] as int?,
+                epgChannelId: m['epgChannelId'] as String?,
+                epgManualOverride: m['epgManualOverride'] as String?,
+              );
+            })
+            .toList();
+      }
+    }
+    AppLog.info('SettingsIo.importSourcesOnly: imported $count source(s)');
+    return count;
+  }
+
   static Future<bool> importFromFile(BuildContext context) async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,

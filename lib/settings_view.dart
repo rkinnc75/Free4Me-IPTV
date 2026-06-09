@@ -994,7 +994,24 @@ class _SettingsState extends State<SettingsView> {
     List<ExportItem> items, {
     String? capturedAt,
   }) async {
-    final server = ExportServer(items, capturedAt: capturedAt);
+    final server = ExportServer(
+      items,
+      capturedAt: capturedAt,
+      // fix317: portal sources-only import. Runs on the app isolate, so it can
+      // touch the DB and trigger a refresh directly. After a successful import
+      // we schedule a source refresh on the device (next frame, so the HTTP
+      // response returns first).
+      onImportSources: (bytes) async {
+        final n = await SettingsIo.importSourcesOnly(bytes);
+        if (n > 0 && mounted) {
+          await reloadSources();
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) showSourcesRefreshDialog(context);
+          });
+        }
+        return n;
+      },
+    );
     List<String> urls;
     try {
       urls = await server.start();

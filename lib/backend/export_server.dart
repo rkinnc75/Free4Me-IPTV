@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:open_tv/backend/app_logger.dart';
 
@@ -29,9 +30,13 @@ class ExportServer {
   HttpServer? _server;
   final List<ExportItem> _items;
   final String? capturedAt; // fix166
+  /// fix317: called with the uploaded settings-file bytes when the user POSTs
+  /// a sources import from the portal. Returns the number of sources imported
+  /// (or -1 on error). Null disables the import form.
+  final Future<int> Function(List<int> bytes)? onImportSources;
   Timer? _idleTimeout;
 
-  ExportServer(this._items, {this.capturedAt});
+  ExportServer(this._items, {this.capturedAt, this.onImportSources});
 
   /// Start the server and return the LAN URLs to display (one per IPv4).
   Future<List<String>> start() async {
@@ -81,6 +86,23 @@ class ExportServer {
             '<small style="font-size:.75em">'
             '(${it.filename}, $kb KB)</small></a></p>');
       }
+      if (onImportSources != null) {
+        buf.write('<hr style="margin:1.5em 0;border:none;'
+            'border-top:1px solid #ddd">'
+            '<h3>Import sources</h3>'
+            '<p style="color:#888;font-size:.85em">Upload a settings file to '
+            'add its sources to this device. Only sources are imported; other '
+            'settings are ignored. Sources refresh automatically after import.'
+            '</p>'
+            '<form method="POST" action="/import-sources" '
+            'enctype="multipart/form-data">'
+            '<input type="file" name="file" accept=".json,application/json" '
+            'required style="display:block;margin:.6em 0">'
+            '<button type="submit" '
+            'style="font-size:1.1em;padding:.6em 1.2em;background:#2ea44f;'
+            'color:#fff;border:none;border-radius:8px">Import sources</button>'
+            '</form>');
+      }
       buf.write('<p style="color:#888;font-size:.85em">'
           'Server stops after 10 minutes idle.</p></body>');
       req.response
@@ -112,8 +134,118 @@ class ExportServer {
       return;
     }
 
+    // fix317: receive an uploaded settings file and import only its sources.
+    if (path == '/import-sources' && req.method == 'POST') {
+      if (onImportSources == null) {
+        req.response.statusCode = 404;
+        await req.response.close();
+        return;
+      }
+      try {
+        final bytes = await _collectBytes(req);
+        final fileBytes = _extractMultipartFile(bytes,
+            req.headers.contentType?.parameters['boundary']);
+        if (fileBytes == null || fileBytes.isEmpty) {
+          throw 'no file part found';
+        }
+        final n = await onImportSources!(fileBytes);
+        final ok = n >= 0;
+        final msg = !ok
+            ? 'Import failed — invalid or incompatible settings file.'
+            : n == 0
+                ? 'No sources found in the file.'
+                : 'Imported $n source${n == 1 ? '' : 's'}. '
+                    'Refreshing on the device now…';
+        req.response
+          ..statusCode = ok ? 200 : 400
+          ..headers.contentType = ContentType.html
+          ..write('<!doctype html>'
+              '<meta name="viewport" content="width=device-width,initial-scale=1">'
+              '<body style="font-family:sans-serif;padding:2em;max-width:32em;'
+              'margin:auto"><h2>${ok ? 'Done' : 'Error'}</h2><p>$msg</p>'
+              '<p><a href="/">← Back</a></p></body>');
+        await req.response.close();
+        AppLog.info('ExportServer: import-sources result n=$n');
+      } catch (e) {
+        AppLog.warn('ExportServer: import-sources failed — $e');
+        req.response
+          ..statusCode = 400
+          ..headers.contentType = ContentType.html
+          ..write('<!doctype html><body style="font-family:sans-serif;'
+              'padding:2em"><h2>Error</h2><p>Import failed: $e</p>'
+              '<p><a href="/">← Back</a></p></body>');
+        await req.response.close();
+      }
+      return;
+    }
+
     req.response.statusCode = 404;
     await req.response.close();
+  }
+
+  // fix317: read the full request body into a byte list.
+  Future<List<int>> _collectBytes(HttpRequest req) async {
+    final out = <int>[];
+    await for (final chunk in req) {
+      out.addAll(chunk);
+    }
+    return out;
+  }
+
+  // fix317: extract the first file part's raw bytes from a multipart/form-data
+  // body. Minimal parser: splits on the boundary, finds the part with a
+  // filename, and returns the bytes between its header blank-line and the next
+  // boundary (trailing CRLF trimmed).
+  List<int>? _extractMultipartFile(List<int> body, String? boundary) {
+    if (boundary == null) return null;
+    final delim = utf8.encode('--$boundary');
+    final parts = _splitBytes(body, delim);
+    for (final part in parts) {
+      // A part starts with headers, then \r\n\r\n, then content.
+      final headerEnd = _indexOf(part, utf8.encode('\r\n\r\n'));
+      if (headerEnd < 0) continue;
+      final header = utf8.decode(part.sublist(0, headerEnd),
+          allowMalformed: true);
+      if (!header.contains('filename=')) continue;
+      var content = part.sublist(headerEnd + 4);
+      // Trim the trailing CRLF that precedes the next boundary.
+      while (content.isNotEmpty &&
+          (content.last == 10 || content.last == 13)) {
+        content = content.sublist(0, content.length - 1);
+      }
+      return content;
+    }
+    return null;
+  }
+
+  List<List<int>> _splitBytes(List<int> data, List<int> sep) {
+    final result = <List<int>>[];
+    var start = 0;
+    while (true) {
+      final idx = _indexOf(data, sep, start);
+      if (idx < 0) {
+        result.add(data.sublist(start));
+        break;
+      }
+      result.add(data.sublist(start, idx));
+      start = idx + sep.length;
+    }
+    return result;
+  }
+
+  int _indexOf(List<int> haystack, List<int> needle, [int from = 0]) {
+    if (needle.isEmpty) return -1;
+    for (var i = from; i <= haystack.length - needle.length; i++) {
+      var match = true;
+      for (var j = 0; j < needle.length; j++) {
+        if (haystack[i + j] != needle[j]) {
+          match = false;
+          break;
+        }
+      }
+      if (match) return i;
+    }
+    return -1;
   }
 
   Future<void> stop() async {
