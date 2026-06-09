@@ -971,7 +971,7 @@ class Sql {
   }
 
   static Future<void> Function(SqliteWriteContext, Map<String, String>)
-      wipeSource(int sourceId) {
+      wipeSource(int sourceId, {Set<int> keepMediaTypes = const {}}) {
     return (SqliteWriteContext tx, Map<String, String> memory) async {
       final countRow = await tx.getOptional(
         'SELECT COUNT(*) FROM channels WHERE source_id = ?', [sourceId]);
@@ -996,14 +996,35 @@ class Sql {
           (r.columnAt(0) as String?) ?? 'Uncategorized'
       ];
       memory['disabledGroupNames'] = jsonEncode(disabledNames);
-      await tx.execute('''
-        DELETE FROM channels
-        WHERE source_id = ?
-      ''', [sourceId]);
-      await tx.execute('''
-        DELETE FROM groups
-        WHERE source_id = ?
-      ''', [sourceId]);
+      // fix321: a content type whose fresh fetch came back empty (after one
+      // retry) for a source that previously HAD that type is treated as a
+      // transient provider failure — keep its existing channels rather than
+      // wiping them. keepMediaTypes holds those media_type indices; their rows
+      // (and groups used only by them) are left untouched.
+      if (keepMediaTypes.isEmpty) {
+        await tx.execute(
+            'DELETE FROM channels WHERE source_id = ?', [sourceId]);
+        await tx.execute('DELETE FROM groups WHERE source_id = ?', [sourceId]);
+      } else {
+        final placeholders = List.filled(keepMediaTypes.length, '?').join(',');
+        await tx.execute(
+          'DELETE FROM channels WHERE source_id = ? '
+          'AND media_type NOT IN ($placeholders)',
+          [sourceId, ...keepMediaTypes],
+        );
+        // Only delete groups that have no surviving (kept) channels, so the
+        // categories of preserved types remain intact.
+        await tx.execute(
+          'DELETE FROM groups WHERE source_id = ? AND id NOT IN '
+          '(SELECT DISTINCT group_id FROM channels '
+          ' WHERE source_id = ? AND group_id IS NOT NULL)',
+          [sourceId, sourceId],
+        );
+        AppLog.info(
+          'Sql.wipeSource: sourceId=$sourceId keeping media types '
+          '${keepMediaTypes.toList()} (transient empty fetch)',
+        );
+      }
       AppLog.info('Sql.wipeSource: sourceId=$sourceId deleted $before channels');
     };
   }

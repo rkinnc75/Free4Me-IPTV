@@ -1,0 +1,241 @@
+diff --git a/lib/backend/sql.dart b/lib/backend/sql.dart
+index e2b4951..d712deb 100644
+--- a/lib/backend/sql.dart
++++ b/lib/backend/sql.dart
+@@ -971,7 +971,7 @@ class Sql {
+   }
+ 
+   static Future<void> Function(SqliteWriteContext, Map<String, String>)
+-      wipeSource(int sourceId) {
++      wipeSource(int sourceId, {Set<int> keepMediaTypes = const {}}) {
+     return (SqliteWriteContext tx, Map<String, String> memory) async {
+       final countRow = await tx.getOptional(
+         'SELECT COUNT(*) FROM channels WHERE source_id = ?', [sourceId]);
+@@ -996,14 +996,35 @@ class Sql {
+           (r.columnAt(0) as String?) ?? 'Uncategorized'
+       ];
+       memory['disabledGroupNames'] = jsonEncode(disabledNames);
+-      await tx.execute('''
+-        DELETE FROM channels
+-        WHERE source_id = ?
+-      ''', [sourceId]);
+-      await tx.execute('''
+-        DELETE FROM groups
+-        WHERE source_id = ?
+-      ''', [sourceId]);
++      // fix321: a content type whose fresh fetch came back empty (after one
++      // retry) for a source that previously HAD that type is treated as a
++      // transient provider failure — keep its existing channels rather than
++      // wiping them. keepMediaTypes holds those media_type indices; their rows
++      // (and groups used only by them) are left untouched.
++      if (keepMediaTypes.isEmpty) {
++        await tx.execute(
++            'DELETE FROM channels WHERE source_id = ?', [sourceId]);
++        await tx.execute('DELETE FROM groups WHERE source_id = ?', [sourceId]);
++      } else {
++        final placeholders = List.filled(keepMediaTypes.length, '?').join(',');
++        await tx.execute(
++          'DELETE FROM channels WHERE source_id = ? '
++          'AND media_type NOT IN ($placeholders)',
++          [sourceId, ...keepMediaTypes],
++        );
++        // Only delete groups that have no surviving (kept) channels, so the
++        // categories of preserved types remain intact.
++        await tx.execute(
++          'DELETE FROM groups WHERE source_id = ? AND id NOT IN '
++          '(SELECT DISTINCT group_id FROM channels '
++          ' WHERE source_id = ? AND group_id IS NOT NULL)',
++          [sourceId, sourceId],
++        );
++        AppLog.info(
++          'Sql.wipeSource: sourceId=$sourceId keeping media types '
++          '${keepMediaTypes.toList()} (transient empty fetch)',
++        );
++      }
+       AppLog.info('Sql.wipeSource: sourceId=$sourceId deleted $before channels');
+     };
+   }
+diff --git a/lib/backend/xtream.dart b/lib/backend/xtream.dart
+index 7de2b13..145dede 100644
+--- a/lib/backend/xtream.dart
++++ b/lib/backend/xtream.dart
+@@ -39,7 +39,8 @@ Future<void> getXtream(
+       ' favorites=${preserve.where((p) => p.favorite == 1).length}'
+       ' total=${preserve.length}',
+     );
+-    statements.add(Sql.wipeSource(source.id!));
++    // fix321: the wipe statement is added AFTER the fetch below, once we know
++    // which content types came back empty (and should be preserved).
+   }
+   source.urlOrigin = Uri.parse(source.url!).origin;
+   AppLog.info('Xtream: fetching source="${source.name}" url="${source.url}"');
+@@ -56,13 +57,21 @@ Future<void> getXtream(
+   int liveCount = 0;
+   int movieCount = 0;
+   int seriesCount = 0;
++  // fix321: content insert statements are collected separately so the wipe can
++  // be spliced in front of them AFTER we know which types came back empty.
++  final contentStatements =
++      <Future<void> Function(SqliteWriteContext, Map<String, String>)>[];
++  // fix321: media types whose fresh fetch was empty for a source that
++  // previously had them (transient provider failure) — their existing rows are
++  // preserved rather than wiped.
++  final keepMediaTypes = <int>{};
+   if (results[0] != null && results[1] != null) {
+     try {
+       final streams = processJsonList(results[0], XtreamStream.fromJson);
+       liveCount = streams.length;
+       onProgress?.call('Loading $liveCount live channels…');
+       processXtream(
+-        statements,
++        contentStatements,
+         streams,
+         processJsonList(results[1], XtreamCategory.fromJson),
+         source,
+@@ -94,7 +103,7 @@ Future<void> getXtream(
+       movieCount = vods.length;
+       onProgress?.call('Loading $movieCount movies…');
+       processXtream(
+-        statements,
++        contentStatements,
+         vods,
+         vodCats,
+         source,
+@@ -113,7 +122,7 @@ Future<void> getXtream(
+       seriesCount = series.length;
+       onProgress?.call('Loading $seriesCount series…');
+       processXtream(
+-        statements,
++        contentStatements,
+         series,
+         processJsonList(results[5], XtreamCategory.fromJson),
+         source,
+@@ -126,6 +135,70 @@ Future<void> getXtream(
+     failCount++;
+   }
+ 
++  // fix321: for each content type that came back EMPTY but the source
++  // previously had rows for it, retry that one fetch once (transient empties
++  // are common at the tail of a long refresh on max_connections=1 providers,
++  // especially in background mode). If still empty, preserve the old rows for
++  // that type instead of wiping them to zero.
++  if (wipe) {
++    Future<int> retryType(
++      String liveAction,
++      String catAction,
++      MediaType mediaType,
++    ) async {
++      AppLog.warn(
++        'Xtream.fix321: ${mediaType.name} came back empty for "${source.name}"'
++        ' which previously had rows — retrying once',
++      );
++      final retry = await Future.wait([
++        getXtreamHttpData(liveAction, source),
++        getXtreamHttpData(catAction, source),
++      ]);
++      if (retry[0] == null || retry[1] == null) return 0;
++      try {
++        final streams = processJsonList(retry[0], XtreamStream.fromJson);
++        if (streams.isEmpty) return 0;
++        processXtream(
++          contentStatements,
++          streams,
++          processJsonList(retry[1], XtreamCategory.fromJson),
++          source,
++          mediaType,
++        );
++        return streams.length;
++      } catch (_) {
++        return 0;
++      }
++    }
++
++    if (liveCount == 0 && (source.lastLiveCount ?? 0) > 0) {
++      liveCount = await retryType(
++          getLiveStreams, getLiveStreamCategories, MediaType.livestream);
++      if (liveCount == 0) keepMediaTypes.add(MediaType.livestream.index);
++    }
++    if (movieCount == 0 && (source.lastMovieCount ?? 0) > 0) {
++      movieCount =
++          await retryType(getVods, getVodCategories, MediaType.movie);
++      if (movieCount == 0) keepMediaTypes.add(MediaType.movie.index);
++    }
++    if (seriesCount == 0 && (source.lastSeriesCount ?? 0) > 0) {
++      seriesCount =
++          await retryType(getSeries, getSeriesCategories, MediaType.serie);
++      if (seriesCount == 0) keepMediaTypes.add(MediaType.serie.index);
++    }
++    if (keepMediaTypes.isNotEmpty) {
++      AppLog.warn(
++        'Xtream.fix321: preserving existing rows for media types '
++        '${keepMediaTypes.toList()} on "${source.name}" '
++        '(fetch still empty after retry)',
++      );
++    }
++    // Splice the wipe (honouring preserved types) in front of the content
++    // inserts captured above.
++    statements.add(Sql.wipeSource(source.id!, keepMediaTypes: keepMediaTypes));
++  }
++  statements.addAll(contentStatements);
++
+   if (failCount >= 3) {
+     AppLog.warn(
+       'Xtream: fetch failed source="${source.name}"'
+@@ -137,7 +210,8 @@ Future<void> getXtream(
+   }
+   AppLog.info(
+     'Xtream: fetched source="${source.name}"'
+-    ' live=$liveCount movies=$movieCount series=$seriesCount',
++    ' live=$liveCount movies=$movieCount series=$seriesCount'
++    '${keepMediaTypes.isEmpty ? '' : ' (preserved: ${keepMediaTypes.toList()})'}',
+   );
+   statements.add(Sql.updateGroups());
+   if (preserve != null) {
+@@ -148,9 +222,17 @@ Future<void> getXtream(
+   final mc = await fetchXtreamMaxConnections(source);
+   if (source.id != null) {
+     if (mc != null) source.maxConnections = mc;
+-    source.lastLiveCount = liveCount;
+-    source.lastMovieCount = movieCount;
+-    source.lastSeriesCount = seriesCount;
++    // fix321: for preserved types the fresh count is 0 but the old rows remain,
++    // so keep the previous count rather than recording 0.
++    if (!keepMediaTypes.contains(MediaType.livestream.index)) {
++      source.lastLiveCount = liveCount;
++    }
++    if (!keepMediaTypes.contains(MediaType.movie.index)) {
++      source.lastMovieCount = movieCount;
++    }
++    if (!keepMediaTypes.contains(MediaType.serie.index)) {
++      source.lastSeriesCount = seriesCount;
++    }
+     await Sql.updateSource(source);
+   }
+   onProgress?.call('Saving to database…');
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index b1515a4..6ca0480 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.26.37': [
++    'More reliable refreshes: if a provider returns an empty list for one content type (live, movies, or series) that it previously had — often a temporary hiccup, especially in the background — that type is retried once and, if still empty, its existing channels are kept instead of being wiped. The other content types still update normally.',
++  ],
+   '1.26.36': [
+     'Fixed: a source refresh could fail partway (leaving series/VOD empty) when a provider returned a channel with no category. Such channels are now grouped under “Uncategorized” instead of erroring out.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 67ad49d..a9b1d21 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.26.36+320
++version: 1.26.37+321
+ 
+ environment:
+   sdk: ^3.10.7

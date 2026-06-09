@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.37': [
+    'More reliable refreshes: if a provider returns an empty list for one content type (live, movies, or series) that it previously had — often a temporary hiccup, especially in the background — that type is retried once and, if still empty, its existing channels are kept instead of being wiped. The other content types still update normally.',
+  ],
   '1.26.36': [
     'Fixed: a source refresh could fail partway (leaving series/VOD empty) when a provider returned a channel with no category. Such channels are now grouped under “Uncategorized” instead of erroring out.',
   ],

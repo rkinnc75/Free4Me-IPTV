@@ -39,7 +39,8 @@ Future<void> getXtream(
       ' favorites=${preserve.where((p) => p.favorite == 1).length}'
       ' total=${preserve.length}',
     );
-    statements.add(Sql.wipeSource(source.id!));
+    // fix321: the wipe statement is added AFTER the fetch below, once we know
+    // which content types came back empty (and should be preserved).
   }
   source.urlOrigin = Uri.parse(source.url!).origin;
   AppLog.info('Xtream: fetching source="${source.name}" url="${source.url}"');
@@ -56,13 +57,21 @@ Future<void> getXtream(
   int liveCount = 0;
   int movieCount = 0;
   int seriesCount = 0;
+  // fix321: content insert statements are collected separately so the wipe can
+  // be spliced in front of them AFTER we know which types came back empty.
+  final contentStatements =
+      <Future<void> Function(SqliteWriteContext, Map<String, String>)>[];
+  // fix321: media types whose fresh fetch was empty for a source that
+  // previously had them (transient provider failure) — their existing rows are
+  // preserved rather than wiped.
+  final keepMediaTypes = <int>{};
   if (results[0] != null && results[1] != null) {
     try {
       final streams = processJsonList(results[0], XtreamStream.fromJson);
       liveCount = streams.length;
       onProgress?.call('Loading $liveCount live channels…');
       processXtream(
-        statements,
+        contentStatements,
         streams,
         processJsonList(results[1], XtreamCategory.fromJson),
         source,
@@ -94,7 +103,7 @@ Future<void> getXtream(
       movieCount = vods.length;
       onProgress?.call('Loading $movieCount movies…');
       processXtream(
-        statements,
+        contentStatements,
         vods,
         vodCats,
         source,
@@ -113,7 +122,7 @@ Future<void> getXtream(
       seriesCount = series.length;
       onProgress?.call('Loading $seriesCount series…');
       processXtream(
-        statements,
+        contentStatements,
         series,
         processJsonList(results[5], XtreamCategory.fromJson),
         source,
@@ -126,6 +135,70 @@ Future<void> getXtream(
     failCount++;
   }
 
+  // fix321: for each content type that came back EMPTY but the source
+  // previously had rows for it, retry that one fetch once (transient empties
+  // are common at the tail of a long refresh on max_connections=1 providers,
+  // especially in background mode). If still empty, preserve the old rows for
+  // that type instead of wiping them to zero.
+  if (wipe) {
+    Future<int> retryType(
+      String liveAction,
+      String catAction,
+      MediaType mediaType,
+    ) async {
+      AppLog.warn(
+        'Xtream.fix321: ${mediaType.name} came back empty for "${source.name}"'
+        ' which previously had rows — retrying once',
+      );
+      final retry = await Future.wait([
+        getXtreamHttpData(liveAction, source),
+        getXtreamHttpData(catAction, source),
+      ]);
+      if (retry[0] == null || retry[1] == null) return 0;
+      try {
+        final streams = processJsonList(retry[0], XtreamStream.fromJson);
+        if (streams.isEmpty) return 0;
+        processXtream(
+          contentStatements,
+          streams,
+          processJsonList(retry[1], XtreamCategory.fromJson),
+          source,
+          mediaType,
+        );
+        return streams.length;
+      } catch (_) {
+        return 0;
+      }
+    }
+
+    if (liveCount == 0 && (source.lastLiveCount ?? 0) > 0) {
+      liveCount = await retryType(
+          getLiveStreams, getLiveStreamCategories, MediaType.livestream);
+      if (liveCount == 0) keepMediaTypes.add(MediaType.livestream.index);
+    }
+    if (movieCount == 0 && (source.lastMovieCount ?? 0) > 0) {
+      movieCount =
+          await retryType(getVods, getVodCategories, MediaType.movie);
+      if (movieCount == 0) keepMediaTypes.add(MediaType.movie.index);
+    }
+    if (seriesCount == 0 && (source.lastSeriesCount ?? 0) > 0) {
+      seriesCount =
+          await retryType(getSeries, getSeriesCategories, MediaType.serie);
+      if (seriesCount == 0) keepMediaTypes.add(MediaType.serie.index);
+    }
+    if (keepMediaTypes.isNotEmpty) {
+      AppLog.warn(
+        'Xtream.fix321: preserving existing rows for media types '
+        '${keepMediaTypes.toList()} on "${source.name}" '
+        '(fetch still empty after retry)',
+      );
+    }
+    // Splice the wipe (honouring preserved types) in front of the content
+    // inserts captured above.
+    statements.add(Sql.wipeSource(source.id!, keepMediaTypes: keepMediaTypes));
+  }
+  statements.addAll(contentStatements);
+
   if (failCount >= 3) {
     AppLog.warn(
       'Xtream: fetch failed source="${source.name}"'
@@ -137,7 +210,8 @@ Future<void> getXtream(
   }
   AppLog.info(
     'Xtream: fetched source="${source.name}"'
-    ' live=$liveCount movies=$movieCount series=$seriesCount',
+    ' live=$liveCount movies=$movieCount series=$seriesCount'
+    '${keepMediaTypes.isEmpty ? '' : ' (preserved: ${keepMediaTypes.toList()})'}',
   );
   statements.add(Sql.updateGroups());
   if (preserve != null) {
@@ -148,9 +222,17 @@ Future<void> getXtream(
   final mc = await fetchXtreamMaxConnections(source);
   if (source.id != null) {
     if (mc != null) source.maxConnections = mc;
-    source.lastLiveCount = liveCount;
-    source.lastMovieCount = movieCount;
-    source.lastSeriesCount = seriesCount;
+    // fix321: for preserved types the fresh count is 0 but the old rows remain,
+    // so keep the previous count rather than recording 0.
+    if (!keepMediaTypes.contains(MediaType.livestream.index)) {
+      source.lastLiveCount = liveCount;
+    }
+    if (!keepMediaTypes.contains(MediaType.movie.index)) {
+      source.lastMovieCount = movieCount;
+    }
+    if (!keepMediaTypes.contains(MediaType.serie.index)) {
+      source.lastSeriesCount = seriesCount;
+    }
     await Sql.updateSource(source);
   }
   onProgress?.call('Saving to database…');
