@@ -174,17 +174,32 @@ Future<void> getXtream(
     if (liveCount == 0 && (source.lastLiveCount ?? 0) > 0) {
       liveCount = await retryType(
           getLiveStreams, getLiveStreamCategories, MediaType.livestream);
-      if (liveCount == 0) keepMediaTypes.add(MediaType.livestream.index);
+      if (liveCount == 0) {
+        keepMediaTypes.add(MediaType.livestream.index);
+      } else {
+        // fix322: retry recovered this type — undo the initial failCount so a
+        // successful retry can't leave us at the 3/3 throw with real data in
+        // hand (observed: Z2U recovered on retry but was still thrown away).
+        if (failCount > 0) failCount--;
+      }
     }
     if (movieCount == 0 && (source.lastMovieCount ?? 0) > 0) {
       movieCount =
           await retryType(getVods, getVodCategories, MediaType.movie);
-      if (movieCount == 0) keepMediaTypes.add(MediaType.movie.index);
+      if (movieCount == 0) {
+        keepMediaTypes.add(MediaType.movie.index);
+      } else if (failCount > 0) {
+        failCount--;
+      }
     }
     if (seriesCount == 0 && (source.lastSeriesCount ?? 0) > 0) {
       seriesCount =
           await retryType(getSeries, getSeriesCategories, MediaType.serie);
-      if (seriesCount == 0) keepMediaTypes.add(MediaType.serie.index);
+      if (seriesCount == 0) {
+        keepMediaTypes.add(MediaType.serie.index);
+      } else if (failCount > 0) {
+        failCount--;
+      }
     }
     if (keepMediaTypes.isNotEmpty) {
       AppLog.warn(
@@ -199,13 +214,27 @@ Future<void> getXtream(
   }
   statements.addAll(contentStatements);
 
-  if (failCount >= 3) {
+  // fix322: only treat this as a hard failure when every content type failed
+  // AND none of them were preserved from a prior refresh. If fix321 preserved
+  // existing rows for the empty types (source had prior data), the refresh is
+  // a successful no-op for those types — keep the old catalogue, don't throw a
+  // scary error or abort the commit of any type that did come back.
+  final everythingFailedWithNothingToKeep =
+      failCount >= 3 && keepMediaTypes.isEmpty;
+  if (everythingFailedWithNothingToKeep) {
     AppLog.warn(
       'Xtream: fetch failed source="${source.name}"'
       ' error=all content types failed ($failCount/3)',
     );
     throw Exception(
       "Failed to fetch source: all content types failed ($failCount/3)",
+    );
+  }
+  if (failCount >= 3 && keepMediaTypes.isNotEmpty) {
+    AppLog.warn(
+      'Xtream: all fresh fetches empty for source="${source.name}" but '
+      'existing rows preserved (${keepMediaTypes.toList()}) — keeping prior '
+      'catalogue, not treating as failure',
     );
   }
   AppLog.info(

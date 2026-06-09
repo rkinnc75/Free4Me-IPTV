@@ -683,12 +683,16 @@ class Sql {
       getAllChannelNamesForCache() async {
     final db = await DbFactory.db;
     final rows = await db.getAll(
+      // fix322: hide_dividers via LEFT JOIN (was a per-row correlated subquery
+      // that logged SLOW on huge catalogues). Column positions unchanged.
       'SELECT c.id, c.name, COALESCE(c.group_name, \'\'), c.media_type, c.source_id,'
       '       COALESCE(c.favorite, 0), c.last_watched, c.group_id, c.series_id,'
       '       c.stream_validated, COALESCE(c.is_divider, 0),'
-      '       COALESCE((SELECT hide_dividers FROM sources s WHERE s.id = c.source_id), 0),'
+      '       COALESCE(s.hide_dividers, 0),'
       '       COALESCE(c.is_adult, 0)'
-      ' FROM channels c WHERE c.url IS NOT NULL',
+      ' FROM channels c'
+      ' LEFT JOIN sources s ON s.id = c.source_id'
+      ' WHERE c.url IS NOT NULL',
     );
     return rows
         .map((r) => (

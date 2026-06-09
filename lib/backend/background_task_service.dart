@@ -59,20 +59,32 @@ class BackgroundTaskService {
     var started = false;
     try {
       await _ensureInit();
-      // Request notification permission (Android 13+); ignore the result —
-      // if denied, startService below simply won't show a notification.
+      // fix322: capture WHY the service fails on some devices. Log the
+      // notification-permission result and the startService outcome so the
+      // background feature can be diagnosed from the debug log (observed
+      // "startService not successful" with no detail on a real TV box).
       try {
-        await FlutterForegroundTask.requestNotificationPermission();
-      } catch (_) {}
+        final perm =
+            await FlutterForegroundTask.requestNotificationPermission();
+        AppLog.info('BackgroundTaskService: notification permission = $perm');
+      } catch (e) {
+        AppLog.warn(
+          'BackgroundTaskService: notification permission request failed — $e',
+        );
+      }
       final res = await FlutterForegroundTask.startService(
         notificationTitle: title,
         notificationText: 'Starting…',
       );
       started = res is ServiceRequestSuccess;
       if (!started) {
-        AppLog.warn('BackgroundTaskService: startService not successful — '
-            'running in foreground only');
-      } else {
+        AppLog.warn(
+          'BackgroundTaskService: startService not successful '
+          '(result=$res) — running in foreground only. The refresh will not '
+          'survive switching away on this device.',
+        );
+      }
+      if (started) {
         AppLog.info('BackgroundTaskService: started — "$title"');
       }
     } catch (e) {

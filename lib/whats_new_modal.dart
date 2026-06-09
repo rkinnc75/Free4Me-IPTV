@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.38': [
+    'More reliable refreshes: a temporary empty fetch is no longer reported as a hard error when existing channels were kept, and a content type recovered on retry is no longer discarded.',
+    'Background refresh now logs why the foreground service could not start (e.g. notification permission), to aid troubleshooting.',
+    'Performance: faster in-memory search cache build on large catalogues.',
+    'Exports now include a device name in the filename so backups/logs from different devices are easy to tell apart.',
+  ],
   '1.26.37': [
     'More reliable refreshes: if a provider returns an empty list for one content type (live, movies, or series) that it previously had — often a temporary hiccup, especially in the background — that type is retried once and, if still empty, its existing channels are kept instead of being wiped. The other content types still update normally.',
   ],

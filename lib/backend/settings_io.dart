@@ -9,6 +9,7 @@ import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/models/channel_preserve.dart';
 import 'package:open_tv/models/engine_type.dart';
+import 'package:open_tv/models/device_detector.dart';
 import 'package:open_tv/models/engine_preference.dart';
 import 'package:open_tv/models/multi_view_layout.dart';
 import 'package:open_tv/models/settings.dart';
@@ -26,6 +27,15 @@ class SettingsIo {
     String p2(int n) => n.toString().padLeft(2, '0');
     return '${now.year}${p2(now.month)}${p2(now.day)}'
         '-${p2(now.hour)}${p2(now.minute)}${p2(now.second)}';
+  }
+
+  /// fix322: `<deviceTag>-<stamp>` (or just `<stamp>` when no tag) so exports
+  /// from different devices don't collide / are self-identifying. e.g.
+  /// `shield-20260609-131737`.
+  static Future<String> stampWithDevice([DateTime? now]) async {
+    final stamp = exportStamp(now ?? DateTime.now());
+    final tag = await DeviceDetector.deviceTag();
+    return tag.isEmpty ? stamp : '$tag-$stamp';
   }
 
   /// Channel-attribute restores staged by importFromFile, keyed by
@@ -129,7 +139,7 @@ class SettingsIo {
       'sources': sourcesPayload,
     });
 
-    final stamp = exportStamp(DateTime.now()); // fix166
+    final stamp = await stampWithDevice(); // fix166/fix322
     final dir = await getTemporaryDirectory();
     final tmpFile = File('${dir.path}/free4me-backup-$stamp.json');
     await tmpFile.writeAsString(payload);

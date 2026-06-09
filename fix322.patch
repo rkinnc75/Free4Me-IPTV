@@ -1,0 +1,262 @@
+diff --git a/lib/backend/background_task_service.dart b/lib/backend/background_task_service.dart
+index 51f7b2f..ee4a607 100644
+--- a/lib/backend/background_task_service.dart
++++ b/lib/backend/background_task_service.dart
+@@ -59,20 +59,32 @@ class BackgroundTaskService {
+     var started = false;
+     try {
+       await _ensureInit();
+-      // Request notification permission (Android 13+); ignore the result —
+-      // if denied, startService below simply won't show a notification.
++      // fix322: capture WHY the service fails on some devices. Log the
++      // notification-permission result and the startService outcome so the
++      // background feature can be diagnosed from the debug log (observed
++      // "startService not successful" with no detail on a real TV box).
+       try {
+-        await FlutterForegroundTask.requestNotificationPermission();
+-      } catch (_) {}
++        final perm =
++            await FlutterForegroundTask.requestNotificationPermission();
++        AppLog.info('BackgroundTaskService: notification permission = $perm');
++      } catch (e) {
++        AppLog.warn(
++          'BackgroundTaskService: notification permission request failed — $e',
++        );
++      }
+       final res = await FlutterForegroundTask.startService(
+         notificationTitle: title,
+         notificationText: 'Starting…',
+       );
+       started = res is ServiceRequestSuccess;
+       if (!started) {
+-        AppLog.warn('BackgroundTaskService: startService not successful — '
+-            'running in foreground only');
+-      } else {
++        AppLog.warn(
++          'BackgroundTaskService: startService not successful '
++          '(result=$res) — running in foreground only. The refresh will not '
++          'survive switching away on this device.',
++        );
++      }
++      if (started) {
+         AppLog.info('BackgroundTaskService: started — "$title"');
+       }
+     } catch (e) {
+diff --git a/lib/backend/settings_io.dart b/lib/backend/settings_io.dart
+index cdf87be..313f285 100644
+--- a/lib/backend/settings_io.dart
++++ b/lib/backend/settings_io.dart
+@@ -9,6 +9,7 @@ import 'package:open_tv/backend/settings_service.dart';
+ import 'package:open_tv/backend/sql.dart';
+ import 'package:open_tv/models/channel_preserve.dart';
+ import 'package:open_tv/models/engine_type.dart';
++import 'package:open_tv/models/device_detector.dart';
+ import 'package:open_tv/models/engine_preference.dart';
+ import 'package:open_tv/models/multi_view_layout.dart';
+ import 'package:open_tv/models/settings.dart';
+@@ -28,6 +29,15 @@ class SettingsIo {
+         '-${p2(now.hour)}${p2(now.minute)}${p2(now.second)}';
+   }
+ 
++  /// fix322: `<deviceTag>-<stamp>` (or just `<stamp>` when no tag) so exports
++  /// from different devices don't collide / are self-identifying. e.g.
++  /// `shield-20260609-131737`.
++  static Future<String> stampWithDevice([DateTime? now]) async {
++    final stamp = exportStamp(now ?? DateTime.now());
++    final tag = await DeviceDetector.deviceTag();
++    return tag.isEmpty ? stamp : '$tag-$stamp';
++  }
++
+   /// Channel-attribute restores staged by importFromFile, keyed by
+   /// source name. Consumed by applyPendingPreserves once channel
+   /// rows are populated by the first source refresh.
+@@ -129,7 +139,7 @@ class SettingsIo {
+       'sources': sourcesPayload,
+     });
+ 
+-    final stamp = exportStamp(DateTime.now()); // fix166
++    final stamp = await stampWithDevice(); // fix166/fix322
+     final dir = await getTemporaryDirectory();
+     final tmpFile = File('${dir.path}/free4me-backup-$stamp.json');
+     await tmpFile.writeAsString(payload);
+diff --git a/lib/backend/sql.dart b/lib/backend/sql.dart
+index d712deb..67ba8da 100644
+--- a/lib/backend/sql.dart
++++ b/lib/backend/sql.dart
+@@ -683,12 +683,16 @@ class Sql {
+       getAllChannelNamesForCache() async {
+     final db = await DbFactory.db;
+     final rows = await db.getAll(
++      // fix322: hide_dividers via LEFT JOIN (was a per-row correlated subquery
++      // that logged SLOW on huge catalogues). Column positions unchanged.
+       'SELECT c.id, c.name, COALESCE(c.group_name, \'\'), c.media_type, c.source_id,'
+       '       COALESCE(c.favorite, 0), c.last_watched, c.group_id, c.series_id,'
+       '       c.stream_validated, COALESCE(c.is_divider, 0),'
+-      '       COALESCE((SELECT hide_dividers FROM sources s WHERE s.id = c.source_id), 0),'
++      '       COALESCE(s.hide_dividers, 0),'
+       '       COALESCE(c.is_adult, 0)'
+-      ' FROM channels c WHERE c.url IS NOT NULL',
++      ' FROM channels c'
++      ' LEFT JOIN sources s ON s.id = c.source_id'
++      ' WHERE c.url IS NOT NULL',
+     );
+     return rows
+         .map((r) => (
+diff --git a/lib/backend/xtream.dart b/lib/backend/xtream.dart
+index 145dede..049de73 100644
+--- a/lib/backend/xtream.dart
++++ b/lib/backend/xtream.dart
+@@ -174,17 +174,32 @@ Future<void> getXtream(
+     if (liveCount == 0 && (source.lastLiveCount ?? 0) > 0) {
+       liveCount = await retryType(
+           getLiveStreams, getLiveStreamCategories, MediaType.livestream);
+-      if (liveCount == 0) keepMediaTypes.add(MediaType.livestream.index);
++      if (liveCount == 0) {
++        keepMediaTypes.add(MediaType.livestream.index);
++      } else {
++        // fix322: retry recovered this type — undo the initial failCount so a
++        // successful retry can't leave us at the 3/3 throw with real data in
++        // hand (observed: Z2U recovered on retry but was still thrown away).
++        if (failCount > 0) failCount--;
++      }
+     }
+     if (movieCount == 0 && (source.lastMovieCount ?? 0) > 0) {
+       movieCount =
+           await retryType(getVods, getVodCategories, MediaType.movie);
+-      if (movieCount == 0) keepMediaTypes.add(MediaType.movie.index);
++      if (movieCount == 0) {
++        keepMediaTypes.add(MediaType.movie.index);
++      } else if (failCount > 0) {
++        failCount--;
++      }
+     }
+     if (seriesCount == 0 && (source.lastSeriesCount ?? 0) > 0) {
+       seriesCount =
+           await retryType(getSeries, getSeriesCategories, MediaType.serie);
+-      if (seriesCount == 0) keepMediaTypes.add(MediaType.serie.index);
++      if (seriesCount == 0) {
++        keepMediaTypes.add(MediaType.serie.index);
++      } else if (failCount > 0) {
++        failCount--;
++      }
+     }
+     if (keepMediaTypes.isNotEmpty) {
+       AppLog.warn(
+@@ -199,7 +214,14 @@ Future<void> getXtream(
+   }
+   statements.addAll(contentStatements);
+ 
+-  if (failCount >= 3) {
++  // fix322: only treat this as a hard failure when every content type failed
++  // AND none of them were preserved from a prior refresh. If fix321 preserved
++  // existing rows for the empty types (source had prior data), the refresh is
++  // a successful no-op for those types — keep the old catalogue, don't throw a
++  // scary error or abort the commit of any type that did come back.
++  final everythingFailedWithNothingToKeep =
++      failCount >= 3 && keepMediaTypes.isEmpty;
++  if (everythingFailedWithNothingToKeep) {
+     AppLog.warn(
+       'Xtream: fetch failed source="${source.name}"'
+       ' error=all content types failed ($failCount/3)',
+@@ -208,6 +230,13 @@ Future<void> getXtream(
+       "Failed to fetch source: all content types failed ($failCount/3)",
+     );
+   }
++  if (failCount >= 3 && keepMediaTypes.isNotEmpty) {
++    AppLog.warn(
++      'Xtream: all fresh fetches empty for source="${source.name}" but '
++      'existing rows preserved (${keepMediaTypes.toList()}) — keeping prior '
++      'catalogue, not treating as failure',
++    );
++  }
+   AppLog.info(
+     'Xtream: fetched source="${source.name}"'
+     ' live=$liveCount movies=$movieCount series=$seriesCount'
+diff --git a/lib/models/device_detector.dart b/lib/models/device_detector.dart
+index a79f917..1a63013 100644
+--- a/lib/models/device_detector.dart
++++ b/lib/models/device_detector.dart
+@@ -24,7 +24,30 @@ class DeviceDetector {
+         iosInfo.utsname.machine.toLowerCase().contains('appletv');
+   }
+ 
+-  /// fix314: detect NVIDIA Tegra / Shield, where concurrent mediacodec-copy
++  /// fix322: a short, filename-safe device tag (e.g. "shield", "onn4kplus")
++  /// so exports from different devices are distinguishable. Derived from the
++  /// Android model/device; cached after first read. Empty string on failure /
++  /// non-Android (callers should then omit the tag).
++  static String? _deviceTag;
++  static Future<String> deviceTag() async {
++    if (_deviceTag != null) return _deviceTag!;
++    if (!Platform.isAndroid) {
++      _deviceTag = '';
++      return '';
++    }
++    try {
++      final a = await _deviceInfo.androidInfo;
++      // Prefer model, fall back to device; strip to [a-z0-9], cap length.
++      final raw = (a.model.isNotEmpty ? a.model : a.device).toLowerCase();
++      final cleaned = raw.replaceAll(RegExp(r'[^a-z0-9]'), '');
++      _deviceTag = cleaned.isEmpty
++          ? ''
++          : (cleaned.length > 16 ? cleaned.substring(0, 16) : cleaned);
++    } catch (_) {
++      _deviceTag = '';
++    }
++    return _deviceTag!;
++  }
+   /// decode sessions (2×2 multi-view) corrupt colour output. Matches on
+   /// manufacturer/brand/board/hardware/model so it covers Shield TV variants.
+   static Future<bool> isTegra() async {
+diff --git a/lib/settings_view.dart b/lib/settings_view.dart
+index a6d767e..f7e7734 100644
+--- a/lib/settings_view.dart
++++ b/lib/settings_view.dart
+@@ -1127,7 +1127,7 @@ class _SettingsState extends State<SettingsView> {
+     if (!mounted) return;
+     final isTV = await DeviceDetector.isTV();
+     if (!mounted) return;
+-    final stamp = SettingsIo.exportStamp(DateTime.now());
++    final stamp = await SettingsIo.stampWithDevice(); // fix322
+     if (isTV) {
+       // fix311: regardless of entry point, the LAN server exports all three
+       // files (source dump, debug log, settings) plus a combined zip.
+@@ -3111,7 +3111,7 @@ class _SettingsState extends State<SettingsView> {
+                                 context,
+                                 content: log,
+                                 suggestedName:
+-                                    'free4me_log-${SettingsIo.exportStamp(DateTime.now())}.txt',
++                                    'free4me_log-${await SettingsIo.stampWithDevice()}.txt',
+                               );
+                             }
+                           }
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 6ca0480..1b25903 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.26.38': [
++    'More reliable refreshes: a temporary empty fetch is no longer reported as a hard error when existing channels were kept, and a content type recovered on retry is no longer discarded.',
++    'Background refresh now logs why the foreground service could not start (e.g. notification permission), to aid troubleshooting.',
++    'Performance: faster in-memory search cache build on large catalogues.',
++    'Exports now include a device name in the filename so backups/logs from different devices are easy to tell apart.',
++  ],
+   '1.26.37': [
+     'More reliable refreshes: if a provider returns an empty list for one content type (live, movies, or series) that it previously had — often a temporary hiccup, especially in the background — that type is retried once and, if still empty, its existing channels are kept instead of being wiped. The other content types still update normally.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index a9b1d21..53e6df9 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.26.37+321
++version: 1.26.38+322
+ 
+ environment:
+   sdk: ^3.10.7

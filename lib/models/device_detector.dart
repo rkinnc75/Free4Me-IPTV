@@ -24,7 +24,30 @@ class DeviceDetector {
         iosInfo.utsname.machine.toLowerCase().contains('appletv');
   }
 
-  /// fix314: detect NVIDIA Tegra / Shield, where concurrent mediacodec-copy
+  /// fix322: a short, filename-safe device tag (e.g. "shield", "onn4kplus")
+  /// so exports from different devices are distinguishable. Derived from the
+  /// Android model/device; cached after first read. Empty string on failure /
+  /// non-Android (callers should then omit the tag).
+  static String? _deviceTag;
+  static Future<String> deviceTag() async {
+    if (_deviceTag != null) return _deviceTag!;
+    if (!Platform.isAndroid) {
+      _deviceTag = '';
+      return '';
+    }
+    try {
+      final a = await _deviceInfo.androidInfo;
+      // Prefer model, fall back to device; strip to [a-z0-9], cap length.
+      final raw = (a.model.isNotEmpty ? a.model : a.device).toLowerCase();
+      final cleaned = raw.replaceAll(RegExp(r'[^a-z0-9]'), '');
+      _deviceTag = cleaned.isEmpty
+          ? ''
+          : (cleaned.length > 16 ? cleaned.substring(0, 16) : cleaned);
+    } catch (_) {
+      _deviceTag = '';
+    }
+    return _deviceTag!;
+  }
   /// decode sessions (2×2 multi-view) corrupt colour output. Matches on
   /// manufacturer/brand/board/hardware/model so it covers Shield TV variants.
   static Future<bool> isTegra() async {

@@ -1127,7 +1127,7 @@ class _SettingsState extends State<SettingsView> {
     if (!mounted) return;
     final isTV = await DeviceDetector.isTV();
     if (!mounted) return;
-    final stamp = SettingsIo.exportStamp(DateTime.now());
+    final stamp = await SettingsIo.stampWithDevice(); // fix322
     if (isTV) {
       // fix311: regardless of entry point, the LAN server exports all three
       // files (source dump, debug log, settings) plus a combined zip.
@@ -3111,7 +3111,7 @@ class _SettingsState extends State<SettingsView> {
                                 context,
                                 content: log,
                                 suggestedName:
-                                    'free4me_log-${SettingsIo.exportStamp(DateTime.now())}.txt',
+                                    'free4me_log-${await SettingsIo.stampWithDevice()}.txt',
                               );
                             }
                           }
