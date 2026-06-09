@@ -391,7 +391,15 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git fetch origin main
+          # fix325 follow-up: the earlier "Ensure version.json is current
+          # (regenerate, non-fatal)" build step leaves version.json dirty in the
+          # working tree, which makes the checkout below abort with "local
+          # changes would be overwritten" (observed on the fix324/fix325 back-to-
+          # back release race). Stash it first (mirrors the analyze-job
+          # self-heal step); we regenerate version.json fresh right after.
+          git stash --include-untracked || true
           git checkout -B main origin/main
+          git stash drop || true
           python3 scripts/update_version_json.py
           if ! git diff --quiet version.json; then
             git add version.json
