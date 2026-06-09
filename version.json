@@ -1,8 +1,8 @@
 {
-  "latest": "1.26.31",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.31",
+  "latest": "1.26.32",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.32",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Settings: Backup & Restore, Reset, and Diagnostics are now collapsible groups like the others; Diagnostics moved to the bottom.\n\u2022 Settings: the player engine option now offers libmpv \u2192 ExoPlayer (default), ExoPlayer \u2192 libmpv, libmpv only, or ExoPlayer only instead of Auto.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.31/Free4Me-IPTV-1.26.31-arm64.apk"
+  "releaseNotes": "\u2022 Playback: if the chosen engine opens a stream but fails to show video (black screen / no frames) or fails to open, the app now automatically tries your fallback engine once (when your Player engine setting has one, e.g. libmpv \u2192 ExoPlayer).",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.32/Free4Me-IPTV-1.26.32-arm64.apk"
 }
