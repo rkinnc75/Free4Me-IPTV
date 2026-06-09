@@ -1950,6 +1950,27 @@ class _SettingsState extends State<SettingsView> {
                           updateSettings();
                         },
                       ),
+                      // fix318: keep source refreshes running in the background.
+                      _switchTile(
+                        label: "Keep refreshes running in background",
+                        value: settings.backgroundProcessing,
+                        help: (
+                          title: 'Background processing',
+                          body:
+                              'Android only. When ON, a source refresh keeps '
+                              'running via a foreground service (with a '
+                              'notification) if you switch away from the app, '
+                              'instead of pausing.\n\n'
+                              'Default: OFF.\n\n'
+                              'You may be asked to allow notifications the '
+                              'first time. If you decline, refreshes still run '
+                              'while the app is open.',
+                        ),
+                        onChanged: (v) {
+                          setState(() => settings.backgroundProcessing = v);
+                          updateSettings();
+                        },
+                      ),
                       _engineSelectionTile(settings),
                     ],
                   ),

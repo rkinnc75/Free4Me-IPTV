@@ -448,6 +448,7 @@ class SettingsIo {
         'lowLatency': s.lowLatency,
         'hwDecode': s.hwDecode,
         'preWarmOnFocus': s.preWarmOnFocus,
+        'backgroundProcessing': s.backgroundProcessing, // fix318
         'liveCacheSecs': s.liveCacheSecs,
         'liveDemuxerMaxMB': s.liveDemuxerMaxMB,
         'vodCacheSecs': s.vodCacheSecs,
@@ -495,6 +496,7 @@ class SettingsIo {
       lowLatency: m['lowLatency'] as bool? ?? false,
       hwDecode: m['hwDecode'] as bool? ?? true,
       preWarmOnFocus: m['preWarmOnFocus'] as bool? ?? true,
+      backgroundProcessing: m['backgroundProcessing'] as bool? ?? false,
       liveCacheSecs: m['liveCacheSecs'] as int? ?? 20,
       liveDemuxerMaxMB: m['liveDemuxerMaxMB'] as int? ?? 150,
       vodCacheSecs: m['vodCacheSecs'] as int? ?? 60,

@@ -30,6 +30,7 @@ const openTimeoutSecsProp = "openTimeoutSecs";
 const bufferingWatchdogSecsProp = "bufferingWatchdogSecs";
 const hwDecodeProp = "hwDecode";
 const preWarmOnFocusProp = "preWarmOnFocus";
+const backgroundProcessingProp = "backgroundProcessing"; // fix318
 
 // Engine override (v1.4)
 const forcedEngineProp = "forcedEngine";
@@ -111,6 +112,7 @@ class SettingsService {
     var watchdog = settingsMap[bufferingWatchdogSecsProp];
     var hw = settingsMap[hwDecodeProp];
     var prewarm = settingsMap[preWarmOnFocusProp];
+    var bgProc = settingsMap[backgroundProcessingProp];
     var debugLog = settingsMap[debugLoggingProp];
     var epgAuto = settingsMap[epgAutoRefreshProp];
     var epgHours = settingsMap[epgRefreshHoursProp];
@@ -149,6 +151,7 @@ class SettingsService {
     if (watchdog != null) settings.bufferingWatchdogSecs = int.parse(watchdog);
     if (hw != null) settings.hwDecode = int.parse(hw) == 1;
     if (prewarm != null) settings.preWarmOnFocus = int.parse(prewarm) == 1;
+    if (bgProc != null) settings.backgroundProcessing = int.parse(bgProc) == 1;
     if (debugLog != null) settings.debugLogging = int.parse(debugLog) == 1;
     if (epgAuto != null) settings.epgAutoRefresh = int.parse(epgAuto) == 1;
     if (epgHours != null) settings.epgRefreshHours = int.parse(epgHours);
@@ -264,6 +267,8 @@ class SettingsService {
     settingsMap[bufferingWatchdogSecsProp] =
         settings.bufferingWatchdogSecs.toString();
     settingsMap[hwDecodeProp] = (settings.hwDecode ? 1 : 0).toString();
+    settingsMap[backgroundProcessingProp] =
+        (settings.backgroundProcessing ? 1 : 0).toString();
     settingsMap[preWarmOnFocusProp] = (settings.preWarmOnFocus ? 1 : 0)
         .toString();
     settingsMap[debugLoggingProp] = (settings.debugLogging ? 1 : 0).toString();

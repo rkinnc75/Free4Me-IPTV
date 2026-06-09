@@ -74,6 +74,10 @@ class Settings {
 
   /// Pre-warm channel URL (HEAD request) when a tile receives focus.
   bool preWarmOnFocus;
+  /// fix318: keep long operations (source refresh) running in an Android
+  /// foreground service so they survive the user switching away. Default off
+  /// until validated on-device. Android-only; ignored elsewhere.
+  bool backgroundProcessing;
 
   /// Global engine override. [EngineType.auto] means let EnginePicker decide.
   /// fix315: superseded for the global setting by [enginePreference]; kept for
@@ -183,6 +187,7 @@ class Settings {
     this.startupGraceMs = 500,
     this.hwDecode = true,
     this.preWarmOnFocus = true,
+    this.backgroundProcessing = false,
     this.forcedEngine = EngineType.auto,
     this.enginePreference = EnginePreference.libmpvExo,
     this.debugLogging = false,

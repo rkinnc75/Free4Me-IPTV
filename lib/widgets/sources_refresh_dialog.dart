@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/utils.dart';
+import 'package:open_tv/backend/background_task_service.dart';
+import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/models/source.dart';
 
 /// Show a modal progress dialog while [Utils.refreshAllSources] runs,
@@ -134,38 +136,50 @@ Future<void> showSourcesRefreshDialog(BuildContext context) async {
     AppLog.info('SourcesRefreshDialog: starting refresh');
 
     try {
-      await Utils.refreshAllSources(
-        onSourceRowProgress: (Source src, int d, int t) {
-          setSt(() {
-            if (saveStartedAt == null || t != rowsTotal) {
-              saveStartedAt = DateTime.now();
-            }
-            rowsDone = d;
-            rowsTotal = t;
-          });
-        },
-        onSourceStart: (int i, int total, Source source) {
-          AppLog.info(
-            'SourcesRefreshDialog: source $i/$total'
-            ' "${source.name}" starting',
+      // fix318: when background processing is enabled, hold the process alive
+      // with a foreground service so the refresh survives app-switching. The
+      // work still runs on the main isolate; the service only promotes the
+      // process and mirrors progress to its notification.
+      await BackgroundTaskService.run<void>(
+        enabled: SettingsService.cached?.backgroundProcessing ?? false,
+        title: 'Refreshing sources',
+        work: (update) async {
+          await Utils.refreshAllSources(
+            onSourceRowProgress: (Source src, int d, int t) {
+              setSt(() {
+                if (saveStartedAt == null || t != rowsTotal) {
+                  saveStartedAt = DateTime.now();
+                }
+                rowsDone = d;
+                rowsTotal = t;
+              });
+              if (t > 0) update('${src.name}: $d / $t');
+            },
+            onSourceStart: (int i, int total, Source source) {
+              AppLog.info(
+                'SourcesRefreshDialog: source $i/$total'
+                ' "${source.name}" starting',
+              );
+              setSt(() {
+                sourceIndex = i;
+                sourceTotal = total;
+                status = 'Loading "${source.name}"…';
+              });
+              update('Loading "${source.name}" ($i/$total)…');
+            },
+            onSourceStatus: (Source source, String msg) {
+              if (AppLog.enabled) {
+                AppLog.info(
+                  'SourcesRefreshDialog: "${source.name}"'
+                  ' — ${msg.length > 80 ? "${msg.substring(0, 80)}…" : msg}',
+                );
+              }
+              setSt(() {
+                status = '${source.name}: '
+                    '${msg.length > 60 ? "${msg.substring(0, 60)}…" : msg}';
+              });
+            },
           );
-          setSt(() {
-            sourceIndex = i;
-            sourceTotal = total;
-            status = 'Loading "${source.name}"…';
-          });
-        },
-        onSourceStatus: (Source source, String msg) {
-          if (AppLog.enabled) {
-            AppLog.info(
-              'SourcesRefreshDialog: "${source.name}"'
-              ' — ${msg.length > 80 ? "${msg.substring(0, 80)}…" : msg}',
-            );
-          }
-          setSt(() {
-            status = '${source.name}: '
-                '${msg.length > 60 ? "${msg.substring(0, 60)}…" : msg}';
-          });
         },
       );
       AppLog.info(

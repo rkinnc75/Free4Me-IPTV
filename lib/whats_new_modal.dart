@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.34': [
+    'New (Android): optional "Keep refreshes running in background" setting. When on, a source refresh continues via a foreground notification if you leave the app. Off by default.',
+  ],
   '1.26.33': [
     'New: the TV export web page (QR portal) can now also import a settings file to add its sources to this device. Only sources are imported (other settings are skipped), and sources refresh automatically afterward.',
   ],
