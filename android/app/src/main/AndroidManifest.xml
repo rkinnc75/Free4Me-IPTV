@@ -57,6 +57,18 @@
         <meta-data
             android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
             android:value="me.free4me.iptv.CastOptionsProvider" />
+        <!-- fix323: flutter_foreground_task REQUIRES this service declaration.
+             Without it, FlutterForegroundTask.startService() returns
+             ServiceRequestFailure on Android 14+ (observed on Galaxy S24 Ultra:
+             notification permission granted but startService still failed).
+             Service name is fixed by the plugin — do NOT rename. The
+             foregroundServiceType MUST match a FOREGROUND_SERVICE_* permission
+             above (dataSync). stopWithTask=true keeps it tied to the app. -->
+        <service
+            android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
+            android:foregroundServiceType="dataSync"
+            android:stopWithTask="true"
+            android:exported="false" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

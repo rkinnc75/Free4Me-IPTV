@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.39': [
+    'Background refresh can now actually run on Android 14+ devices — the foreground service was failing to start due to a missing system declaration. Turning on Background processing and switching away from the app will now keep a refresh running.',
+  ],
   '1.26.38': [
     'More reliable refreshes: a temporary empty fetch is no longer reported as a hard error when existing channels were kept, and a content type recovered on retry is no longer discarded.',
     'Background refresh now logs why the foreground service could not start (e.g. notification permission), to aid troubleshooting.',

@@ -1,0 +1,50 @@
+diff --git a/android/app/src/main/AndroidManifest.xml b/android/app/src/main/AndroidManifest.xml
+index 0cd1087..c0932b7 100644
+--- a/android/app/src/main/AndroidManifest.xml
++++ b/android/app/src/main/AndroidManifest.xml
+@@ -57,6 +57,18 @@
+         <meta-data
+             android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
+             android:value="me.free4me.iptv.CastOptionsProvider" />
++        <!-- fix323: flutter_foreground_task REQUIRES this service declaration.
++             Without it, FlutterForegroundTask.startService() returns
++             ServiceRequestFailure on Android 14+ (observed on Galaxy S24 Ultra:
++             notification permission granted but startService still failed).
++             Service name is fixed by the plugin — do NOT rename. The
++             foregroundServiceType MUST match a FOREGROUND_SERVICE_* permission
++             above (dataSync). stopWithTask=true keeps it tied to the app. -->
++        <service
++            android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
++            android:foregroundServiceType="dataSync"
++            android:stopWithTask="true"
++            android:exported="false" />
+     </application>
+     <!-- Required to query activities that can process text, see:
+          https://developer.android.com/training/package-visibility and
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 1b25903..ff66f4e 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.26.39': [
++    'Background refresh can now actually run on Android 14+ devices — the foreground service was failing to start due to a missing system declaration. Turning on Background processing and switching away from the app will now keep a refresh running.',
++  ],
+   '1.26.38': [
+     'More reliable refreshes: a temporary empty fetch is no longer reported as a hard error when existing channels were kept, and a content type recovered on retry is no longer discarded.',
+     'Background refresh now logs why the foreground service could not start (e.g. notification permission), to aid troubleshooting.',
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 53e6df9..7f68258 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.26.38+322
++version: 1.26.39+323
+ 
+ environment:
+   sdk: ^3.10.7
