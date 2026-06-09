@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.40': [
+    'Fixed the Edit Source screen on TV: the form is now scrollable, so the channel-order options, the hide-headers switch, the source info, and the Save/Cancel buttons are all reachable instead of being cut off at the bottom.',
+  ],
   '1.26.39': [
     'Background refresh can now actually run on Android 14+ devices — the foreground service was failing to start due to a missing system declaration. Turning on Background processing and switching away from the app will now keep a refresh running.',
   ],

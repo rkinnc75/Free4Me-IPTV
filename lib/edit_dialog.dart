@@ -30,9 +30,18 @@ class _EditDialogState extends State<EditDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-        child: SingleChildScrollView(
-            child: AlertDialog(
+    // fix324: the previous layout wrapped the AlertDialog in a
+    // SingleChildScrollView. That scrolls the *dialog box*, not its content, so
+    // the AlertDialog still sized itself to its natural height and clipped the
+    // bottom of the form with nothing scrollable — unreachable on TV where the
+    // usable height is shorter (could not see Save/Cancel or the info rows).
+    // Instead let the AlertDialog lay itself out and make its own content
+    // scrollable (scrollable: true), capped to the viewport so it never grows
+    // past the screen.
+    final media = MediaQuery.of(context);
+    final maxContentHeight = media.size.height - media.viewInsets.bottom - 220;
+    return AlertDialog(
+      scrollable: true,
       title: Text("Edit source ${widget.source.name}"),
       actions: [
         TextButton(
@@ -78,7 +87,9 @@ class _EditDialogState extends State<EditDialog> {
             onPressed: () => Navigator.of(context).pop(),
             child: const Text("Cancel"))
       ],
-      content: FormBuilder(
+      content: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxContentHeight),
+        child: FormBuilder(
           key: _formKey,
           child: FocusTraversalGroup(
             policy: OrderedTraversalPolicy(),
@@ -215,8 +226,10 @@ class _EditDialogState extends State<EditDialog> {
                   ),
                 ),
             ],
-          ))),
-    )));
+          )),
+        ),
+      ),
+    );
   }
 
   /// fix268: a count value, or an en-dash when not yet recorded.

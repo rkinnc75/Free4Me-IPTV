@@ -1,0 +1,77 @@
+diff --git a/lib/edit_dialog.dart b/lib/edit_dialog.dart
+index 122e6bd..686db75 100644
+--- a/lib/edit_dialog.dart
++++ b/lib/edit_dialog.dart
+@@ -30,9 +30,18 @@ class _EditDialogState extends State<EditDialog> {
+ 
+   @override
+   Widget build(BuildContext context) {
+-    return Center(
+-        child: SingleChildScrollView(
+-            child: AlertDialog(
++    // fix324: the previous layout wrapped the AlertDialog in a
++    // SingleChildScrollView. That scrolls the *dialog box*, not its content, so
++    // the AlertDialog still sized itself to its natural height and clipped the
++    // bottom of the form with nothing scrollable — unreachable on TV where the
++    // usable height is shorter (could not see Save/Cancel or the info rows).
++    // Instead let the AlertDialog lay itself out and make its own content
++    // scrollable (scrollable: true), capped to the viewport so it never grows
++    // past the screen.
++    final media = MediaQuery.of(context);
++    final maxContentHeight = media.size.height - media.viewInsets.bottom - 220;
++    return AlertDialog(
++      scrollable: true,
+       title: Text("Edit source ${widget.source.name}"),
+       actions: [
+         TextButton(
+@@ -78,7 +87,9 @@ class _EditDialogState extends State<EditDialog> {
+             onPressed: () => Navigator.of(context).pop(),
+             child: const Text("Cancel"))
+       ],
+-      content: FormBuilder(
++      content: ConstrainedBox(
++        constraints: BoxConstraints(maxHeight: maxContentHeight),
++        child: FormBuilder(
+           key: _formKey,
+           child: FocusTraversalGroup(
+             policy: OrderedTraversalPolicy(),
+@@ -215,8 +226,10 @@ class _EditDialogState extends State<EditDialog> {
+                   ),
+                 ),
+             ],
+-          ))),
+-    )));
++          )),
++        ),
++      ),
++    );
+   }
+ 
+   /// fix268: a count value, or an en-dash when not yet recorded.
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index ff66f4e..5d73b8e 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.26.40': [
++    'Fixed the Edit Source screen on TV: the form is now scrollable, so the channel-order options, the hide-headers switch, the source info, and the Save/Cancel buttons are all reachable instead of being cut off at the bottom.',
++  ],
+   '1.26.39': [
+     'Background refresh can now actually run on Android 14+ devices — the foreground service was failing to start due to a missing system declaration. Turning on Background processing and switching away from the app will now keep a refresh running.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 7f68258..11015b8 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.26.39+323
++version: 1.26.40+324
+ 
+ environment:
+   sdk: ^3.10.7
