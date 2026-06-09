@@ -1,8 +1,8 @@
 {
-  "latest": "1.26.30",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.30",
+  "latest": "1.26.31",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.31",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 New: Multi-view decode setting (Auto / Hardware / Software). On NVIDIA Shield / Tegra, Auto now uses software decode to fix the colour corruption seen in the 2\u00d72 grid.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.30/Free4Me-IPTV-1.26.30-arm64.apk"
+  "releaseNotes": "\u2022 Settings: Backup & Restore, Reset, and Diagnostics are now collapsible groups like the others; Diagnostics moved to the bottom.\n\u2022 Settings: the player engine option now offers libmpv \u2192 ExoPlayer (default), ExoPlayer \u2192 libmpv, libmpv only, or ExoPlayer only instead of Auto.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.31/Free4Me-IPTV-1.26.31-arm64.apk"
 }
