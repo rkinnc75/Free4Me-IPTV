@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.32': [
+    'Playback: if the chosen engine opens a stream but fails to show video (black screen / no frames) or fails to open, the app now automatically tries your fallback engine once (when your Player engine setting has one, e.g. libmpv → ExoPlayer).',
+  ],
   '1.26.31': [
     'Settings: Backup & Restore, Reset, and Diagnostics are now collapsible groups like the others; Diagnostics moved to the bottom.',
     'Settings: the player engine option now offers libmpv → ExoPlayer (default), ExoPlayer → libmpv, libmpv only, or ExoPlayer only instead of Auto.',

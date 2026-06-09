@@ -110,6 +110,14 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   /// Player widget. Prevents an infinite swap loop if both engines fail.
   bool _exoFallbackTried = false;
 
+  /// fix316: one-shot runtime decode/engine fallback. When the primary engine
+  /// fails to render (open error OR startup watchdog = open-succeeded-but-no-
+  /// frame / black screen) and the user's enginePreference defines a fallback
+  /// (libmpv↔ExoPlayer), swap to that engine once before burning the reconnect
+  /// budget on the same engine. Cannot detect colour corruption — only stalls/
+  /// black screen / open failures.
+  bool _prefFallbackTried = false;
+
   // Reconnect bookkeeping
   int _consecutiveOpenFailures = 0;
   /// fix112: whether the most recent engine error arrived "instantly"
@@ -674,7 +682,19 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
                   ' — open succeeded but no frame'
                   ' channel="${widget.channel.name}"',
                 );
-                onDisconnect(reason: 'startup watchdog');
+                // fix316: no-frame / black-screen after a successful open is
+                // the classic "this engine can't render this stream" signal.
+                // Try the configured fallback engine once before a same-engine
+                // reconnect. If no fallback applies, fall through to the normal
+                // disconnect/reconnect path.
+                () async {
+                  if (await _tryPreferenceFallback('startup watchdog')) {
+                    if (!mounted || exiting) return;
+                    await _startPlayback(null, headers: headers);
+                  } else {
+                    onDisconnect(reason: 'startup watchdog');
+                  }
+                }();
               }
             },
           );
@@ -722,6 +742,13 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
           ' ($_consecutiveOpenFailures/${widget.settings.maxReconnectAttempts})'
           ' — $e — channel="${widget.channel.name}"',
         );
+        // fix316: before spending the reconnect budget on the same engine,
+        // try the user's configured fallback engine once (libmpv↔ExoPlayer).
+        if (await _tryPreferenceFallback('open failed: $e')) {
+          if (!mounted || exiting) return;
+          _consecutiveOpenFailures = 0;
+          continue;
+        }
         if (_consecutiveOpenFailures >= widget.settings.maxReconnectAttempts) {
           if (mounted) {
             setState(
@@ -754,6 +781,27 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     return err.contains('Source error') ||
         err.contains('VideoError') ||
         err.contains('ExoPlaybackException');
+  }
+
+  /// fix316: if the user's engine preference defines a fallback and we haven't
+  /// used it yet, swap the current (primary) engine to the fallback engine and
+  /// return true. Returns false when no fallback applies (single-engine modes,
+  /// already tried, or already on the fallback engine). Used on no-frame /
+  /// black-screen stalls and as the generalized open-error fallback.
+  Future<bool> _tryPreferenceFallback(String reason) async {
+    if (_prefFallbackTried) return false;
+    final pref = widget.settings.enginePreference;
+    if (!pref.hasFallback) return false;
+    final target = pref.fallback;
+    if (target == _engineType) return false; // already on the fallback engine
+    _prefFallbackTried = true;
+    AppLog.warn(
+      'Player: fix316 engine fallback ${_engineType.name} → ${target.name}'
+      ' (pref=${pref.name}, reason="$reason")'
+      ' channel="${widget.channel.name}"',
+    );
+    await _swapEngine(target);
+    return true;
   }
 
   /// Mid-flight engine swap. Cancels the current engine's stream

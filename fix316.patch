@@ -1,0 +1,109 @@
+diff --git a/lib/player.dart b/lib/player.dart
+index 057e2ac..e17158f 100644
+--- a/lib/player.dart
++++ b/lib/player.dart
+@@ -110,6 +110,14 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+   /// Player widget. Prevents an infinite swap loop if both engines fail.
+   bool _exoFallbackTried = false;
+ 
++  /// fix316: one-shot runtime decode/engine fallback. When the primary engine
++  /// fails to render (open error OR startup watchdog = open-succeeded-but-no-
++  /// frame / black screen) and the user's enginePreference defines a fallback
++  /// (libmpv↔ExoPlayer), swap to that engine once before burning the reconnect
++  /// budget on the same engine. Cannot detect colour corruption — only stalls/
++  /// black screen / open failures.
++  bool _prefFallbackTried = false;
++
+   // Reconnect bookkeeping
+   int _consecutiveOpenFailures = 0;
+   /// fix112: whether the most recent engine error arrived "instantly"
+@@ -674,7 +682,19 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+                   ' — open succeeded but no frame'
+                   ' channel="${widget.channel.name}"',
+                 );
+-                onDisconnect(reason: 'startup watchdog');
++                // fix316: no-frame / black-screen after a successful open is
++                // the classic "this engine can't render this stream" signal.
++                // Try the configured fallback engine once before a same-engine
++                // reconnect. If no fallback applies, fall through to the normal
++                // disconnect/reconnect path.
++                () async {
++                  if (await _tryPreferenceFallback('startup watchdog')) {
++                    if (!mounted || exiting) return;
++                    await _startPlayback(null, headers: headers);
++                  } else {
++                    onDisconnect(reason: 'startup watchdog');
++                  }
++                }();
+               }
+             },
+           );
+@@ -722,6 +742,13 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+           ' ($_consecutiveOpenFailures/${widget.settings.maxReconnectAttempts})'
+           ' — $e — channel="${widget.channel.name}"',
+         );
++        // fix316: before spending the reconnect budget on the same engine,
++        // try the user's configured fallback engine once (libmpv↔ExoPlayer).
++        if (await _tryPreferenceFallback('open failed: $e')) {
++          if (!mounted || exiting) return;
++          _consecutiveOpenFailures = 0;
++          continue;
++        }
+         if (_consecutiveOpenFailures >= widget.settings.maxReconnectAttempts) {
+           if (mounted) {
+             setState(
+@@ -756,6 +783,27 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+         err.contains('ExoPlaybackException');
+   }
+ 
++  /// fix316: if the user's engine preference defines a fallback and we haven't
++  /// used it yet, swap the current (primary) engine to the fallback engine and
++  /// return true. Returns false when no fallback applies (single-engine modes,
++  /// already tried, or already on the fallback engine). Used on no-frame /
++  /// black-screen stalls and as the generalized open-error fallback.
++  Future<bool> _tryPreferenceFallback(String reason) async {
++    if (_prefFallbackTried) return false;
++    final pref = widget.settings.enginePreference;
++    if (!pref.hasFallback) return false;
++    final target = pref.fallback;
++    if (target == _engineType) return false; // already on the fallback engine
++    _prefFallbackTried = true;
++    AppLog.warn(
++      'Player: fix316 engine fallback ${_engineType.name} → ${target.name}'
++      ' (pref=${pref.name}, reason="$reason")'
++      ' channel="${widget.channel.name}"',
++    );
++    await _swapEngine(target);
++    return true;
++  }
++
+   /// Mid-flight engine swap. Cancels the current engine's stream
+   /// subscriptions, disposes it, instantiates [type], re-registers with the
+   /// overlay controller, and re-subscribes to lifecycle streams. Triggers a
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index aa43008..e868451 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.26.32': [
++    'Playback: if the chosen engine opens a stream but fails to show video (black screen / no frames) or fails to open, the app now automatically tries your fallback engine once (when your Player engine setting has one, e.g. libmpv → ExoPlayer).',
++  ],
+   '1.26.31': [
+     'Settings: Backup & Restore, Reset, and Diagnostics are now collapsible groups like the others; Diagnostics moved to the bottom.',
+     'Settings: the player engine option now offers libmpv → ExoPlayer (default), ExoPlayer → libmpv, libmpv only, or ExoPlayer only instead of Auto.',
+diff --git a/pubspec.yaml b/pubspec.yaml
+index fc3a056..4c9a346 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.26.31+315
++version: 1.26.32+316
+ 
+ environment:
+   sdk: ^3.10.7
