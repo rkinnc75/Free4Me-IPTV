@@ -1,8 +1,8 @@
 {
-  "latest": "1.26.39",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.39",
+  "latest": "1.26.41",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.41",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Background refresh can now actually run on Android 14+ devices \u2014 the foreground service was failing to start due to a missing system declaration. Turning on Background processing and switching away from the app will now keep a refresh running.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.39/Free4Me-IPTV-1.26.39-arm64.apk"
+  "releaseNotes": "\u2022 Internal: added an automated test suite (refresh retry/preserve logic, database wipe behaviour, player-engine preferences, export device tags) that now runs in CI and gates every release.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.41/Free4Me-IPTV-1.26.41-arm64.apk"
 }
