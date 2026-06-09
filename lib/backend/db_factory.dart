@@ -462,6 +462,19 @@ class DbFactory {
       ..add(SqliteMigration(25, (tx) async {
         await tx.execute(
             'ALTER TABLE groups ADD COLUMN favorite INTEGER DEFAULT 0;');
+      }))
+      // fix319: composite indexes to speed up the no-query / history browse on
+      // very large catalogues (700k+ channels on low-RAM TV boxes were taking
+      // 20-30s full scans). Lets the planner seek by source + media type, and
+      // by last_watched for the History view, instead of scanning all rows.
+      ..add(SqliteMigration(26, (tx) async {
+        await tx.execute(
+            'CREATE INDEX IF NOT EXISTS idx_channel_src_media_url '
+            'ON channels(source_id, media_type, url);');
+        await tx.execute(
+            'CREATE INDEX IF NOT EXISTS idx_channel_lastwatched_media '
+            'ON channels(last_watched, media_type) '
+            'WHERE last_watched IS NOT NULL;');
       }));
     await migrations.migrate(db);
 

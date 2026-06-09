@@ -1,0 +1,119 @@
+diff --git a/lib/backend/channel_search_cache.dart b/lib/backend/channel_search_cache.dart
+index 61782d8..89283c4 100644
+--- a/lib/backend/channel_search_cache.dart
++++ b/lib/backend/channel_search_cache.dart
+@@ -1,4 +1,5 @@
+ import 'package:open_tv/backend/app_logger.dart';
++import 'package:open_tv/backend/device_memory.dart';
+ import 'package:open_tv/backend/sql.dart';
+ import 'package:open_tv/models/view_type.dart';
+ 
+@@ -97,6 +98,14 @@ class ChannelSearchCache {
+ 
+   static bool _built = false;
+ 
++  /// fix319: minimum device RAM (MB) to build the full in-memory search cache.
++  /// Below this, the cache is skipped and search uses direct SQL — large
++  /// catalogues (700k+) otherwise OOM-crash low-RAM TV boxes.
++  static const int _minRamMbForCache = 2300;
++
++  /// True when the in-memory cache is intentionally not used on this device.
++  static bool get cacheSkipped => DeviceMemory.totalMb < _minRamMbForCache;
++
+   /// fix298: ids of groups with enabled=0. Checked in [search] BEFORE the
+   /// limit so disabled categories don't consume page slots. Mutable at runtime
+   /// (category toggle) via [setGroupEnabled]/[setGroupsEnabledBulk] without a
+@@ -142,6 +151,7 @@ class ChannelSearchCache {
+   /// Rebuild the cache from the channels table.
+   /// Call after every source refresh completes.
+   static Future<void> rebuild() async {
++    if (cacheSkipped) return; // fix319: low-RAM devices use direct SQL search
+     final generation = _generation;
+     final t = DateTime.now();
+     final rows = await Sql.getAllChannelNamesForCache();
+@@ -206,6 +216,17 @@ class ChannelSearchCache {
+   /// - Not built → starts a new build.
+   static Future<void> ensureBuilt() {
+     if (_built) return Future.value();
++    // fix319: on low-RAM devices (e.g. onn 4K Plus, ~2GB) a full in-memory
++    // cache of a 700k+ channel catalogue is ~60MB+ and takes 30s+ to build,
++    // causing OOM restarts. Skip the cache entirely there; search falls back
++    // to direct SQL (see Sql.search / cacheSkipped).
++    if (cacheSkipped) {
++      AppLog.info(
++        'ChannelSearchCache: skipped (low RAM ${DeviceMemory.totalMb}MB '
++        '< ${_minRamMbForCache}MB) — using direct SQL search',
++      );
++      return Future.value();
++    }
+     final inFlight = _buildFuture;
+     if (inFlight != null) return inFlight;
+     _buildFuture = rebuild().whenComplete(() => _buildFuture = null);
+diff --git a/lib/backend/db_factory.dart b/lib/backend/db_factory.dart
+index e5bc517..5266dcd 100644
+--- a/lib/backend/db_factory.dart
++++ b/lib/backend/db_factory.dart
+@@ -462,6 +462,19 @@ class DbFactory {
+       ..add(SqliteMigration(25, (tx) async {
+         await tx.execute(
+             'ALTER TABLE groups ADD COLUMN favorite INTEGER DEFAULT 0;');
++      }))
++      // fix319: composite indexes to speed up the no-query / history browse on
++      // very large catalogues (700k+ channels on low-RAM TV boxes were taking
++      // 20-30s full scans). Lets the planner seek by source + media type, and
++      // by last_watched for the History view, instead of scanning all rows.
++      ..add(SqliteMigration(26, (tx) async {
++        await tx.execute(
++            'CREATE INDEX IF NOT EXISTS idx_channel_src_media_url '
++            'ON channels(source_id, media_type, url);');
++        await tx.execute(
++            'CREATE INDEX IF NOT EXISTS idx_channel_lastwatched_media '
++            'ON channels(last_watched, media_type) '
++            'WHERE last_watched IS NOT NULL;');
+       }));
+     await migrations.migrate(db);
+ 
+diff --git a/lib/backend/sql.dart b/lib/backend/sql.dart
+index f336e3c..b580598 100644
+--- a/lib/backend/sql.dart
++++ b/lib/backend/sql.dart
+@@ -448,7 +448,11 @@ class Sql {
+     List<Object> params = [];
+ 
+     if (useFts) {
+-      if (filters.searchMethod == SearchMethod.inMemory) {
++      // fix319: on low-RAM devices the in-memory cache is never built, so the
++      // inMemory method would return nothing — fall through to the FTS SQL
++      // path instead.
++      if (filters.searchMethod == SearchMethod.inMemory &&
++          !ChannelSearchCache.cacheSkipped) {
+         return _searchInMemory(filters, rawQuery, mediaTypes, offset);
+       }
+       if (filters.searchMethod == SearchMethod.likeSubstring) {
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 751bcdc..19d5a25 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.26.35': [
++    'Performance: large channel catalogues (hundreds of thousands of channels) no longer freeze or crash on low-memory TV boxes — the in-memory search cache is skipped there and searches run directly, with new indexes to keep browsing fast.',
++  ],
+   '1.26.34': [
+     'New (Android): optional "Keep refreshes running in background" setting. When on, a source refresh continues via a foreground notification if you leave the app. Off by default.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index d868096..cc4724c 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.26.34+318
++version: 1.26.35+319
+ 
+ environment:
+   sdk: ^3.10.7

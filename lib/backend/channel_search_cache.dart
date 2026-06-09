@@ -1,4 +1,5 @@
 import 'package:open_tv/backend/app_logger.dart';
+import 'package:open_tv/backend/device_memory.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/models/view_type.dart';
 
@@ -97,6 +98,14 @@ class ChannelSearchCache {
 
   static bool _built = false;
 
+  /// fix319: minimum device RAM (MB) to build the full in-memory search cache.
+  /// Below this, the cache is skipped and search uses direct SQL — large
+  /// catalogues (700k+) otherwise OOM-crash low-RAM TV boxes.
+  static const int _minRamMbForCache = 2300;
+
+  /// True when the in-memory cache is intentionally not used on this device.
+  static bool get cacheSkipped => DeviceMemory.totalMb < _minRamMbForCache;
+
   /// fix298: ids of groups with enabled=0. Checked in [search] BEFORE the
   /// limit so disabled categories don't consume page slots. Mutable at runtime
   /// (category toggle) via [setGroupEnabled]/[setGroupsEnabledBulk] without a
@@ -142,6 +151,7 @@ class ChannelSearchCache {
   /// Rebuild the cache from the channels table.
   /// Call after every source refresh completes.
   static Future<void> rebuild() async {
+    if (cacheSkipped) return; // fix319: low-RAM devices use direct SQL search
     final generation = _generation;
     final t = DateTime.now();
     final rows = await Sql.getAllChannelNamesForCache();
@@ -206,6 +216,17 @@ class ChannelSearchCache {
   /// - Not built → starts a new build.
   static Future<void> ensureBuilt() {
     if (_built) return Future.value();
+    // fix319: on low-RAM devices (e.g. onn 4K Plus, ~2GB) a full in-memory
+    // cache of a 700k+ channel catalogue is ~60MB+ and takes 30s+ to build,
+    // causing OOM restarts. Skip the cache entirely there; search falls back
+    // to direct SQL (see Sql.search / cacheSkipped).
+    if (cacheSkipped) {
+      AppLog.info(
+        'ChannelSearchCache: skipped (low RAM ${DeviceMemory.totalMb}MB '
+        '< ${_minRamMbForCache}MB) — using direct SQL search',
+      );
+      return Future.value();
+    }
     final inFlight = _buildFuture;
     if (inFlight != null) return inFlight;
     _buildFuture = rebuild().whenComplete(() => _buildFuture = null);

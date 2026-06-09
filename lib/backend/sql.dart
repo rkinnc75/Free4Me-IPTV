@@ -448,7 +448,11 @@ class Sql {
     List<Object> params = [];
 
     if (useFts) {
-      if (filters.searchMethod == SearchMethod.inMemory) {
+      // fix319: on low-RAM devices the in-memory cache is never built, so the
+      // inMemory method would return nothing — fall through to the FTS SQL
+      // path instead.
+      if (filters.searchMethod == SearchMethod.inMemory &&
+          !ChannelSearchCache.cacheSkipped) {
         return _searchInMemory(filters, rawQuery, mediaTypes, offset);
       }
       if (filters.searchMethod == SearchMethod.likeSubstring) {

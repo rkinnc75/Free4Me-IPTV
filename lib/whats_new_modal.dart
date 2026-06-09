@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.35': [
+    'Performance: large channel catalogues (hundreds of thousands of channels) no longer freeze or crash on low-memory TV boxes — the in-memory search cache is skipped there and searches run directly, with new indexes to keep browsing fast.',
+  ],
   '1.26.34': [
     'New (Android): optional "Keep refreshes running in background" setting. When on, a source refresh continues via a foreground notification if you leave the app. Off by default.',
   ],
