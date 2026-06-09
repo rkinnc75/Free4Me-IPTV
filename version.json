@@ -1,8 +1,8 @@
 {
-  "latest": "1.26.29",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.29",
+  "latest": "1.26.30",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.30",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Documentation: refreshed and condensed the README with the latest features.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.29/Free4Me-IPTV-1.26.29-arm64.apk"
+  "releaseNotes": "\u2022 New: Multi-view decode setting (Auto / Hardware / Software). On NVIDIA Shield / Tegra, Auto now uses software decode to fix the colour corruption seen in the 2\u00d72 grid.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.30/Free4Me-IPTV-1.26.30-arm64.apk"
 }
