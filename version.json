@@ -1,8 +1,8 @@
 {
-  "latest": "1.26.38",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.38",
+  "latest": "1.26.39",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.39",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 More reliable refreshes: a temporary empty fetch is no longer reported as a hard error when existing channels were kept, and a content type recovered on retry is no longer discarded.\n\u2022 Background refresh now logs why the foreground service could not start (e.g. notification permission), to aid troubleshooting.\n\u2022 Performance: faster in-memory search cache build on large catalogues.\n\u2022 Exports now include a device name in the filename so backups/logs from different devices are easy to tell apart.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.38/Free4Me-IPTV-1.26.38-arm64.apk"
+  "releaseNotes": "\u2022 Background refresh can now actually run on Android 14+ devices \u2014 the foreground service was failing to start due to a missing system declaration. Turning on Background processing and switching away from the app will now keep a refresh running.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.39/Free4Me-IPTV-1.26.39-arm64.apk"
 }
