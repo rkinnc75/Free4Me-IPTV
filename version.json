@@ -1,8 +1,8 @@
 {
-  "latest": "1.26.34",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.34",
+  "latest": "1.26.35",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.35",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 New (Android): optional \"Keep refreshes running in background\" setting. When on, a source refresh continues via a foreground notification if you leave the app. Off by default.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.34/Free4Me-IPTV-1.26.34-arm64.apk"
+  "releaseNotes": "\u2022 Performance: large channel catalogues (hundreds of thousands of channels) no longer freeze or crash on low-memory TV boxes \u2014 the in-memory search cache is skipped there and searches run directly, with new indexes to keep browsing fast.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.35/Free4Me-IPTV-1.26.35-arm64.apk"
 }
