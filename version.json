@@ -1,8 +1,8 @@
 {
-  "latest": "1.26.52",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.52",
+  "latest": "1.26.53",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.53",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Added playback controls for movies and other on-demand video on the ExoPlayer engine: play/pause, skip back/forward 10 seconds, a seek bar, and elapsed/total time. Live TV is unaffected (it is not seekable).",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.52/Free4Me-IPTV-1.26.52-arm64.apk"
+  "releaseNotes": "\u2022 Fixed black cells in 2x2 multi-view on NVIDIA Shield: video textures could fail to attach when all four cells started at once, leaving some cells black with audio. Cells now initialise one at a time and automatically restart if a texture fails to attach.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.53/Free4Me-IPTV-1.26.53-arm64.apk"
 }
