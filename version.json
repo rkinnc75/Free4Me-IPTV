@@ -1,8 +1,8 @@
 {
-  "latest": "1.26.50",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.50",
+  "latest": "1.26.51",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.51",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Further fix for ExoPlayer black-screen-with-audio on some TV boxes: the video now paints its first frame automatically instead of staying black until an unrelated action (like opening the cast menu) forced it to appear.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.50/Free4Me-IPTV-1.26.50-arm64.apk"
+  "releaseNotes": "\u2022 Fixed live TV on the ExoPlayer engine dropping to the backup engine after ~15 seconds even when it was playing fine \u2014 the app now recognises ExoPlayer is playing and no longer falls back unnecessarily.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.51/Free4Me-IPTV-1.26.51-arm64.apk"
 }
