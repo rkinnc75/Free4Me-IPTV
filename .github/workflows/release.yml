@@ -390,24 +390,39 @@ jobs:
           # 2. Now commit version.json to main and move the tag onto that commit.
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git fetch origin main
           # fix325 follow-up: the earlier "Ensure version.json is current
           # (regenerate, non-fatal)" build step leaves version.json dirty in the
           # working tree, which makes the checkout below abort with "local
           # changes would be overwritten" (observed on the fix324/fix325 back-to-
-          # back release race). Stash it first (mirrors the analyze-job
-          # self-heal step); we regenerate version.json fresh right after.
+          # back release race). Stash it once; the loop regenerates fresh.
           git stash --include-untracked || true
-          git checkout -B main origin/main
           git stash drop || true
-          python3 scripts/update_version_json.py
-          if ! git diff --quiet version.json; then
+          # fix326 follow-up: retry/rebase loop so a SIMULTANEOUS release (another
+          # run pushing main between our checkout and push) can't red this step on
+          # a non-fast-forward. Each attempt re-syncs to the latest origin/main,
+          # regenerates version.json, commits, and pushes; on push rejection it
+          # loops. A clean checkout each iteration means no dirty-tree abort.
+          PUSHED=0
+          for attempt in 1 2 3 4 5; do
+            git fetch origin main
+            git checkout -B main origin/main
+            python3 scripts/update_version_json.py
+            if git diff --quiet version.json; then
+              echo "version.json already current on main."
+              PUSHED=1; break
+            fi
             git add version.json
             git commit -m "${GH_TAG}: CI sync version.json (after APK upload, fix312)"
-            git push origin main
-            echo "version.json committed to main."
-          else
-            echo "version.json already current on main."
+            if git push origin main; then
+              echo "version.json committed to main (attempt $attempt)."
+              PUSHED=1; break
+            fi
+            echo "push rejected (attempt $attempt) — main moved, re-syncing and retrying"
+            sleep 3
+          done
+          if [ "$PUSHED" != "1" ]; then
+            echo "::error::could not push version.json to main after 5 attempts (persistent push race)."
+            exit 1
           fi
           NEW_SHA="$(git rev-parse HEAD)"
           git tag -f "${GH_TAG}" "${NEW_SHA}"
