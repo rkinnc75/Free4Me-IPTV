@@ -28,20 +28,23 @@ class _EditDialogState extends State<EditDialog> {
   // fix272: hide provider divider (#### header ####) channels.
   late bool _hideDividers = widget.source.hideDividers == 1;
 
+  // fix326: provider credentials are assigned (not user-chosen) and cannot be
+  // rotated, so the password must not render in clear text by default. Masked
+  // with a tap-to-reveal toggle so the user can still verify it.
+  bool _obscurePassword = true;
+
   @override
   Widget build(BuildContext context) {
-    // fix324: the previous layout wrapped the AlertDialog in a
-    // SingleChildScrollView. That scrolls the *dialog box*, not its content, so
-    // the AlertDialog still sized itself to its natural height and clipped the
-    // bottom of the form with nothing scrollable — unreachable on TV where the
-    // usable height is shorter (could not see Save/Cancel or the info rows).
-    // Instead let the AlertDialog lay itself out and make its own content
-    // scrollable (scrollable: true), capped to the viewport so it never grows
-    // past the screen.
-    final media = MediaQuery.of(context);
-    final maxContentHeight = media.size.height - media.viewInsets.bottom - 220;
+    // fix326 (corrects fix324): `scrollable: true` + ConstrainedBox(maxHeight)
+    // was wrong — the scrollable wrapper gives the content UNBOUNDED height, so
+    // the ConstrainedBox capped the Column and the Column painted past the
+    // dialog bottom (seen on TV: "By category" bleeding outside the dialog,
+    // info rows unreachable). Canonical pattern instead: a plain AlertDialog
+    // whose CONTENT is a SingleChildScrollView. The dialog bounds the content
+    // height to the screen automatically; the inner scroll view scrolls the
+    // form while the title and Save/Cancel actions stay fixed and always
+    // visible. D-pad focus traversal auto-scrolls to the focused child.
     return AlertDialog(
-      scrollable: true,
       title: Text("Edit source ${widget.source.name}"),
       actions: [
         TextButton(
@@ -87,8 +90,7 @@ class _EditDialogState extends State<EditDialog> {
             onPressed: () => Navigator.of(context).pop(),
             child: const Text("Cancel"))
       ],
-      content: ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: maxContentHeight),
+      content: SingleChildScrollView(
         child: FormBuilder(
           key: _formKey,
           child: FocusTraversalGroup(
@@ -136,13 +138,23 @@ class _EditDialogState extends State<EditDialog> {
                   child: DpadFocusEscape(
                     child: FormBuilderTextField(
                     initialValue: widget.source.password,
+                    obscureText: _obscurePassword,
                     autovalidateMode: AutovalidateMode.onUserInteraction,
                     validator: FormBuilderValidators.compose(
                         [FormBuilderValidators.required()]),
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Password',
-                      prefixIcon: Icon(Icons.password),
-                      border: OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.password),
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        icon: Icon(_obscurePassword
+                            ? Icons.visibility_off
+                            : Icons.visibility),
+                        tooltip:
+                            _obscurePassword ? 'Show password' : 'Hide password',
+                        onPressed: () => setState(
+                            () => _obscurePassword = !_obscurePassword),
+                      ),
                     ),
                     name: 'password',
                   ))),
