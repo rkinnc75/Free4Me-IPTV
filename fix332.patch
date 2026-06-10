@@ -1,0 +1,82 @@
+diff --git a/lib/player/exo_engine.dart b/lib/player/exo_engine.dart
+index 864c74f..49006d1 100644
+--- a/lib/player/exo_engine.dart
++++ b/lib/player/exo_engine.dart
+@@ -28,12 +28,28 @@ class ExoEngine implements PlayerEngine {
+   @override
+   Widget buildVideoView(BuildContext context) {
+     final ctrl = _controller;
+-    if (ctrl == null || !ctrl.value.isInitialized) {
++    if (ctrl == null) {
+       return const ColoredBox(color: Colors.black);
+     }
+-    return AspectRatio(
+-      aspectRatio: ctrl.value.aspectRatio,
+-      child: VideoPlayer(ctrl),
++    // fix332: buildVideoView is called from Player.build, which only rebuilds
++    // on its own setState (overlay/buffering). open() initializes the
++    // controller asynchronously AFTER this view is first built, so on some
++    // boxes (onn 4K Plus) no setState happened once isInitialized flipped true
++    // and the VideoPlayer widget was never mounted — audio played but the
++    // screen stayed on the black ColoredBox. Listen to the controller directly
++    // so this view rebuilds itself the moment initialization completes,
++    // independent of Player's setState.
++    return ValueListenableBuilder<VideoPlayerValue>(
++      valueListenable: ctrl,
++      builder: (context, value, _) {
++        if (!value.isInitialized) {
++          return const ColoredBox(color: Colors.black);
++        }
++        return AspectRatio(
++          aspectRatio: value.aspectRatio,
++          child: VideoPlayer(ctrl),
++        );
++      },
+     );
+   }
+ 
+@@ -58,6 +74,17 @@ class ExoEngine implements PlayerEngine {
+       ' duration=${_controller!.value.duration.inSeconds}s'
+       ' size=${_controller!.value.size}',
+     );
++    // fix332: parity with the mpv mid-playback surface probe — log the view
++    // state shortly after init so a black-screen-with-audio session on
++    // ExoPlayer is diagnosable (size=0x0 / not initialized vs a real size).
++    Future.delayed(const Duration(seconds: 2), () {
++      final v = _controller?.value;
++      if (v == null) return;
++      AppLog.info('ExoEngine: SURFACE[mid-playback+2s]'
++          ' initialized=${v.isInitialized}'
++          ' size=${v.size.width.toInt()}x${v.size.height.toInt()}'
++          ' playing=${v.isPlaying} buffering=${v.isBuffering}');
++    });
+ 
+     if (startPosition != null && startPosition > Duration.zero) {
+       await _controller!.seekTo(startPosition);
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 6f6039c..5e7e28e 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.26.48': [
++    'Fixed a black screen with working audio when playing some movies/streams on the ExoPlayer engine: the video now appears as soon as it is ready instead of staying black.',
++  ],
+   '1.26.47': [
+     'Fixed the selection dialogs (e.g. Player engine, Multi-view) on TV: every option now highlights and can be selected with the remote, and the dialog opens focused on the current choice — previously the top option could not be highlighted or chosen.',
+     'Added diagnostics to help track down a black-screen-with-audio playback issue on some TV boxes.',
+diff --git a/pubspec.yaml b/pubspec.yaml
+index c6ccd8c..ac53a10 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.26.47+331
++version: 1.26.48+332
+ 
+ environment:
+   sdk: ^3.10.7

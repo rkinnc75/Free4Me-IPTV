@@ -28,12 +28,28 @@ class ExoEngine implements PlayerEngine {
   @override
   Widget buildVideoView(BuildContext context) {
     final ctrl = _controller;
-    if (ctrl == null || !ctrl.value.isInitialized) {
+    if (ctrl == null) {
       return const ColoredBox(color: Colors.black);
     }
-    return AspectRatio(
-      aspectRatio: ctrl.value.aspectRatio,
-      child: VideoPlayer(ctrl),
+    // fix332: buildVideoView is called from Player.build, which only rebuilds
+    // on its own setState (overlay/buffering). open() initializes the
+    // controller asynchronously AFTER this view is first built, so on some
+    // boxes (onn 4K Plus) no setState happened once isInitialized flipped true
+    // and the VideoPlayer widget was never mounted — audio played but the
+    // screen stayed on the black ColoredBox. Listen to the controller directly
+    // so this view rebuilds itself the moment initialization completes,
+    // independent of Player's setState.
+    return ValueListenableBuilder<VideoPlayerValue>(
+      valueListenable: ctrl,
+      builder: (context, value, _) {
+        if (!value.isInitialized) {
+          return const ColoredBox(color: Colors.black);
+        }
+        return AspectRatio(
+          aspectRatio: value.aspectRatio,
+          child: VideoPlayer(ctrl),
+        );
+      },
     );
   }
 
@@ -58,6 +74,17 @@ class ExoEngine implements PlayerEngine {
       ' duration=${_controller!.value.duration.inSeconds}s'
       ' size=${_controller!.value.size}',
     );
+    // fix332: parity with the mpv mid-playback surface probe — log the view
+    // state shortly after init so a black-screen-with-audio session on
+    // ExoPlayer is diagnosable (size=0x0 / not initialized vs a real size).
+    Future.delayed(const Duration(seconds: 2), () {
+      final v = _controller?.value;
+      if (v == null) return;
+      AppLog.info('ExoEngine: SURFACE[mid-playback+2s]'
+          ' initialized=${v.isInitialized}'
+          ' size=${v.size.width.toInt()}x${v.size.height.toInt()}'
+          ' playing=${v.isPlaying} buffering=${v.isBuffering}');
+    });
 
     if (startPosition != null && startPosition > Duration.zero) {
       await _controller!.seekTo(startPosition);
