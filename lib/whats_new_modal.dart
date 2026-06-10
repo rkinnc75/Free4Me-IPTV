@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.51': [
+    'Fixed live TV on the ExoPlayer engine dropping to the backup engine after ~15 seconds even when it was playing fine — the app now recognises ExoPlayer is playing and no longer falls back unnecessarily.',
+  ],
   '1.26.50': [
     'Further fix for ExoPlayer black-screen-with-audio on some TV boxes: the video now paints its first frame automatically instead of staying black until an unrelated action (like opening the cast menu) forced it to appear.',
   ],

@@ -24,6 +24,14 @@ class ExoEngine implements PlayerEngine {
   Timer? _pollTimer;
   bool _wasBuffering = false;
 
+  /// fix335: one-shot guard — emit a single "playing" liveness signal the first
+  /// time the controller reports initialized && playing, so the Player's
+  /// startup watchdog cancels even when video_player never toggles isBuffering
+  /// (observed on live .ts: Exo goes straight to playing, no buffering event,
+  /// so the watchdog timed out at 15s and fell back to libmpv despite a healthy
+  /// frame — SURFACE showed initialized=true playing=true size=1280x720).
+  bool _signalledPlaying = false;
+
 
   @override
   Widget buildVideoView(BuildContext context) {
@@ -191,13 +199,39 @@ class ExoEngine implements PlayerEngine {
       if (AppLog.enabled) AppLog.info('ExoEngine: buffering=${v.isBuffering}');
       _bufferingCtrl.add(v.isBuffering);
     }
+
+    // fix335: live .ts streams can reach initialized && playing WITHOUT ever
+    // emitting a buffering transition, so the Player's startup watchdog (which
+    // only cancels on a buffering event) timed out and fell back to libmpv even
+    // though Exo was rendering. Emit one buffering=false the first time we see
+    // the engine actually playing — the watchdog's cancel path accepts any
+    // buffering signal. One-shot so it doesn't fight the real buffering stream.
+    if (!_signalledPlaying && v.isInitialized && v.isPlaying) {
+      _signalledPlaying = true;
+      if (AppLog.enabled) {
+        AppLog.info('ExoEngine: first playing frame — signalling liveness');
+      }
+      _bufferingCtrl.add(false);
+    }
   }
 
   void _startPolling() {
     _pollTimer?.cancel();
     _pollTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      final pos = _controller?.value.position;
-      if (pos != null) _positionCtrl.add(pos);
+      final v = _controller?.value;
+      if (v == null) return;
+      if (v.position != Duration.zero) _positionCtrl.add(v.position);
+      // fix335: also drive the one-shot liveness signal from the poll, in case
+      // the controller reaches playing without firing another value-change
+      // event (so the watchdog still cancels within ~1s of real playback).
+      if (!_signalledPlaying && v.isInitialized && v.isPlaying) {
+        _signalledPlaying = true;
+        if (AppLog.enabled) {
+          AppLog.info('ExoEngine: first playing frame (poll) — '
+              'signalling liveness');
+        }
+        _bufferingCtrl.add(false);
+      }
     });
   }
 
