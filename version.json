@@ -1,8 +1,8 @@
 {
-  "latest": "1.26.41",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.41",
+  "latest": "1.26.42",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.42",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Internal: added an automated test suite (refresh retry/preserve logic, database wipe behaviour, player-engine preferences, export device tags) that now runs in CI and gates every release.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.41/Free4Me-IPTV-1.26.41-arm64.apk"
+  "releaseNotes": "\u2022 Fixed the Edit Source screen on TV (again): the form content now actually scrolls inside the dialog, with Save/Cancel always visible \u2014 previously the bottom options could still spill off the screen.\n\u2022 The source password is now masked in the Edit Source screen, with a tap-to-reveal toggle.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.42/Free4Me-IPTV-1.26.42-arm64.apk"
 }
