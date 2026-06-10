@@ -8,14 +8,20 @@ class ExportItem {
   final String key;          // url-safe id, e.g. 'backup' / 'log'
   final String filename;     // download name
   final String label;        // human label for the index page
-  final List<int> bytes;
+  // fix328: file-backed instead of in-memory. The export bundle is written to
+  // temp files and streamed from disk, so the TV box never holds every file
+  // (huge source dumps + their byte copies + the zip) in the heap at once
+  // (observed OOM on a 2GB box when starting with the source data).
+  final String filePath;
+  final int sizeBytes;
   final String contentType;
 
   const ExportItem({
     required this.key,
     required this.filename,
     required this.label,
-    required this.bytes,
+    required this.filePath,
+    required this.sizeBytes,
     required this.contentType,
   });
 }
@@ -77,7 +83,7 @@ class ExportServer {
       }
       buf.write('<p>Tap a file to download:</p>');
       for (final it in _items) {
-        final kb = (it.bytes.length / 1024).toStringAsFixed(0);
+        final kb = (it.sizeBytes / 1024).toStringAsFixed(0);
         buf.write('<p><a href="/file/${it.key}" '
             'style="display:block;font-size:1.2em;padding:.7em 1em;margin:.4em 0;'
             'background:#4E9FE5;color:#fff;text-decoration:none;'
@@ -122,15 +128,24 @@ class ExportServer {
         await req.response.close();
         return;
       }
+      final file = File(item.filePath);
+      if (!await file.exists()) {
+        AppLog.warn('ExportServer: backing file missing ${item.filePath}');
+        req.response.statusCode = 404;
+        await req.response.close();
+        return;
+      }
       req.response
         ..statusCode = 200
         ..headers.contentType = ContentType.parse(item.contentType)
         ..headers.add('Content-Disposition',
             'attachment; filename="${item.filename}"')
-        ..add(item.bytes);
+        ..headers.contentLength = item.sizeBytes;
+      // Stream from disk — never loads the whole file into memory.
+      await req.response.addStream(file.openRead());
       await req.response.close();
       AppLog.info('ExportServer: served ${item.filename} '
-          '(${item.bytes.length} bytes)');
+          '(${item.sizeBytes} bytes, streamed)');
       return;
     }
 

@@ -1,0 +1,351 @@
+diff --git a/lib/backend/export_server.dart b/lib/backend/export_server.dart
+index 2f04dfd..724de13 100644
+--- a/lib/backend/export_server.dart
++++ b/lib/backend/export_server.dart
+@@ -8,14 +8,20 @@ class ExportItem {
+   final String key;          // url-safe id, e.g. 'backup' / 'log'
+   final String filename;     // download name
+   final String label;        // human label for the index page
+-  final List<int> bytes;
++  // fix328: file-backed instead of in-memory. The export bundle is written to
++  // temp files and streamed from disk, so the TV box never holds every file
++  // (huge source dumps + their byte copies + the zip) in the heap at once
++  // (observed OOM on a 2GB box when starting with the source data).
++  final String filePath;
++  final int sizeBytes;
+   final String contentType;
+ 
+   const ExportItem({
+     required this.key,
+     required this.filename,
+     required this.label,
+-    required this.bytes,
++    required this.filePath,
++    required this.sizeBytes,
+     required this.contentType,
+   });
+ }
+@@ -77,7 +83,7 @@ class ExportServer {
+       }
+       buf.write('<p>Tap a file to download:</p>');
+       for (final it in _items) {
+-        final kb = (it.bytes.length / 1024).toStringAsFixed(0);
++        final kb = (it.sizeBytes / 1024).toStringAsFixed(0);
+         buf.write('<p><a href="/file/${it.key}" '
+             'style="display:block;font-size:1.2em;padding:.7em 1em;margin:.4em 0;'
+             'background:#4E9FE5;color:#fff;text-decoration:none;'
+@@ -122,15 +128,24 @@ class ExportServer {
+         await req.response.close();
+         return;
+       }
++      final file = File(item.filePath);
++      if (!await file.exists()) {
++        AppLog.warn('ExportServer: backing file missing ${item.filePath}');
++        req.response.statusCode = 404;
++        await req.response.close();
++        return;
++      }
+       req.response
+         ..statusCode = 200
+         ..headers.contentType = ContentType.parse(item.contentType)
+         ..headers.add('Content-Disposition',
+             'attachment; filename="${item.filename}"')
+-        ..add(item.bytes);
++        ..headers.contentLength = item.sizeBytes;
++      // Stream from disk — never loads the whole file into memory.
++      await req.response.addStream(file.openRead());
+       await req.response.close();
+       AppLog.info('ExportServer: served ${item.filename} '
+-          '(${item.bytes.length} bytes)');
++          '(${item.sizeBytes} bytes, streamed)');
+       return;
+     }
+ 
+diff --git a/lib/settings_view.dart b/lib/settings_view.dart
+index e914bf8..e2d0e78 100644
+--- a/lib/settings_view.dart
++++ b/lib/settings_view.dart
+@@ -1,9 +1,9 @@
+ import 'dart:async';
+-import 'package:archive/archive.dart';
++import 'package:archive/archive_io.dart';
++import 'package:path_provider/path_provider.dart';
+ 
+ import 'package:flutter/material.dart';
+ import 'package:flutter/services.dart';
+-import 'dart:convert';
+ import 'dart:io';
+ import 'package:open_tv/backend/app_logger.dart';
+ import 'package:open_tv/backend/export_server.dart';
+@@ -1216,23 +1216,27 @@ class _SettingsState extends State<SettingsView> {
+       );
+       return;
+     }
+-    final buf = StringBuffer();
+-    for (final f in dumps) {
+-      final name = f.path.split(Platform.pathSeparator).last;
+-      buf.writeln('===== FILE: $name =====');
+-      buf.writeln(await f.readAsString());
+-      buf.writeln();
+-    }
+-    if (!mounted) return;
+     final isTV = await DeviceDetector.isTV();
+     if (!mounted) return;
+     final stamp = await SettingsIo.stampWithDevice(); // fix322
+     if (isTV) {
+-      // fix311: regardless of entry point, the LAN server exports all three
+-      // files (source dump, debug log, settings) plus a combined zip.
++      // fix311: the LAN server exports all files (source dump, debug log,
++      // settings) plus a combined zip.
+       // fix327: build + serve behind a progress dialog.
+-      await _runTvServerExport(stamp: stamp, sourceDump: buf.toString());
++      // fix328: pass sourceDump:null so the builder STREAMS the dumps to a
++      // file instead of this method concatenating them in memory (OOM on TV).
++      await _runTvServerExport(stamp: stamp);
+     } else {
++      // Phone/tablet: concatenate for the single-file save (SAF available,
++      // catalogues smaller — acceptable in memory here).
++      final buf = StringBuffer();
++      for (final f in dumps) {
++        final name = f.path.split(Platform.pathSeparator).last;
++        buf.writeln('===== FILE: $name =====');
++        buf.writeln(await f.readAsString());
++        buf.writeln();
++      }
++      if (!mounted) return;
+       await SettingsIo.exportStringToFile(
+         // ignore: use_build_context_synchronously
+         context,
+@@ -1254,64 +1258,105 @@ class _SettingsState extends State<SettingsView> {
+     void Function(String step)? onStep, // fix327: progress reporting
+   }) async {
+     final items = <ExportItem>[];
+-    final archive = Archive();
+-
+-    void addFile(String key, String filename, String label, String content,
+-        String contentType) {
+-      final bytes = utf8.encode(content);
++    // fix328: write each export file to a temp dir and stream from disk
++    // (ExportServer is now file-backed). Nothing holds the whole catalogue in
++    // memory — fixes the OOM on the 2GB TV box while gathering source data.
++    final tmp = await getTemporaryDirectory();
++    final outDir = Directory('${tmp.path}/free4me-export-$stamp');
++    if (await outDir.exists()) await outDir.delete(recursive: true);
++    await outDir.create(recursive: true);
++
++    // Files to include in the zip, by on-disk path + archive name.
++    final toZip = <String, String>{};
++
++    Future<void> addTextFile(String key, String filename, String label,
++        String content, String contentType) async {
++      final f = File('${outDir.path}/$filename');
++      await f.writeAsString(content);
++      final len = await f.length();
+       items.add(ExportItem(
+         key: key,
+         filename: filename,
+         label: label,
+-        bytes: bytes,
++        filePath: f.path,
++        sizeBytes: len,
+         contentType: contentType,
+       ));
+-      archive.addFile(ArchiveFile(filename, bytes.length, bytes));
++      toZip[f.path] = filename;
+     }
+ 
+-    // 1. Source dump (passed in, or gathered if not provided).
++    // 1. Source dump — written file-to-file (no giant in-memory string).
+     onStep?.call('Gathering source data…');
+-    final dump = sourceDump ?? await _gatherSourceDump();
+-    if (dump != null && dump.isNotEmpty) {
+-      addFile('sourcedump', 'free4me-source-dump-$stamp.txt',
+-          'Raw source dumps', dump, 'text/plain; charset=utf-8');
++    final dumpName = 'free4me-source-dump-$stamp.txt';
++    final dumpPath = '${outDir.path}/$dumpName';
++    final wroteDump = sourceDump != null
++        ? await _writeStringToFile(dumpPath, sourceDump)
++        : await _streamSourceDumpToFile(dumpPath);
++    if (wroteDump) {
++      final len = await File(dumpPath).length();
++      items.add(ExportItem(
++        key: 'sourcedump',
++        filename: dumpName,
++        label: 'Raw source dumps',
++        filePath: dumpPath,
++        sizeBytes: len,
++        contentType: 'text/plain; charset=utf-8',
++      ));
++      toZip[dumpPath] = dumpName;
+     }
+     // 2. Debug log.
+     onStep?.call('Collecting debug log…');
+     final log = await AppLog.readLog();
+     if (log.isNotEmpty) {
+-      addFile('log', 'free4me_log-$stamp.txt', 'Debug log', log,
++      await addTextFile('log', 'free4me_log-$stamp.txt', 'Debug log', log,
+           'text/plain; charset=utf-8');
+     }
+     // 3. Settings backup.
+     onStep?.call('Building settings backup…');
+     final backup = await SettingsIo.buildBackupPayload(
+         includeCredentials: includeCredentials);
+-    addFile('settings', 'free4me-settings-$stamp.json', 'Settings backup',
+-        backup, 'application/json');
++    await addTextFile('settings', 'free4me-settings-$stamp.json',
++        'Settings backup', backup, 'application/json');
+ 
+-    // 4. Combined zip of everything above.
++    // 4. Combined zip — encoded directly to a file on disk.
+     onStep?.call('Compressing files…');
+-    if (archive.isNotEmpty) {
+-      final zipped = ZipEncoder().encode(archive);
+-      if (zipped != null) {
+-        items.add(ExportItem(
+-          key: 'bundle',
+-          filename: 'free4me-export-$stamp.zip',
+-          label: 'All files (zip)',
+-          bytes: zipped,
+-          contentType: 'application/zip',
+-        ));
++    if (toZip.isNotEmpty) {
++      final zipName = 'free4me-export-$stamp.zip';
++      final zipPath = '${outDir.path}/$zipName';
++      final encoder = ZipFileEncoder();
++      encoder.create(zipPath);
++      for (final entry in toZip.entries) {
++        await encoder.addFile(File(entry.key), entry.value);
+       }
++      await encoder.close();
++      final len = await File(zipPath).length();
++      items.add(ExportItem(
++        key: 'bundle',
++        filename: zipName,
++        label: 'All files (zip)',
++        filePath: zipPath,
++        sizeBytes: len,
++        contentType: 'application/zip',
++      ));
+     }
+     return items;
+   }
+ 
+-  // fix311: gather + concatenate the raw Xtream source dumps, or null if none.
+-  Future<String?> _gatherSourceDump() async {
++  // fix328: write a string to a file, returning false (and no file) when the
++  // content is empty.
++  Future<bool> _writeStringToFile(String path, String content) async {
++    if (content.isEmpty) return false;
++    await File(path).writeAsString(content);
++    return true;
++  }
++
++  // fix311/fix328: stream the raw Xtream source dumps to a single file,
++  // copying each dump file-to-file (never concatenating into one big string).
++  // Returns false when there are no dumps to write.
++  Future<bool> _streamSourceDumpToFile(String outPath) async {
+     final dir = await Utils.appDir;
+     final d = Directory(dir);
+-    if (!await d.exists()) return null;
++    if (!await d.exists()) return false;
+     final dumps = <File>[];
+     await for (final e in d.list()) {
+       if (e is File &&
+@@ -1320,15 +1365,20 @@ class _SettingsState extends State<SettingsView> {
+         dumps.add(e);
+       }
+     }
+-    if (dumps.isEmpty) return null;
+-    final buf = StringBuffer();
+-    for (final f in dumps) {
+-      final name = f.path.split(Platform.pathSeparator).last;
+-      buf.writeln('===== FILE: $name =====');
+-      buf.writeln(await f.readAsString());
+-      buf.writeln();
++    if (dumps.isEmpty) return false;
++    final sink = File(outPath).openWrite();
++    try {
++      for (final f in dumps) {
++        final name = f.path.split(Platform.pathSeparator).last;
++        sink.writeln('===== FILE: $name =====');
++        await sink.addStream(f.openRead());
++        sink.writeln();
++        sink.writeln();
++      }
++    } finally {
++      await sink.close();
+     }
+-    return buf.toString();
++    return true;
+   }
+ 
+   // fix158: build backup + log payloads and serve via LAN (TV only).
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 3e96be5..c2210f3 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.26.44': [
++    'Fixed out-of-memory crashes when exporting on TV with large channel catalogues: export files are now written to disk and streamed to your phone/PC instead of being held in memory all at once.',
++  ],
+   '1.26.43': [
+     'TV export now shows a step-by-step progress indicator (gathering data, building backup, compressing, starting the server) instead of appearing to hang, and any failure is shown in a clear dialog instead of a brief message you might miss.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index b54254b..122d628 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.26.43+327
++version: 1.26.44+328
+ 
+ environment:
+   sdk: ^3.10.7
+diff --git a/test/export_zip_test.dart b/test/export_zip_test.dart
+new file mode 100644
+index 0000000..0d235be
+--- /dev/null
++++ b/test/export_zip_test.dart
+@@ -0,0 +1,36 @@
++// fix328: verify the disk-backed export zip (ZipFileEncoder streams files from
++// disk and produces a valid, re-readable archive). Guards the OOM fix's core
++// mechanism.
++import 'dart:io';
++import 'package:archive/archive_io.dart';
++import 'package:flutter_test/flutter_test.dart';
++
++void main() {
++  test('ZipFileEncoder streams files to a valid zip on disk', () async {
++    final tmp = await Directory.systemTemp.createTemp('export_zip_test');
++    final a = File('${tmp.path}/free4me-source-dump.txt')
++      ..writeAsStringSync('===== FILE: x.json =====\n${'big' * 5000}\n');
++    final b = File('${tmp.path}/free4me-settings.json')
++      ..writeAsStringSync('{"schema":3}');
++    final zipPath = '${tmp.path}/out.zip';
++
++    final enc = ZipFileEncoder()..create(zipPath);
++    await enc.addFile(a, 'free4me-source-dump.txt');
++    await enc.addFile(b, 'free4me-settings.json');
++    await enc.close();
++
++    final zf = File(zipPath);
++    expect(await zf.exists(), isTrue);
++    expect(await zf.length(), greaterThan(0));
++
++    final arch = ZipDecoder().decodeBytes(await zf.readAsBytes());
++    final names = arch.files.map((f) => f.name).toSet();
++    expect(names, {'free4me-source-dump.txt', 'free4me-settings.json'});
++    final settings =
++        arch.files.firstWhere((f) => f.name == 'free4me-settings.json');
++    expect(
++        String.fromCharCodes(settings.content as List<int>), '{"schema":3}');
++
++    await tmp.delete(recursive: true);
++  });
++}
