@@ -492,15 +492,38 @@ class _ChannelTileState extends State<ChannelTile> {
                 ),
               ),
             // fix278: per-category enable checkbox (Categories view only).
+            // fix333: the tile is a single InkWell with one focus node, so on a
+            // D-pad TV the checkbox (a plain Checkbox child) could never be
+            // reached — there was only one focusable target per tile and select
+            // opened the category. The tile's focus node already forwards
+            // arrow-right via focusInDirection(right), so wrapping the checkbox
+            // in its own focusable InkWell puts it in the traversal order:
+            // right-arrow from the tile now lands on the checkbox (with a
+            // visible focus highlight) and select toggles enabled. Falls
+            // through to the navbar only if there is nothing to the right.
             if (widget.channel.mediaType == MediaType.group &&
                 widget.onToggleEnabled != null)
               Padding(
                 padding: const EdgeInsets.only(right: 8.0),
-                child: Checkbox(
-                  value: widget.channel.groupEnabled ?? true,
-                  onChanged: (v) async {
-                    await widget.onToggleEnabled!(v ?? true);
-                  },
+                child: Center(
+                  child: Builder(builder: (context) {
+                    final enabled = widget.channel.groupEnabled ?? true;
+                    return InkWell(
+                      canRequestFocus: true,
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: () async =>
+                          await widget.onToggleEnabled!(!enabled),
+                      child: Padding(
+                        padding: const EdgeInsets.all(4.0),
+                        child: IgnorePointer(
+                          child: Checkbox(
+                            value: enabled,
+                            onChanged: (_) {},
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
                 ),
               ),
           ],

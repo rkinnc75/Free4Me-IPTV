@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.49': [
+    'On TV, you can now navigate to and toggle the enable checkbox on category tiles with the remote — previously the checkbox could not be reached with the D-pad.',
+  ],
   '1.26.48': [
     'Fixed a black screen with working audio when playing some movies/streams on the ExoPlayer engine: the video now appears as soon as it is ready instead of staying black.',
   ],

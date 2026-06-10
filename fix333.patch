@@ -1,0 +1,75 @@
+diff --git a/lib/channel_tile.dart b/lib/channel_tile.dart
+index 0abab3b..918c9d1 100644
+--- a/lib/channel_tile.dart
++++ b/lib/channel_tile.dart
+@@ -492,15 +492,38 @@ class _ChannelTileState extends State<ChannelTile> {
+                 ),
+               ),
+             // fix278: per-category enable checkbox (Categories view only).
++            // fix333: the tile is a single InkWell with one focus node, so on a
++            // D-pad TV the checkbox (a plain Checkbox child) could never be
++            // reached — there was only one focusable target per tile and select
++            // opened the category. The tile's focus node already forwards
++            // arrow-right via focusInDirection(right), so wrapping the checkbox
++            // in its own focusable InkWell puts it in the traversal order:
++            // right-arrow from the tile now lands on the checkbox (with a
++            // visible focus highlight) and select toggles enabled. Falls
++            // through to the navbar only if there is nothing to the right.
+             if (widget.channel.mediaType == MediaType.group &&
+                 widget.onToggleEnabled != null)
+               Padding(
+                 padding: const EdgeInsets.only(right: 8.0),
+-                child: Checkbox(
+-                  value: widget.channel.groupEnabled ?? true,
+-                  onChanged: (v) async {
+-                    await widget.onToggleEnabled!(v ?? true);
+-                  },
++                child: Center(
++                  child: Builder(builder: (context) {
++                    final enabled = widget.channel.groupEnabled ?? true;
++                    return InkWell(
++                      canRequestFocus: true,
++                      borderRadius: BorderRadius.circular(8),
++                      onTap: () async =>
++                          await widget.onToggleEnabled!(!enabled),
++                      child: Padding(
++                        padding: const EdgeInsets.all(4.0),
++                        child: IgnorePointer(
++                          child: Checkbox(
++                            value: enabled,
++                            onChanged: (_) {},
++                          ),
++                        ),
++                      ),
++                    );
++                  }),
+                 ),
+               ),
+           ],
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 5e7e28e..5f7d6b7 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.26.49': [
++    'On TV, you can now navigate to and toggle the enable checkbox on category tiles with the remote — previously the checkbox could not be reached with the D-pad.',
++  ],
+   '1.26.48': [
+     'Fixed a black screen with working audio when playing some movies/streams on the ExoPlayer engine: the video now appears as soon as it is ready instead of staying black.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index ac53a10..9a3b0c0 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.26.48+332
++version: 1.26.49+333
+ 
+ environment:
+   sdk: ^3.10.7
