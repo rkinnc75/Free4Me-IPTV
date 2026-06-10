@@ -1803,6 +1803,10 @@ class _SettingsState extends State<SettingsView> {
       builder: (BuildContext context) {
         return SelectDialog(
           title: 'Player engine',
+          // fix331: pre-select the active preference so the picker opens on it
+          // and it shows highlighted (the index in _enginePreferenceOptions).
+          selectedId: _enginePreferenceOptions
+              .indexOf(settings.enginePreference),
           data: _enginePreferenceOptions
               .asMap()
               .entries

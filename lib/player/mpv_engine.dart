@@ -59,6 +59,10 @@ class MpvEngine implements PlayerEngine {
   /// and dispose an already-disposed native mpv instance.
   bool _disposed = false;
 
+  /// fix331: one-shot guard so the mid-playback surface probe logs once per
+  /// engine (not on every buffering toggle).
+  bool _midPlaybackProbed = false;
+
   MpvEngine({
     required this.channel,
     required this.settings,
@@ -67,7 +71,23 @@ class MpvEngine implements PlayerEngine {
   }) {
     _player.setPlaylistMode(mk.PlaylistMode.none);
 
-    _subs.add(_player.stream.buffering.listen((v) => _bufferingCtrl.add(v)));
+    _subs.add(_player.stream.buffering.listen((v) {
+      _bufferingCtrl.add(v);
+      // fix331: capture the texture/rect WHILE playing. Existing SURFACE traces
+      // fire at rotate-init (texture not yet attached → null) and at exit, so a
+      // black-screen-with-audio session never logged the surface state during
+      // playback. When buffering clears (a frame should be visible), probe the
+      // surface once after a short delay. textureId=null/rect=null here ==
+      // texture never attached; non-null with playerWH=0x0 == attached but mpv
+      // reported no video size; non-null with a real rect == surface is fine
+      // and the black screen is elsewhere (e.g. compositing).
+      if (!v && !_midPlaybackProbed && !_disposed) {
+        _midPlaybackProbed = true;
+        Future.delayed(const Duration(seconds: 2), () {
+          if (!_disposed) logSurface('mid-playback+2s');
+        });
+      }
+    }));
     _subs.add(_player.stream.completed.listen((v) => _completedCtrl.add(v)));
     _subs.add(_player.stream.error.listen((e) => _errorCtrl.add(e)));
     _subs.add(_player.stream.position.listen((p) => _positionCtrl.add(p)));

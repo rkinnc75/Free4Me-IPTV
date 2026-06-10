@@ -1,0 +1,165 @@
+diff --git a/lib/player/mpv_engine.dart b/lib/player/mpv_engine.dart
+index 94c4c3e..bf80437 100644
+--- a/lib/player/mpv_engine.dart
++++ b/lib/player/mpv_engine.dart
+@@ -59,6 +59,10 @@ class MpvEngine implements PlayerEngine {
+   /// and dispose an already-disposed native mpv instance.
+   bool _disposed = false;
+ 
++  /// fix331: one-shot guard so the mid-playback surface probe logs once per
++  /// engine (not on every buffering toggle).
++  bool _midPlaybackProbed = false;
++
+   MpvEngine({
+     required this.channel,
+     required this.settings,
+@@ -67,7 +71,23 @@ class MpvEngine implements PlayerEngine {
+   }) {
+     _player.setPlaylistMode(mk.PlaylistMode.none);
+ 
+-    _subs.add(_player.stream.buffering.listen((v) => _bufferingCtrl.add(v)));
++    _subs.add(_player.stream.buffering.listen((v) {
++      _bufferingCtrl.add(v);
++      // fix331: capture the texture/rect WHILE playing. Existing SURFACE traces
++      // fire at rotate-init (texture not yet attached → null) and at exit, so a
++      // black-screen-with-audio session never logged the surface state during
++      // playback. When buffering clears (a frame should be visible), probe the
++      // surface once after a short delay. textureId=null/rect=null here ==
++      // texture never attached; non-null with playerWH=0x0 == attached but mpv
++      // reported no video size; non-null with a real rect == surface is fine
++      // and the black screen is elsewhere (e.g. compositing).
++      if (!v && !_midPlaybackProbed && !_disposed) {
++        _midPlaybackProbed = true;
++        Future.delayed(const Duration(seconds: 2), () {
++          if (!_disposed) logSurface('mid-playback+2s');
++        });
++      }
++    }));
+     _subs.add(_player.stream.completed.listen((v) => _completedCtrl.add(v)));
+     _subs.add(_player.stream.error.listen((e) => _errorCtrl.add(e)));
+     _subs.add(_player.stream.position.listen((p) => _positionCtrl.add(p)));
+diff --git a/lib/select_dialog.dart b/lib/select_dialog.dart
+index 491671f..28df854 100644
+--- a/lib/select_dialog.dart
++++ b/lib/select_dialog.dart
+@@ -6,29 +6,65 @@ class SelectDialog extends StatelessWidget {
+       {super.key,
+       required this.action,
+       required this.data,
+-      required this.title});
++      required this.title,
++      this.selectedId});
+   final Function(int id) action;
+   final List<IdData<String>> data;
+   final String title;
+ 
++  /// fix331: the id of the currently-selected option, if any. Used to (a)
++  /// autofocus that row so the D-pad lands on the active choice instead of
++  /// always the first item, and (b) show a check + highlight so the current
++  /// value is visible. Null = no pre-selection (focus the first row).
++  final int? selectedId;
++
+   @override
+   Widget build(BuildContext context) {
++    // fix331: the old layout wrapped ONLY the first item in a bare
++    // Focus(autofocus: true). On a D-pad TV that captured focus but the inner
++    // ListTile showed no focus highlight and could not be activated — the
++    // first option (e.g. "Libmpv → ExoPlayer") looked dead: no highlight,
++    // couldn't select. Each row is now an independently focusable, autofocus-
++    // aware ListTile so every option highlights and selects with the remote.
++    final hasSelection =
++        selectedId != null && data.any((d) => d.id == selectedId);
+     return AlertDialog(
+       title: Text(title),
+       content: SingleChildScrollView(
+-          child: Column(
+-        mainAxisSize: MainAxisSize.min,
+-        children: [
+-          for (var i = 0; i < data.length; i++)
+-            i == 0
+-                ? Focus(autofocus: true, child: getItem(data[i]))
+-                : getItem(data[i]),
+-        ],
+-      )),
++        child: Column(
++          mainAxisSize: MainAxisSize.min,
++          children: [
++            for (var i = 0; i < data.length; i++)
++              _item(
++                context,
++                data[i],
++                // Autofocus the selected row; if nothing is selected, the
++                // first row.
++                autofocus: hasSelection
++                    ? data[i].id == selectedId
++                    : i == 0,
++                selected: data[i].id == selectedId,
++              ),
++          ],
++        ),
++      ),
+     );
+   }
+ 
+-  Widget getItem(IdData<String> item) {
+-    return ListTile(title: Text(item.data), onTap: () => action(item.id));
++  Widget _item(BuildContext context, IdData<String> item,
++      {required bool autofocus, required bool selected}) {
++    return ListTile(
++      autofocus: autofocus,
++      selected: selected,
++      selectedTileColor:
++          Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
++      // A non-null focusColor + the default ListTile focus behaviour gives a
++      // visible highlight as the D-pad moves between rows.
++      title: Text(item.data),
++      trailing: selected
++          ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
++          : null,
++      onTap: () => action(item.id),
++    );
+   }
+ }
+diff --git a/lib/settings_view.dart b/lib/settings_view.dart
+index f9c66d7..4fab45d 100644
+--- a/lib/settings_view.dart
++++ b/lib/settings_view.dart
+@@ -1803,6 +1803,10 @@ class _SettingsState extends State<SettingsView> {
+       builder: (BuildContext context) {
+         return SelectDialog(
+           title: 'Player engine',
++          // fix331: pre-select the active preference so the picker opens on it
++          // and it shows highlighted (the index in _enginePreferenceOptions).
++          selectedId: _enginePreferenceOptions
++              .indexOf(settings.enginePreference),
+           data: _enginePreferenceOptions
+               .asMap()
+               .entries
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 3f48f92..6f6039c 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.26.47': [
++    'Fixed the selection dialogs (e.g. Player engine, Multi-view) on TV: every option now highlights and can be selected with the remote, and the dialog opens focused on the current choice — previously the top option could not be highlighted or chosen.',
++    'Added diagnostics to help track down a black-screen-with-audio playback issue on some TV boxes.',
++  ],
+   '1.26.46': [
+     'Much faster browsing of very large catalogues: opening the All view no longer freezes for several seconds while the full channel list is sorted — it now uses a dedicated index and appears almost instantly.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index cef893d..c6ccd8c 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.26.46+330
++version: 1.26.47+331
+ 
+ environment:
+   sdk: ^3.10.7
