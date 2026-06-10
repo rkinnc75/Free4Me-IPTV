@@ -1063,7 +1063,12 @@ class _SettingsState extends State<SettingsView> {
     }
     closeProgress();
     stepNotifier.dispose();
-    await _showExportServerDialog(items, capturedAt: stamp);
+    // fix329: pass the readable device name so the portal + QR dialog
+    // identify the source device (aligns with device-tagged filenames).
+    final deviceName = await DeviceDetector.deviceLabel();
+    if (!mounted) return;
+    await _showExportServerDialog(items,
+        capturedAt: stamp, deviceName: deviceName);
   }
 
   // fix327: persistent (not SnackBar) failure dialog for TV export, so the
@@ -1089,10 +1094,12 @@ class _SettingsState extends State<SettingsView> {
   Future<void> _showExportServerDialog(
     List<ExportItem> items, {
     String? capturedAt,
+    String? deviceName, // fix329
   }) async {
     final server = ExportServer(
       items,
       capturedAt: capturedAt,
+      deviceName: deviceName,
       // fix317: portal sources-only import. Runs on the app isolate, so it can
       // touch the DB and trigger a refresh directly. After a successful import
       // we schedule a source refresh on the device (next frame, so the HTTP
@@ -1138,7 +1145,9 @@ class _SettingsState extends State<SettingsView> {
       barrierDismissible: false,
       // ignore: use_build_context_synchronously
       builder: (ctx) => AlertDialog(
-        title: const Text('Download on your phone or PC'),
+        title: Text(deviceName != null && deviceName.isNotEmpty
+            ? 'Download from $deviceName'
+            : 'Download on your phone or PC'),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,

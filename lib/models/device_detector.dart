@@ -37,6 +37,35 @@ class DeviceDetector {
     return cleaned.length > 16 ? cleaned.substring(0, 16) : cleaned;
   }
 
+  /// fix329: a human-readable device name (e.g. "Samsung SM-S938U",
+  /// "onn. 4K Plus") for display in the export portal, so the QR page
+  /// identifies which device the export came from — aligning with the
+  /// device-tagged filenames (deviceTag) used elsewhere. Empty on failure /
+  /// non-Android. Cached after first read.
+  static String? _deviceLabel;
+  static Future<String> deviceLabel() async {
+    if (_deviceLabel != null) return _deviceLabel!;
+    if (!Platform.isAndroid) {
+      _deviceLabel = '';
+      return '';
+    }
+    try {
+      final a = await _deviceInfo.androidInfo;
+      final model = a.model.isNotEmpty ? a.model : a.device;
+      final maker = a.manufacturer.trim();
+      // Avoid "Samsung Samsung SM-..." when the model already starts with the
+      // manufacturer.
+      final label = (maker.isEmpty ||
+              model.toLowerCase().startsWith(maker.toLowerCase()))
+          ? model
+          : '$maker $model';
+      _deviceLabel = label.trim();
+    } catch (_) {
+      _deviceLabel = '';
+    }
+    return _deviceLabel!;
+  }
+
   static String? _deviceTag;
   static Future<String> deviceTag() async {
     if (_deviceTag != null) return _deviceTag!;

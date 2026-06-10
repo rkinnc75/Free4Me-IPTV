@@ -36,13 +36,17 @@ class ExportServer {
   HttpServer? _server;
   final List<ExportItem> _items;
   final String? capturedAt; // fix166
+  /// fix329: human-readable device name shown in the portal header so the
+  /// export identifies its origin device (aligns with device-tagged files).
+  final String? deviceName;
   /// fix317: called with the uploaded settings-file bytes when the user POSTs
   /// a sources import from the portal. Returns the number of sources imported
   /// (or -1 on error). Null disables the import form.
   final Future<int> Function(List<int> bytes)? onImportSources;
   Timer? _idleTimeout;
 
-  ExportServer(this._items, {this.capturedAt, this.onImportSources});
+  ExportServer(this._items,
+      {this.capturedAt, this.deviceName, this.onImportSources});
 
   /// Start the server and return the LAN URLs to display (one per IPv4).
   Future<List<String>> start() async {
@@ -62,6 +66,9 @@ class ExportServer {
     return urls;
   }
 
+  // fix329: minimal HTML escape for the device name in the portal header.
+  static String _esc(String s) => const HtmlEscape().convert(s);
+
   void _resetIdle() {
     _idleTimeout?.cancel();
     _idleTimeout = Timer(const Duration(minutes: 10), stop);
@@ -77,6 +84,10 @@ class ExportServer {
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
             '<body style="font-family:sans-serif;padding:2em;max-width:32em;'
             'margin:auto"><h2>Free4Me-IPTV export</h2>');
+      if (deviceName != null && deviceName!.isNotEmpty) {
+        buf.write('<p style="font-size:1em;margin:-.6em 0 .2em;color:#444">'
+            'From <strong>${_esc(deviceName!)}</strong></p>');
+      }
       if (capturedAt != null) {
         buf.write('<p style="color:#888;font-size:.85em;margin:-.4em 0 1em">'
             'Snapshot taken $capturedAt</p>');

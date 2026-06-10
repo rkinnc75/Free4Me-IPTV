@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.45': [
+    'The TV export download page and QR screen now show which device the export came from, matching the device name already included in export filenames.',
+  ],
   '1.26.44': [
     'Fixed out-of-memory crashes when exporting on TV with large channel catalogues: export files are now written to disk and streamed to your phone/PC instead of being held in memory all at once.',
   ],

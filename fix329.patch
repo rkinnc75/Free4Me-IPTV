@@ -1,0 +1,153 @@
+diff --git a/lib/backend/export_server.dart b/lib/backend/export_server.dart
+index 724de13..bd15d4f 100644
+--- a/lib/backend/export_server.dart
++++ b/lib/backend/export_server.dart
+@@ -36,13 +36,17 @@ class ExportServer {
+   HttpServer? _server;
+   final List<ExportItem> _items;
+   final String? capturedAt; // fix166
++  /// fix329: human-readable device name shown in the portal header so the
++  /// export identifies its origin device (aligns with device-tagged files).
++  final String? deviceName;
+   /// fix317: called with the uploaded settings-file bytes when the user POSTs
+   /// a sources import from the portal. Returns the number of sources imported
+   /// (or -1 on error). Null disables the import form.
+   final Future<int> Function(List<int> bytes)? onImportSources;
+   Timer? _idleTimeout;
+ 
+-  ExportServer(this._items, {this.capturedAt, this.onImportSources});
++  ExportServer(this._items,
++      {this.capturedAt, this.deviceName, this.onImportSources});
+ 
+   /// Start the server and return the LAN URLs to display (one per IPv4).
+   Future<List<String>> start() async {
+@@ -62,6 +66,9 @@ class ExportServer {
+     return urls;
+   }
+ 
++  // fix329: minimal HTML escape for the device name in the portal header.
++  static String _esc(String s) => const HtmlEscape().convert(s);
++
+   void _resetIdle() {
+     _idleTimeout?.cancel();
+     _idleTimeout = Timer(const Duration(minutes: 10), stop);
+@@ -77,6 +84,10 @@ class ExportServer {
+             '<meta name="viewport" content="width=device-width,initial-scale=1">'
+             '<body style="font-family:sans-serif;padding:2em;max-width:32em;'
+             'margin:auto"><h2>Free4Me-IPTV export</h2>');
++      if (deviceName != null && deviceName!.isNotEmpty) {
++        buf.write('<p style="font-size:1em;margin:-.6em 0 .2em;color:#444">'
++            'From <strong>${_esc(deviceName!)}</strong></p>');
++      }
+       if (capturedAt != null) {
+         buf.write('<p style="color:#888;font-size:.85em;margin:-.4em 0 1em">'
+             'Snapshot taken $capturedAt</p>');
+diff --git a/lib/models/device_detector.dart b/lib/models/device_detector.dart
+index 9167085..48070d6 100644
+--- a/lib/models/device_detector.dart
++++ b/lib/models/device_detector.dart
+@@ -37,6 +37,35 @@ class DeviceDetector {
+     return cleaned.length > 16 ? cleaned.substring(0, 16) : cleaned;
+   }
+ 
++  /// fix329: a human-readable device name (e.g. "Samsung SM-S938U",
++  /// "onn. 4K Plus") for display in the export portal, so the QR page
++  /// identifies which device the export came from — aligning with the
++  /// device-tagged filenames (deviceTag) used elsewhere. Empty on failure /
++  /// non-Android. Cached after first read.
++  static String? _deviceLabel;
++  static Future<String> deviceLabel() async {
++    if (_deviceLabel != null) return _deviceLabel!;
++    if (!Platform.isAndroid) {
++      _deviceLabel = '';
++      return '';
++    }
++    try {
++      final a = await _deviceInfo.androidInfo;
++      final model = a.model.isNotEmpty ? a.model : a.device;
++      final maker = a.manufacturer.trim();
++      // Avoid "Samsung Samsung SM-..." when the model already starts with the
++      // manufacturer.
++      final label = (maker.isEmpty ||
++              model.toLowerCase().startsWith(maker.toLowerCase()))
++          ? model
++          : '$maker $model';
++      _deviceLabel = label.trim();
++    } catch (_) {
++      _deviceLabel = '';
++    }
++    return _deviceLabel!;
++  }
++
+   static String? _deviceTag;
+   static Future<String> deviceTag() async {
+     if (_deviceTag != null) return _deviceTag!;
+diff --git a/lib/settings_view.dart b/lib/settings_view.dart
+index e2d0e78..f9c66d7 100644
+--- a/lib/settings_view.dart
++++ b/lib/settings_view.dart
+@@ -1063,7 +1063,12 @@ class _SettingsState extends State<SettingsView> {
+     }
+     closeProgress();
+     stepNotifier.dispose();
+-    await _showExportServerDialog(items, capturedAt: stamp);
++    // fix329: pass the readable device name so the portal + QR dialog
++    // identify the source device (aligns with device-tagged filenames).
++    final deviceName = await DeviceDetector.deviceLabel();
++    if (!mounted) return;
++    await _showExportServerDialog(items,
++        capturedAt: stamp, deviceName: deviceName);
+   }
+ 
+   // fix327: persistent (not SnackBar) failure dialog for TV export, so the
+@@ -1089,10 +1094,12 @@ class _SettingsState extends State<SettingsView> {
+   Future<void> _showExportServerDialog(
+     List<ExportItem> items, {
+     String? capturedAt,
++    String? deviceName, // fix329
+   }) async {
+     final server = ExportServer(
+       items,
+       capturedAt: capturedAt,
++      deviceName: deviceName,
+       // fix317: portal sources-only import. Runs on the app isolate, so it can
+       // touch the DB and trigger a refresh directly. After a successful import
+       // we schedule a source refresh on the device (next frame, so the HTTP
+@@ -1138,7 +1145,9 @@ class _SettingsState extends State<SettingsView> {
+       barrierDismissible: false,
+       // ignore: use_build_context_synchronously
+       builder: (ctx) => AlertDialog(
+-        title: const Text('Download on your phone or PC'),
++        title: Text(deviceName != null && deviceName.isNotEmpty
++            ? 'Download from $deviceName'
++            : 'Download on your phone or PC'),
+         content: SingleChildScrollView(
+           child: Column(
+             mainAxisSize: MainAxisSize.min,
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index c2210f3..784a82d 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.26.45': [
++    'The TV export download page and QR screen now show which device the export came from, matching the device name already included in export filenames.',
++  ],
+   '1.26.44': [
+     'Fixed out-of-memory crashes when exporting on TV with large channel catalogues: export files are now written to disk and streamed to your phone/PC instead of being held in memory all at once.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 122d628..2d42e1c 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.26.44+328
++version: 1.26.45+329
+ 
+ environment:
+   sdk: ^3.10.7
