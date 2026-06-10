@@ -274,7 +274,12 @@ class _MultiViewCellState extends State<MultiViewCell> {
         // HTTP-layer transient (5xx). Match conservatively so 4xx (auth /
         // permanent) doesn't slip in by accident.
         err.contains('HTTP error 5') ||
-        err.contains('Server returned 5');
+        err.contains('Server returned 5') ||
+        // fix338: the texture-attach failure (fix337) recovers on restart like
+        // the others — treat it as transient so it draws on the 3s-cadence
+        // retry budget instead of forcing an immediate permanent restart that
+        // hammered a connection-limited provider.
+        err.contains('video texture failed to attach');
   }
 
   /// Decodes the `ignoreSSL` text column (string '1' / 'true' / null) into

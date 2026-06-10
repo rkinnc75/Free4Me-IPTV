@@ -187,6 +187,16 @@ class _HomeState extends State<Home> {
 
   Future<void> showWhatsNew(String version) async {
     if (!mounted) return;
+    // fix338: guarantee the once-per-version log/metrics rotation has run
+    // before the What's New dialog appears. The rotation and the What's New
+    // trigger track different settings keys (lastLogClearedVersion vs
+    // lastSeenVersion) and previously fired independently under firstLaunch,
+    // so a path that showed What's New without rotating would leave the prior
+    // version's log in place. This makes "new-version screen shown" and
+    // "log cleared for this version" inseparable. Idempotent — a no-op if it
+    // already ran this version.
+    await SettingsService.maybeRotateLogOnVersionChange();
+    if (!mounted) return;
     await showDialog(
       context: context,
       builder: (context) => WhatsNewModal(version: version),

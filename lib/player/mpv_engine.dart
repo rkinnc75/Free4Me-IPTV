@@ -63,6 +63,11 @@ class MpvEngine implements PlayerEngine {
   /// engine (not on every buffering toggle).
   bool _midPlaybackProbed = false;
 
+  /// fix338: set once this engine has emitted ANY error, so the +4s
+  /// texture-attach check does not pile a second error onto a cell that is
+  /// already being restarted by a provider open-failure.
+  bool _emittedError = false;
+
   /// fix337: serialize VideoController platform initialization across ALL
   /// engine instances. The Shield log proved that when four 2x2 cells create
   /// their controllers in the same frame, two of the four texture
@@ -98,7 +103,7 @@ class MpvEngine implements PlayerEngine {
       }
     }));
     _subs.add(_player.stream.completed.listen((v) => _completedCtrl.add(v)));
-    _subs.add(_player.stream.error.listen((e) => _errorCtrl.add(e)));
+    _subs.add(_player.stream.error.listen(_emitError));
     _subs.add(_player.stream.position.listen((p) => _positionCtrl.add(p)));
 
     // fix116.5g: engine-identity tag so every engine can be followed
@@ -185,21 +190,26 @@ class MpvEngine implements PlayerEngine {
     // and orphaned Video black layer. App drives fullscreen via
     // _enterSystemFullscreen() (handlesOwnFullscreen=false path).
 
-    // fix337: no-texture detection. The Shield 2x2 sessions proved a cell can
-    // be DECODING with no texture attached (black) — and that an engine
-    // restart always recovers it. If the texture id is still unresolved 4s
-    // after open, emit an engine error so the owner's existing retry path
-    // (MultiViewCell transient retry / Player reconnect) restarts this engine.
+    // fix338: don't fire the texture check if this engine already emitted an
+    // error (e.g. a provider open-failure already restarting the cell) — that
+    // caused a double restart on the same cell (provider-fail + texture-fail).
     Future.delayed(const Duration(seconds: 4), () {
-      if (_disposed) return;
+      if (_disposed || _emittedError) return;
       if (_controller.id.value == null) {
         AppLog.warn('MpvEngine: TEXTURE-ATTACH-FAILED'
             ' — no texture 4s after open (decode may be running);'
             ' emitting error to trigger restart'
             ' channel="${channel.name}" previewMode=$previewMode');
-        _errorCtrl.add('video texture failed to attach');
+        _emitError('video texture failed to attach');
       }
     });
+  }
+
+  /// fix338: single error sink that records that an error was emitted (so the
+  /// texture-attach check can self-gate) and forwards to the stream.
+  void _emitError(String e) {
+    _emittedError = true;
+    if (!_errorCtrl.isClosed) _errorCtrl.add(e);
   }
 
   /// fix337: resolve when [c]'s platform texture id becomes non-null, or
