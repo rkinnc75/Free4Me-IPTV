@@ -1,8 +1,8 @@
 {
-  "latest": "1.26.45",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.45",
+  "latest": "1.26.46",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.46",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 The TV export download page and QR screen now show which device the export came from, matching the device name already included in export filenames.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.45/Free4Me-IPTV-1.26.45-arm64.apk"
+  "releaseNotes": "\u2022 Much faster browsing of very large catalogues: opening the All view no longer freezes for several seconds while the full channel list is sorted \u2014 it now uses a dedicated index and appears almost instantly.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.46/Free4Me-IPTV-1.26.46-arm64.apk"
 }
