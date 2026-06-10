@@ -20,6 +20,7 @@ class ExoEngine implements PlayerEngine {
   final _completedCtrl = StreamController<bool>.broadcast();
   final _errorCtrl = StreamController<String>.broadcast();
   final _positionCtrl = StreamController<Duration>.broadcast();
+  final _playingCtrl = StreamController<bool>.broadcast(); // fix336
 
   Timer? _pollTimer;
   bool _wasBuffering = false;
@@ -125,6 +126,7 @@ class ExoEngine implements PlayerEngine {
     await _completedCtrl.close();
     await _errorCtrl.close();
     await _positionCtrl.close();
+    await _playingCtrl.close();
   }
 
 
@@ -139,6 +141,38 @@ class ExoEngine implements PlayerEngine {
 
   @override
   Duration get position => _controller?.value.position ?? Duration.zero;
+
+  // fix336: transport surface for the VOD control bar.
+  @override
+  Duration get duration => _controller?.value.duration ?? Duration.zero;
+
+  @override
+  Stream<bool> get playingStream => _playingCtrl.stream;
+
+  @override
+  bool get isPlaying => _controller?.value.isPlaying ?? false;
+
+  @override
+  Future<void> pause() async {
+    await _controller?.pause();
+    _playingCtrl.add(false);
+  }
+
+  @override
+  Future<void> play() async {
+    await _controller?.play();
+    _playingCtrl.add(true);
+  }
+
+  @override
+  Future<void> seek(Duration position) async {
+    final d = _controller?.value.duration ?? Duration.zero;
+    if (d <= Duration.zero) return; // live / non-seekable
+    var target = position;
+    if (target < Duration.zero) target = Duration.zero;
+    if (target > d) target = d;
+    await _controller?.seekTo(target);
+  }
 
 
   @override

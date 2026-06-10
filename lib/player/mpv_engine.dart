@@ -230,6 +230,28 @@ class MpvEngine implements PlayerEngine {
   @override
   Duration get position => _player.state.position;
 
+  // fix336: transport surface for interface parity.
+  @override
+  Duration get duration => _player.state.duration;
+
+  @override
+  Stream<bool> get playingStream => _player.stream.playing;
+
+  @override
+  bool get isPlaying => _player.state.playing;
+
+  @override
+  Future<void> pause() => _player.pause();
+
+  @override
+  Future<void> play() => _player.play();
+
+  @override
+  Future<void> seek(Duration position) async {
+    if (_player.state.duration <= Duration.zero) return;
+    await _player.seek(position);
+  }
+
 
   @override
   bool get supportsTrackSelection => true;

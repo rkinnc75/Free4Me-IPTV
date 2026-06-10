@@ -51,6 +51,25 @@ abstract class PlayerEngine {
 
   Duration get position;
 
+  /// fix336: total media duration for VOD (zero for live). Drives the seek
+  /// slider; the Exo VOD transport bar only shows when this is > 0.
+  Duration get duration;
+
+  /// fix336: emits the playing/paused state so the transport bar stays in sync.
+  Stream<bool> get playingStream;
+
+  /// fix336: whether playback is currently un-paused.
+  bool get isPlaying;
+
+  /// fix336: pause playback (no-op if already paused / unsupported).
+  Future<void> pause();
+
+  /// fix336: resume playback (no-op if already playing).
+  Future<void> play();
+
+  /// fix336: seek to [position] (VOD only; no-op on live/non-seekable).
+  Future<void> seek(Duration position);
+
 
   /// Whether this engine can enumerate and switch audio/subtitle tracks.
   /// [ExoEngine] returns false because video_player exposes no track API.

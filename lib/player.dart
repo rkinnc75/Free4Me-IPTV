@@ -143,6 +143,13 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   Timer? _stableTimer;
   bool _isReconnecting = false;
   String? _bufferingState;
+
+  // fix336: VOD transport bar state, fed by engine position/playing streams.
+  Duration _vodPosition = Duration.zero;
+  Duration _vodDuration = Duration.zero;
+  bool _vodPlaying = true;
+  bool _scrubbing = false;
+  Duration _scrubTarget = Duration.zero;
   // Suppresses false reconnect triggers during the first 3s after open().
   bool _startupGrace = false;
 
@@ -391,6 +398,23 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
       onDisconnect(reason: 'player error: $err');
     }));
     _engineSubs.add(_engine.bufferingStream.listen(_onBufferingChanged));
+
+    // fix336: drive the VOD transport bar (duration is zero for live -> hidden).
+    _engineSubs.add(_engine.positionStream.listen((pos) {
+      if (!mounted || _scrubbing) return;
+      final dur = _engine.duration;
+      if (pos != _vodPosition || dur != _vodDuration) {
+        setState(() {
+          _vodPosition = pos;
+          _vodDuration = dur;
+        });
+      }
+    }));
+    _engineSubs.add(_engine.playingStream.listen((playing) {
+      if (mounted && playing != _vodPlaying) {
+        setState(() => _vodPlaying = playing);
+      }
+    }));
   }
 
   String _playbackUrl() {
@@ -1330,10 +1354,95 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
                   ),
                 ),
               ),
+            // fix336: VOD transport bar (seekable media only; live duration=0).
+            if (_vodDuration > Duration.zero) _buildVodTransportBar(),
           ],
         ),
       ),
     );
+  }
+
+  // fix336: VOD transport bar — play/pause, +/-10s, seek slider, time.
+  Widget _buildVodTransportBar() {
+    final dur = _vodDuration;
+    final pos = _scrubbing ? _scrubTarget : _vodPosition;
+    final maxMs = dur.inMilliseconds.toDouble();
+    final curMs = pos.inMilliseconds.clamp(0, dur.inMilliseconds).toDouble();
+
+    void seekTo(Duration target) {
+      var t = target;
+      if (t < Duration.zero) t = Duration.zero;
+      if (t > dur) t = dur;
+      _engine.seek(t);
+      setState(() => _vodPosition = t);
+    }
+
+    return Container(
+      color: Colors.black54,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: () => seekTo(pos - const Duration(seconds: 10)),
+            icon: const Icon(Icons.replay_10, color: Colors.white, size: 30),
+            tooltip: 'Back 10s',
+          ),
+          IconButton(
+            autofocus: true,
+            onPressed: () async {
+              if (_vodPlaying) {
+                await _engine.pause();
+                if (mounted) setState(() => _vodPlaying = false);
+              } else {
+                await _engine.play();
+                if (mounted) setState(() => _vodPlaying = true);
+              }
+            },
+            icon: Icon(_vodPlaying ? Icons.pause : Icons.play_arrow,
+                color: Colors.white, size: 38),
+            tooltip: _vodPlaying ? 'Pause' : 'Play',
+          ),
+          IconButton(
+            onPressed: () => seekTo(pos + const Duration(seconds: 10)),
+            icon: const Icon(Icons.forward_10, color: Colors.white, size: 30),
+            tooltip: 'Forward 10s',
+          ),
+          const SizedBox(width: 8),
+          Text(_fmtDuration(pos),
+              style: const TextStyle(color: Colors.white, fontSize: 13)),
+          Expanded(
+            child: Slider(
+              value: curMs.clamp(0, maxMs <= 0 ? 1 : maxMs),
+              max: maxMs <= 0 ? 1 : maxMs,
+              onChangeStart: (_) => setState(() {
+                _scrubbing = true;
+                _scrubTarget = pos;
+              }),
+              onChanged: (v) => setState(
+                  () => _scrubTarget = Duration(milliseconds: v.toInt())),
+              onChangeEnd: (v) {
+                final target = Duration(milliseconds: v.toInt());
+                setState(() => _scrubbing = false);
+                seekTo(target);
+              },
+            ),
+          ),
+          Text(_fmtDuration(dur),
+              style: const TextStyle(color: Colors.white, fontSize: 13)),
+          const SizedBox(width: 4),
+        ],
+      ),
+    );
+  }
+
+  // fix336: H:MM:SS or M:SS.
+  String _fmtDuration(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60);
+    final sec = d.inSeconds.remainder(60);
+    final mm = m.toString().padLeft(h > 0 ? 2 : 1, '0');
+    final ss = sec.toString().padLeft(2, '0');
+    return h > 0 ? '$h:$mm:$ss' : '$mm:$ss';
   }
 
   Widget _buildBufferingOverlay() {
