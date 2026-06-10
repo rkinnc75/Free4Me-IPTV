@@ -1,0 +1,137 @@
+diff --git a/lib/multi_view_cell.dart b/lib/multi_view_cell.dart
+index 51fadaa..4b9a798 100644
+--- a/lib/multi_view_cell.dart
++++ b/lib/multi_view_cell.dart
+@@ -557,7 +557,8 @@ class _MultiViewCellState extends State<MultiViewCell> {
+           };
+ 
+     try {
+-      await engine.open(url: ch.url ?? '', headers: httpHeaders);
++      // fix339: multi-view is live-TV-only — suppress Exo completed loops.
++      await engine.open(url: ch.url ?? '', headers: httpHeaders, isLive: true);
+     } catch (err) {
+       AppLog.warn(
+         'MultiViewCell: open() threw'
+diff --git a/lib/player.dart b/lib/player.dart
+index 2698add..ea7a2a7 100644
+--- a/lib/player.dart
++++ b/lib/player.dart
+@@ -677,6 +677,8 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+               url: playbackUrl,
+               startPosition: startPosition,
+               headers: httpHeaders,
++              isLive: widget.channel.mediaType ==
++                  MediaType.livestream, // fix339
+             )
+             .timeout(
+               timeout,
+@@ -927,6 +929,7 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+         await _engine.open(
+           url: url,
+           startPosition: resumePosition,
++          isLive: widget.channel.mediaType == MediaType.livestream, // fix339
+         );
+       }
+       return;
+diff --git a/lib/player/exo_engine.dart b/lib/player/exo_engine.dart
+index 3453620..ef6c7f8 100644
+--- a/lib/player/exo_engine.dart
++++ b/lib/player/exo_engine.dart
+@@ -25,6 +25,15 @@ class ExoEngine implements PlayerEngine {
+   Timer? _pollTimer;
+   bool _wasBuffering = false;
+ 
++  /// fix339: set by open(). Live streams MUST NOT emit completed: video_player
++  /// reports a tiny non-zero duration for raw .ts live (sub-second / segment
++  /// window — logged as duration=0s via inSeconds), so the old
++  /// duration > zero guard passed and position >= duration was instantly true,
++  /// firing "stream completed" in a loop. On 1.26.54 (after fix335 kept Exo
++  /// alive on live) this restarted every 2x2 cell about once per second
++  /// (164 completed events in a 5-minute S24 log).
++  bool _isLive = false;
++
+   /// fix335: one-shot guard — emit a single "playing" liveness signal the first
+   /// time the controller reports initialized && playing, so the Player's
+   /// startup watchdog cancels even when video_player never toggles isBuffering
+@@ -77,8 +86,10 @@ class ExoEngine implements PlayerEngine {
+     required String url,
+     Duration? startPosition,
+     Map<String, String>? headers,
++    bool isLive = false, // fix339
+   }) async {
+-    AppLog.info('ExoEngine: open() url="$url"');
++    _isLive = isLive;
++    AppLog.info('ExoEngine: open() url="$url" isLive=$isLive');
+     await _controller?.dispose();
+ 
+     _controller = VideoPlayerController.networkUrl(
+@@ -217,11 +228,14 @@ class ExoEngine implements PlayerEngine {
+       _errorCtrl.add(v.errorDescription ?? 'ExoPlayer error');
+     }
+ 
+-    // End of stream for VOD only. Live HLS streams report duration == zero;
+-    // skip in that case to avoid false reconnect loops.
+-    if (!v.isPlaying &&
++    // End of stream for VOD only. fix339: NEVER for live (see _isLive) — and
++    // even for unset callers require a real duration (>= 5s): raw .ts live
++    // reports a tiny non-zero duration that position reaches instantly, which
++    // looped "completed" restarts on every 2x2 cell.
++    if (!_isLive &&
++        !v.isPlaying &&
+         v.isInitialized &&
+-        v.duration > Duration.zero &&
++        v.duration >= const Duration(seconds: 5) &&
+         v.position >= v.duration) {
+       AppLog.info('ExoEngine: stream completed');
+       _completedCtrl.add(true);
+diff --git a/lib/player/mpv_engine.dart b/lib/player/mpv_engine.dart
+index 4ee6eff..1c148ab 100644
+--- a/lib/player/mpv_engine.dart
++++ b/lib/player/mpv_engine.dart
+@@ -139,6 +139,7 @@ class MpvEngine implements PlayerEngine {
+     required String url,
+     Duration? startPosition,
+     Map<String, String>? headers,
++    bool isLive = false, // fix339: unused — mpv's completed is EOF-based
+   }) async {
+     AppLog.info(
+       'MpvEngine: open()'
+diff --git a/lib/player/player_engine.dart b/lib/player/player_engine.dart
+index 590af46..6fbb261 100644
+--- a/lib/player/player_engine.dart
++++ b/lib/player/player_engine.dart
+@@ -30,6 +30,7 @@ abstract class PlayerEngine {
+     required String url,
+     Duration? startPosition,
+     Map<String, String>? headers,
++    bool isLive = false, // fix339: live streams must not emit completed
+   });
+ 
+   /// Release all native resources.  Must be called exactly once.
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 94970ea..f76660e 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.26.55': [
++    'Fixed live channels on the ExoPlayer engine constantly restarting (especially visible as flickering/reloading cells in multi-view): live streams misreported a tiny duration, making the player think the stream had ended about once per second. Live streams no longer emit end-of-stream at all.',
++  ],
+   '1.26.54': [
+     'Improved multi-view reliability: a cell whose video texture fails to attach now recovers on the normal retry schedule instead of restarting aggressively, and no longer double-restarts when the provider also drops the connection.',
+     'The debug log is now guaranteed to be cleared for the new version whenever the What\'s New screen appears after an update.',
+diff --git a/pubspec.yaml b/pubspec.yaml
+index ff2b68e..e8181e4 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.26.54+338
++version: 1.26.55+339
+ 
+ environment:
+   sdk: ^3.10.7

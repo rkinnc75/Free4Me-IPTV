@@ -139,6 +139,7 @@ class MpvEngine implements PlayerEngine {
     required String url,
     Duration? startPosition,
     Map<String, String>? headers,
+    bool isLive = false, // fix339: unused — mpv's completed is EOF-based
   }) async {
     AppLog.info(
       'MpvEngine: open()'

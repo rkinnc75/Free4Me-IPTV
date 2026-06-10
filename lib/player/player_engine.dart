@@ -30,6 +30,7 @@ abstract class PlayerEngine {
     required String url,
     Duration? startPosition,
     Map<String, String>? headers,
+    bool isLive = false, // fix339: live streams must not emit completed
   });
 
   /// Release all native resources.  Must be called exactly once.

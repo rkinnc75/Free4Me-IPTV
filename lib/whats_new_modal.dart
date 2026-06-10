@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.55': [
+    'Fixed live channels on the ExoPlayer engine constantly restarting (especially visible as flickering/reloading cells in multi-view): live streams misreported a tiny duration, making the player think the stream had ended about once per second. Live streams no longer emit end-of-stream at all.',
+  ],
   '1.26.54': [
     'Improved multi-view reliability: a cell whose video texture fails to attach now recovers on the normal retry schedule instead of restarting aggressively, and no longer double-restarts when the provider also drops the connection.',
     'The debug log is now guaranteed to be cleared for the new version whenever the What\'s New screen appears after an update.',

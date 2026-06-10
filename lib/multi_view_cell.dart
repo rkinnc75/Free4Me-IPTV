@@ -557,7 +557,8 @@ class _MultiViewCellState extends State<MultiViewCell> {
           };
 
     try {
-      await engine.open(url: ch.url ?? '', headers: httpHeaders);
+      // fix339: multi-view is live-TV-only — suppress Exo completed loops.
+      await engine.open(url: ch.url ?? '', headers: httpHeaders, isLive: true);
     } catch (err) {
       AppLog.warn(
         'MultiViewCell: open() threw'

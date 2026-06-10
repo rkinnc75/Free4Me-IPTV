@@ -677,6 +677,8 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
               url: playbackUrl,
               startPosition: startPosition,
               headers: httpHeaders,
+              isLive: widget.channel.mediaType ==
+                  MediaType.livestream, // fix339
             )
             .timeout(
               timeout,
@@ -927,6 +929,7 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
         await _engine.open(
           url: url,
           startPosition: resumePosition,
+          isLive: widget.channel.mediaType == MediaType.livestream, // fix339
         );
       }
       return;

@@ -25,6 +25,15 @@ class ExoEngine implements PlayerEngine {
   Timer? _pollTimer;
   bool _wasBuffering = false;
 
+  /// fix339: set by open(). Live streams MUST NOT emit completed: video_player
+  /// reports a tiny non-zero duration for raw .ts live (sub-second / segment
+  /// window — logged as duration=0s via inSeconds), so the old
+  /// duration > zero guard passed and position >= duration was instantly true,
+  /// firing "stream completed" in a loop. On 1.26.54 (after fix335 kept Exo
+  /// alive on live) this restarted every 2x2 cell about once per second
+  /// (164 completed events in a 5-minute S24 log).
+  bool _isLive = false;
+
   /// fix335: one-shot guard — emit a single "playing" liveness signal the first
   /// time the controller reports initialized && playing, so the Player's
   /// startup watchdog cancels even when video_player never toggles isBuffering
@@ -77,8 +86,10 @@ class ExoEngine implements PlayerEngine {
     required String url,
     Duration? startPosition,
     Map<String, String>? headers,
+    bool isLive = false, // fix339
   }) async {
-    AppLog.info('ExoEngine: open() url="$url"');
+    _isLive = isLive;
+    AppLog.info('ExoEngine: open() url="$url" isLive=$isLive');
     await _controller?.dispose();
 
     _controller = VideoPlayerController.networkUrl(
@@ -217,11 +228,14 @@ class ExoEngine implements PlayerEngine {
       _errorCtrl.add(v.errorDescription ?? 'ExoPlayer error');
     }
 
-    // End of stream for VOD only. Live HLS streams report duration == zero;
-    // skip in that case to avoid false reconnect loops.
-    if (!v.isPlaying &&
+    // End of stream for VOD only. fix339: NEVER for live (see _isLive) — and
+    // even for unset callers require a real duration (>= 5s): raw .ts live
+    // reports a tiny non-zero duration that position reaches instantly, which
+    // looped "completed" restarts on every 2x2 cell.
+    if (!_isLive &&
+        !v.isPlaying &&
         v.isInitialized &&
-        v.duration > Duration.zero &&
+        v.duration >= const Duration(seconds: 5) &&
         v.position >= v.duration) {
       AppLog.info('ExoEngine: stream completed');
       _completedCtrl.add(true);
