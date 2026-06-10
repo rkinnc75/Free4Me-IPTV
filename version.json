@@ -1,8 +1,8 @@
 {
-  "latest": "1.26.54",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.54",
+  "latest": "1.26.55",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.55",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Improved multi-view reliability: a cell whose video texture fails to attach now recovers on the normal retry schedule instead of restarting aggressively, and no longer double-restarts when the provider also drops the connection.\n\u2022 The debug log is now guaranteed to be cleared for the new version whenever the What's New screen appears after an update.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.54/Free4Me-IPTV-1.26.54-arm64.apk"
+  "releaseNotes": "\u2022 Fixed live channels on the ExoPlayer engine constantly restarting (especially visible as flickering/reloading cells in multi-view): live streams misreported a tiny duration, making the player think the stream had ended about once per second. Live streams no longer emit end-of-stream at all.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.55/Free4Me-IPTV-1.26.55-arm64.apk"
 }
