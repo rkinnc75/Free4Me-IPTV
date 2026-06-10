@@ -1,8 +1,8 @@
 {
-  "latest": "1.26.51",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.51",
+  "latest": "1.26.52",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.52",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fixed live TV on the ExoPlayer engine dropping to the backup engine after ~15 seconds even when it was playing fine \u2014 the app now recognises ExoPlayer is playing and no longer falls back unnecessarily.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.51/Free4Me-IPTV-1.26.51-arm64.apk"
+  "releaseNotes": "\u2022 Added playback controls for movies and other on-demand video on the ExoPlayer engine: play/pause, skip back/forward 10 seconds, a seek bar, and elapsed/total time. Live TV is unaffected (it is not seekable).",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.52/Free4Me-IPTV-1.26.52-arm64.apk"
 }
