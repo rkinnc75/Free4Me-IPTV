@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.43': [
+    'TV export now shows a step-by-step progress indicator (gathering data, building backup, compressing, starting the server) instead of appearing to hang, and any failure is shown in a clear dialog instead of a brief message you might miss.',
+  ],
   '1.26.42': [
     'Fixed the Edit Source screen on TV (again): the form content now actually scrolls inside the dialog, with Save/Cancel always visible — previously the bottom options could still spill off the screen.',
     'The source password is now masked in the Edit Source screen, with a tap-to-reveal toggle.',

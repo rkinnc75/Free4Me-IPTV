@@ -989,6 +989,102 @@ class _SettingsState extends State<SettingsView> {
   ///   - `defaultView`, `refreshOnStart`, `forceTVMode`
   ///   - `showLivestreams`, `showMovies`, `showSeries`
   ///   - All EPG settings
+  // fix327: TV export used to build the bundle (gather dumps, read log, zip)
+  // and start the LAN server with NO UI — on a large catalogue that silent gap
+  // made it look frozen/broken, and a failure only flashed a SnackBar that is
+  // easy to miss on a TV (the reported "QR site never opens"). This wraps the
+  // whole flow in a step-by-step progress dialog and surfaces any failure as a
+  // persistent, dismissible dialog. Everything is logged so the cause is in
+  // the debug log even when the user can't easily retrieve one.
+  Future<void> _runTvServerExport({
+    required String stamp,
+    String? sourceDump,
+    bool includeCredentials = false,
+  }) async {
+    final stepNotifier = ValueNotifier<String>('Preparing export…');
+    var dialogOpen = true;
+    AppLog.info('TV export: starting (stamp=$stamp)');
+    // Progress dialog (not dismissible — closed programmatically).
+    // ignore: unawaited_futures
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        content: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(
+                width: 28, height: 28, child: CircularProgressIndicator()),
+            const SizedBox(width: 20),
+            Expanded(
+              child: ValueListenableBuilder<String>(
+                valueListenable: stepNotifier,
+                builder: (context, step, child) => Text(step),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    void closeProgress() {
+      if (dialogOpen && mounted) {
+        dialogOpen = false;
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+    }
+
+    List<ExportItem> items;
+    try {
+      items = await _buildExportBundle(
+        stamp: stamp,
+        sourceDump: sourceDump,
+        includeCredentials: includeCredentials,
+        onStep: (step) {
+          AppLog.info('TV export: $step');
+          stepNotifier.value = step;
+        },
+      );
+      stepNotifier.value = 'Starting download server…';
+      AppLog.info('TV export: starting download server…');
+    } catch (e) {
+      AppLog.error('TV export: failed building bundle — $e');
+      closeProgress();
+      stepNotifier.dispose();
+      if (mounted) {
+        await _showExportErrorDialog('Could not prepare the export', '$e');
+      }
+      return;
+    }
+
+    if (!mounted) {
+      stepNotifier.dispose();
+      return;
+    }
+    closeProgress();
+    stepNotifier.dispose();
+    await _showExportServerDialog(items, capturedAt: stamp);
+  }
+
+  // fix327: persistent (not SnackBar) failure dialog for TV export, so the
+  // user actually sees why nothing opened.
+  Future<void> _showExportErrorDialog(String title, String detail) async {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: SingleChildScrollView(child: Text(detail)),
+        actions: [
+          TextButton(
+            autofocus: true,
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   // fix158: start server, show URL + QR dialog (TV export).
   Future<void> _showExportServerDialog(
     List<ExportItem> items, {
@@ -1016,19 +1112,22 @@ class _SettingsState extends State<SettingsView> {
     try {
       urls = await server.start();
     } catch (e) {
+      AppLog.error('ExportServer: start failed — $e');
       if (mounted) {
         // ignore: use_build_context_synchronously
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not start export server: $e')));
+        await _showExportErrorDialog('Could not start the download server',
+            'The local server on port ${ExportServer.port} could not start.\n\n$e');
       }
       return;
     }
     if (urls.isEmpty) {
       await server.stop();
+      AppLog.warn('ExportServer: no network interface / no URL to show');
       if (mounted) {
         // ignore: use_build_context_synchronously
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('No network found. Connect to Wi-Fi and retry.')));
+        await _showExportErrorDialog('No network found',
+            'Connect this device to Wi-Fi or Ethernet on the same network as '
+            'your phone or PC, then try the export again.');
       }
       return;
     }
@@ -1131,11 +1230,8 @@ class _SettingsState extends State<SettingsView> {
     if (isTV) {
       // fix311: regardless of entry point, the LAN server exports all three
       // files (source dump, debug log, settings) plus a combined zip.
-      final items = await _buildExportBundle(
-        stamp: stamp,
-        sourceDump: buf.toString(),
-      );
-      await _showExportServerDialog(items, capturedAt: stamp);
+      // fix327: build + serve behind a progress dialog.
+      await _runTvServerExport(stamp: stamp, sourceDump: buf.toString());
     } else {
       await SettingsIo.exportStringToFile(
         // ignore: use_build_context_synchronously
@@ -1155,6 +1251,7 @@ class _SettingsState extends State<SettingsView> {
     required String stamp,
     String? sourceDump,
     bool includeCredentials = false,
+    void Function(String step)? onStep, // fix327: progress reporting
   }) async {
     final items = <ExportItem>[];
     final archive = Archive();
@@ -1173,24 +1270,28 @@ class _SettingsState extends State<SettingsView> {
     }
 
     // 1. Source dump (passed in, or gathered if not provided).
+    onStep?.call('Gathering source data…');
     final dump = sourceDump ?? await _gatherSourceDump();
     if (dump != null && dump.isNotEmpty) {
       addFile('sourcedump', 'free4me-source-dump-$stamp.txt',
           'Raw source dumps', dump, 'text/plain; charset=utf-8');
     }
     // 2. Debug log.
+    onStep?.call('Collecting debug log…');
     final log = await AppLog.readLog();
     if (log.isNotEmpty) {
       addFile('log', 'free4me_log-$stamp.txt', 'Debug log', log,
           'text/plain; charset=utf-8');
     }
     // 3. Settings backup.
+    onStep?.call('Building settings backup…');
     final backup = await SettingsIo.buildBackupPayload(
         includeCredentials: includeCredentials);
     addFile('settings', 'free4me-settings-$stamp.json', 'Settings backup',
         backup, 'application/json');
 
     // 4. Combined zip of everything above.
+    onStep?.call('Compressing files…');
     if (archive.isNotEmpty) {
       final zipped = ZipEncoder().encode(archive);
       if (zipped != null) {
@@ -1234,15 +1335,12 @@ class _SettingsState extends State<SettingsView> {
   // fix311: now exports the full bundle (source dump + log + settings + zip).
   Future<void> _exportEverythingViaServer(
       {required bool includeCredentials}) async {
-    final captured = DateTime.now();
-    final stamp = SettingsIo.exportStamp(captured);
-    final items = await _buildExportBundle(
+    // fix327: build + serve behind a progress dialog (device-tagged stamp).
+    final stamp = await SettingsIo.stampWithDevice();
+    await _runTvServerExport(
       stamp: stamp,
       includeCredentials: includeCredentials,
     );
-    if (!mounted) return;
-    final capturedLabel = captured.toString().split('.').first;
-    await _showExportServerDialog(items, capturedAt: capturedLabel);
   }
 
   // fix154: analyze playback log and suggest settings changes.
