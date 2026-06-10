@@ -475,6 +475,34 @@ class DbFactory {
             'CREATE INDEX IF NOT EXISTS idx_channel_lastwatched_media '
             'ON channels(last_watched, media_type) '
             'WHERE last_watched IS NOT NULL;');
+      }))
+      // fix330: the "All" browse view (live+movies+series together, alpha sort)
+      // forced a full sort of the whole catalogue — EXPLAIN showed
+      // "USE TEMP B-TREE FOR ORDER BY" over ~270k rows, ~11s cold on the Shield.
+      // The existing (source_id, media_type, …) index can filter but cannot
+      // satisfy the ORDER BY because the sort leads with a computed 6-tier CASE
+      // and the view spans multiple media_type values. This expression index
+      // stores exactly that tier CASE plus name, scoped per source, so the
+      // planner walks it in sort order and stops after one page (measured:
+      // ~340ms warm / ~11s cold -> ~0.1ms; deep pages ~1ms). The index
+      // expression MUST stay byte-identical to the alpha-mode ORDER BY tier in
+      // Sql.search — if that CASE changes, this index stops being used.
+      ..add(SqliteMigration(27, (tx) async {
+        await tx.execute('''
+          CREATE INDEX IF NOT EXISTS idx_channels_browse_tier
+          ON channels(
+            source_id,
+            (CASE
+              WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0
+              WHEN COALESCE(favorite,0)=1 THEN 1
+              WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2
+              WHEN last_watched IS NOT NULL THEN 3
+              WHEN COALESCE(stream_validated,0)=1 THEN 4
+              ELSE 5 END),
+            name COLLATE NOCASE
+          )
+          WHERE url IS NOT NULL;
+        ''');
       }));
     await migrations.migrate(db);
 
