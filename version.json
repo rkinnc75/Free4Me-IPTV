@@ -1,8 +1,8 @@
 {
-  "latest": "1.26.47",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.47",
+  "latest": "1.26.48",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.48",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fixed the selection dialogs (e.g. Player engine, Multi-view) on TV: every option now highlights and can be selected with the remote, and the dialog opens focused on the current choice \u2014 previously the top option could not be highlighted or chosen.\n\u2022 Added diagnostics to help track down a black-screen-with-audio playback issue on some TV boxes.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.47/Free4Me-IPTV-1.26.47-arm64.apk"
+  "releaseNotes": "\u2022 Fixed a black screen with working audio when playing some movies/streams on the ExoPlayer engine: the video now appears as soon as it is ready instead of staying black.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.48/Free4Me-IPTV-1.26.48-arm64.apk"
 }
