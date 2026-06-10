@@ -1,8 +1,8 @@
 {
-  "latest": "1.26.43",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.43",
+  "latest": "1.26.44",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.44",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 TV export now shows a step-by-step progress indicator (gathering data, building backup, compressing, starting the server) instead of appearing to hang, and any failure is shown in a clear dialog instead of a brief message you might miss.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.43/Free4Me-IPTV-1.26.43-arm64.apk"
+  "releaseNotes": "\u2022 Fixed out-of-memory crashes when exporting on TV with large channel catalogues: export files are now written to disk and streamed to your phone/PC instead of being held in memory all at once.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.44/Free4Me-IPTV-1.26.44-arm64.apk"
 }
