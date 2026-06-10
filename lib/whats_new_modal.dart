@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.53': [
+    'Fixed black cells in 2x2 multi-view on NVIDIA Shield: video textures could fail to attach when all four cells started at once, leaving some cells black with audio. Cells now initialise one at a time and automatically restart if a texture fails to attach.',
+  ],
   '1.26.52': [
     'Added playback controls for movies and other on-demand video on the ExoPlayer engine: play/pause, skip back/forward 10 seconds, a seek bar, and elapsed/total time. Live TV is unaffected (it is not seekable).',
   ],

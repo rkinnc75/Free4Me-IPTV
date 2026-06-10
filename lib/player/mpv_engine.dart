@@ -63,6 +63,15 @@ class MpvEngine implements PlayerEngine {
   /// engine (not on every buffering toggle).
   bool _midPlaybackProbed = false;
 
+  /// fix337: serialize VideoController platform initialization across ALL
+  /// engine instances. The Shield log proved that when four 2x2 cells create
+  /// their controllers in the same frame, two of the four texture
+  /// registrations never complete (SURFACE probes: textureId null with
+  /// playerWH known — decoding but no texture => black cell, in EVERY 2x2
+  /// session, with allocated texture ids skipping numbers). Initializing one
+  /// controller at a time removes the race.
+  static Future<void> _textureInitChain = Future.value();
+
   MpvEngine({
     required this.channel,
     required this.settings,
@@ -144,6 +153,23 @@ class MpvEngine implements PlayerEngine {
     final extras = channel.mediaType == MediaType.livestream
         ? const {'force-seekable': 'no'}
         : null;
+
+    // fix337: force controller creation NOW, one engine at a time, and give
+    // its platform init a head start before opening the stream. See
+    // _textureInitChain. Holding the lock briefly (max 1.5s) prevents the
+    // concurrent-create race; the longer no-texture check runs un-locked
+    // below.
+    final prevInit = _textureInitChain;
+    final initDone = Completer<void>();
+    _textureInitChain = initDone.future;
+    try {
+      await prevInit;
+      final c = _controller; // forces lazy creation, serialized
+      await _waitForTextureId(c, const Duration(milliseconds: 1500));
+    } finally {
+      initDone.complete();
+    }
+
     await _player.open(
       mk.Media(
         url,
@@ -158,6 +184,40 @@ class MpvEngine implements PlayerEngine {
     // that the app swap pop+push does not account for, causing a route desync
     // and orphaned Video black layer. App drives fullscreen via
     // _enterSystemFullscreen() (handlesOwnFullscreen=false path).
+
+    // fix337: no-texture detection. The Shield 2x2 sessions proved a cell can
+    // be DECODING with no texture attached (black) — and that an engine
+    // restart always recovers it. If the texture id is still unresolved 4s
+    // after open, emit an engine error so the owner's existing retry path
+    // (MultiViewCell transient retry / Player reconnect) restarts this engine.
+    Future.delayed(const Duration(seconds: 4), () {
+      if (_disposed) return;
+      if (_controller.id.value == null) {
+        AppLog.warn('MpvEngine: TEXTURE-ATTACH-FAILED'
+            ' — no texture 4s after open (decode may be running);'
+            ' emitting error to trigger restart'
+            ' channel="${channel.name}" previewMode=$previewMode');
+        _errorCtrl.add('video texture failed to attach');
+      }
+    });
+  }
+
+  /// fix337: resolve when [c]'s platform texture id becomes non-null, or
+  /// after [timeout] — whichever is first. Never throws.
+  Future<void> _waitForTextureId(
+      mkvideo.VideoController c, Duration timeout) async {
+    if (c.id.value != null) return;
+    final completer = Completer<void>();
+    void onChange() {
+      if (c.id.value != null && !completer.isCompleted) completer.complete();
+    }
+
+    c.id.addListener(onChange);
+    try {
+      await completer.future.timeout(timeout, onTimeout: () {});
+    } finally {
+      c.id.removeListener(onChange);
+    }
   }
 
   @override
