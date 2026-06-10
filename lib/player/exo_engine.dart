@@ -45,9 +45,19 @@ class ExoEngine implements PlayerEngine {
         if (!value.isInitialized) {
           return const ColoredBox(color: Colors.black);
         }
-        return AspectRatio(
-          aspectRatio: value.aspectRatio,
-          child: VideoPlayer(ctrl),
+        // fix334: on the onn 4K Plus the controller is fully healthy
+        // (initialized, real size, playing) yet the screen stays black until
+        // something forces a relayout — the user found that pressing the cast
+        // button made the picture appear. That is the Android video_player
+        // first-frame stall: the platform texture is created but the first
+        // frame is not pushed to the surface until a layout pass occurs.
+        // _FirstFrameNudge forces exactly one post-frame relayout after mount,
+        // reproducing the cast-button effect automatically.
+        return _FirstFrameNudge(
+          child: AspectRatio(
+            aspectRatio: value.aspectRatio,
+            child: VideoPlayer(ctrl),
+          ),
         );
       },
     );
@@ -194,5 +204,58 @@ class ExoEngine implements PlayerEngine {
   void _stopPolling() {
     _pollTimer?.cancel();
     _pollTimer = null;
+  }
+}
+
+/// fix334: forces a single post-frame relayout after first mount so the
+/// Android video_player platform texture pushes its first frame to the
+/// surface. Without this, some boxes (onn 4K Plus) show audio-only black until
+/// an unrelated relayout (e.g. opening the cast menu) happens to trigger it.
+/// The nudge is a one-shot sub-pixel padding toggle on the next two frames;
+/// it is imperceptible and runs once per mount.
+class _FirstFrameNudge extends StatefulWidget {
+  const _FirstFrameNudge({required this.child});
+  final Widget child;
+
+  @override
+  State<_FirstFrameNudge> createState() => _FirstFrameNudgeState();
+}
+
+class _FirstFrameNudgeState extends State<_FirstFrameNudge> {
+  double _pad = 0.001;
+  Timer? _timer;
+  int _ticks = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // The texture attaches somewhere in the first few hundred ms after mount.
+    // Toggle a sub-pixel pad a handful of times across that window to force a
+    // relayout once the surface is ready, then stop. Imperceptible; one-shot.
+    _timer = Timer.periodic(const Duration(milliseconds: 120), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      setState(() => _pad = _pad == 0.0 ? 0.001 : 0.0);
+      if (++_ticks >= 5) {
+        t.cancel();
+        if (mounted) setState(() => _pad = 0.0);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: _pad),
+      child: widget.child,
+    );
   }
 }
