@@ -1,8 +1,8 @@
 {
-  "latest": "1.26.49",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.49",
+  "latest": "1.26.50",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.50",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 On TV, you can now navigate to and toggle the enable checkbox on category tiles with the remote \u2014 previously the checkbox could not be reached with the D-pad.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.49/Free4Me-IPTV-1.26.49-arm64.apk"
+  "releaseNotes": "\u2022 Further fix for ExoPlayer black-screen-with-audio on some TV boxes: the video now paints its first frame automatically instead of staying black until an unrelated action (like opening the cast menu) forced it to appear.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.50/Free4Me-IPTV-1.26.50-arm64.apk"
 }
