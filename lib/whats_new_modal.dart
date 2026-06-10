@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.56': [
+    'Fixed stretched video in multi-view cells on the ExoPlayer engine: video now keeps its correct aspect ratio with letterboxing instead of filling the cell, most visible in portrait 2x2.',
+  ],
   '1.26.55': [
     'Fixed live channels on the ExoPlayer engine constantly restarting (especially visible as flickering/reloading cells in multi-view): live streams misreported a tiny duration, making the player think the stream had ended about once per second. Live streams no longer emit end-of-stream at all.',
   ],

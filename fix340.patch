@@ -1,0 +1,57 @@
+diff --git a/lib/player/exo_engine.dart b/lib/player/exo_engine.dart
+index ef6c7f8..3f46286 100644
+--- a/lib/player/exo_engine.dart
++++ b/lib/player/exo_engine.dart
+@@ -71,10 +71,22 @@ class ExoEngine implements PlayerEngine {
+         // frame is not pushed to the surface until a layout pass occurs.
+         // _FirstFrameNudge forces exactly one post-frame relayout after mount,
+         // reproducing the cast-button effect automatically.
++        // fix340: the multi-view cell hosts this view in a
++        // Stack(fit: StackFit.expand) — TIGHT constraints. Under tight
++        // constraints AspectRatio cannot choose its size and is forced to
++        // fill the cell, stretching 16:9 video into a tall portrait cell.
++        // Center gives the AspectRatio loose constraints so it letterboxes
++        // correctly (black bars from the ColoredBox behind). mpv's Video
++        // widget letterboxes internally, which is why only Exo stretched.
+         return _FirstFrameNudge(
+-          child: AspectRatio(
+-            aspectRatio: value.aspectRatio,
+-            child: VideoPlayer(ctrl),
++          child: ColoredBox(
++            color: Colors.black,
++            child: Center(
++              child: AspectRatio(
++                aspectRatio: value.aspectRatio,
++                child: VideoPlayer(ctrl),
++              ),
++            ),
+           ),
+         );
+       },
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index f76660e..7f58152 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.26.56': [
++    'Fixed stretched video in multi-view cells on the ExoPlayer engine: video now keeps its correct aspect ratio with letterboxing instead of filling the cell, most visible in portrait 2x2.',
++  ],
+   '1.26.55': [
+     'Fixed live channels on the ExoPlayer engine constantly restarting (especially visible as flickering/reloading cells in multi-view): live streams misreported a tiny duration, making the player think the stream had ended about once per second. Live streams no longer emit end-of-stream at all.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index e8181e4..c1b3506 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.26.55+339
++version: 1.26.56+340
+ 
+ environment:
+   sdk: ^3.10.7

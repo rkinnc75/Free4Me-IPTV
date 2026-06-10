@@ -71,10 +71,22 @@ class ExoEngine implements PlayerEngine {
         // frame is not pushed to the surface until a layout pass occurs.
         // _FirstFrameNudge forces exactly one post-frame relayout after mount,
         // reproducing the cast-button effect automatically.
+        // fix340: the multi-view cell hosts this view in a
+        // Stack(fit: StackFit.expand) — TIGHT constraints. Under tight
+        // constraints AspectRatio cannot choose its size and is forced to
+        // fill the cell, stretching 16:9 video into a tall portrait cell.
+        // Center gives the AspectRatio loose constraints so it letterboxes
+        // correctly (black bars from the ColoredBox behind). mpv's Video
+        // widget letterboxes internally, which is why only Exo stretched.
         return _FirstFrameNudge(
-          child: AspectRatio(
-            aspectRatio: value.aspectRatio,
-            child: VideoPlayer(ctrl),
+          child: ColoredBox(
+            color: Colors.black,
+            child: Center(
+              child: AspectRatio(
+                aspectRatio: value.aspectRatio,
+                child: VideoPlayer(ctrl),
+              ),
+            ),
           ),
         );
       },
