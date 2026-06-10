@@ -1,8 +1,8 @@
 {
-  "latest": "1.26.53",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.53",
+  "latest": "1.26.54",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.54",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fixed black cells in 2x2 multi-view on NVIDIA Shield: video textures could fail to attach when all four cells started at once, leaving some cells black with audio. Cells now initialise one at a time and automatically restart if a texture fails to attach.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.53/Free4Me-IPTV-1.26.53-arm64.apk"
+  "releaseNotes": "\u2022 Improved multi-view reliability: a cell whose video texture fails to attach now recovers on the normal retry schedule instead of restarting aggressively, and no longer double-restarts when the provider also drops the connection.\n\u2022 The debug log is now guaranteed to be cleared for the new version whenever the What's New screen appears after an update.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.54/Free4Me-IPTV-1.26.54-arm64.apk"
 }
