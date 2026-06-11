@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'package:open_tv/backend/app_logger.dart';
 
 /// A single named payload to serve.
@@ -45,6 +46,21 @@ class ExportServer {
   final Future<int> Function(List<int> bytes)? onImportSources;
   Timer? _idleTimeout;
 
+  /// fix347 (review HIGH-4): one-time access token. The server binds on
+  /// anyIPv4 with no auth, and /import-sources WRITES to the source list and
+  /// then triggers a network refresh — so while the dialog is open (up to the
+  /// 10-min idle window) anyone on the same LAN could inject auto-refreshing
+  /// sources. Every route now requires `?t=token`; the QR and the displayed
+  /// URLs carry it, so possession of the QR/dialog IS the authorisation.
+  /// 12 hex chars (48 bits) is ample for a short-lived LAN window while
+  /// staying typeable from the on-screen URL.
+  final String token = _genToken();
+
+  static String _genToken() {
+    final r = Random.secure();
+    return List.generate(12, (_) => r.nextInt(16).toRadixString(16)).join();
+  }
+
   ExportServer(this._items,
       {this.capturedAt, this.deviceName, this.onImportSources});
 
@@ -60,7 +76,7 @@ class ExportServer {
     for (final ni in await NetworkInterface.list(
         type: InternetAddressType.IPv4, includeLoopback: false)) {
       for (final addr in ni.addresses) {
-        urls.add('http://${addr.address}:$port/');
+        urls.add('http://${addr.address}:$port/?t=$token');
       }
     }
     return urls;
@@ -77,6 +93,20 @@ class ExportServer {
   void _handle(HttpRequest req) async {
     _resetIdle();
     final path = req.uri.path;
+
+    // fix347: every route requires the access token from the QR/dialog URL.
+    if (req.uri.queryParameters['t'] != token) {
+      AppLog.warn('ExportServer: rejected request without valid token'
+          ' path=$path from=${req.connectionInfo?.remoteAddress.address}');
+      req.response
+        ..statusCode = 403
+        ..headers.contentType = ContentType.html
+        ..write('<!doctype html><body style="font-family:sans-serif;'
+            'padding:2em"><h2>403</h2><p>This portal requires the link from '
+            'the QR code shown on the TV.</p></body>');
+      await req.response.close();
+      return;
+    }
 
     if (path == '/') {
       final buf = StringBuffer()
@@ -95,7 +125,7 @@ class ExportServer {
       buf.write('<p>Tap a file to download:</p>');
       for (final it in _items) {
         final kb = (it.sizeBytes / 1024).toStringAsFixed(0);
-        buf.write('<p><a href="/file/${it.key}" '
+        buf.write('<p><a href="/file/${it.key}?t=$token" '
             'style="display:block;font-size:1.2em;padding:.7em 1em;margin:.4em 0;'
             'background:#4E9FE5;color:#fff;text-decoration:none;'
             'border-radius:8px">'
@@ -109,9 +139,9 @@ class ExportServer {
             '<h3>Import sources</h3>'
             '<p style="color:#888;font-size:.85em">Upload a settings file to '
             'add its sources to this device. Only sources are imported; other '
-            'settings are ignored. Sources refresh automatically after import.'
+            'settings are ignored. The device will ask to confirm the refresh.'
             '</p>'
-            '<form method="POST" action="/import-sources" '
+            '<form method="POST" action="/import-sources?t=$token" '
             'enctype="multipart/form-data">'
             '<input type="file" name="file" accept=".json,application/json" '
             'required style="display:block;margin:.6em 0">'
@@ -181,7 +211,7 @@ class ExportServer {
             : n == 0
                 ? 'No sources found in the file.'
                 : 'Imported $n source${n == 1 ? '' : 's'}. '
-                    'Refreshing on the device now…';
+                    'Confirm the refresh on the device.';
         req.response
           ..statusCode = ok ? 200 : 400
           ..headers.contentType = ContentType.html
@@ -210,10 +240,18 @@ class ExportServer {
   }
 
   // fix317: read the full request body into a byte list.
+  // fix347: capped — a settings export is tens of KB; an uncapped multipart
+  // body let any LAN client OOM a 2GB box (same class as the fix328 export-
+  // side fix). 5 MB is generous headroom.
+  static const _maxImportBytes = 5 * 1024 * 1024;
+
   Future<List<int>> _collectBytes(HttpRequest req) async {
     final out = <int>[];
     await for (final chunk in req) {
       out.addAll(chunk);
+      if (out.length > _maxImportBytes) {
+        throw 'request body too large (max 5 MB)';
+      }
     }
     return out;
   }

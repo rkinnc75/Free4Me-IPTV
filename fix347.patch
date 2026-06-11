@@ -1,0 +1,185 @@
+diff --git a/lib/backend/export_server.dart b/lib/backend/export_server.dart
+index bd15d4f..fa26d43 100644
+--- a/lib/backend/export_server.dart
++++ b/lib/backend/export_server.dart
+@@ -1,6 +1,7 @@
+ import 'dart:async';
+ import 'dart:convert';
+ import 'dart:io';
++import 'dart:math';
+ import 'package:open_tv/backend/app_logger.dart';
+ 
+ /// A single named payload to serve.
+@@ -45,6 +46,21 @@ class ExportServer {
+   final Future<int> Function(List<int> bytes)? onImportSources;
+   Timer? _idleTimeout;
+ 
++  /// fix347 (review HIGH-4): one-time access token. The server binds on
++  /// anyIPv4 with no auth, and /import-sources WRITES to the source list and
++  /// then triggers a network refresh — so while the dialog is open (up to the
++  /// 10-min idle window) anyone on the same LAN could inject auto-refreshing
++  /// sources. Every route now requires `?t=token`; the QR and the displayed
++  /// URLs carry it, so possession of the QR/dialog IS the authorisation.
++  /// 12 hex chars (48 bits) is ample for a short-lived LAN window while
++  /// staying typeable from the on-screen URL.
++  final String token = _genToken();
++
++  static String _genToken() {
++    final r = Random.secure();
++    return List.generate(12, (_) => r.nextInt(16).toRadixString(16)).join();
++  }
++
+   ExportServer(this._items,
+       {this.capturedAt, this.deviceName, this.onImportSources});
+ 
+@@ -60,7 +76,7 @@ class ExportServer {
+     for (final ni in await NetworkInterface.list(
+         type: InternetAddressType.IPv4, includeLoopback: false)) {
+       for (final addr in ni.addresses) {
+-        urls.add('http://${addr.address}:$port/');
++        urls.add('http://${addr.address}:$port/?t=$token');
+       }
+     }
+     return urls;
+@@ -78,6 +94,20 @@ class ExportServer {
+     _resetIdle();
+     final path = req.uri.path;
+ 
++    // fix347: every route requires the access token from the QR/dialog URL.
++    if (req.uri.queryParameters['t'] != token) {
++      AppLog.warn('ExportServer: rejected request without valid token'
++          ' path=$path from=${req.connectionInfo?.remoteAddress.address}');
++      req.response
++        ..statusCode = 403
++        ..headers.contentType = ContentType.html
++        ..write('<!doctype html><body style="font-family:sans-serif;'
++            'padding:2em"><h2>403</h2><p>This portal requires the link from '
++            'the QR code shown on the TV.</p></body>');
++      await req.response.close();
++      return;
++    }
++
+     if (path == '/') {
+       final buf = StringBuffer()
+         ..write('<!doctype html>'
+@@ -95,7 +125,7 @@ class ExportServer {
+       buf.write('<p>Tap a file to download:</p>');
+       for (final it in _items) {
+         final kb = (it.sizeBytes / 1024).toStringAsFixed(0);
+-        buf.write('<p><a href="/file/${it.key}" '
++        buf.write('<p><a href="/file/${it.key}?t=$token" '
+             'style="display:block;font-size:1.2em;padding:.7em 1em;margin:.4em 0;'
+             'background:#4E9FE5;color:#fff;text-decoration:none;'
+             'border-radius:8px">'
+@@ -109,9 +139,9 @@ class ExportServer {
+             '<h3>Import sources</h3>'
+             '<p style="color:#888;font-size:.85em">Upload a settings file to '
+             'add its sources to this device. Only sources are imported; other '
+-            'settings are ignored. Sources refresh automatically after import.'
++            'settings are ignored. The device will ask to confirm the refresh.'
+             '</p>'
+-            '<form method="POST" action="/import-sources" '
++            '<form method="POST" action="/import-sources?t=$token" '
+             'enctype="multipart/form-data">'
+             '<input type="file" name="file" accept=".json,application/json" '
+             'required style="display:block;margin:.6em 0">'
+@@ -181,7 +211,7 @@ class ExportServer {
+             : n == 0
+                 ? 'No sources found in the file.'
+                 : 'Imported $n source${n == 1 ? '' : 's'}. '
+-                    'Refreshing on the device now…';
++                    'Confirm the refresh on the device.';
+         req.response
+           ..statusCode = ok ? 200 : 400
+           ..headers.contentType = ContentType.html
+@@ -210,10 +240,18 @@ class ExportServer {
+   }
+ 
+   // fix317: read the full request body into a byte list.
++  // fix347: capped — a settings export is tens of KB; an uncapped multipart
++  // body let any LAN client OOM a 2GB box (same class as the fix328 export-
++  // side fix). 5 MB is generous headroom.
++  static const _maxImportBytes = 5 * 1024 * 1024;
++
+   Future<List<int>> _collectBytes(HttpRequest req) async {
+     final out = <int>[];
+     await for (final chunk in req) {
+       out.addAll(chunk);
++      if (out.length > _maxImportBytes) {
++        throw 'request body too large (max 5 MB)';
++      }
+     }
+     return out;
+   }
+diff --git a/lib/settings_view.dart b/lib/settings_view.dart
+index 0b8122f..884e264 100644
+--- a/lib/settings_view.dart
++++ b/lib/settings_view.dart
+@@ -1108,8 +1108,38 @@ class _SettingsState extends State<SettingsView> {
+         final n = await SettingsIo.importSourcesOnly(bytes);
+         if (n > 0 && mounted) {
+           await reloadSources();
+-          WidgetsBinding.instance.addPostFrameCallback((_) {
+-            if (mounted) showSourcesRefreshDialog(context);
++          // fix347 (review HIGH-4): the refresh no longer auto-fires. A
++          // portal import previously triggered network fetches against the
++          // imported URLs with no on-device interaction — combined with the
++          // (formerly) unauthenticated endpoint, an SSRF-flavoured vector.
++          // The user now confirms on the device before any fetch runs.
++          WidgetsBinding.instance.addPostFrameCallback((_) async {
++            if (!mounted) return;
++            final go = await showDialog<bool>(
++              context: context,
++              builder: (ctx) => AlertDialog(
++                title: const Text('Sources imported'),
++                content: Text(
++                    'Imported $n source${n == 1 ? '' : 's'} from the export '
++                    'portal. Refresh ${n == 1 ? 'it' : 'them'} now to load '
++                    'channels?'),
++                actions: [
++                  TextButton(
++                    onPressed: () => Navigator.pop(ctx, false),
++                    child: const Text('Later'),
++                  ),
++                  TextButton(
++                    autofocus: true,
++                    onPressed: () => Navigator.pop(ctx, true),
++                    child: const Text('Refresh now'),
++                  ),
++                ],
++              ),
++            );
++            if (go == true && mounted) {
++              // ignore: use_build_context_synchronously
++              showSourcesRefreshDialog(context);
++            }
+           });
+         }
+         return n;
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 2237e05..bdc02aa 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.26.62': [
++    'Secured the TV export portal: the page and its source-import upload now require the link from the QR code (other devices on your network can no longer access it), oversized uploads are rejected, and an imported source list asks for confirmation on the TV before any refresh runs.',
++  ],
+   '1.26.61': [
+     'Multi-view: when a provider drops a stream, the reconnect strategy is now fully deterministic — previously two internal end-of-stream signals could race and randomly choose between the smooth same-player reconnect and a full restart with a spinner.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index a53eab9..070ff25 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.26.61+346
++version: 1.26.62+347
+ 
+ environment:
+   sdk: ^3.10.7

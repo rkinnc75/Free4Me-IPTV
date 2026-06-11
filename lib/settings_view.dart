@@ -1108,8 +1108,38 @@ class _SettingsState extends State<SettingsView> {
         final n = await SettingsIo.importSourcesOnly(bytes);
         if (n > 0 && mounted) {
           await reloadSources();
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) showSourcesRefreshDialog(context);
+          // fix347 (review HIGH-4): the refresh no longer auto-fires. A
+          // portal import previously triggered network fetches against the
+          // imported URLs with no on-device interaction — combined with the
+          // (formerly) unauthenticated endpoint, an SSRF-flavoured vector.
+          // The user now confirms on the device before any fetch runs.
+          WidgetsBinding.instance.addPostFrameCallback((_) async {
+            if (!mounted) return;
+            final go = await showDialog<bool>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text('Sources imported'),
+                content: Text(
+                    'Imported $n source${n == 1 ? '' : 's'} from the export '
+                    'portal. Refresh ${n == 1 ? 'it' : 'them'} now to load '
+                    'channels?'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('Later'),
+                  ),
+                  TextButton(
+                    autofocus: true,
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text('Refresh now'),
+                  ),
+                ],
+              ),
+            );
+            if (go == true && mounted) {
+              // ignore: use_build_context_synchronously
+              showSourcesRefreshDialog(context);
+            }
           });
         }
         return n;

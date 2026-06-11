@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.62': [
+    'Secured the TV export portal: the page and its source-import upload now require the link from the QR code (other devices on your network can no longer access it), oversized uploads are rejected, and an imported source list asks for confirmation on the TV before any refresh runs.',
+  ],
   '1.26.61': [
     'Multi-view: when a provider drops a stream, the reconnect strategy is now fully deterministic — previously two internal end-of-stream signals could race and randomly choose between the smooth same-player reconnect and a full restart with a spinner.',
   ],
