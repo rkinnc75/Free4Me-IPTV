@@ -1,0 +1,62 @@
+diff --git a/lib/player.dart b/lib/player.dart
+index 4258d57..97a73b9 100644
+--- a/lib/player.dart
++++ b/lib/player.dart
+@@ -1525,6 +1525,30 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+       seekBarThumbSize: 20,
+       seekBarHeight: 10,
+       seekGesture: widget.channel.mediaType != MediaType.livestream,
++      // fix348 (1.27.0): live TV control panel decision — the panel stays
++      // (back/cast/PiP, subtitles, zoom, mini-player are all useful live) and
++      // play/pause stays (mpv's cache makes pause-resume work), but the
++      // default centre SkipPrevious/SkipNext buttons are removed on live:
++      // they are playlist controls and do nothing on a single live stream.
++      // VOD keeps the package default. A 300s DVR-to-disk buffer (which would
++      // make live seeking real) is deferred as a future feature.
++      primaryButtonBar: widget.channel.mediaType == MediaType.livestream
++          ? const [
++              Spacer(flex: 2),
++              Spacer(),
++              MaterialPlayOrPauseButton(iconSize: 48.0),
++              Spacer(),
++              Spacer(flex: 2),
++            ]
++          : const [
++              Spacer(flex: 2),
++              MaterialSkipPreviousButton(),
++              Spacer(),
++              MaterialPlayOrPauseButton(iconSize: 48.0),
++              Spacer(),
++              MaterialSkipNextButton(),
++              Spacer(flex: 2),
++            ],
+         topButtonBar: [
+         IconButton(
+           onPressed: onExit,
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index bdc02aa..920f636 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.27.0': [
++    'Live TV controls cleaned up: the previous/next skip buttons (which do nothing on a live stream) are gone. Play/pause stays — pausing live TV works and resumes where you left off. Movies and series keep the full controls, including the seek bar.',
++  ],
+   '1.26.62': [
+     'Secured the TV export portal: the page and its source-import upload now require the link from the QR code (other devices on your network can no longer access it), oversized uploads are rejected, and an imported source list asks for confirmation on the TV before any refresh runs.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 070ff25..09a428f 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.26.62+347
++version: 1.27.0+348
+ 
+ environment:
+   sdk: ^3.10.7

@@ -1525,6 +1525,30 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
       seekBarThumbSize: 20,
       seekBarHeight: 10,
       seekGesture: widget.channel.mediaType != MediaType.livestream,
+      // fix348 (1.27.0): live TV control panel decision — the panel stays
+      // (back/cast/PiP, subtitles, zoom, mini-player are all useful live) and
+      // play/pause stays (mpv's cache makes pause-resume work), but the
+      // default centre SkipPrevious/SkipNext buttons are removed on live:
+      // they are playlist controls and do nothing on a single live stream.
+      // VOD keeps the package default. A 300s DVR-to-disk buffer (which would
+      // make live seeking real) is deferred as a future feature.
+      primaryButtonBar: widget.channel.mediaType == MediaType.livestream
+          ? const [
+              Spacer(flex: 2),
+              Spacer(),
+              MaterialPlayOrPauseButton(iconSize: 48.0),
+              Spacer(),
+              Spacer(flex: 2),
+            ]
+          : const [
+              Spacer(flex: 2),
+              MaterialSkipPreviousButton(),
+              Spacer(),
+              MaterialPlayOrPauseButton(iconSize: 48.0),
+              Spacer(),
+              MaterialSkipNextButton(),
+              Spacer(flex: 2),
+            ],
         topButtonBar: [
         IconButton(
           onPressed: onExit,

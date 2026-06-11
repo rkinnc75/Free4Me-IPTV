@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.27.0': [
+    'Live TV controls cleaned up: the previous/next skip buttons (which do nothing on a live stream) are gone. Play/pause stays — pausing live TV works and resumes where you left off. Movies and series keep the full controls, including the seek bar.',
+  ],
   '1.26.62': [
     'Secured the TV export portal: the page and its source-import upload now require the link from the QR code (other devices on your network can no longer access it), oversized uploads are rejected, and an imported source list asks for confirmation on the TV before any refresh runs.',
   ],
