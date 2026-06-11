@@ -1,0 +1,337 @@
+diff --git a/lib/backend/browse_order.dart b/lib/backend/browse_order.dart
+new file mode 100644
+index 0000000..eaea3b5
+--- /dev/null
++++ b/lib/backend/browse_order.dart
+@@ -0,0 +1,79 @@
++/// fix344: the browse ORDER BY, extracted as a pure builder so the EXACT
++/// string the app emits is also the string the tests EXPLAIN against a real
++/// sqlite database (the fix330 verification failure was testing a hand-written
++/// approximation instead of the emitted SQL — never again).
++///
++/// Background: migration 27 added the expression index
++/// `idx_channels_browse_tier (source_id, <6-tier CASE>, name COLLATE NOCASE)`,
++/// but the runtime ORDER BY wrapped that tier inside an outer CASE gated by a
++/// per-row correlated `(select sort_mode from sources …)` subquery — which the
++/// planner can never match to the index, so the "All" view still did a full
++/// temp-B-tree sort (~11s cold on the Shield; confirmed by EXPLAIN on a seeded
++/// 270k-row DB: `SCAN c … USE TEMP B-TREE FOR ORDER BY`).
++///
++/// Fix: `Sql.search` now resolves the in-scope sources' sort modes ONCE in
++/// Dart. When they are uniform, the emitted ORDER BY is mode-specific with NO
++/// subqueries — and the alpha form is structurally identical to the index
++/// expression, so the planner walks the index and stops after one page. Only
++/// when the in-scope sources MIX modes does the legacy correlated form remain
++/// (correct, just unindexable — a rare configuration).
++class BrowseOrder {
++  BrowseOrder._();
++
++  /// The 6-tier CASE (fix138). MUST stay structurally identical to the
++  /// expression in migration 27 (`db_factory.dart`, idx_channels_browse_tier)
++  /// or the index silently stops being used. The `c.` alias is fine — SQLite
++  /// matches expression structure, not text (verified by EXPLAIN).
++  static const String tier = 'CASE'
++      ' WHEN COALESCE(c.favorite,0)=1 AND COALESCE(c.stream_validated,0)=1 THEN 0'
++      ' WHEN COALESCE(c.favorite,0)=1 THEN 1'
++      ' WHEN c.last_watched IS NOT NULL AND COALESCE(c.stream_validated,0)=1 THEN 2'
++      ' WHEN c.last_watched IS NOT NULL THEN 3'
++      ' WHEN COALESCE(c.stream_validated,0)=1 THEN 4'
++      ' ELSE 5 END';
++
++  static const String _favFirst =
++      '(CASE WHEN COALESCE(c.favorite,0)=1 THEN 0 ELSE 1 END)';
++
++  /// Returns the full "\nORDER BY …" clause for a browse view.
++  ///
++  /// [uniformMode] is the single sort mode shared by every in-scope source
++  /// ('alpha' | 'provider' | 'category'), or null when the sources mix modes.
++  static String orderBy(String? uniformMode) {
++    switch (uniformMode) {
++      case 'provider':
++        // fix258: favorites first, then the provider's exact sequence.
++        return '\nORDER BY $_favFirst ASC,'
++            ' c.provider_order ASC,'
++            ' c.name COLLATE NOCASE ASC';
++      case 'category':
++        // fix272: favorites first, then category, then provider order within.
++        return '\nORDER BY $_favFirst ASC,'
++            ' c.group_name COLLATE NOCASE ASC,'
++            ' c.provider_order ASC,'
++            ' c.name COLLATE NOCASE ASC';
++      case 'alpha':
++        // Index-served: structurally matches idx_channels_browse_tier.
++        return '\nORDER BY $tier ASC, c.name COLLATE NOCASE ASC';
++      default:
++        // Mixed modes across in-scope sources — legacy correlated form
++        // (behaviour-identical to pre-fix344; not index-served).
++        const sortMode = 'select sort_mode from sources where id = c.source_id';
++        return '\nORDER BY'
++            " CASE WHEN ($sortMode) IN ('provider','category')"
++            '   THEN $_favFirst'
++            '   ELSE $tier'
++            ' END ASC,'
++            " CASE WHEN ($sortMode) = 'category'"
++            '   THEN c.group_name COLLATE NOCASE END ASC,'
++            " CASE WHEN ($sortMode) = 'provider'"
++            '   THEN c.provider_order END ASC,'
++            ' c.name COLLATE NOCASE ASC';
++    }
++  }
++
++  /// Normalises a stored sort_mode value: anything not provider/category is
++  /// alpha (matches the legacy SQL's `IN ('provider','category')` test).
++  static String normalise(String? stored) =>
++      (stored == 'provider' || stored == 'category') ? stored! : 'alpha';
++}
+diff --git a/lib/backend/db_factory.dart b/lib/backend/db_factory.dart
+index fbdbc83..ca76e7a 100644
+--- a/lib/backend/db_factory.dart
++++ b/lib/backend/db_factory.dart
+@@ -485,8 +485,11 @@ class DbFactory {
+       // stores exactly that tier CASE plus name, scoped per source, so the
+       // planner walks it in sort order and stops after one page (measured:
+       // ~340ms warm / ~11s cold -> ~0.1ms; deep pages ~1ms). The index
+-      // expression MUST stay byte-identical to the alpha-mode ORDER BY tier in
+-      // Sql.search — if that CASE changes, this index stops being used.
++      // expression MUST stay structurally identical to BrowseOrder.tier
++      // (lib/backend/browse_order.dart) — the single source of the alpha-mode
++      // ORDER BY since fix344. If either side changes, the index stops being
++      // used; test/browse_order_test.dart EXPLAIN-asserts the match against a
++      // real sqlite DB.
+       ..add(SqliteMigration(27, (tx) async {
+         await tx.execute('''
+           CREATE INDEX IF NOT EXISTS idx_channels_browse_tier
+diff --git a/lib/backend/sql.dart b/lib/backend/sql.dart
+index 67ba8da..2a8dcfb 100644
+--- a/lib/backend/sql.dart
++++ b/lib/backend/sql.dart
+@@ -2,6 +2,7 @@ import 'dart:collection';
+ import 'dart:convert';
+ 
+ import 'package:open_tv/backend/app_logger.dart';
++import 'package:open_tv/backend/browse_order.dart';
+ import 'package:open_tv/backend/playback_analyzer.dart';
+ import 'package:open_tv/backend/channel_search_cache.dart';
+ import 'package:open_tv/backend/db_factory.dart';
+@@ -568,32 +569,22 @@ class Sql {
+     if (filters.viewType == ViewType.history) {
+       sqlQuery += "\nORDER BY c.last_watched DESC";
+     } else {
+-      final sortMode = 'select sort_mode from sources where id = c.source_id';
+-      // fix138: 6-tier sort matching _channelTier in channel_picker_screen.
+-      // Applies to ALL media-type browse views (Live/Movies/Series/All).
+-      // fix256: per-source sort mode (provider | category | alpha).
+-      // fix258: in provider mode, collapse to favorites-first only (not the full
+-      // 6-tier), then provider order. In alpha mode, use the full 6-tier.
+-      // fix272: in category mode, favorites first, then group_name (the provider
+-      // category), then provider order within the category, then name.
+-      sqlQuery += "\nORDER BY"
+-          " CASE WHEN ($sortMode) IN ('provider','category')"
+-          "   THEN (CASE WHEN COALESCE(c.favorite,0)=1 THEN 0 ELSE 1 END)"
+-          "   ELSE"
+-          "     CASE"
+-          "       WHEN COALESCE(c.favorite,0)=1 AND COALESCE(c.stream_validated,0)=1 THEN 0"
+-          "       WHEN COALESCE(c.favorite,0)=1 THEN 1"
+-          "       WHEN c.last_watched IS NOT NULL AND COALESCE(c.stream_validated,0)=1 THEN 2"
+-          "       WHEN c.last_watched IS NOT NULL THEN 3"
+-          "       WHEN COALESCE(c.stream_validated,0)=1 THEN 4"
+-          "       ELSE 5"
+-          "     END"
+-          " END ASC,"
+-          " CASE WHEN ($sortMode) = 'category'"
+-          "   THEN c.group_name COLLATE NOCASE END ASC,"
+-          " CASE WHEN ($sortMode) = 'provider'"
+-          "   THEN c.provider_order END ASC,"
+-          " c.name COLLATE NOCASE ASC";
++      // fix138/256/258/272 sort semantics, built by BrowseOrder (fix344).
++      // Resolve the in-scope sources' sort modes ONCE here in Dart: when they
++      // are uniform the emitted ORDER BY has NO correlated subqueries, and the
++      // alpha form structurally matches idx_channels_browse_tier (migration
++      // 27) so the planner serves the sort from the index instead of a temp
++      // B-tree over the whole catalogue (~11s cold on 270k rows on Shield).
++      final modeRows = await db.getAll(
++        'SELECT DISTINCT sort_mode FROM sources WHERE id IN '
++        '(${generatePlaceholders(filters.sourceIds!.length)})',
++        filters.sourceIds!,
++      );
++      final modes = modeRows
++          .map((r) => BrowseOrder.normalise(r['sort_mode'] as String?))
++          .toSet();
++      final uniformMode = modes.length == 1 ? modes.first : null;
++      sqlQuery += BrowseOrder.orderBy(uniformMode);
+     }
+ 
+     sqlQuery += "\nLIMIT ?, ?";
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index cdb9902..7bdb86c 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.26.59': [
++    'Browsing large catalogues is dramatically faster: the channel list sort now uses the database index added in 1.26.46, which was not actually being used until now — opening the All view on a very large source (hundreds of thousands of channels) drops from ~11 seconds to near-instant on devices like the Shield.',
++  ],
+   '1.26.58': [
+     'Fixed the multi-view stability buffer on the ExoPlayer engine: cells were being restarted by a startup timeout right after the buffer finished building. The buffer now works on both engines.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 6126df4..25361b9 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.26.58+342
++version: 1.26.59+344
+ 
+ environment:
+   sdk: ^3.10.7
+diff --git a/test/browse_order_test.dart b/test/browse_order_test.dart
+new file mode 100644
+index 0000000..6d97dca
+--- /dev/null
++++ b/test/browse_order_test.dart
+@@ -0,0 +1,140 @@
++// fix344: Rule 8 done right — EXPLAIN the EXACT ORDER BY the app emits
++// (BrowseOrder.orderBy) against a real sqlite DB seeded with the verbatim
++// migration-27 index. fix330 failed by testing a hand-written approximation
++// of the query instead of the emitted one; because Sql.search and this test
++// now share BrowseOrder, tested == emitted by construction.
++import 'package:flutter_test/flutter_test.dart';
++import 'package:open_tv/backend/browse_order.dart';
++import 'package:sqlite3/sqlite3.dart' as s3;
++
++bool _sqliteAvailable() {
++  try {
++    s3.sqlite3.openInMemory().dispose();
++    return true;
++  } catch (_) {
++    return false;
++  }
++}
++
++void main() {
++  group('BrowseOrder strings', () {
++    test('alpha emits bare tier with no subqueries', () {
++      final o = BrowseOrder.orderBy('alpha');
++      expect(o, contains(BrowseOrder.tier));
++      expect(o, isNot(contains('select sort_mode')));
++    });
++    test('provider/category emit no subqueries and correct keys', () {
++      final p = BrowseOrder.orderBy('provider');
++      expect(p, contains('c.provider_order'));
++      expect(p, isNot(contains('select sort_mode')));
++      final c = BrowseOrder.orderBy('category');
++      expect(c, contains('c.group_name COLLATE NOCASE'));
++      expect(c, contains('c.provider_order'));
++      expect(c, isNot(contains('select sort_mode')));
++    });
++    test('mixed (null) keeps the legacy correlated form', () {
++      final m = BrowseOrder.orderBy(null);
++      expect(m, contains('select sort_mode'));
++      expect(m, contains(BrowseOrder.tier));
++    });
++    test('normalise maps unknown/null to alpha', () {
++      expect(BrowseOrder.normalise(null), 'alpha');
++      expect(BrowseOrder.normalise('alpha'), 'alpha');
++      expect(BrowseOrder.normalise('weird'), 'alpha');
++      expect(BrowseOrder.normalise('provider'), 'provider');
++      expect(BrowseOrder.normalise('category'), 'category');
++    });
++  });
++
++  group('migration-27 index serves the emitted alpha ORDER BY', () {
++    final available = _sqliteAvailable();
++
++    test('EXPLAIN uses idx_channels_browse_tier, no temp B-tree', () {
++      if (!available) {
++        markTestSkipped('libsqlite3 not loadable on this host');
++        return;
++      }
++      final db = s3.sqlite3.openInMemory();
++      try {
++        db.execute('''
++          CREATE TABLE sources(id INTEGER PRIMARY KEY, sort_mode TEXT);
++          CREATE TABLE groups(id INTEGER PRIMARY KEY, enabled INTEGER);
++          CREATE TABLE channels(
++            id INTEGER PRIMARY KEY,
++            name TEXT,
++            url TEXT,
++            media_type INTEGER,
++            source_id INTEGER,
++            group_id INTEGER,
++            group_name TEXT,
++            favorite INTEGER,
++            stream_validated INTEGER,
++            last_watched INTEGER,
++            provider_order INTEGER
++          );
++        ''');
++        // Verbatim migration-27 DDL (db_factory.dart) — keep in sync.
++        db.execute('''
++          CREATE INDEX IF NOT EXISTS idx_channels_browse_tier
++          ON channels(
++            source_id,
++            (CASE
++              WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0
++              WHEN COALESCE(favorite,0)=1 THEN 1
++              WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2
++              WHEN last_watched IS NOT NULL THEN 3
++              WHEN COALESCE(stream_validated,0)=1 THEN 4
++              ELSE 5 END),
++            name COLLATE NOCASE
++          )
++          WHERE url IS NOT NULL
++        ''');
++        db.execute("INSERT INTO sources VALUES (1,'alpha')");
++        final ins = db.prepare(
++            'INSERT INTO channels VALUES (?,?,?,?,?,?,?,?,?,?,?)');
++        for (var i = 0; i < 500; i++) {
++          ins.execute([
++            i, 'ch$i', 'http://x/$i', i % 3, 1, null, 'g${i % 7}',
++            i % 11 == 0 ? 1 : 0, i % 5 == 0 ? 1 : 0, null, i,
++          ]);
++        }
++        ins.dispose();
++
++        // The browse query EXACTLY as Sql.search assembles it for a
++        // no-search-text view, with the EMITTED alpha ORDER BY.
++        final sql = '''
++        SELECT * FROM channels c
++        WHERE media_type IN (?,?,?)
++          AND source_id IN (?)
++          AND url IS NOT NULL
++AND COALESCE((SELECT g.enabled FROM groups g WHERE g.id = c.group_id), 1) = 1${BrowseOrder.orderBy('alpha')}
++LIMIT ?, ?''';
++        final plan = db
++            .select('EXPLAIN QUERY PLAN $sql', [0, 1, 2, 1, 0, 36])
++            .map((r) => r['detail'] as String)
++            .join('\n');
++        expect(plan, contains('idx_channels_browse_tier'),
++            reason: 'alpha ORDER BY must be served by the mig-27 index:\n$plan');
++        expect(plan, isNot(contains('TEMP B-TREE')),
++            reason: 'no temp B-tree sort expected:\n$plan');
++
++        // Document WHY the legacy correlated form needed fixing: it cannot
++        // use the index and falls back to a temp B-tree sort.
++        final legacy = '''
++        SELECT * FROM channels c
++        WHERE media_type IN (?,?,?)
++          AND source_id IN (?)
++          AND url IS NOT NULL${BrowseOrder.orderBy(null)}
++LIMIT ?, ?''';
++        final legacyPlan = db
++            .select('EXPLAIN QUERY PLAN $legacy', [0, 1, 2, 1, 0, 36])
++            .map((r) => r['detail'] as String)
++            .join('\n');
++        expect(legacyPlan, contains('TEMP B-TREE'),
++            reason: 'mixed-mode form is expected to temp-sort:\n$legacyPlan');
++      } finally {
++        db.dispose();
++      }
++    });
++  });
++}

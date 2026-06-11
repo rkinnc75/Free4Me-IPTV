@@ -2,6 +2,7 @@ import 'dart:collection';
 import 'dart:convert';
 
 import 'package:open_tv/backend/app_logger.dart';
+import 'package:open_tv/backend/browse_order.dart';
 import 'package:open_tv/backend/playback_analyzer.dart';
 import 'package:open_tv/backend/channel_search_cache.dart';
 import 'package:open_tv/backend/db_factory.dart';
@@ -568,32 +569,22 @@ class Sql {
     if (filters.viewType == ViewType.history) {
       sqlQuery += "\nORDER BY c.last_watched DESC";
     } else {
-      final sortMode = 'select sort_mode from sources where id = c.source_id';
-      // fix138: 6-tier sort matching _channelTier in channel_picker_screen.
-      // Applies to ALL media-type browse views (Live/Movies/Series/All).
-      // fix256: per-source sort mode (provider | category | alpha).
-      // fix258: in provider mode, collapse to favorites-first only (not the full
-      // 6-tier), then provider order. In alpha mode, use the full 6-tier.
-      // fix272: in category mode, favorites first, then group_name (the provider
-      // category), then provider order within the category, then name.
-      sqlQuery += "\nORDER BY"
-          " CASE WHEN ($sortMode) IN ('provider','category')"
-          "   THEN (CASE WHEN COALESCE(c.favorite,0)=1 THEN 0 ELSE 1 END)"
-          "   ELSE"
-          "     CASE"
-          "       WHEN COALESCE(c.favorite,0)=1 AND COALESCE(c.stream_validated,0)=1 THEN 0"
-          "       WHEN COALESCE(c.favorite,0)=1 THEN 1"
-          "       WHEN c.last_watched IS NOT NULL AND COALESCE(c.stream_validated,0)=1 THEN 2"
-          "       WHEN c.last_watched IS NOT NULL THEN 3"
-          "       WHEN COALESCE(c.stream_validated,0)=1 THEN 4"
-          "       ELSE 5"
-          "     END"
-          " END ASC,"
-          " CASE WHEN ($sortMode) = 'category'"
-          "   THEN c.group_name COLLATE NOCASE END ASC,"
-          " CASE WHEN ($sortMode) = 'provider'"
-          "   THEN c.provider_order END ASC,"
-          " c.name COLLATE NOCASE ASC";
+      // fix138/256/258/272 sort semantics, built by BrowseOrder (fix344).
+      // Resolve the in-scope sources' sort modes ONCE here in Dart: when they
+      // are uniform the emitted ORDER BY has NO correlated subqueries, and the
+      // alpha form structurally matches idx_channels_browse_tier (migration
+      // 27) so the planner serves the sort from the index instead of a temp
+      // B-tree over the whole catalogue (~11s cold on 270k rows on Shield).
+      final modeRows = await db.getAll(
+        'SELECT DISTINCT sort_mode FROM sources WHERE id IN '
+        '(${generatePlaceholders(filters.sourceIds!.length)})',
+        filters.sourceIds!,
+      );
+      final modes = modeRows
+          .map((r) => BrowseOrder.normalise(r['sort_mode'] as String?))
+          .toSet();
+      final uniformMode = modes.length == 1 ? modes.first : null;
+      sqlQuery += BrowseOrder.orderBy(uniformMode);
     }
 
     sqlQuery += "\nLIMIT ?, ?";

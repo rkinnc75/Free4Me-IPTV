@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.59': [
+    'Browsing large catalogues is dramatically faster: the channel list sort now uses the database index added in 1.26.46, which was not actually being used until now — opening the All view on a very large source (hundreds of thousands of channels) drops from ~11 seconds to near-instant on devices like the Shield.',
+  ],
   '1.26.58': [
     'Fixed the multi-view stability buffer on the ExoPlayer engine: cells were being restarted by a startup timeout right after the buffer finished building. The buffer now works on both engines.',
   ],

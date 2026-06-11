@@ -485,8 +485,11 @@ class DbFactory {
       // stores exactly that tier CASE plus name, scoped per source, so the
       // planner walks it in sort order and stops after one page (measured:
       // ~340ms warm / ~11s cold -> ~0.1ms; deep pages ~1ms). The index
-      // expression MUST stay byte-identical to the alpha-mode ORDER BY tier in
-      // Sql.search — if that CASE changes, this index stops being used.
+      // expression MUST stay structurally identical to BrowseOrder.tier
+      // (lib/backend/browse_order.dart) — the single source of the alpha-mode
+      // ORDER BY since fix344. If either side changes, the index stops being
+      // used; test/browse_order_test.dart EXPLAIN-asserts the match against a
+      // real sqlite DB.
       ..add(SqliteMigration(27, (tx) async {
         await tx.execute('''
           CREATE INDEX IF NOT EXISTS idx_channels_browse_tier
