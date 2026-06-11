@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:open_tv/backend/app_logger.dart';
+import 'package:open_tv/backend/background_task_service.dart';
 import 'package:open_tv/backend/channel_search_cache.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
@@ -431,17 +432,25 @@ class _HomeState extends State<Home> {
       ),
     );
 
-    await StreamScanner.scan(
-      channels: scanList,
-      maxChannels: maxCount,
-      timeout: timeout,
-      isCancelled: () => _scanCancelled,
-      onProgress: (done, total) {
-        _scanProgress.value = (done: done, total: total);
-        // Trigger a parent rebuild so green outlines on tiles refresh as
-        // each result lands.
-        if (mounted) setState(() {});
-      },
+    // fix349: when background processing is enabled, keep the scan alive via
+    // a foreground service if the user switches away (same pattern as the
+    // fix318 source refresh). Work stays on the main isolate.
+    await BackgroundTaskService.run<void>(
+      enabled: settings.backgroundProcessing,
+      title: 'Scanning streams',
+      work: (update) => StreamScanner.scan(
+        channels: scanList,
+        maxChannels: maxCount,
+        timeout: timeout,
+        isCancelled: () => _scanCancelled,
+        onProgress: (done, total) {
+          _scanProgress.value = (done: done, total: total);
+          // Trigger a parent rebuild so green outlines on tiles refresh as
+          // each result lands.
+          if (mounted) setState(() {});
+          update('$done / $total streams tested');
+        },
+      ),
     );
 
     if (mounted) {

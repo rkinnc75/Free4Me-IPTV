@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.27.1': [
+    'Background processing now covers more long tasks: EPG refresh, channel re-match, and the stream scanner keep running if you switch away from the app (previously only source refresh did). Enable it in Settings — "Keep long tasks running in background".',
+  ],
   '1.27.0': [
     'Live TV controls cleaned up: the previous/next skip buttons (which do nothing on a live stream) are gone. Play/pause stays — pausing live TV works and resumes where you left off. Movies and series keep the full controls, including the seek bar.',
   ],

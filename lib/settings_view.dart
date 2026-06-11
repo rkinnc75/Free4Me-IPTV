@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:io';
 import 'package:open_tv/backend/app_logger.dart';
+import 'package:open_tv/backend/background_task_service.dart';
 import 'package:open_tv/backend/export_server.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:open_tv/backend/playback_analyzer.dart';
@@ -714,83 +715,96 @@ class _SettingsState extends State<SettingsView> {
       ),
     ).then((_) => dialogOpen = false);
 
-    for (final source in sources) {
-      if (!source.enabled) continue;
-      final hasManualUrl = source.epgUrl?.isNotEmpty == true;
-      final isXtream = source.sourceType == SourceType.xtream;
-      if (!hasManualUrl && !isXtream) continue;
+    // fix349: keep this task alive via a foreground service if the user
+    // switches away from the app (same pattern as the fix318 source
+    // refresh). Work stays on the main isolate; the service only promotes
+    // the process and mirrors progress to its notification.
+    await BackgroundTaskService.run<void>(
+      enabled: SettingsService.cached?.backgroundProcessing ?? false,
+      title: 'Refreshing EPG',
+      work: (update) async {
+        for (final source in sources) {
+          if (!source.enabled) continue;
+          final hasManualUrl = source.epgUrl?.isNotEmpty == true;
+          final isXtream = source.sourceType == SourceType.xtream;
+          if (!hasManualUrl && !isXtream) continue;
 
-      final url = hasManualUrl ? source.epgUrl : null;
-      matchDone = 0;
-      matchTotal = 0;
-      programs = 0;
-      status = 'Preparing "${source.name}"…';
-      _updateRefreshDialog(status);
+          final url = hasManualUrl ? source.epgUrl : null;
+          matchDone = 0;
+          matchTotal = 0;
+          programs = 0;
+          status = 'Preparing "${source.name}"…';
+          _updateRefreshDialog(status);
+          update(status);
 
-      AppLog.info('EpgRefresh: source "${source.name}" — starting');
+          AppLog.info('EpgRefresh: source "${source.name}" — starting');
 
-      int sourceInserted = 0;
-      int sourceMatchedChannels = 0;
-      int sourceTotalChannels = 0;
-      String? sourceError;
-      try {
-        await EpgService.refreshSource(
-          source,
-          epgUrl: url,
-          onProgress: (p) {
-            // matchChannels fires onProgress with programsInserted: 0
-            // (it doesn't insert programs). Without this guard the
-            // match-phase callbacks overwrite sourceInserted with 0,
-            // producing a false "0 programs loaded" warning.
-            if (!p.isMatching) {
-              sourceInserted = p.programsInserted;
-              programs = p.programsInserted;
-            }
+          int sourceInserted = 0;
+          int sourceMatchedChannels = 0;
+          int sourceTotalChannels = 0;
+          String? sourceError;
+          try {
+            await EpgService.refreshSource(
+              source,
+              epgUrl: url,
+              onProgress: (p) {
+                // matchChannels fires onProgress with programsInserted: 0
+                // (it doesn't insert programs). Without this guard the
+                // match-phase callbacks overwrite sourceInserted with 0,
+                // producing a false "0 programs loaded" warning.
+                if (!p.isMatching) {
+                  sourceInserted = p.programsInserted;
+                  programs = p.programsInserted;
+                }
 
-            if (p.isMatching) {
-              matchDone = p.matchingChannelsDone;
-              matchTotal = p.matchingChannelsTotal;
-              // Capture running totals for the summary line
-              sourceMatchedChannels = p.matchingChannelsDone;
-              sourceTotalChannels = p.matchingChannelsTotal;
-              status = '${source.name}: matching channels…';
-              _updateRefreshDialog(status);
+                if (p.isMatching) {
+                  matchDone = p.matchingChannelsDone;
+                  matchTotal = p.matchingChannelsTotal;
+                  // Capture running totals for the summary line
+                  sourceMatchedChannels = p.matchingChannelsDone;
+                  sourceTotalChannels = p.matchingChannelsTotal;
+                  status = '${source.name}: matching channels…';
+                  _updateRefreshDialog(status);
+                  update(status);
+                } else {
+                  status = p.statusMessage != null
+                      ? '${source.name}: ${p.statusMessage}'
+                      : '${source.name}: $programs programs…';
+                  _updateRefreshDialog(status);
+                  update(status);
+                }
+              },
+            );
+            if (sourceInserted == 0) {
+              AppLog.warn(
+                'EpgRefresh: source "${source.name}" — 0 programs loaded'
+                ' (check EPG URL / server / date window)',
+              );
+              results.add(
+                '⚠ ${source.name}: refresh completed but 0 programs loaded '
+                '(check EPG URL, server response, or date window)',
+              );
             } else {
-              status = p.statusMessage != null
-                  ? '${source.name}: ${p.statusMessage}'
-                  : '${source.name}: $programs programs…';
-              _updateRefreshDialog(status);
+              AppLog.info(
+                'EpgRefresh: source "${source.name}" — done'
+                ' programs=$sourceInserted'
+                ' matched=$sourceMatchedChannels/$sourceTotalChannels',
+              );
+              final matchSuffix = sourceTotalChannels > 0
+                  ? ' · $sourceMatchedChannels/$sourceTotalChannels channels matched'
+                  : '';
+              results.add(
+                '✓ ${source.name}: $sourceInserted programs$matchSuffix',
+              );
             }
-          },
-        );
-        if (sourceInserted == 0) {
-          AppLog.warn(
-            'EpgRefresh: source "${source.name}" — 0 programs loaded'
-            ' (check EPG URL / server / date window)',
-          );
-          results.add(
-            '⚠ ${source.name}: refresh completed but 0 programs loaded '
-            '(check EPG URL, server response, or date window)',
-          );
-        } else {
-          AppLog.info(
-            'EpgRefresh: source "${source.name}" — done'
-            ' programs=$sourceInserted'
-            ' matched=$sourceMatchedChannels/$sourceTotalChannels',
-          );
-          final matchSuffix = sourceTotalChannels > 0
-              ? ' · $sourceMatchedChannels/$sourceTotalChannels channels matched'
-              : '';
-          results.add(
-            '✓ ${source.name}: $sourceInserted programs$matchSuffix',
-          );
+          } catch (e, st) {
+            sourceError = e.toString();
+            AppLog.warn('EpgRefresh: source "${source.name}" — ERROR: $e\n$st');
+            results.add('✗ ${source.name}: $sourceError');
+          }
         }
-      } catch (e, st) {
-        sourceError = e.toString();
-        AppLog.warn('EpgRefresh: source "${source.name}" — ERROR: $e\n$st');
-        results.add('✗ ${source.name}: $sourceError');
-      }
-    }
+      },
+    );
 
     AppLog.info(
       'EpgRefresh: complete — ${results.length} source(s) processed\n'
@@ -876,60 +890,73 @@ class _SettingsState extends State<SettingsView> {
     ).then((_) => dialogOpen = false);
 
     final results = <String>[];
-    for (final source in sources) {
-      if (!source.enabled) continue;
-      final epgUrl = EpgService.resolveEpgUrl(source);
-      if (epgUrl == null) continue;
+    // fix349: keep this task alive via a foreground service if the user
+    // switches away from the app (same pattern as the fix318 source
+    // refresh). Work stays on the main isolate; the service only promotes
+    // the process and mirrors progress to its notification.
+    await BackgroundTaskService.run<void>(
+      enabled: SettingsService.cached?.backgroundProcessing ?? false,
+      title: 'Re-matching channels',
+      work: (update) async {
+        for (final source in sources) {
+          if (!source.enabled) continue;
+          final epgUrl = EpgService.resolveEpgUrl(source);
+          if (epgUrl == null) continue;
 
-      status = 'Re-matching "${source.name}"…';
-      _updateRefreshDialog(status);
-      matchDone = 0;
-      matchTotal = 0;
+          status = 'Re-matching "${source.name}"…';
+          _updateRefreshDialog(status);
+          update(status);
+          matchDone = 0;
+          matchTotal = 0;
 
-      AppLog.info('EpgRematch: source "${source.name}" — downloading EPG');
+          AppLog.info('EpgRematch: source "${source.name}" — downloading EPG');
 
-      try {
-        // Download fresh XMLTV to get the latest channelMap, then force-match.
-        final channelMap = await EpgService.downloadAndParseEpg(
-          source,
-          epgUrl: epgUrl,
-          onProgress: (p) {
-            status = '${source.name}: ${p.statusMessage ?? "downloading…"}';
-            _updateRefreshDialog(status);
-          },
-        );
-        if (channelMap == null) {
-          AppLog.warn('EpgRematch: source "${source.name}" — download returned null');
-          results.add('⚠ ${source.name}: failed to download EPG');
-          continue;
+          try {
+            // Download fresh XMLTV to get the latest channelMap, then force-match.
+            final channelMap = await EpgService.downloadAndParseEpg(
+              source,
+              epgUrl: epgUrl,
+              onProgress: (p) {
+                status = '${source.name}: ${p.statusMessage ?? "downloading…"}';
+                _updateRefreshDialog(status);
+                update(status);
+              },
+            );
+            if (channelMap == null) {
+              AppLog.warn('EpgRematch: source "${source.name}" — download returned null');
+              results.add('⚠ ${source.name}: failed to download EPG');
+              continue;
+            }
+            AppLog.info(
+              'EpgRematch: source "${source.name}" — EPG downloaded'
+              ' (${channelMap.length} channel entries),'
+              ' starting force-match',
+            );
+            await EpgService.matchChannels(
+              source,
+              channelMap,
+              forceAll: true,
+              onProgress: (p) {
+                matchDone = p.matchingChannelsDone;
+                matchTotal = p.matchingChannelsTotal;
+                status = '${source.name}: matching…';
+                _updateRefreshDialog(status);
+                update(status);
+              },
+            );
+            AppLog.info(
+              'EpgRematch: source "${source.name}" — force-match done'
+              ' $matchDone/$matchTotal',
+            );
+            results.add('✓ ${source.name}: re-match complete'
+                '${matchTotal > 0 ? " ($matchDone/$matchTotal)" : ""}');
+          } catch (e, st) {
+            AppLog.warn('EpgRematch: source "${source.name}" — ERROR: $e\n$st');
+            results.add('✗ ${source.name}: $e');
+          }
         }
-        AppLog.info(
-          'EpgRematch: source "${source.name}" — EPG downloaded'
-          ' (${channelMap.length} channel entries),'
-          ' starting force-match',
-        );
-        await EpgService.matchChannels(
-          source,
-          channelMap,
-          forceAll: true,
-          onProgress: (p) {
-            matchDone = p.matchingChannelsDone;
-            matchTotal = p.matchingChannelsTotal;
-            status = '${source.name}: matching…';
-            _updateRefreshDialog(status);
-          },
-        );
-        AppLog.info(
-          'EpgRematch: source "${source.name}" — force-match done'
-          ' $matchDone/$matchTotal',
-        );
-        results.add('✓ ${source.name}: re-match complete'
-            '${matchTotal > 0 ? " ($matchDone/$matchTotal)" : ""}');
-      } catch (e, st) {
-        AppLog.warn('EpgRematch: source "${source.name}" — ERROR: $e\n$st');
-        results.add('✗ ${source.name}: $e');
-      }
-    }
+      },
+    );
 
     AppLog.info(
       'EpgRematch: complete — ${results.length} source(s) processed\n'
@@ -2208,19 +2235,22 @@ class _SettingsState extends State<SettingsView> {
                         },
                       ),
                       // fix318: keep source refreshes running in the background.
+                      // fix349: extended to EPG refresh, re-match, and scans.
                       _switchTile(
-                        label: "Keep refreshes running in background",
+                        label: "Keep long tasks running in background",
                         value: settings.backgroundProcessing,
                         help: (
                           title: 'Background processing',
                           body:
-                              'Android only. When ON, a source refresh keeps '
-                              'running via a foreground service (with a '
-                              'notification) if you switch away from the app, '
-                              'instead of pausing.\n\n'
+                              'Android only. When ON, long tasks — source '
+                              'refresh, EPG refresh, channel re-match, and '
+                              'the stream scanner — keep running via a '
+                              'foreground service (with a notification) if '
+                              'you switch away from the app, instead of '
+                              'pausing.\n\n'
                               'Default: OFF.\n\n'
                               'You may be asked to allow notifications the '
-                              'first time. If you decline, refreshes still run '
+                              'first time. If you decline, tasks still run '
                               'while the app is open.',
                         ),
                         onChanged: (v) {
