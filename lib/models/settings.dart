@@ -121,6 +121,12 @@ class Settings {
   /// 0 = reconnect immediately. Default: 2000ms. Range: 0–10000ms.
   int streamCompletedDelayMs;
 
+  /// fix341: optional multi-view stability buffer (seconds). When > 0, each
+  /// cell pauses for this long after opening so mpv's cache accumulates a
+  /// cushion; playback then runs that far behind live and plays THROUGH brief
+  /// provider connection drops instead of stalling. 0 = off (live edge).
+  int multiViewStabilityBufferSecs;
+
   /// Maximum number of attempts before the app gives up on a stream.
   ///
   /// Covers BOTH failure modes (fix96):
@@ -201,6 +207,7 @@ class Settings {
     this.miniDemuxerMaxMB = 32,
     this.bufferSizeMB = 128,
     this.streamCompletedDelayMs = 2000,
+    this.multiViewStabilityBufferSecs = 0,
     this.maxReconnectAttempts = 3,
     this.multiViewLayout = MultiViewLayout.none,
     this.multiViewDecode = MultiViewDecode.auto,
@@ -310,6 +317,7 @@ class Settings {
     s.stableThresholdSecs = 15;
     s.startupGraceMs = isTV ? 1500 : 800;
     s.streamCompletedDelayMs = 2000;
+    s.multiViewStabilityBufferSecs = 0;
     s.maxReconnectAttempts = 3;
 
     // Hardware decode is always recommended; the engine code routes TV

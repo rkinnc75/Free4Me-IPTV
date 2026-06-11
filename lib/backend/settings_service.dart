@@ -63,6 +63,7 @@ const multiViewAutoRestoreChannelsProp = "multiViewAutoRestoreChannels";
 const miniDemuxerMaxMBProp = "miniDemuxerMaxMB";
 const bufferSizeMBProp = "bufferSizeMB";
 const streamCompletedDelayMsProp = "streamCompletedDelayMs";
+const multiViewStabilityBufferSecsProp = "multiViewStabilityBufferSecs"; // fix341
 const maxReconnectAttemptsProp = "maxReconnectAttempts";
 
 const contentTypeFilterProp = "contentTypeFilter";
@@ -131,6 +132,7 @@ class SettingsService {
     var miniDemuxer = settingsMap[miniDemuxerMaxMBProp];
     var bufferSize = settingsMap[bufferSizeMBProp];
     var streamCompletedDelay = settingsMap[streamCompletedDelayMsProp];
+    var mvStabilityBuffer = settingsMap[multiViewStabilityBufferSecsProp];
     var maxReconnect = settingsMap[maxReconnectAttemptsProp];
 
     if (view != null) {
@@ -205,6 +207,9 @@ class SettingsService {
     }
     if (streamCompletedDelay != null) {
       settings.streamCompletedDelayMs = int.parse(streamCompletedDelay);
+    }
+    if (mvStabilityBuffer != null) {
+      settings.multiViewStabilityBufferSecs = int.parse(mvStabilityBuffer);
     }
     if (maxReconnect != null) {
       settings.maxReconnectAttempts = int.parse(maxReconnect);
@@ -297,6 +302,8 @@ class SettingsService {
     settingsMap[bufferSizeMBProp] = settings.bufferSizeMB.toString();
     settingsMap[streamCompletedDelayMsProp] =
         settings.streamCompletedDelayMs.toString();
+    settingsMap[multiViewStabilityBufferSecsProp] =
+        settings.multiViewStabilityBufferSecs.toString();
     settingsMap[maxReconnectAttemptsProp] =
         settings.maxReconnectAttempts.toString();
     settingsMap[contentTypeFilterProp] =

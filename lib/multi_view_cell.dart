@@ -87,6 +87,16 @@ class _MultiViewCellState extends State<MultiViewCell> {
   /// listeners if dispose() ever throws or is skipped.
   final List<StreamSubscription<dynamic>> _engineSubs = [];
 
+  /// fix341: budget of same-engine quick re-opens after a provider EOF drop
+  /// (keeps the last frame on screen instead of dispose -> spinner -> new
+  /// engine). Resets on a fresh start and after 15s of stable playback.
+  int _quickReopens = 0;
+  static const _maxQuickReopens = 8;
+
+  /// fix341: headers used for the current stream, cached so a quick re-open
+  /// does not need another DB read.
+  Map<String, String>? _lastHttpHeaders;
+
   /// Per-cell transient retry counter. Resets to 0 on a fresh
   /// [_startEngine] call and on 15 s of stable playback after an error.
   int _transientRetries = 0;
@@ -306,6 +316,8 @@ class _MultiViewCellState extends State<MultiViewCell> {
     final generation = ++_openGeneration;
     if (!isRetry) {
       _transientRetries = 0;
+      _quickReopens = 0; // fix341
+
       _lastTransientIncrementAt = null;
       // fix246: a genuinely fresh start (new channel / user retry) clears the
       // slow-recovery budget and cancels any pending slow-recovery attempt.
@@ -512,7 +524,32 @@ class _MultiViewCellState extends State<MultiViewCell> {
       );
       // Single silent retry — honours the user's streamCompletedDelayMs
       // setting (same as full-screen Player).
-      Future.delayed(Duration(milliseconds: delayMs), () {
+      Future.delayed(Duration(milliseconds: delayMs), () async {
+        if (!(mounted && generation == _openGeneration && !_error)) return;
+        // fix341 layer 1: quick re-open on the SAME engine. Disposing the
+        // engine blanks the cell (spinner) for several seconds on every
+        // provider connection-cycle (observed: Dino max_connections=1 drops
+        // each cell every ~25-30s). Re-opening on the live engine keeps the
+        // last frame on screen, shrinking the visible artifact to the
+        // reconnect time. Budgeted; falls back to the full restart path on
+        // failure or budget exhaustion (replenished after 15s stable).
+        final eng = _engine;
+        if (eng != null && _quickReopens < _maxQuickReopens) {
+          _quickReopens++;
+          _eofRetryScheduled = false;
+          AppLog.info(
+            'MultiViewCell: quick re-open (same engine, $_quickReopens/'
+            '$_maxQuickReopens) cell=${widget.cellIndex} channel="${ch.name}"',
+          );
+          try {
+            await eng.open(
+                url: ch.url ?? '', headers: _lastHttpHeaders, isLive: true);
+            return;
+          } catch (e) {
+            AppLog.warn('MultiViewCell: quick re-open failed — $e;'
+                ' falling back to full restart cell=${widget.cellIndex}');
+          }
+        }
         if (mounted && generation == _openGeneration && !_error) {
           _disposeEngine();
           _startEngine(ch);
@@ -532,6 +569,7 @@ class _MultiViewCellState extends State<MultiViewCell> {
           DateTime.now().difference(_lastErrorAt!).inSeconds > 15) {
         _transientRetries = 0;
         _recoverySlowRetries = 0; // fix246: recovered & stable → fresh budget
+        _quickReopens = 0; // fix341: stable again → fresh quick-reopen budget
         _lastErrorAt = null;
       }
 
@@ -558,6 +596,7 @@ class _MultiViewCellState extends State<MultiViewCell> {
 
     try {
       // fix339: multi-view is live-TV-only — suppress Exo completed loops.
+      _lastHttpHeaders = httpHeaders; // fix341: cache for quick re-open
       await engine.open(url: ch.url ?? '', headers: httpHeaders, isLive: true);
     } catch (err) {
       AppLog.warn(
@@ -601,10 +640,39 @@ class _MultiViewCellState extends State<MultiViewCell> {
       _loading = false;
       _retryMessage = null;
     });
+
+    // fix341 layer 2: optional stability buffer. On a FRESH start (not a
+    // retry — a drop-reconnect goes straight to live so the cell recovers
+    // immediately), pause for N seconds so mpv's cache accumulates a cushion;
+    // playback then runs ~N s behind live and plays THROUGH brief provider
+    // connection drops (mpv keeps playing buffered data after network EOF,
+    // only firing completed when the cache drains).
+    final bufferSecs = widget.settings.multiViewStabilityBufferSecs;
+    if (!isRetry && bufferSecs > 0) {
+      AppLog.info('MultiViewCell: stability buffer — pausing ${bufferSecs}s'
+          ' cell=${widget.cellIndex}');
+      await engine.pause();
+      if (mounted) {
+        setState(() => _retryMessage = 'Building ${bufferSecs}s buffer…');
+      }
+      unawaited(Future.delayed(Duration(seconds: bufferSecs), () async {
+        if (!mounted || generation != _openGeneration || _engine != engine) {
+          return;
+        }
+        AppLog.info('MultiViewCell: stability buffer ready — playing'
+            ' cell=${widget.cellIndex}');
+        await engine.play();
+        if (mounted) setState(() => _retryMessage = null);
+      }));
+    }
     // fix94: arm startup watchdog — if no frame arrives, force a
     // transient error so the retry/give-up path runs instead of
     // waiting ~30s for mpv's internal timeout.
-    final startupSecs = widget.settings.bufferingWatchdogSecs;
+    // fix341: while the stability-buffer pause is active the cell is
+    // intentionally not rendering frames — extend the watchdog past the
+    // buffer window so it can't fire mid-pause and trigger a bogus retry.
+    final startupSecs = widget.settings.bufferingWatchdogSecs +
+        ((!isRetry && bufferSecs > 0) ? bufferSecs : 0);
     _startupWatchdog?.cancel();
     _startupWatchdog = Timer(
       Duration(seconds: startupSecs),

@@ -1910,6 +1910,72 @@ class _SettingsState extends State<SettingsView> {
     );
   }
 
+  // fix341: multi-view stability buffer (seconds behind live).
+  static const _stabilityBufferOptions = [0, 15, 30];
+
+  Widget _stabilityBufferTile(Settings s) {
+    final v = s.multiViewStabilityBufferSecs;
+    final label = v == 0 ? 'Off' : '${v}s';
+    return ListTile(
+      title: Row(
+        children: [
+          const Text('Multi-view stability buffer'),
+          const SizedBox(width: 4),
+          _helpIcon(
+            title: 'Multi-view stability buffer',
+            body: 'Builds a cushion of video before each cell starts playing, '
+                'so brief provider connection drops play through smoothly '
+                'instead of stuttering.\n\n'
+                'Default: Off (cells play at the live edge).\n\n'
+                'With a 15s or 30s buffer, each cell waits that long after '
+                'opening (showing "Building buffer…"), then plays that far '
+                'BEHIND live. Useful when a provider limits simultaneous '
+                'connections and cycles them (cells dropping every ~30s). '
+                'Not recommended for time-sensitive viewing such as live '
+                'sports, since the picture is delayed by the buffer length.',
+          ),
+        ],
+      ),
+      trailing: TextButton(
+        onPressed: () => _showStabilityBufferDialog(context),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label, style: Theme.of(context).textTheme.bodyMedium),
+            const SizedBox(width: 4),
+            const Icon(Icons.arrow_drop_down),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showStabilityBufferDialog(BuildContext context) async {
+    await showDialog(
+      barrierDismissible: true,
+      context: context,
+      builder: (_) => SelectDialog(
+        title: 'Multi-view stability buffer',
+        selectedId: _stabilityBufferOptions
+            .indexOf(settings.multiViewStabilityBufferSecs),
+        data: _stabilityBufferOptions
+            .asMap()
+            .entries
+            .map((e) =>
+                IdData(id: e.key, data: e.value == 0 ? 'Off' : '${e.value}s'))
+            .toList(),
+        action: (idx) {
+          setState(() {
+            settings.multiViewStabilityBufferSecs =
+                _stabilityBufferOptions[idx];
+            updateSettings();
+          });
+          Navigator.of(context).pop();
+        },
+      ),
+    );
+  }
+
   static const _multiViewDecodeOptions = [
     MultiViewDecode.auto,
     MultiViewDecode.hardwareCopy,
@@ -2411,6 +2477,7 @@ class _SettingsState extends State<SettingsView> {
                     children: [
                       _multiViewTile(settings),
                       _multiViewDecodeTile(settings),
+          _stabilityBufferTile(settings),
                       SwitchListTile(
                         title: Row(
                           children: [

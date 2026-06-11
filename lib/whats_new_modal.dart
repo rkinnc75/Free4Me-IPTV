@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.57': [
+    'Smoother multi-view on providers that cycle connections: a dropped cell now reconnects on the same player keeping the last frame on screen (no more spinner on every drop), and a new optional "stability buffer" setting (Settings > Multi-view) lets cells play 15-30s behind live so brief drops play through invisibly.',
+  ],
   '1.26.56': [
     'Fixed stretched video in multi-view cells on the ExoPlayer engine: video now keeps its correct aspect ratio with letterboxing instead of filling the cell, most visible in portrait 2x2.',
   ],
