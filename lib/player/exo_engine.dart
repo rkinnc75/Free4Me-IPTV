@@ -185,6 +185,10 @@ class ExoEngine implements PlayerEngine {
   Future<void> play() async {
     await _controller?.play();
     _playingCtrl.add(true);
+    // fix342: resuming playback is a liveness signal — emit buffering=false
+    // so any armed startup watchdog cancels even when the one-shot fix335
+    // signal was consumed before arming (Exo auto-plays during open()).
+    _bufferingCtrl.add(false);
   }
 
   @override

@@ -87,6 +87,12 @@ class _MultiViewCellState extends State<MultiViewCell> {
   /// listeners if dispose() ever throws or is skipped.
   final List<StreamSubscription<dynamic>> _engineSubs = [];
 
+  /// fix342: single place to disarm the startup watchdog.
+  void _cancelStartupWatchdog() {
+    _startupWatchdog?.cancel();
+    _startupWatchdog = null;
+  }
+
   /// fix341: budget of same-engine quick re-opens after a provider EOF drop
   /// (keeps the last frame on screen instead of dispose -> spinner -> new
   /// engine). Resets on a fresh start and after 15s of stable playback.
@@ -560,8 +566,7 @@ class _MultiViewCellState extends State<MultiViewCell> {
     _engineSubs.add(engine.bufferingStream.listen((buffering) {
       // fix94: first buffering signal means the engine is alive.
       if (_startupWatchdog != null) {
-        _startupWatchdog!.cancel();
-        _startupWatchdog = null;
+        _cancelStartupWatchdog();
       }
       // Reset the transient retry counter after 15 s of stable playback.
       if (!buffering &&
@@ -593,6 +598,63 @@ class _MultiViewCellState extends State<MultiViewCell> {
             if (chHeaders.httpOrigin != null) 'Origin': chHeaders.httpOrigin!,
             if (chHeaders.userAgent != null) 'User-Agent': chHeaders.userAgent!,
           };
+
+    final bufferSecs = widget.settings.multiViewStabilityBufferSecs;
+    // fix94: arm startup watchdog — if no frame arrives, force a
+    // transient error so the retry/give-up path runs instead of
+    // waiting ~30s for mpv's internal timeout.
+    // fix342: armed BEFORE engine.open() (was after). ExoPlayer auto-plays
+    // during open(), so its one-shot liveness signal (fix335) could arrive
+    // before the watchdog existed and be consumed — the watchdog then fired
+    // on a healthy stream (every Exo cell with the stability buffer; a
+    // latent race on all paths). Arming first makes the race impossible:
+    // any liveness/buffering event now lands after arm and cancels via
+    // _cancelStartupWatchdog. The generation guard keeps a fire during a
+    // slow open() safe (stale generations are ignored).
+    // fix341: while the stability-buffer pause is active the cell is
+    // intentionally not rendering frames — extend the watchdog past the
+    // buffer window so it can't fire mid-pause and trigger a bogus retry.
+    final startupSecs = widget.settings.bufferingWatchdogSecs +
+        ((!isRetry && bufferSecs > 0) ? bufferSecs : 0);
+    _startupWatchdog?.cancel();
+    _startupWatchdog = Timer(
+      Duration(seconds: startupSecs),
+      () {
+        if (mounted && generation == _openGeneration && !_error) {
+          AppLog.warn(
+            'MultiViewCell: startup watchdog fired after ${startupSecs}s'
+            ' — open succeeded but no frame'
+            ' cell=${widget.cellIndex}'
+            ' channel="${ch.name}"',
+          );
+          // Drive the same retry/give-up path a transient error would.
+          if (_transientRetries < widget.settings.maxReconnectAttempts) {
+            _transientRetries++;
+            final attempt = _transientRetries;
+            final maxAttempts = widget.settings.maxReconnectAttempts;
+            setState(() {
+              _retryMessage = 'Retrying $attempt/$maxAttempts…';
+              _loading = true;
+              _error = false;
+            });
+            _disposeEngine();
+            _startEngine(ch, isRetry: true);
+          } else {
+            setState(() {
+              _error = true;
+              _loading = false;
+              _retryMessage = null;
+            });
+            _disposeEngine();
+          }
+        }
+      },
+    );
+    AppLog.info(
+      'MultiViewCell: startup watchdog armed ${startupSecs}s'
+      ' cell=${widget.cellIndex}'
+      ' channel="${ch.name}"',
+    );
 
     try {
       // fix339: multi-view is live-TV-only — suppress Exo completed loops.
@@ -647,7 +709,6 @@ class _MultiViewCellState extends State<MultiViewCell> {
     // playback then runs ~N s behind live and plays THROUGH brief provider
     // connection drops (mpv keeps playing buffered data after network EOF,
     // only firing completed when the cache drains).
-    final bufferSecs = widget.settings.multiViewStabilityBufferSecs;
     if (!isRetry && bufferSecs > 0) {
       AppLog.info('MultiViewCell: stability buffer — pausing ${bufferSecs}s'
           ' cell=${widget.cellIndex}');
@@ -662,56 +723,21 @@ class _MultiViewCellState extends State<MultiViewCell> {
         AppLog.info('MultiViewCell: stability buffer ready — playing'
             ' cell=${widget.cellIndex}');
         await engine.play();
+        // fix342: cancel the startup watchdog here. ExoPlayer auto-plays
+        // during open(), so its ONE-SHOT liveness signal (fix335) fires
+        // before the watchdog is armed and is consumed; after the buffer
+        // pause -> play, Exo never toggles isBuffering on raw .ts, so no
+        // signal ever reaches the watchdog and it fired at base+buffer on
+        // every Exo cell (S24 21:38 log). open() succeeded and playback has
+        // deliberately begun — the watchdog's job is done.
+        if (_startupWatchdog != null) {
+          _cancelStartupWatchdog();
+          AppLog.info('MultiViewCell: startup watchdog cancelled'
+              ' (buffer released) cell=${widget.cellIndex}');
+        }
         if (mounted) setState(() => _retryMessage = null);
       }));
     }
-    // fix94: arm startup watchdog — if no frame arrives, force a
-    // transient error so the retry/give-up path runs instead of
-    // waiting ~30s for mpv's internal timeout.
-    // fix341: while the stability-buffer pause is active the cell is
-    // intentionally not rendering frames — extend the watchdog past the
-    // buffer window so it can't fire mid-pause and trigger a bogus retry.
-    final startupSecs = widget.settings.bufferingWatchdogSecs +
-        ((!isRetry && bufferSecs > 0) ? bufferSecs : 0);
-    _startupWatchdog?.cancel();
-    _startupWatchdog = Timer(
-      Duration(seconds: startupSecs),
-      () {
-        if (mounted && generation == _openGeneration && !_error) {
-          AppLog.warn(
-            'MultiViewCell: startup watchdog fired after ${startupSecs}s'
-            ' — open succeeded but no frame'
-            ' cell=${widget.cellIndex}'
-            ' channel="${ch.name}"',
-          );
-          // Drive the same retry/give-up path a transient error would.
-          if (_transientRetries < widget.settings.maxReconnectAttempts) {
-            _transientRetries++;
-            final attempt = _transientRetries;
-            final maxAttempts = widget.settings.maxReconnectAttempts;
-            setState(() {
-              _retryMessage = 'Retrying $attempt/$maxAttempts…';
-              _loading = true;
-              _error = false;
-            });
-            _disposeEngine();
-            _startEngine(ch, isRetry: true);
-          } else {
-            setState(() {
-              _error = true;
-              _loading = false;
-              _retryMessage = null;
-            });
-            _disposeEngine();
-          }
-        }
-      },
-    );
-    AppLog.info(
-      'MultiViewCell: startup watchdog armed ${startupSecs}s'
-      ' cell=${widget.cellIndex}'
-      ' channel="${ch.name}"',
-    );
   }
 
   Future<void> _pickChannel() async {
