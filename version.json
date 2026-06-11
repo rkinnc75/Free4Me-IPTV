@@ -1,8 +1,8 @@
 {
-  "latest": "1.26.59",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.59",
+  "latest": "1.26.60",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.60",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Browsing large catalogues is dramatically faster: the channel list sort now uses the database index added in 1.26.46, which was not actually being used until now \u2014 opening the All view on a very large source (hundreds of thousands of channels) drops from ~11 seconds to near-instant on devices like the Shield.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.59/Free4Me-IPTV-1.26.59-arm64.apk"
+  "releaseNotes": "\u2022 Search results now sort identically to channel browsing (an older sort order was still used on one search path) and benefit from the same speed fix as 1.26.59.\n\u2022 Multi-view: a cell that reconnects after a provider drop but never resumes playing is now detected within seconds and automatically restarted, instead of freezing on the last frame.\n\u2022 Player engine reliability: fixed a case where a healthy stream could be misjudged as failed shortly after starting, and stopped a single ExoPlayer error from being counted repeatedly against the reconnect limit.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.60/Free4Me-IPTV-1.26.60-arm64.apk"
 }
