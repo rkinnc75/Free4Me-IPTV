@@ -68,6 +68,14 @@ class MpvEngine implements PlayerEngine {
   /// already being restarted by a provider open-failure.
   bool _emittedError = false;
 
+  /// fix345 (review CRIT-2): one-shot — emit a single liveness buffering=false
+  /// the first time mpv reports actually playing, mirroring fix335 on Exo.
+  /// mpv's own buffering events are broadcast and can fire during open(),
+  /// before the Player has subscribed (events dropped); a healthy live stream
+  /// may then never toggle buffering again, stranding the startup watchdog
+  /// into a false fallback. Belt to the fix345 subscribe-before-open change.
+  bool _signalledPlaying = false;
+
   /// fix337: serialize VideoController platform initialization across ALL
   /// engine instances. The Shield log proved that when four 2x2 cells create
   /// their controllers in the same frame, two of the four texture
@@ -103,6 +111,22 @@ class MpvEngine implements PlayerEngine {
       }
     }));
     _subs.add(_player.stream.completed.listen((v) => _completedCtrl.add(v)));
+    _subs.add(_player.stream.playing.listen((playing) {
+      // fix345: emit on EVERY transition to playing (not one-shot) — the
+      // Player arms its startup watchdog after open(), so a one-shot signal
+      // fired during open() could be consumed pre-arm (the exact Exo bug
+      // fix342 closed in cells). mpv's playing stream only fires on
+      // transitions, so this cannot spam.
+      if (playing && !_disposed) {
+        if (!_signalledPlaying) {
+          _signalledPlaying = true;
+          if (AppLog.enabled) {
+            AppLog.info('MpvEngine: first playing — signalling liveness');
+          }
+        }
+        _bufferingCtrl.add(false);
+      }
+    }));
     _subs.add(_player.stream.error.listen(_emitError));
     _subs.add(_player.stream.position.listen((p) => _positionCtrl.add(p)));
 

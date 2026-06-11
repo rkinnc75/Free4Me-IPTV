@@ -312,12 +312,18 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
             channelId != null)
         ? await Sql.getPosition(channelId)
         : null;
+    // fix345 (review CRIT-2): subscribe to the engine's streams BEFORE the
+    // first open(). The engine's controllers are broadcast — any buffering or
+    // liveness event emitted DURING open() was previously dropped because the
+    // Player only subscribed after _startPlayback returned, which could
+    // strand the startup watchdog on a healthy stream. _subscribeEngineStreams
+    // is idempotent (cancels + re-adds), so the fallback/swap paths that call
+    // it again are unaffected.
+    _subscribeEngineStreams();
     await _startPlayback(
       seconds != null ? Duration(seconds: seconds) : null,
       headers: headers,
     );
-
-    _subscribeEngineStreams();
     subscriptions.add(
       Connectivity().onConnectivityChanged.listen((results) {
         final hasNet =

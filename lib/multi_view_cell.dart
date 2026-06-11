@@ -550,6 +550,32 @@ class _MultiViewCellState extends State<MultiViewCell> {
           try {
             await eng.open(
                 url: ch.url ?? '', headers: _lastHttpHeaders, isLive: true);
+            // fix345 (review CRIT-1): a quick re-open can succeed at the
+            // protocol level yet never produce a frame (connection-limited
+            // providers serving a stalled/black slate). The startup watchdog
+            // was cancelled long ago and the fix337 texture check cannot
+            // catch it (the texture is already attached) — without a probe
+            // this is a silent frozen cell. Re-arm a bounded liveness check:
+            // position must ADVANCE within 8s, else fall back to the full
+            // budgeted restart path (which the logs prove recovers).
+            final p0 = eng.position;
+            Future.delayed(const Duration(seconds: 8), () {
+              if (!mounted ||
+                  generation != _openGeneration ||
+                  _error ||
+                  !identical(_engine, eng)) {
+                return;
+              }
+              if (eng.position <= p0) {
+                AppLog.warn(
+                  'MultiViewCell: quick re-open produced no progress'
+                  ' (position ${p0.inSeconds}s -> ${eng.position.inSeconds}s)'
+                  ' — full restart cell=${widget.cellIndex}',
+                );
+                _disposeEngine();
+                _startEngine(ch, isRetry: true);
+              }
+            });
             return;
           } catch (e) {
             AppLog.warn('MultiViewCell: quick re-open failed — $e;'

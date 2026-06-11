@@ -25,6 +25,14 @@ class ExoEngine implements PlayerEngine {
   Timer? _pollTimer;
   bool _wasBuffering = false;
 
+  /// fix345 (review HIGH-2): VideoPlayerValue.hasError stays LATCHED true and
+  /// _onValueChanged runs on every value tick + the 1s poll, so one Exo error
+  /// was re-emitted continuously — in a multi-view cell each emission >500ms
+  /// apart burned a fresh retry slot, draining the whole budget on a single
+  /// underlying fault. Mirror of MpvEngine's fix338 _emittedError: forward a
+  /// given error once; reset on the next open().
+  bool _emittedError = false;
+
   /// fix339: set by open(). Live streams MUST NOT emit completed: video_player
   /// reports a tiny non-zero duration for raw .ts live (sub-second / segment
   /// window — logged as duration=0s via inSeconds), so the old
@@ -101,6 +109,7 @@ class ExoEngine implements PlayerEngine {
     bool isLive = false, // fix339
   }) async {
     _isLive = isLive;
+    _emittedError = false; // fix345: new controller, fresh fault domain
     AppLog.info('ExoEngine: open() url="$url" isLive=$isLive');
     await _controller?.dispose();
 
@@ -238,8 +247,9 @@ class ExoEngine implements PlayerEngine {
     final v = _controller?.value;
     if (v == null) return;
 
-    // Error
-    if (v.hasError) {
+    // Error — fix345: emit once per fault (hasError is latched; see field).
+    if (v.hasError && !_emittedError) {
+      _emittedError = true;
       AppLog.warn('ExoEngine: error — "${v.errorDescription}"');
       _errorCtrl.add(v.errorDescription ?? 'ExoPlayer error');
     }

@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.60': [
+    'Search results now sort identically to channel browsing (an older sort order was still used on one search path) and benefit from the same speed fix as 1.26.59.',
+    'Multi-view: a cell that reconnects after a provider drop but never resumes playing is now detected within seconds and automatically restarted, instead of freezing on the last frame.',
+    'Player engine reliability: fixed a case where a healthy stream could be misjudged as failed shortly after starting, and stopped a single ExoPlayer error from being counted repeatedly against the reconnect limit.',
+  ],
   '1.26.59': [
     'Browsing large catalogues is dramatically faster: the channel list sort now uses the database index added in 1.26.46, which was not actually being used until now — opening the All view on a very large source (hundreds of thousands of channels) drops from ~11 seconds to near-instant on devices like the Shield.',
   ],

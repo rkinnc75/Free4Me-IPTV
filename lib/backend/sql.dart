@@ -575,16 +575,8 @@ class Sql {
       // alpha form structurally matches idx_channels_browse_tier (migration
       // 27) so the planner serves the sort from the index instead of a temp
       // B-tree over the whole catalogue (~11s cold on 270k rows on Shield).
-      final modeRows = await db.getAll(
-        'SELECT DISTINCT sort_mode FROM sources WHERE id IN '
-        '(${generatePlaceholders(filters.sourceIds!.length)})',
-        filters.sourceIds!,
-      );
-      final modes = modeRows
-          .map((r) => BrowseOrder.normalise(r['sort_mode'] as String?))
-          .toSet();
-      final uniformMode = modes.length == 1 ? modes.first : null;
-      sqlQuery += BrowseOrder.orderBy(uniformMode);
+      sqlQuery += BrowseOrder.orderBy(
+          await _uniformSortMode(filters.sourceIds!));
     }
 
     sqlQuery += "\nLIMIT ?, ?";
@@ -1762,6 +1754,23 @@ class Sql {
 
   /// LIKE-scan search: full-table substring scan, no FTS index.
   /// Slower than FTS but works for any query length including < 3 chars.
+  /// fix344/345: resolve the single sort mode shared by every in-scope
+  /// source, or null when they mix modes. Used by both the browse query and
+  /// the LIKE search so the emitted ORDER BY (BrowseOrder) is identical —
+  /// and index-served — on every path.
+  static Future<String?> _uniformSortMode(List<int> sourceIds) async {
+    final db = await DbFactory.db;
+    final rows = await db.getAll(
+      'SELECT DISTINCT sort_mode FROM sources WHERE id IN '
+      '(${generatePlaceholders(sourceIds.length)})',
+      sourceIds,
+    );
+    final modes = rows
+        .map((r) => BrowseOrder.normalise(r['sort_mode'] as String?))
+        .toSet();
+    return modes.length == 1 ? modes.first : null;
+  }
+
   static Future<List<Channel>> _searchLike(
     Filters filters,
     String rawQuery,
@@ -1814,24 +1823,12 @@ class Sql {
     if (filters.viewType == ViewType.history) {
       sqlQuery += '\nORDER BY c.last_watched DESC';
     } else {
-      final sortMode = 'select sort_mode from sources where id = c.source_id';
-      // fix256: per-source sort mode (provider | category | alpha).
-      // fix258: in provider mode, favorites-first then provider order.
-      // fix272: in category mode, favorites first, then group_name, then order.
-      sqlQuery += '\nORDER BY'
-          ' CASE WHEN ($sortMode) IN (\'provider\',\'category\')'
-          '   THEN (CASE WHEN COALESCE(c.favorite, 0) = 1 THEN 0 ELSE 1 END)'
-          '   ELSE'
-          '     CASE WHEN COALESCE(c.favorite, 0) = 1 THEN 0'
-          '       WHEN COALESCE(c.stream_validated, 0) = 1 THEN 1'
-          '       WHEN COALESCE(c.last_watched, 0) > 0 THEN 2'
-          '       ELSE 3 END'
-          ' END ASC,'
-          ' CASE WHEN ($sortMode) = \'category\''
-          '   THEN c.group_name COLLATE NOCASE END ASC,'
-          ' CASE WHEN ($sortMode) = \'provider\''
-          '   THEN c.provider_order END ASC,'
-          ' c.name ASC';
+      // fix345: this path carried a STALE pre-fix138 inline ORDER BY (4-tier
+      // CASE, name without COLLATE NOCASE), so substring-search results
+      // sorted differently from browse/FTS results. Unified on BrowseOrder —
+      // one ordering everywhere (and index-served when modes are uniform).
+      sqlQuery += BrowseOrder.orderBy(
+          await _uniformSortMode(filters.sourceIds!));
     }
 
     sqlQuery += '\nLIMIT ?, ?';
