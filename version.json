@@ -1,8 +1,8 @@
 {
-  "latest": "1.27.0",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.27.0",
+  "latest": "1.27.1",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.27.1",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Live TV controls cleaned up: the previous/next skip buttons (which do nothing on a live stream) are gone. Play/pause stays \u2014 pausing live TV works and resumes where you left off. Movies and series keep the full controls, including the seek bar.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.27.0/Free4Me-IPTV-1.27.0-arm64.apk"
+  "releaseNotes": "\u2022 Background processing now covers more long tasks: EPG refresh, channel re-match, and the stream scanner keep running if you switch away from the app (previously only source refresh did). Enable it in Settings \u2014 \"Keep long tasks running in background\".",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.27.1/Free4Me-IPTV-1.27.1-arm64.apk"
 }
