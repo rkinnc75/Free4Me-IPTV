@@ -1,8 +1,8 @@
 {
-  "latest": "1.26.57",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.57",
+  "latest": "1.26.58",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.58",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Smoother multi-view on providers that cycle connections: a dropped cell now reconnects on the same player keeping the last frame on screen (no more spinner on every drop), and a new optional \"stability buffer\" setting (Settings > Multi-view) lets cells play 15-30s behind live so brief drops play through invisibly.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.57/Free4Me-IPTV-1.26.57-arm64.apk"
+  "releaseNotes": "\u2022 Fixed the multi-view stability buffer on the ExoPlayer engine: cells were being restarted by a startup timeout right after the buffer finished building. The buffer now works on both engines.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.58/Free4Me-IPTV-1.26.58-arm64.apk"
 }
