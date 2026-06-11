@@ -1,8 +1,8 @@
 {
-  "latest": "1.26.62",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.62",
+  "latest": "1.27.0",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.27.0",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Secured the TV export portal: the page and its source-import upload now require the link from the QR code (other devices on your network can no longer access it), oversized uploads are rejected, and an imported source list asks for confirmation on the TV before any refresh runs.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.62/Free4Me-IPTV-1.26.62-arm64.apk"
+  "releaseNotes": "\u2022 Live TV controls cleaned up: the previous/next skip buttons (which do nothing on a live stream) are gone. Play/pause stays \u2014 pausing live TV works and resumes where you left off. Movies and series keep the full controls, including the seek bar.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.27.0/Free4Me-IPTV-1.27.0-arm64.apk"
 }
