@@ -125,13 +125,13 @@ class _MultiViewCellState extends State<MultiViewCell> {
   /// open() completes (Issue 6).
   bool? _lastBufferingState;
 
-  /// Set when an EOF-driven retry has been scheduled for the current
-  /// engine generation. End-of-stream surfaces in BOTH `errorStream`
-  /// (as "End of file") and `completedStream` (as `done == true`) for
-  /// the same event — without this flag, both listeners would schedule
-  /// a retry, and the second would burn a transient-retry budget slot
-  /// before being short-circuited by the generation token. The flag is
-  /// reset whenever the engine is (re)started or disposed.
+  /// Set when EOF handling has been scheduled for the current engine
+  /// generation. End-of-stream surfaces in BOTH `errorStream` ("End of
+  /// file") and `completedStream` (`done == true`) for the same event;
+  /// both listeners delegate to the single owner [_onEof] (fix346), which
+  /// uses this flag to de-duplicate. Cleared only after the chosen action
+  /// COMMITS: a quick re-open clears it once open() returns, and
+  /// _disposeEngine/_startEngine reset it on the full-restart path.
   bool _eofRetryScheduled = false;
   /// fix94: covers open-success → first-frame gap in the cell, mirroring
   /// the player's startup watchdog. Dead streams open but never decode.
@@ -224,6 +224,83 @@ class _MultiViewCellState extends State<MultiViewCell> {
       // again, but keep the slow-retry counter (carried in the field).
       _transientRetries = 0;
       _startEngine(ch, isRetry: true);
+    });
+  }
+
+
+  /// fix346 (review HIGH-3): the SINGLE owner of provider-EOF handling.
+  /// One provider EOF surfaces as TWO signals — errorStream("End of file")
+  /// and completedStream(done) — which previously raced into two DIFFERENT
+  /// strategies (full restart vs fix341 quick re-open) arbitrated only by
+  /// Dart stream delivery order, with [_eofRetryScheduled] cleared mid-flight.
+  /// Both listeners now delegate here; the strategy is deterministic:
+  /// quick re-open while budget remains, else the full budgeted restart.
+  /// The de-dup flag is cleared only after the chosen action has COMMITTED
+  /// (quick re-open's open() returned) — _disposeEngine/_startEngine reset it
+  /// on the full-restart path.
+  void _onEof(Channel ch, int generation, {required String via}) {
+    if (_eofRetryScheduled) return;
+    _eofRetryScheduled = true;
+    final delayMs = widget.settings.streamCompletedDelayMs;
+    AppLog.info(
+      'MultiViewCell: stream completed (via $via)'
+      ' cell=${widget.cellIndex}'
+      ' channel="${ch.name}"'
+      ' — handling in ${delayMs}ms',
+    );
+    Future.delayed(Duration(milliseconds: delayMs), () async {
+      if (!(mounted && generation == _openGeneration && !_error)) return;
+      // fix341 layer 1: quick re-open on the SAME engine — keeps the last
+      // frame on screen (no dispose -> spinner) across a provider
+      // connection-cycle. Budgeted (replenished after 15s stable).
+      final eng = _engine;
+      if (eng != null && _quickReopens < _maxQuickReopens) {
+        _quickReopens++;
+        AppLog.info(
+          'MultiViewCell: quick re-open (same engine, $_quickReopens/'
+          '$_maxQuickReopens) cell=${widget.cellIndex} channel="${ch.name}"',
+        );
+        try {
+          await eng.open(
+              url: ch.url ?? '', headers: _lastHttpHeaders, isLive: true);
+          // fix346: clear the de-dup flag only now that the re-open has
+          // COMMITTED — the next provider EOF may schedule afresh. (It was
+          // previously cleared BEFORE open(), letting a second signal for
+          // the SAME event interleave with the in-flight re-open.)
+          _eofRetryScheduled = false;
+          // fix345 (review CRIT-1): bounded liveness probe — position must
+          // ADVANCE within 8s of a quick re-open, else fall back to the
+          // full budgeted restart (a protocol-level success can still be a
+          // frameless/stalled slate on connection-limited providers).
+          final p0 = eng.position;
+          Future.delayed(const Duration(seconds: 8), () {
+            if (!mounted ||
+                generation != _openGeneration ||
+                _error ||
+                !identical(_engine, eng)) {
+              return;
+            }
+            if (eng.position <= p0) {
+              AppLog.warn(
+                'MultiViewCell: quick re-open produced no progress'
+                ' (position ${p0.inSeconds}s -> ${eng.position.inSeconds}s)'
+                ' — full restart cell=${widget.cellIndex}',
+              );
+              _disposeEngine();
+              _startEngine(ch, isRetry: true);
+            }
+          });
+          return;
+        } catch (e) {
+          AppLog.warn('MultiViewCell: quick re-open failed — $e;'
+              ' falling back to full restart cell=${widget.cellIndex}');
+        }
+      }
+      // Full restart — _disposeEngine/_startEngine reset _eofRetryScheduled.
+      if (mounted && generation == _openGeneration && !_error) {
+        _disposeEngine();
+        _startEngine(ch);
+      }
     });
   }
 
@@ -435,21 +512,12 @@ class _MultiViewCellState extends State<MultiViewCell> {
       //     [_eofRetryScheduled]; the other suppresses to avoid burning
       //     a transient-retry budget slot on a duplicate signal.
       if (err.contains('End of file')) {
-        if (_eofRetryScheduled) return;
-        _eofRetryScheduled = true;
-        final delayMs = widget.settings.streamCompletedDelayMs;
-        AppLog.info(
-          'MultiViewCell: EOF via errorStream'
-          ' cell=${widget.cellIndex}'
-          ' channel="${ch.name}"'
-          ' — retrying in ${delayMs}ms',
-        );
-        Future.delayed(Duration(milliseconds: delayMs), () {
-          if (mounted && generation == _openGeneration && !_error) {
-            _disposeEngine();
-            _startEngine(ch);
-          }
-        });
+        // fix346 (review HIGH-3): delegate to the single EOF owner. This
+        // branch previously scheduled a FULL restart while the
+        // completedStream branch scheduled the fix341 quick re-open — same
+        // provider EOF, two different strategies, the winner decided by Dart
+        // stream delivery order. _onEof picks deterministically.
+        _onEof(ch, generation, via: 'errorStream');
         return;
       }
 
@@ -517,76 +585,8 @@ class _MultiViewCellState extends State<MultiViewCell> {
 
     _engineSubs.add(engine.completedStream.listen((done) {
       if (!done) return;
-      // De-duplicate with the errorStream EOF branch — same event, two
-      // signals. First listener through schedules the retry.
-      if (_eofRetryScheduled) return;
-      _eofRetryScheduled = true;
-      final delayMs = widget.settings.streamCompletedDelayMs;
-      AppLog.info(
-        'MultiViewCell: stream completed'
-        ' cell=${widget.cellIndex}'
-        ' channel="${ch.name}"'
-        ' — retrying in ${delayMs}ms',
-      );
-      // Single silent retry — honours the user's streamCompletedDelayMs
-      // setting (same as full-screen Player).
-      Future.delayed(Duration(milliseconds: delayMs), () async {
-        if (!(mounted && generation == _openGeneration && !_error)) return;
-        // fix341 layer 1: quick re-open on the SAME engine. Disposing the
-        // engine blanks the cell (spinner) for several seconds on every
-        // provider connection-cycle (observed: Dino max_connections=1 drops
-        // each cell every ~25-30s). Re-opening on the live engine keeps the
-        // last frame on screen, shrinking the visible artifact to the
-        // reconnect time. Budgeted; falls back to the full restart path on
-        // failure or budget exhaustion (replenished after 15s stable).
-        final eng = _engine;
-        if (eng != null && _quickReopens < _maxQuickReopens) {
-          _quickReopens++;
-          _eofRetryScheduled = false;
-          AppLog.info(
-            'MultiViewCell: quick re-open (same engine, $_quickReopens/'
-            '$_maxQuickReopens) cell=${widget.cellIndex} channel="${ch.name}"',
-          );
-          try {
-            await eng.open(
-                url: ch.url ?? '', headers: _lastHttpHeaders, isLive: true);
-            // fix345 (review CRIT-1): a quick re-open can succeed at the
-            // protocol level yet never produce a frame (connection-limited
-            // providers serving a stalled/black slate). The startup watchdog
-            // was cancelled long ago and the fix337 texture check cannot
-            // catch it (the texture is already attached) — without a probe
-            // this is a silent frozen cell. Re-arm a bounded liveness check:
-            // position must ADVANCE within 8s, else fall back to the full
-            // budgeted restart path (which the logs prove recovers).
-            final p0 = eng.position;
-            Future.delayed(const Duration(seconds: 8), () {
-              if (!mounted ||
-                  generation != _openGeneration ||
-                  _error ||
-                  !identical(_engine, eng)) {
-                return;
-              }
-              if (eng.position <= p0) {
-                AppLog.warn(
-                  'MultiViewCell: quick re-open produced no progress'
-                  ' (position ${p0.inSeconds}s -> ${eng.position.inSeconds}s)'
-                  ' — full restart cell=${widget.cellIndex}',
-                );
-                _disposeEngine();
-                _startEngine(ch, isRetry: true);
-              }
-            });
-            return;
-          } catch (e) {
-            AppLog.warn('MultiViewCell: quick re-open failed — $e;'
-                ' falling back to full restart cell=${widget.cellIndex}');
-          }
-        }
-        if (mounted && generation == _openGeneration && !_error) {
-          _disposeEngine();
-          _startEngine(ch);
-        }
-      });
+      // fix346 (review HIGH-3): delegate to the single EOF owner.
+      _onEof(ch, generation, via: 'completedStream');
     }));
 
     _engineSubs.add(engine.bufferingStream.listen((buffering) {

@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.26.61': [
+    'Multi-view: when a provider drops a stream, the reconnect strategy is now fully deterministic — previously two internal end-of-stream signals could race and randomly choose between the smooth same-player reconnect and a full restart with a spinner.',
+  ],
   '1.26.60': [
     'Search results now sort identically to channel browsing (an older sort order was still used on one search path) and benefit from the same speed fix as 1.26.59.',
     'Multi-view: a cell that reconnects after a provider drop but never resumes playing is now detected within seconds and automatically restarted, instead of freezing on the last frame.',
