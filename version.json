@@ -1,8 +1,8 @@
 {
-  "latest": "1.26.56",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.56",
+  "latest": "1.26.57",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.57",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fixed stretched video in multi-view cells on the ExoPlayer engine: video now keeps its correct aspect ratio with letterboxing instead of filling the cell, most visible in portrait 2x2.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.56/Free4Me-IPTV-1.26.56-arm64.apk"
+  "releaseNotes": "\u2022 Smoother multi-view on providers that cycle connections: a dropped cell now reconnects on the same player keeping the last frame on screen (no more spinner on every drop), and a new optional \"stability buffer\" setting (Settings > Multi-view) lets cells play 15-30s behind live so brief drops play through invisibly.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.57/Free4Me-IPTV-1.26.57-arm64.apk"
 }
