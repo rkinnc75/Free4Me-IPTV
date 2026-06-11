@@ -1,8 +1,8 @@
 {
-  "latest": "1.26.61",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.61",
+  "latest": "1.26.62",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.26.62",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Multi-view: when a provider drops a stream, the reconnect strategy is now fully deterministic \u2014 previously two internal end-of-stream signals could race and randomly choose between the smooth same-player reconnect and a full restart with a spinner.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.61/Free4Me-IPTV-1.26.61-arm64.apk"
+  "releaseNotes": "\u2022 Secured the TV export portal: the page and its source-import upload now require the link from the QR code (other devices on your network can no longer access it), oversized uploads are rejected, and an imported source list asks for confirmation on the TV before any refresh runs.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.26.62/Free4Me-IPTV-1.26.62-arm64.apk"
 }
