@@ -218,16 +218,54 @@ class MpvEngine implements PlayerEngine {
     // fix338: don't fire the texture check if this engine already emitted an
     // error (e.g. a provider open-failure already restarting the cell) — that
     // caused a double restart on the same cell (provider-fail + texture-fail).
-    Future.delayed(const Duration(seconds: 4), () {
-      if (_disposed || _emittedError) return;
-      if (_controller.id.value == null) {
-        AppLog.warn('MpvEngine: TEXTURE-ATTACH-FAILED'
-            ' — no texture 4s after open (decode may be running);'
-            ' emitting error to trigger restart'
+    // fix352: late-attach grace. S24 logs (2026-06-12) showed ~25% of solo
+    // controller creations register their platform texture LATE (>4s) while
+    // decode and audio run fine — and the old 4s hard fail then interrupted a
+    // healthy stream with a reconnect that did nothing except wait out the
+    // registration (the same controller attached on its own moments later).
+    // New behaviour: listen for the id; log attach latency whenever it lands;
+    // WARN at 4s but keep waiting; only emit the restart error if the texture
+    // is still missing at 8s. Re-opens on an already-attached controller skip
+    // all of this.
+    if (_controller.id.value == null && !_disposed) {
+      final attachSw = Stopwatch()..start();
+      void Function()? unlisten;
+      void onAttach() {
+        if (_controller.id.value == null) return;
+        AppLog.info('MpvEngine: texture attached'
+            ' latency=${attachSw.elapsedMilliseconds}ms'
             ' channel="${channel.name}" previewMode=$previewMode');
-        _emitError('video texture failed to attach');
+        unlisten?.call();
       }
-    });
+      unlisten = () {
+        unlisten = null;
+        try {
+          _controller.id.removeListener(onAttach);
+        } catch (_) {
+          // Controller may already be disposed with the engine — fine.
+        }
+      };
+      _controller.id.addListener(onAttach);
+      Future.delayed(const Duration(seconds: 4), () {
+        if (_disposed || _emittedError) return;
+        if (_controller.id.value == null) {
+          AppLog.warn('MpvEngine: texture not attached 4s after open —'
+              ' extending grace to 8s (decode may be running) (fix352)'
+              ' channel="${channel.name}" previewMode=$previewMode');
+        }
+      });
+      Future.delayed(const Duration(seconds: 8), () {
+        unlisten?.call();
+        if (_disposed || _emittedError) return;
+        if (_controller.id.value == null) {
+          AppLog.warn('MpvEngine: TEXTURE-ATTACH-FAILED'
+              ' — no texture 8s after open (decode may be running);'
+              ' emitting error to trigger restart'
+              ' channel="${channel.name}" previewMode=$previewMode');
+          _emitError('video texture failed to attach');
+        }
+      });
+    }
   }
 
   /// fix338: single error sink that records that an error was emitted (so the

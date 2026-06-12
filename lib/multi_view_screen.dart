@@ -170,6 +170,7 @@ class _MultiViewScreenState extends State<MultiViewScreen> {
       ' ${_channels.where((c) => c != null).length}/$_cellCount cells',
     );
     setState(() => _restored = true);
+    unawaited(_checkConnectionLimits()); // fix352
   }
 
   void _persistChannels() {
@@ -183,6 +184,49 @@ class _MultiViewScreenState extends State<MultiViewScreen> {
     }
     // Persist asynchronously — fire and forget.
     SettingsService.updateSettings(widget.settings);
+  }
+
+  /// fix352: last connection-limit warning shown, to avoid repeating the
+  /// same SnackBar when the violating cell composition hasn't changed.
+  String? _lastConnWarning;
+
+  /// fix352: warn when more cells are assigned to one source than the
+  /// provider allows (sources.max_connections, captured on Xtream refresh
+  /// since fix184). Oversubscribing causes the provider to round-robin
+  /// connections — each new cell connect kills another cell's stream
+  /// (confirmed via Dino API dump + S24 logs, 2026-06-11/12). Null/unknown
+  /// limits warn nothing.
+  Future<void> _checkConnectionLimits() async {
+    final counts = <int, int>{};
+    for (final ch in _channels) {
+      if (ch != null) counts[ch.sourceId] = (counts[ch.sourceId] ?? 0) + 1;
+    }
+    final warnings = <String>[];
+    for (final e in counts.entries) {
+      if (e.value < 2) continue; // one cell can never exceed a positive limit
+      final src = await Sql.getSourceById(e.key);
+      final limit = src?.maxConnections;
+      if (src != null && limit != null && e.value > limit) {
+        warnings.add(
+          '${src.name} allows $limit connection${limit == 1 ? '' : 's'} — '
+          '${e.value} cells will fight over it',
+        );
+      }
+    }
+    if (warnings.isEmpty) {
+      _lastConnWarning = null;
+      return;
+    }
+    final msg = warnings.join('\n');
+    if (msg == _lastConnWarning) return; // already warned for this layout
+    _lastConnWarning = msg;
+    AppLog.warn(
+      'MultiViewScreen: connection-limit warning — ${warnings.join(' | ')}',
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), duration: const Duration(seconds: 8)),
+    );
   }
 
   void _setChannel(int index, Channel channel) {
@@ -202,6 +246,7 @@ class _MultiViewScreenState extends State<MultiViewScreen> {
     }
     // Give the new cell audio focus automatically.
     if (_focusedCell != index) setState(() => _focusedCell = index);
+    unawaited(_checkConnectionLimits()); // fix352
   }
 
   void _setFocus(int index) {
