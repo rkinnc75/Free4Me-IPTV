@@ -109,6 +109,8 @@ class _MultiViewCellState extends State<MultiViewCell> {
   /// recover during provider edge cycling. The 15-second stable-playback
   /// counter (see bufferingStream listener) resets the count to zero, so
   /// a truly-dead channel still hits the error UI promptly.
+  /// fix351: stamped by BOTH the error path and the clean-EOF quick-reopen
+  /// path — any disturbance starts the stable clock.
   DateTime? _lastErrorAt;
 
   /// Timestamp of the last transient-retry counter increment. Used to
@@ -253,6 +255,13 @@ class _MultiViewCellState extends State<MultiViewCell> {
       final eng = _engine;
       if (eng != null && _quickReopens < _maxQuickReopens) {
         _quickReopens++;
+        // fix351: a clean provider EOF is a disturbance just like an error.
+        // Stamping it starts the 15s stable-playback clock, so the reset in
+        // the bufferingStream listener actually replenishes this budget.
+        // Without this (S24 2026-06-11 log), connection-cycling sources
+        // deplete 8/8 monotonically and force a full restart + buffer
+        // rebuild every ~5 min per cell.
+        _lastErrorAt = DateTime.now();
         AppLog.info(
           'MultiViewCell: quick re-open (same engine, $_quickReopens/'
           '$_maxQuickReopens) cell=${widget.cellIndex} channel="${ch.name}"',
@@ -580,7 +589,9 @@ class _MultiViewCellState extends State<MultiViewCell> {
       if (_startupWatchdog != null) {
         _cancelStartupWatchdog();
       }
-      // Reset the transient retry counter after 15 s of stable playback.
+      // Reset ALL recovery budgets (transient, slow-recovery, quick-reopen)
+      // after 15 s of stable playback since the last disturbance (fix351:
+      // disturbance = engine error OR clean provider EOF).
       if (!buffering &&
           _lastErrorAt != null &&
           DateTime.now().difference(_lastErrorAt!).inSeconds > 15) {

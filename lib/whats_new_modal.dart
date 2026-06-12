@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.28.1': [
+    'Multi-view fix: on sources that cycle connections (e.g. 1-connection providers in a 2×2 grid), the silent quick-reconnect budget never replenished, so every cell hit its limit after a few minutes and did a visible full restart — spinner plus a fresh "Building buffer…" pause — over and over. A clean provider drop now counts as a disturbance for the 15-second stability clock, so the budget refills between drops and cells recover with a brief freeze-frame indefinitely. The stability buffer is built once per cell and full restarts stop.',
+  ],
   '1.28.0': [
     'libmpv is now the one and only playback engine. ExoPlayer has been removed entirely — along with the engine picker, the Player engine setting, per-source default engine, and the runtime engine-fallback machinery. libmpv already handled every format (MPEG-TS, HLS, DASH, MP4, RTMP) and carries all the device-specific decode fixes, so this removes a whole class of dual-engine bugs. Existing engine settings and backups are ignored harmlessly.',
   ],
