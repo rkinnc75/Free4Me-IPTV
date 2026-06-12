@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.29.1': [
+    'Series fixed: opening a series now lists every episode. A database uniqueness rule meant for series tiles was accidentally matching episodes too, collapsing all of a series\u2019 episodes onto a single entry \u2014 only the last one survived. Already-affected series heal themselves the next time you open them.',
+  ],
   '1.29.0': [
     'Multi-view now warns you when more cells are assigned to one source than the provider allows (e.g. "Dino allows 1 connection — 4 cells will fight over it"). Oversubscribed sources round-robin their connections, which is why an over-packed grid endlessly cycles; the limit is read from each provider during refresh.',
     'Smoother starts on Samsung devices: when the video surface registers late (the screen stays black a few seconds while audio runs), the player now waits up to 8 seconds for it to attach on its own instead of interrupting a healthy stream with an unnecessary reconnect at 4. Attach timing is also now logged for diagnostics.',

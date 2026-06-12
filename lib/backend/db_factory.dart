@@ -506,6 +506,24 @@ class DbFactory {
           )
           WHERE url IS NOT NULL;
         ''');
+      }))
+      // fix353: channels_unique_series was (source_id, series_id) — one row
+      // per series. Series PARENT tiles never set series_id (id lives in url),
+      // so the index only ever matched EPISODES, collapsing every episode of a
+      // series onto one row via the bare-upsert in insertChannel ("series
+      // loads 1 episode"). Re-key on (source_id, series_id, url): episode url
+      // embeds the provider's unique episode id + container extension, stable
+      // across fetches, so re-opening a series upserts instead of duplicating.
+      // Existing collapsed data (1 row/series) trivially satisfies the wider
+      // key — no migration-time conflict. Collapsed series self-heal on next
+      // open (getEpisodes re-runs each app session).
+      ..add(SqliteMigration(28, (tx) async {
+        await tx.execute('DROP INDEX IF EXISTS channels_unique_series;');
+        await tx.execute('''
+          CREATE UNIQUE INDEX IF NOT EXISTS channels_unique_series
+          ON channels(source_id, series_id, url)
+          WHERE series_id IS NOT NULL;
+        ''');
       }));
     await migrations.migrate(db);
 
