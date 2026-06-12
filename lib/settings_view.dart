@@ -232,6 +232,21 @@ const _helpVodCacheSecs = (
       'Does not affect live TV streams.',
 );
 
+const _helpVodPrebufferSecs = (
+  title: 'VOD/Movie Pre-buffer (seconds)',
+  body:
+      'How many seconds must be buffered before a movie or episode starts '
+      'playing — and before it resumes after running dry.\n\n'
+      'Default: 15 s. Range: 0–60 s. 0 turns it off.\n\n'
+      'Increasing: Much smoother playback on servers that send files '
+      'slowly (constant stutter becomes one short wait at the start plus '
+      'rare pauses). Startup and seeks take a little longer.\n\n'
+      'Decreasing/0: Fastest possible start, but slow servers will '
+      'stutter continuously.\n\n'
+      'Does not affect live TV streams.\n\n'
+      'Restart required: applied when player instances are created.',
+);
+
 const _helpVodDemuxerMB = (
   title: 'VOD/Movie Demuxer Buffer (MB)',
   body:
@@ -2283,6 +2298,18 @@ class _SettingsState extends State<SettingsView> {
                     help: _helpVodCacheSecs,
                     onChanged: (v) {
                       setState(() => settings.vodCacheSecs = v.round());
+                      updateSettings();
+                    },
+                  ),
+                  _bufferSlider(
+                    label: "VOD/Movie pre-buffer (seconds)",
+                    value: settings.vodPrebufferSecs.toDouble(),
+                    min: 0,
+                    max: 60,
+                    divisions: 12,
+                    help: _helpVodPrebufferSecs,
+                    onChanged: (v) {
+                      setState(() => settings.vodPrebufferSecs = v.round());
                       updateSettings();
                     },
                   ),

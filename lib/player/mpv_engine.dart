@@ -567,6 +567,20 @@ class MpvEngine implements PlayerEngine {
       final vodMB = previewMode ? s.miniDemuxerMaxMB * 2 : s.vodDemuxerMaxMB;
       await np.setProperty('demuxer-max-bytes', '${vodMB}MiB');
       await np.setProperty('demuxer-max-back-bytes', '64MiB');
+      // fix354: VOD pre-buffer. Providers that deliver files at/below the
+      // realtime bitrate (Dino /series/, S24 2026-06-12 log: stall/refill
+      // every 2-5s forever) never let the cache get ahead with mpv's default
+      // 1s resume threshold. cache-pause-initial holds playback until
+      // cache-pause-wait seconds are buffered, and every underrun likewise
+      // refills to that level before resuming — converting continuous
+      // micro-stutter into one short startup pause plus rare, well-spaced
+      // refills. VOD only; live keeps the default behaviour (a long
+      // cache-pause-wait at the live edge would just freeze the picture).
+      if (s.vodPrebufferSecs > 0) {
+        await np.setProperty('cache-pause-initial', 'yes');
+        await np.setProperty(
+            'cache-pause-wait', s.vodPrebufferSecs.toString());
+      }
     }
 
     final demuxerMB = channel.mediaType == MediaType.livestream

@@ -47,6 +47,10 @@ class Settings {
   /// libmpv cache read-ahead in seconds for VOD (movies/series).
   int vodCacheSecs;
 
+  /// fix354: seconds of cache mpv must fill before VOD playback starts (and
+  /// before resuming after an underrun). 0 disables the pre-buffer pause.
+  int vodPrebufferSecs;
+
   /// libmpv forward demuxer cache (MB) for VOD.
   int vodDemuxerMaxMB;
 
@@ -174,6 +178,7 @@ class Settings {
     this.liveCacheSecs = 20,
     this.liveDemuxerMaxMB = 150,
     this.vodCacheSecs = 60,
+    this.vodPrebufferSecs = 15,
     this.vodDemuxerMaxMB = 256,
     this.openTimeoutSecs = 15,
     this.bufferingWatchdogSecs = 12,
@@ -296,6 +301,7 @@ class Settings {
     // cache.
     s.liveCacheSecs = isTV ? 45 : 30;
     s.vodCacheSecs = 60;
+    s.vodPrebufferSecs = 15;
 
     // Retry / reconnect timing.
     s.openTimeoutSecs = isTV ? 20 : 12;

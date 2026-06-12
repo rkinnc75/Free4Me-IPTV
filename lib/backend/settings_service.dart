@@ -23,6 +23,7 @@ const lowLatencyProp = "streamCaching";
 const liveCacheSecsProp = "liveCacheSecs";
 const liveDemuxerMaxMBProp = "liveDemuxerMaxMB";
 const vodCacheSecsProp = "vodCacheSecs";
+const vodPrebufferSecsProp = "vodPrebufferSecs"; // fix354
 const vodDemuxerMaxMBProp = "vodDemuxerMaxMB";
 const openTimeoutSecsProp = "openTimeoutSecs";
 const bufferingWatchdogSecsProp = "bufferingWatchdogSecs";
@@ -102,6 +103,7 @@ class SettingsService {
     var liveSecs = settingsMap[liveCacheSecsProp];
     var liveMB = settingsMap[liveDemuxerMaxMBProp];
     var vodSecs = settingsMap[vodCacheSecsProp];
+    var vodPre = settingsMap[vodPrebufferSecsProp];
     var vodMB = settingsMap[vodDemuxerMaxMBProp];
     var openTimeout = settingsMap[openTimeoutSecsProp];
     var watchdog = settingsMap[bufferingWatchdogSecsProp];
@@ -141,6 +143,7 @@ class SettingsService {
     if (liveSecs != null) settings.liveCacheSecs = int.parse(liveSecs);
     if (liveMB != null) settings.liveDemuxerMaxMB = int.parse(liveMB);
     if (vodSecs != null) settings.vodCacheSecs = int.parse(vodSecs);
+    if (vodPre != null) settings.vodPrebufferSecs = int.parse(vodPre);
     if (vodMB != null) settings.vodDemuxerMaxMB = int.parse(vodMB);
     if (openTimeout != null) settings.openTimeoutSecs = int.parse(openTimeout);
     if (watchdog != null) settings.bufferingWatchdogSecs = int.parse(watchdog);
@@ -252,6 +255,7 @@ class SettingsService {
     settingsMap[liveCacheSecsProp] = settings.liveCacheSecs.toString();
     settingsMap[liveDemuxerMaxMBProp] = settings.liveDemuxerMaxMB.toString();
     settingsMap[vodCacheSecsProp] = settings.vodCacheSecs.toString();
+    settingsMap[vodPrebufferSecsProp] = settings.vodPrebufferSecs.toString();
     settingsMap[vodDemuxerMaxMBProp] = settings.vodDemuxerMaxMB.toString();
     settingsMap[openTimeoutSecsProp] = settings.openTimeoutSecs.toString();
     settingsMap[bufferingWatchdogSecsProp] =
