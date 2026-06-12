@@ -1,8 +1,8 @@
 {
-  "latest": "1.29.1",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.29.1",
+  "latest": "1.29.2",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.29.2",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Series fixed: opening a series now lists every episode. A database uniqueness rule meant for series tiles was accidentally matching episodes too, collapsing all of a series\\u2019 episodes onto a single entry \\u2014 only the last one survived. Already-affected series heal themselves the next time you open them.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.29.1/Free4Me-IPTV-1.29.1-arm64.apk"
+  "releaseNotes": "\u2022 New \"VOD/Movie pre-buffer\" setting (default 15 s): movies and episodes now buffer ahead before starting \u2014 and refill properly after running dry \u2014 instead of stuttering continuously on servers that send files slowly. Set it to 0 for the old start-immediately behaviour. Live TV is unaffected.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.29.2/Free4Me-IPTV-1.29.2-arm64.apk"
 }
