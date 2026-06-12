@@ -1,8 +1,8 @@
 {
-  "latest": "1.29.0",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.29.0",
+  "latest": "1.29.1",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.29.1",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Multi-view now warns you when more cells are assigned to one source than the provider allows (e.g. \"Dino allows 1 connection \u2014 4 cells will fight over it\"). Oversubscribed sources round-robin their connections, which is why an over-packed grid endlessly cycles; the limit is read from each provider during refresh.\n\u2022 Smoother starts on Samsung devices: when the video surface registers late (the screen stays black a few seconds while audio runs), the player now waits up to 8 seconds for it to attach on its own instead of interrupting a healthy stream with an unnecessary reconnect at 4. Attach timing is also now logged for diagnostics.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.29.0/Free4Me-IPTV-1.29.0-arm64.apk"
+  "releaseNotes": "\u2022 Series fixed: opening a series now lists every episode. A database uniqueness rule meant for series tiles was accidentally matching episodes too, collapsing all of a series\\u2019 episodes onto a single entry \\u2014 only the last one survived. Already-affected series heal themselves the next time you open them.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.29.1/Free4Me-IPTV-1.29.1-arm64.apk"
 }
