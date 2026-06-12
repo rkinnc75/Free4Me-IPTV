@@ -1,6 +1,4 @@
 import 'package:open_tv/backend/device_memory.dart';
-import 'package:open_tv/models/engine_type.dart';
-import 'package:open_tv/models/engine_preference.dart';
 import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/multi_view_layout.dart';
 import 'package:open_tv/models/multi_view_decode.dart';
@@ -78,16 +76,6 @@ class Settings {
   /// foreground service so they survive the user switching away. Default off
   /// until validated on-device. Android-only; ignored elsewhere.
   bool backgroundProcessing;
-
-  /// Global engine override. [EngineType.auto] means let EnginePicker decide.
-  /// fix315: superseded for the global setting by [enginePreference]; kept for
-  /// per-channel/source override compatibility and backup round-trips.
-  EngineType forcedEngine;
-
-  /// fix315: global engine preference with explicit primary + fallback order.
-  /// Replaces the old global "Auto" with libmpv→Exo (default), Exo→libmpv,
-  /// libmpv-only, or Exo-only.
-  EnginePreference enginePreference;
 
   bool debugLogging;
 
@@ -194,8 +182,6 @@ class Settings {
     this.hwDecode = true,
     this.preWarmOnFocus = true,
     this.backgroundProcessing = false,
-    this.forcedEngine = EngineType.auto,
-    this.enginePreference = EnginePreference.libmpvExo,
     this.debugLogging = false,
     this.epgAutoRefresh = true,
     this.epgRefreshHours = 24,
@@ -334,8 +320,6 @@ class Settings {
     s.streamScanMaxCount = isTV ? 15 : 20;
     s.streamScanTimeoutSecs = isTV ? 10 : 8;
 
-    s.forcedEngine = EngineType.auto;
-    s.enginePreference = EnginePreference.libmpvExo;
     s.multiViewAutoRestoreChannels = true;
 
     // Low-latency mode disables back-buffer and tightens cache; on shaky

@@ -7,13 +7,10 @@ import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/channel_picker_screen.dart';
 import 'package:open_tv/models/channel.dart';
 import 'package:open_tv/models/channel_http_headers.dart';
-import 'package:open_tv/models/engine_type.dart';
 import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/source.dart';
 import 'package:open_tv/player.dart';
-import 'package:open_tv/player/engine_picker.dart';
-import 'package:open_tv/player/exo_engine.dart';
 import 'package:open_tv/player/mpv_engine.dart';
 import 'package:open_tv/player/player_engine.dart';
 import 'package:open_tv/widgets/now_next_strip.dart';
@@ -411,34 +408,23 @@ class _MultiViewCellState extends State<MultiViewCell> {
     _lastErrorAt = null;
     _lastBufferingState = null;
     _eofRetryScheduled = false;
-
-    // Resolve which engine to use through the same picker the main player
-    // uses — so per-channel and per-source overrides are honoured here too.
-    final pickedType = EnginePicker.pick(
-      channel: ch,
-      settings: widget.settings,
-      source: widget.source,
-      url: ch.url,
-    );
     AppLog.info(
       'MultiViewCell: starting engine'
       ' cell=${widget.cellIndex}'
       ' channel="${ch.name}"'
       ' url="${ch.url ?? '<none>'}"'
-      ' engine=${pickedType.name}'
+      ' engine=libmpv'
       ' previewMode=true'
       ' generation=$generation',
     );
     if (mounted) setState(() { _loading = true; _error = false; });
 
-    PlayerEngine engine = pickedType == EngineType.exoplayer
-        ? ExoEngine()
-        : MpvEngine(
-            channel: ch,
-            settings: widget.settings,
-            fullscreenOnOpen: false,
-            previewMode: true,
-          );
+    final PlayerEngine engine = MpvEngine(
+      channel: ch,
+      settings: widget.settings,
+      fullscreenOnOpen: false,
+      previewMode: true,
+    );
 
     // Pull channel HTTP headers once and reuse below for both
     // reapplyOptions() (ignoreSsl) and open() (UA/Referer/Origin).
@@ -629,14 +615,10 @@ class _MultiViewCellState extends State<MultiViewCell> {
     // fix94: arm startup watchdog — if no frame arrives, force a
     // transient error so the retry/give-up path runs instead of
     // waiting ~30s for mpv's internal timeout.
-    // fix342: armed BEFORE engine.open() (was after). ExoPlayer auto-plays
-    // during open(), so its one-shot liveness signal (fix335) could arrive
-    // before the watchdog existed and be consumed — the watchdog then fired
-    // on a healthy stream (every Exo cell with the stability buffer; a
-    // latent race on all paths). Arming first makes the race impossible:
-    // any liveness/buffering event now lands after arm and cancels via
-    // _cancelStartupWatchdog. The generation guard keeps a fire during a
-    // slow open() safe (stale generations are ignored).
+    // fix342: armed BEFORE engine.open() so a liveness/buffering event can
+    // never arrive before the watchdog exists and be consumed unseen (a
+    // latent race on all engine paths). The generation guard keeps a fire
+    // during a slow open() safe (stale generations are ignored).
     // fix341: while the stability-buffer pause is active the cell is
     // intentionally not rendering frames — extend the watchdog past the
     // buffer window so it can't fire mid-pause and trigger a bogus retry.
@@ -683,7 +665,7 @@ class _MultiViewCellState extends State<MultiViewCell> {
     );
 
     try {
-      // fix339: multi-view is live-TV-only — suppress Exo completed loops.
+      // fix339: multi-view is live-TV-only.
       _lastHttpHeaders = httpHeaders; // fix341: cache for quick re-open
       await engine.open(url: ch.url ?? '', headers: httpHeaders, isLive: true);
     } catch (err) {
@@ -749,13 +731,9 @@ class _MultiViewCellState extends State<MultiViewCell> {
         AppLog.info('MultiViewCell: stability buffer ready — playing'
             ' cell=${widget.cellIndex}');
         await engine.play();
-        // fix342: cancel the startup watchdog here. ExoPlayer auto-plays
-        // during open(), so its ONE-SHOT liveness signal (fix335) fires
-        // before the watchdog is armed and is consumed; after the buffer
-        // pause -> play, Exo never toggles isBuffering on raw .ts, so no
-        // signal ever reaches the watchdog and it fired at base+buffer on
-        // every Exo cell (S24 21:38 log). open() succeeded and playback has
-        // deliberately begun — the watchdog's job is done.
+        // fix342: open() succeeded and playback has deliberately begun —
+        // the watchdog's job is done, so cancel it explicitly rather than
+        // relying on a buffering event to arrive after the pause window.
         if (_startupWatchdog != null) {
           _cancelStartupWatchdog();
           AppLog.info('MultiViewCell: startup watchdog cancelled'

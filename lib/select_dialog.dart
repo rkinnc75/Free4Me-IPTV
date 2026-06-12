@@ -23,7 +23,7 @@ class SelectDialog extends StatelessWidget {
     // fix331: the old layout wrapped ONLY the first item in a bare
     // Focus(autofocus: true). On a D-pad TV that captured focus but the inner
     // ListTile showed no focus highlight and could not be activated — the
-    // first option (e.g. "Libmpv → ExoPlayer") looked dead: no highlight,
+    // first option looked dead: no highlight,
     // couldn't select. Each row is now an independently focusable, autofocus-
     // aware ListTile so every option highlights and selects with the remote.
     final hasSelection =

@@ -10,17 +10,14 @@ import 'package:open_tv/channel_tile.dart';
 import 'package:open_tv/error.dart';
 import 'package:open_tv/models/channel.dart';
 import 'package:open_tv/models/channel_http_headers.dart';
-import 'package:open_tv/models/engine_type.dart';
 import 'package:open_tv/models/id_data.dart';
 import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/multi_view_layout.dart';
 import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/source.dart';
 import 'package:open_tv/player/cast_controller.dart';
-import 'package:open_tv/player/engine_picker.dart';
 import 'package:open_tv/player/overlay_player_controller.dart';
 import 'package:open_tv/player/pip_controller.dart';
-import 'package:open_tv/player/exo_engine.dart';
 import 'package:open_tv/player/mpv_engine.dart';
 import 'package:open_tv/player/player_engine.dart';
 import 'package:open_tv/select_dialog.dart';
@@ -30,7 +27,7 @@ class Player extends StatefulWidget {
   final Settings settings;
   final Source? source;
   /// Overrides the channel's normal live URL (e.g. catchup / time-shift URL).
-  /// When set, the pre-warm cache is bypassed and ExoPlayer is never auto-selected.
+  /// When set, the pre-warm cache is bypassed.
   final String? overrideUrl;
   /// fix116: an already-open, already-playing engine to adopt instead of
   /// creating and opening a new one. Used by the swap path so the promoted
@@ -72,9 +69,6 @@ class Player extends StatefulWidget {
 }
 
 class _PlayerState extends State<Player> with WidgetsBindingObserver {
-  // Reassignable so a mid-flight engine swap (ExoPlayer → libmpv fallback)
-  // can replace the active engine without rebuilding the whole route.
-  late EngineType _engineType;
   late PlayerEngine _engine;
 
   bool exiting = false;
@@ -102,21 +96,8 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
 
   /// Subscriptions specifically tied to [_engine]'s streams (errorStream,
   /// bufferingStream, completedStream). Tracked separately from
-  /// [subscriptions] so we can cancel and re-subscribe when swapping engines
-  /// mid-flight (e.g. ExoPlayer → libmpv fallback).
+  /// [subscriptions] so engine teardown can cancel exactly its own listeners.
   final List<StreamSubscription<dynamic>> _engineSubs = [];
-
-  /// True after a one-shot ExoPlayer → libmpv fallback has fired for this
-  /// Player widget. Prevents an infinite swap loop if both engines fail.
-  bool _exoFallbackTried = false;
-
-  /// fix316: one-shot runtime decode/engine fallback. When the primary engine
-  /// fails to render (open error OR startup watchdog = open-succeeded-but-no-
-  /// frame / black screen) and the user's enginePreference defines a fallback
-  /// (libmpv↔ExoPlayer), swap to that engine once before burning the reconnect
-  /// budget on the same engine. Cannot detect colour corruption — only stalls/
-  /// black screen / open failures.
-  bool _prefFallbackTried = false;
 
   // Reconnect bookkeeping
   int _consecutiveOpenFailures = 0;
@@ -143,13 +124,6 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   Timer? _stableTimer;
   bool _isReconnecting = false;
   String? _bufferingState;
-
-  // fix336: VOD transport bar state, fed by engine position/playing streams.
-  Duration _vodPosition = Duration.zero;
-  Duration _vodDuration = Duration.zero;
-  bool _vodPlaying = true;
-  bool _scrubbing = false;
-  Duration _scrubTarget = Duration.zero;
   // Suppresses false reconnect triggers during the first 3s after open().
   bool _startupGrace = false;
 
@@ -173,7 +147,6 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     if (adopt is MpvEngine) {
       // fix116: adopt the already-playing engine from the swap. No create,
       // no open — the stream stays live, avoiding the reopen stall.
-      _engineType = EngineType.libmpv;
       _engine = adopt;
       _adopted = true;
       AppLog.info(
@@ -181,11 +154,10 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
         ' channel="${widget.channel.name}"',
       );
     } else {
-      _engineType = _pickEngine();
-      _engine = _createEngine(_engineType);
+      _engine = MpvEngine(channel: widget.channel, settings: widget.settings);
       AppLog.info(
         'Player: CREATED engine eid=${identityHashCode(_engine)}'
-        ' type=$_engineType channel="${widget.channel.name}"',
+        ' channel="${widget.channel.name}"',
       );
     }
     // Register so the overlay swap can pop this route and take over.
@@ -202,25 +174,6 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     // to the overlay without disposing it.
     OverlayPlayerController.instance.registerMainDetach(detachForSwap);
     initAsync();
-  }
-
-  EngineType _pickEngine() {
-    // If there is a catchup override URL, always use libmpv so the full
-    // feature set (seek, subtitles) is available for VOD-style playback.
-    if (widget.overrideUrl != null) return EngineType.libmpv;
-    return EnginePicker.pick(
-      channel: widget.channel,
-      settings: widget.settings,
-      source: widget.source,
-      url: widget.channel.url,
-    );
-  }
-
-  PlayerEngine _createEngine(EngineType type) {
-    return switch (type) {
-      EngineType.exoplayer => ExoEngine(),
-      _ => MpvEngine(channel: widget.channel, settings: widget.settings),
-    };
   }
 
   Future<void> initAsync() async {
@@ -404,23 +357,6 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
       onDisconnect(reason: 'player error: $err');
     }));
     _engineSubs.add(_engine.bufferingStream.listen(_onBufferingChanged));
-
-    // fix336: drive the VOD transport bar (duration is zero for live -> hidden).
-    _engineSubs.add(_engine.positionStream.listen((pos) {
-      if (!mounted || _scrubbing) return;
-      final dur = _engine.duration;
-      if (pos != _vodPosition || dur != _vodDuration) {
-        setState(() {
-          _vodPosition = pos;
-          _vodDuration = dur;
-        });
-      }
-    }));
-    _engineSubs.add(_engine.playingStream.listen((playing) {
-      if (mounted && playing != _vodPlaying) {
-        setState(() => _vodPlaying = playing);
-      }
-    }));
   }
 
   String _playbackUrl() {
@@ -695,7 +631,7 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
 
         _consecutiveOpenFailures = 0;
         AppLog.info(
-          'Player: open() succeeded — engine=$_engineType url="$playbackUrl"',
+          'Player: open() succeeded — engine=libmpv url="$playbackUrl"',
         );
         // fix94: arm a startup watchdog. If the stream opens but never
         // produces a frame / buffering event, mpv can sit ~30s on its
@@ -714,19 +650,7 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
                   ' — open succeeded but no frame'
                   ' channel="${widget.channel.name}"',
                 );
-                // fix316: no-frame / black-screen after a successful open is
-                // the classic "this engine can't render this stream" signal.
-                // Try the configured fallback engine once before a same-engine
-                // reconnect. If no fallback applies, fall through to the normal
-                // disconnect/reconnect path.
-                () async {
-                  if (await _tryPreferenceFallback('startup watchdog')) {
-                    if (!mounted || exiting) return;
-                    await _startPlayback(null, headers: headers);
-                  } else {
-                    onDisconnect(reason: 'startup watchdog');
-                  }
-                }();
+                onDisconnect(reason: 'startup watchdog');
               }
             },
           );
@@ -747,40 +671,11 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
       } catch (e) {
         _startupGrace = false;
         _consecutiveOpenFailures++;
-        final errStr = e.toString();
-
-        // One-shot ExoPlayer → libmpv fallback. ExoPlayer emits a generic
-        // "Source error" / "VideoError" for streams whose codec or container
-        // it cannot demux (most commonly IPTV MPEG-TS variants on Android TV
-        // hardware where the codec/surface combination fails). Five more
-        // retries on the same engine will not change that — switch to libmpv
-        // immediately and let it try.
-        if (!_exoFallbackTried &&
-            _engineType == EngineType.exoplayer &&
-            _isExoSourceError(errStr)) {
-          _exoFallbackTried = true;
-          AppLog.warn(
-            'Player: ExoPlayer source error — falling back to libmpv'
-            ' channel="${widget.channel.name}" — $errStr',
-          );
-          await _swapEngine(EngineType.libmpv);
-          if (!mounted || exiting) return;
-          _consecutiveOpenFailures = 0;
-          continue;
-        }
-
         AppLog.warn(
           'Player: open() failed'
           ' ($_consecutiveOpenFailures/${widget.settings.maxReconnectAttempts})'
           ' — $e — channel="${widget.channel.name}"',
         );
-        // fix316: before spending the reconnect budget on the same engine,
-        // try the user's configured fallback engine once (libmpv↔ExoPlayer).
-        if (await _tryPreferenceFallback('open failed: $e')) {
-          if (!mounted || exiting) return;
-          _consecutiveOpenFailures = 0;
-          continue;
-        }
         if (_consecutiveOpenFailures >= widget.settings.maxReconnectAttempts) {
           if (mounted) {
             setState(
@@ -802,61 +697,6 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
       DeviceOrientation.landscapeRight,
     ]);
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-  }
-
-  /// True for the family of ExoPlayer errors that mean "I can't play this
-  /// stream's codec/container", as opposed to network failures or 4xx
-  /// responses. We use these to trigger the libmpv fallback rather than
-  /// burn through the open-retry budget on a fundamentally incompatible
-  /// engine choice.
-  bool _isExoSourceError(String err) {
-    return err.contains('Source error') ||
-        err.contains('VideoError') ||
-        err.contains('ExoPlaybackException');
-  }
-
-  /// fix316: if the user's engine preference defines a fallback and we haven't
-  /// used it yet, swap the current (primary) engine to the fallback engine and
-  /// return true. Returns false when no fallback applies (single-engine modes,
-  /// already tried, or already on the fallback engine). Used on no-frame /
-  /// black-screen stalls and as the generalized open-error fallback.
-  Future<bool> _tryPreferenceFallback(String reason) async {
-    if (_prefFallbackTried) return false;
-    final pref = widget.settings.enginePreference;
-    if (!pref.hasFallback) return false;
-    final target = pref.fallback;
-    if (target == _engineType) return false; // already on the fallback engine
-    _prefFallbackTried = true;
-    AppLog.warn(
-      'Player: fix316 engine fallback ${_engineType.name} → ${target.name}'
-      ' (pref=${pref.name}, reason="$reason")'
-      ' channel="${widget.channel.name}"',
-    );
-    await _swapEngine(target);
-    return true;
-  }
-
-  /// Mid-flight engine swap. Cancels the current engine's stream
-  /// subscriptions, disposes it, instantiates [type], re-registers with the
-  /// overlay controller, and re-subscribes to lifecycle streams. Triggers a
-  /// rebuild so [_buildVideoArea] picks up the new engine widget.
-  Future<void> _swapEngine(EngineType type) async {
-    for (final s in _engineSubs) {
-      await s.cancel();
-    }
-    _engineSubs.clear();
-    await _engine.dispose();
-    _engineType = type;
-    _engine = _createEngine(type);
-    OverlayPlayerController.instance.registerMain(
-      widget.channel,
-      widget.settings,
-      widget.source,
-      _engine,
-    );
-    _subscribeEngineStreams();
-    if (mounted) setState(() {});
-    AppLog.info('Player: swapped engine → $type');
   }
 
   @override
@@ -1272,186 +1112,12 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     if (_videoDetached) {
       return const ColoredBox(color: Colors.black, child: SizedBox.expand());
     }
-    if (_engineType == EngineType.exoplayer) {
-      // ExoPlayer path: plain video widget + our own controls overlay
-      return Stack(
-        children: [
-          Center(child: _engine.buildVideoView(context)),
-          _buildExoControls(),
-        ],
-      );
-    }
-
     // libmpv path: use media_kit_video's full controls theme
     return MaterialVideoControlsTheme(
       normal: _mpvThemeData(context),
       fullscreen: _mpvThemeData(context),
       child: _engine.buildVideoView(context),
     );
-  }
-
-  /// Minimal controls overlay for the ExoPlayer path (no media_kit_video).
-  Widget _buildExoControls() {
-    return Positioned.fill(
-      child: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onTap: () {},
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            // Top bar
-            Container(
-              color: Colors.black54,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              child: Row(
-                children: [
-                  IconButton(
-                    onPressed: onExit,
-                    icon: const Icon(
-                      Icons.arrow_back,
-                      color: Colors.white,
-                      size: 32,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      widget.channel.name,
-                      style: const TextStyle(color: Colors.white),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  if (_castSupported)
-                    IconButton(
-                      onPressed: _onCastTap,
-                      icon: Icon(_castIcon, color: Colors.white, size: 28),
-                      tooltip: _isCasting ? 'Stop casting' : 'Cast to TV',
-                    ),
-                  if (_pipSupported &&
-                      widget.settings.multiViewLayout ==
-                          MultiViewLayout.none)
-                    IconButton(
-                      onPressed: () => PipController.enterPip(),
-                      icon: const Icon(
-                        Icons.picture_in_picture_alt,
-                        color: Colors.white,
-                        size: 28,
-                      ),
-                      tooltip: 'Picture-in-picture',
-                    ),
-                ],
-              ),
-            ),
-            // Bottom bar — mini-player button (hidden when multi-view is
-            // active; the overlay would float on top of the grid and serve
-            // no useful purpose).
-            if (widget.channel.mediaType == MediaType.livestream &&
-                widget.settings.multiViewLayout == MultiViewLayout.none)
-              Align(
-                alignment: Alignment.bottomRight,
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 8, right: 4),
-                  child: IconButton(
-                    onPressed: _minimizeToOverlay,
-                    icon: const Icon(
-                      Icons.picture_in_picture,
-                      color: Colors.white,
-                      size: 28,
-                    ),
-                    tooltip: 'Watch in mini-player',
-                  ),
-                ),
-              ),
-            // fix336: VOD transport bar (seekable media only; live duration=0).
-            if (_vodDuration > Duration.zero) _buildVodTransportBar(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // fix336: VOD transport bar — play/pause, +/-10s, seek slider, time.
-  Widget _buildVodTransportBar() {
-    final dur = _vodDuration;
-    final pos = _scrubbing ? _scrubTarget : _vodPosition;
-    final maxMs = dur.inMilliseconds.toDouble();
-    final curMs = pos.inMilliseconds.clamp(0, dur.inMilliseconds).toDouble();
-
-    void seekTo(Duration target) {
-      var t = target;
-      if (t < Duration.zero) t = Duration.zero;
-      if (t > dur) t = dur;
-      _engine.seek(t);
-      setState(() => _vodPosition = t);
-    }
-
-    return Container(
-      color: Colors.black54,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: Row(
-        children: [
-          IconButton(
-            onPressed: () => seekTo(pos - const Duration(seconds: 10)),
-            icon: const Icon(Icons.replay_10, color: Colors.white, size: 30),
-            tooltip: 'Back 10s',
-          ),
-          IconButton(
-            autofocus: true,
-            onPressed: () async {
-              if (_vodPlaying) {
-                await _engine.pause();
-                if (mounted) setState(() => _vodPlaying = false);
-              } else {
-                await _engine.play();
-                if (mounted) setState(() => _vodPlaying = true);
-              }
-            },
-            icon: Icon(_vodPlaying ? Icons.pause : Icons.play_arrow,
-                color: Colors.white, size: 38),
-            tooltip: _vodPlaying ? 'Pause' : 'Play',
-          ),
-          IconButton(
-            onPressed: () => seekTo(pos + const Duration(seconds: 10)),
-            icon: const Icon(Icons.forward_10, color: Colors.white, size: 30),
-            tooltip: 'Forward 10s',
-          ),
-          const SizedBox(width: 8),
-          Text(_fmtDuration(pos),
-              style: const TextStyle(color: Colors.white, fontSize: 13)),
-          Expanded(
-            child: Slider(
-              value: curMs.clamp(0, maxMs <= 0 ? 1 : maxMs),
-              max: maxMs <= 0 ? 1 : maxMs,
-              onChangeStart: (_) => setState(() {
-                _scrubbing = true;
-                _scrubTarget = pos;
-              }),
-              onChanged: (v) => setState(
-                  () => _scrubTarget = Duration(milliseconds: v.toInt())),
-              onChangeEnd: (v) {
-                final target = Duration(milliseconds: v.toInt());
-                setState(() => _scrubbing = false);
-                seekTo(target);
-              },
-            ),
-          ),
-          Text(_fmtDuration(dur),
-              style: const TextStyle(color: Colors.white, fontSize: 13)),
-          const SizedBox(width: 4),
-        ],
-      ),
-    );
-  }
-
-  // fix336: H:MM:SS or M:SS.
-  String _fmtDuration(Duration d) {
-    final h = d.inHours;
-    final m = d.inMinutes.remainder(60);
-    final sec = d.inSeconds.remainder(60);
-    final mm = m.toString().padLeft(h > 0 ? 2 : 1, '0');
-    final ss = sec.toString().padLeft(2, '0');
-    return h > 0 ? '$h:$mm:$ss' : '$mm:$ss';
   }
 
   Widget _buildBufferingOverlay() {

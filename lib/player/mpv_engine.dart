@@ -69,7 +69,7 @@ class MpvEngine implements PlayerEngine {
   bool _emittedError = false;
 
   /// fix345 (review CRIT-2): one-shot — emit a single liveness buffering=false
-  /// the first time mpv reports actually playing, mirroring fix335 on Exo.
+  /// the first time mpv reports actually playing (fix335 pattern).
   /// mpv's own buffering events are broadcast and can fire during open(),
   /// before the Player has subscribed (events dropped); a healthy live stream
   /// may then never toggle buffering again, stranding the startup watchdog
@@ -114,7 +114,7 @@ class MpvEngine implements PlayerEngine {
     _subs.add(_player.stream.playing.listen((playing) {
       // fix345: emit on EVERY transition to playing (not one-shot) — the
       // Player arms its startup watchdog after open(), so a one-shot signal
-      // fired during open() could be consumed pre-arm (the exact Exo bug
+      // fired during open() could be consumed pre-arm (the exact bug
       // fix342 closed in cells). mpv's playing stream only fires on
       // transitions, so this cannot spam.
       if (playing && !_disposed) {
@@ -406,7 +406,7 @@ class MpvEngine implements PlayerEngine {
   }
 
   // fix130: false — app drives fullscreen via _enterSystemFullscreen() (immersive
-  // + landscape orientation), the same path ExoEngine uses. media_kit's
+  // + landscape orientation). media_kit's
   // enterFullscreen() pushes a hidden second root-navigator route with a second
   // Video on this controller; that orphaned route was the black-screen root cause.
   @override

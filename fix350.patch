@@ -1,0 +1,3365 @@
+diff --git a/lib/backend/settings_io.dart b/lib/backend/settings_io.dart
+index 313f285..7b30fda 100644
+--- a/lib/backend/settings_io.dart
++++ b/lib/backend/settings_io.dart
+@@ -8,9 +8,7 @@ import 'package:open_tv/backend/app_logger.dart';
+ import 'package:open_tv/backend/settings_service.dart';
+ import 'package:open_tv/backend/sql.dart';
+ import 'package:open_tv/models/channel_preserve.dart';
+-import 'package:open_tv/models/engine_type.dart';
+ import 'package:open_tv/models/device_detector.dart';
+-import 'package:open_tv/models/engine_preference.dart';
+ import 'package:open_tv/models/multi_view_layout.dart';
+ import 'package:open_tv/models/settings.dart';
+ import 'package:open_tv/models/source.dart';
+@@ -206,7 +204,6 @@ class SettingsIo {
+         sourceType: SourceType.values[map['sourceType'] as int? ?? 0],
+         enabled: map['enabled'] as bool? ?? true,
+         epgUrl: map['epgUrl'] as String?,
+-        defaultEngine: EngineType.fromJson(map['defaultEngine'] as String?),
+       );
+       // getOrCreateSourceByName merges by name — existing sources are reused,
+       // new ones created. Other settings are intentionally NOT touched.
+@@ -342,15 +339,13 @@ class SettingsIo {
+             sourceType: SourceType.values[map['sourceType'] as int? ?? 0],
+             enabled: map['enabled'] as bool? ?? true,
+             epgUrl: map['epgUrl'] as String?,
+-            defaultEngine: EngineType.fromJson(map['defaultEngine'] as String?),
+-          );
++              );
+           await Sql.commitWrite([Sql.getOrCreateSourceByName(source)]);
+ 
+           AppLog.info(
+             'SettingsIo.import: source "${source.name}"'
+             ' enabled=${source.enabled}'
+             ' type=${source.sourceType.name}'
+-            ' engine=${source.defaultEngine?.toJson() ?? "auto"}',
+           );
+ 
+           // Stage favorites / last-watched for re-application after the
+@@ -466,8 +461,6 @@ class SettingsIo {
+         'openTimeoutSecs': s.openTimeoutSecs,
+         'bufferingWatchdogSecs': s.bufferingWatchdogSecs,
+         'stableThresholdSecs': s.stableThresholdSecs,
+-        'forcedEngine': s.forcedEngine.toJson(),
+-        'enginePreference': s.enginePreference.toJson(), // fix315
+         // EPG & debug (schema v2)
+         'debugLogging': s.debugLogging,
+         'epgAutoRefresh': s.epgAutoRefresh,
+@@ -514,9 +507,6 @@ class SettingsIo {
+       openTimeoutSecs: m['openTimeoutSecs'] as int? ?? 15,
+       bufferingWatchdogSecs: m['bufferingWatchdogSecs'] as int? ?? 12,
+       stableThresholdSecs: m['stableThresholdSecs'] as int? ?? 30,
+-      forcedEngine: EngineType.fromJson(m['forcedEngine'] as String?),
+-      enginePreference:
+-          EnginePreference.fromJson(m['enginePreference'] as String?),
+       debugLogging: m['debugLogging'] as bool? ?? false,
+       epgAutoRefresh: m['epgAutoRefresh'] as bool? ?? true,
+       epgRefreshHours: m['epgRefreshHours'] as int? ?? 24,
+@@ -628,6 +618,5 @@ class SettingsIo {
+         'password': includeCredentials ? s.password : null,
+         'enabled': s.enabled,
+         'epgUrl': s.epgUrl,
+-        'defaultEngine': s.defaultEngine?.toJson(),
+       };
+ }
+diff --git a/lib/backend/settings_service.dart b/lib/backend/settings_service.dart
+index 2d2b203..974b4e8 100644
+--- a/lib/backend/settings_service.dart
++++ b/lib/backend/settings_service.dart
+@@ -3,11 +3,9 @@ import 'dart:collection';
+ import 'package:open_tv/backend/app_logger.dart';
+ import 'package:open_tv/backend/device_memory.dart';
+ import 'package:open_tv/backend/sql.dart';
+-import 'package:open_tv/models/engine_type.dart';
+ import 'package:open_tv/models/multi_view_layout.dart';
+ import 'package:open_tv/models/multi_view_decode.dart';
+ import 'package:open_tv/models/settings.dart';
+-import 'package:open_tv/models/engine_preference.dart';
+ import 'package:open_tv/models/view_type.dart';
+ import 'package:package_info_plus/package_info_plus.dart';
+ 
+@@ -32,10 +30,6 @@ const hwDecodeProp = "hwDecode";
+ const preWarmOnFocusProp = "preWarmOnFocus";
+ const backgroundProcessingProp = "backgroundProcessing"; // fix318
+ 
+-// Engine override (v1.4)
+-const forcedEngineProp = "forcedEngine";
+-const enginePreferenceProp = "enginePreference"; // fix315
+-
+ // Reconnect stability (v1.11.9)
+ const stableThresholdSecsProp = "stableThresholdSecs";
+ const startupGraceMsProp = "startupGraceMs";
+@@ -120,7 +114,6 @@ class SettingsService {
+     var epgHour = settingsMap[epgRefreshHourProp];
+     var epgPast = settingsMap[epgPastDaysProp];
+     var epgForecast = settingsMap[epgForecastDaysProp];
+-    var forcedEngine = settingsMap[forcedEngineProp];
+     var stableThreshold = settingsMap[stableThresholdSecsProp];
+     var startupGrace = settingsMap[startupGraceMsProp];
+     var scanMaxCount = settingsMap[streamScanMaxCountProp];
+@@ -160,14 +153,6 @@ class SettingsService {
+     if (epgHour != null) settings.epgRefreshHour = int.parse(epgHour);
+     if (epgPast != null) settings.epgPastDays = int.parse(epgPast);
+     if (epgForecast != null) settings.epgForecastDays = int.parse(epgForecast);
+-    if (forcedEngine != null) {
+-      settings.forcedEngine = EngineType.fromJson(forcedEngine);
+-    }
+-    // fix315: global engine preference (primary + fallback order).
+-    final enginePref = settingsMap[enginePreferenceProp];
+-    if (enginePref != null) {
+-      settings.enginePreference = EnginePreference.fromJson(enginePref);
+-    }
+     if (stableThreshold != null) {
+       settings.stableThresholdSecs = int.parse(stableThreshold);
+     }
+@@ -283,8 +268,6 @@ class SettingsService {
+     settingsMap[epgRefreshHourProp] = settings.epgRefreshHour.toString();
+     settingsMap[epgPastDaysProp] = settings.epgPastDays.toString();
+     settingsMap[epgForecastDaysProp] = settings.epgForecastDays.toString();
+-    settingsMap[forcedEngineProp] = settings.forcedEngine.toJson();
+-    settingsMap[enginePreferenceProp] = settings.enginePreference.toJson(); // fix315
+     settingsMap[stableThresholdSecsProp] =
+         settings.stableThresholdSecs.toString();
+     settingsMap[startupGraceMsProp] = settings.startupGraceMs.toString();
+diff --git a/lib/backend/sql.dart b/lib/backend/sql.dart
+index 62c8c1f..6712e27 100644
+--- a/lib/backend/sql.dart
++++ b/lib/backend/sql.dart
+@@ -7,7 +7,6 @@ import 'package:open_tv/backend/playback_analyzer.dart';
+ import 'package:open_tv/backend/channel_search_cache.dart';
+ import 'package:open_tv/backend/db_factory.dart';
+ import 'package:open_tv/models/channel.dart';
+-import 'package:open_tv/models/engine_type.dart';
+ import 'package:open_tv/models/channel_http_headers.dart';
+ import 'package:open_tv/models/channel_preserve.dart';
+ import 'package:open_tv/models/filters.dart';
+@@ -169,7 +168,7 @@ class Sql {
+           provider_order = excluded.provider_order,
+           is_divider = excluded.is_divider,
+           is_adult = excluded.is_adult
+-          -- engine_override intentionally omitted: preserve any user override
++          -- engine_override column deprecated (fix350), never written
+           ;
+       ''', [
+         channel.name,
+@@ -378,7 +377,7 @@ class Sql {
+       if (existing != null) {
+         // Source already exists — update all editable fields so a
+         // re-import correctly applies the backup's values (especially
+-        // `enabled` and `default_engine`). The id is preserved, so
++        // `enabled`). The id is preserved, so
+         // channel FK references are unaffected.
+         final id = existing.columnAt(0);
+         await tx.execute('''
+@@ -388,8 +387,7 @@ class Sql {
+                      username       = COALESCE(?, username),
+                      password       = COALESCE(?, password),
+                      epg_url        = ?,
+-                     enabled        = ?,
+-                     default_engine = ?
++                     enabled        = ?
+                WHERE id = ?
+             ''', [
+           source.sourceType.index,
+@@ -398,7 +396,6 @@ class Sql {
+           source.password,
+           source.epgUrl,
+           source.enabled ? 1 : 0,
+-          source.defaultEngine?.toJson(),
+           id,
+         ]);
+         memory['sourceId'] = id.toString();
+@@ -406,8 +403,8 @@ class Sql {
+         await tx.execute('''
+               INSERT INTO sources
+                 (name, source_type, url, username, password, epg_url,
+-                 enabled, default_engine)
+-              VALUES (?, ?, ?, ?, ?, ?, ?, ?);
++                 enabled)
++              VALUES (?, ?, ?, ?, ?, ?, ?);
+             ''', [
+           source.name,
+           source.sourceType.index,
+@@ -416,7 +413,6 @@ class Sql {
+           source.password,
+           source.epgUrl,
+           source.enabled ? 1 : 0,
+-          source.defaultEngine?.toJson(),
+         ]);
+         memory['sourceId'] =
+             (await tx.get("SELECT last_insert_rowid();")).columnAt(0).toString();
+@@ -639,7 +635,8 @@ class Sql {
+       catchupType: row.columnAt(14) as String?,
+       catchupSource: row.columnAt(15) as String?,
+       catchupDays: row.columnAt(16) as int?,
+-      engineOverride: EngineType.fromJson(row.columnAt(17) as String?),
++      // col 17 = engine_override — deprecated fix350 (ExoPlayer removed);
++      // column retained in schema to avoid a full-table rewrite migration.
+       streamValidated: sv == null ? null : sv == 1,
+       // fix256: provider_order is the last column added (migration 20).
+       providerOrder: row.columnAt(19) as int?,
+@@ -880,7 +877,7 @@ class Sql {
+       password: row.columnAt(5),
+       enabled: row.columnAt(6) == 1,
+       epgUrl: row.columnAt(7) as String?,
+-      defaultEngine: EngineType.fromJson(row.columnAt(8) as String?),
++      // col 8 = default_engine — deprecated fix350, retained in schema.
+       maxConnections: row.columnAt(9) as int?,
+       color: row.columnAt(10) as int?,
+       sortMode: row.columnAt(11) as String?, // fix256 (migration 20 column)
+@@ -1020,7 +1017,7 @@ class Sql {
+     var db = await DbFactory.db;
+     await db.execute('''
+       UPDATE sources
+-      SET url = ?, username = ?, password = ?, default_engine = ?,
++      SET url = ?, username = ?, password = ?,
+           max_connections = ?, color = ?, sort_mode = ?,
+           last_live_count = ?, last_movie_count = ?, last_series_count = ?,
+           hide_dividers = ?
+@@ -1029,9 +1026,6 @@ class Sql {
+       source.url,
+       source.username,
+       source.password,
+-      source.defaultEngine == null || source.defaultEngine == EngineType.auto
+-          ? null
+-          : source.defaultEngine!.toJson(),
+       source.maxConnections,
+       source.color,
+       source.sortMode, // fix256
+@@ -1043,20 +1037,6 @@ class Sql {
+     ]);
+   }
+ 
+-  static Future<void> setChannelEngineOverride(
+-    int channelId,
+-    EngineType? engine,
+-  ) async {
+-    var db = await DbFactory.db;
+-    await db.execute(
+-      'UPDATE channels SET engine_override = ? WHERE id = ?',
+-      [
+-        engine == null || engine == EngineType.auto ? null : engine.toJson(),
+-        channelId,
+-      ],
+-    );
+-  }
+-
+   static Future<Source> getSourceFromId(int id) async {
+     var db = await DbFactory.db;
+     var result = await db.get('''SELECT * FROM sources WHERE id = ?''', [id]);
+diff --git a/lib/edit_dialog.dart b/lib/edit_dialog.dart
+index ee20d8a..617a2f5 100644
+--- a/lib/edit_dialog.dart
++++ b/lib/edit_dialog.dart
+@@ -72,7 +72,6 @@ class _EditDialogState extends State<EditDialog> {
+                       // Without this it defaults to null and updateSource writes
+                       // NULL, wiping the connection limit on every source edit.
+                       maxConnections: widget.source.maxConnections,
+-                      defaultEngine: widget.source.defaultEngine,
+                       // fix256: persist the per-source browse order choice.
+                       color: widget.source.color,
+                       sortMode: _sortMode,
+diff --git a/lib/models/channel.dart b/lib/models/channel.dart
+index 72fe731..94c401e 100644
+--- a/lib/models/channel.dart
++++ b/lib/models/channel.dart
+@@ -1,4 +1,3 @@
+-import 'package:open_tv/models/engine_type.dart';
+ import 'package:open_tv/models/media_type.dart';
+ import 'package:open_tv/models/settings.dart' show safeModeBlocklist;
+ 
+@@ -32,9 +31,6 @@ class Channel {
+   /// Programs older than this hide the "Watch from beginning" button.
+   int? catchupDays;
+ 
+-  /// Per-channel engine override. Null = use source/global/auto selection.
+-  EngineType? engineOverride;
+-
+   /// Unix epoch seconds of last watch event. Null = never watched.
+   int? lastWatched;
+ 
+@@ -100,7 +96,6 @@ class Channel {
+     this.catchupType,
+     this.catchupSource,
+     this.catchupDays,
+-    this.engineOverride,
+     this.lastWatched,
+     this.streamValidated,
+     this.providerOrder,
+diff --git a/lib/models/engine_preference.dart b/lib/models/engine_preference.dart
+deleted file mode 100644
+index a40b274..0000000
+--- a/lib/models/engine_preference.dart
++++ /dev/null
+@@ -1,54 +0,0 @@
+-import 'package:open_tv/models/engine_type.dart';
+-
+-/// Global player-engine preference (fix315). Replaces the old "Auto" global
+-/// option with explicit primary + fallback ordering.
+-///
+-/// `.primary` is the engine tried first (used by EnginePicker today).
+-/// `.fallback` is the engine to switch to if the primary fails to render
+-/// (consumed by the runtime decode-fallback added in fix316). When there is no
+-/// fallback the field equals `.primary`.
+-///
+-/// [libmpvExo]  — libmpv first, fall back to ExoPlayer. DEFAULT (the old
+-///                "Auto" behaviour: libmpv for MPEG-TS/RTMP, Exo otherwise).
+-/// [exoLibmpv]  — ExoPlayer first, fall back to libmpv.
+-/// [libmpvOnly] — libmpv only, no fallback.
+-/// [exoOnly]    — ExoPlayer only, no fallback.
+-enum EnginePreference {
+-  libmpvExo,
+-  exoLibmpv,
+-  libmpvOnly,
+-  exoOnly;
+-
+-  String toJson() => name;
+-
+-  /// Deserialise. Old saved value 'auto' (and anything unknown) maps to the
+-  /// default [libmpvExo], which preserves the previous Auto behaviour.
+-  static EnginePreference fromJson(String? v) => switch (v) {
+-        'exoLibmpv' => exoLibmpv,
+-        'libmpvOnly' => libmpvOnly,
+-        'exoOnly' => exoOnly,
+-        _ => libmpvExo,
+-      };
+-
+-  EngineType get primary => switch (this) {
+-        libmpvExo || libmpvOnly => EngineType.libmpv,
+-        exoLibmpv || exoOnly => EngineType.exoplayer,
+-      };
+-
+-  EngineType get fallback => switch (this) {
+-        libmpvExo => EngineType.exoplayer,
+-        exoLibmpv => EngineType.libmpv,
+-        libmpvOnly => EngineType.libmpv,
+-        exoOnly => EngineType.exoplayer,
+-      };
+-
+-  bool get hasFallback =>
+-      this == libmpvExo || this == exoLibmpv;
+-
+-  String get label => switch (this) {
+-        libmpvExo => 'libmpv → ExoPlayer',
+-        exoLibmpv => 'ExoPlayer → libmpv',
+-        libmpvOnly => 'libmpv only',
+-        exoOnly => 'ExoPlayer only',
+-      };
+-}
+diff --git a/lib/models/engine_type.dart b/lib/models/engine_type.dart
+deleted file mode 100644
+index 6c8fed4..0000000
+--- a/lib/models/engine_type.dart
++++ /dev/null
+@@ -1,26 +0,0 @@
+-/// Which media engine to use for a given stream.
+-///
+-/// [auto]      — let [EnginePicker] decide based on URL and source type.
+-/// [libmpv]    — always use media_kit / libmpv (best for MPEG-TS, RTMP).
+-/// [exoplayer] — always use ExoPlayer (best for HLS, DASH, MP4).
+-enum EngineType {
+-  auto,
+-  libmpv,
+-  exoplayer;
+-
+-  /// Serialise to the string stored in DB / settings.
+-  String toJson() => name;
+-
+-  /// Deserialise; returns [auto] for unrecognised strings.
+-  static EngineType fromJson(String? v) => switch (v) {
+-        'libmpv' => libmpv,
+-        'exoplayer' => exoplayer,
+-        _ => auto,
+-      };
+-
+-  String get label => switch (this) {
+-        auto => 'Auto (recommended)',
+-        libmpv => 'libmpv (MPEG-TS / RTMP)',
+-        exoplayer => 'ExoPlayer (HLS / DASH / MP4)',
+-      };
+-}
+diff --git a/lib/models/settings.dart b/lib/models/settings.dart
+index 5e5a30a..dad4ff3 100644
+--- a/lib/models/settings.dart
++++ b/lib/models/settings.dart
+@@ -1,6 +1,4 @@
+ import 'package:open_tv/backend/device_memory.dart';
+-import 'package:open_tv/models/engine_type.dart';
+-import 'package:open_tv/models/engine_preference.dart';
+ import 'package:open_tv/models/media_type.dart';
+ import 'package:open_tv/models/multi_view_layout.dart';
+ import 'package:open_tv/models/multi_view_decode.dart';
+@@ -79,16 +77,6 @@ class Settings {
+   /// until validated on-device. Android-only; ignored elsewhere.
+   bool backgroundProcessing;
+ 
+-  /// Global engine override. [EngineType.auto] means let EnginePicker decide.
+-  /// fix315: superseded for the global setting by [enginePreference]; kept for
+-  /// per-channel/source override compatibility and backup round-trips.
+-  EngineType forcedEngine;
+-
+-  /// fix315: global engine preference with explicit primary + fallback order.
+-  /// Replaces the old global "Auto" with libmpv→Exo (default), Exo→libmpv,
+-  /// libmpv-only, or Exo-only.
+-  EnginePreference enginePreference;
+-
+   bool debugLogging;
+ 
+   bool epgAutoRefresh;
+@@ -194,8 +182,6 @@ class Settings {
+     this.hwDecode = true,
+     this.preWarmOnFocus = true,
+     this.backgroundProcessing = false,
+-    this.forcedEngine = EngineType.auto,
+-    this.enginePreference = EnginePreference.libmpvExo,
+     this.debugLogging = false,
+     this.epgAutoRefresh = true,
+     this.epgRefreshHours = 24,
+@@ -334,8 +320,6 @@ class Settings {
+     s.streamScanMaxCount = isTV ? 15 : 20;
+     s.streamScanTimeoutSecs = isTV ? 10 : 8;
+ 
+-    s.forcedEngine = EngineType.auto;
+-    s.enginePreference = EnginePreference.libmpvExo;
+     s.multiViewAutoRestoreChannels = true;
+ 
+     // Low-latency mode disables back-buffer and tightens cache; on shaky
+diff --git a/lib/models/source.dart b/lib/models/source.dart
+index c10603e..1d130b1 100644
+--- a/lib/models/source.dart
++++ b/lib/models/source.dart
+@@ -1,4 +1,3 @@
+-import 'package:open_tv/models/engine_type.dart';
+ import 'package:open_tv/models/source_type.dart';
+ 
+ class Source {
+@@ -11,8 +10,6 @@ class Source {
+   SourceType sourceType;
+   bool enabled;
+   String? epgUrl;
+-  /// Default engine for all channels from this source. Null = auto.
+-  EngineType? defaultEngine;
+   /// fix184: provider connection limit (null = unknown).
+   /// Auto-detected for Xtream; manual for M3U.
+   int? maxConnections;
+@@ -45,7 +42,6 @@ class Source {
+     required this.sourceType,
+     this.enabled = true,
+     this.epgUrl,
+-    this.defaultEngine,
+     this.maxConnections,
+     this.color,
+     this.sortMode,
+diff --git a/lib/multi_view_cell.dart b/lib/multi_view_cell.dart
+index b3b2cee..fb53b3a 100644
+--- a/lib/multi_view_cell.dart
++++ b/lib/multi_view_cell.dart
+@@ -7,13 +7,10 @@ import 'package:open_tv/backend/sql.dart';
+ import 'package:open_tv/channel_picker_screen.dart';
+ import 'package:open_tv/models/channel.dart';
+ import 'package:open_tv/models/channel_http_headers.dart';
+-import 'package:open_tv/models/engine_type.dart';
+ import 'package:open_tv/models/media_type.dart';
+ import 'package:open_tv/models/settings.dart';
+ import 'package:open_tv/models/source.dart';
+ import 'package:open_tv/player.dart';
+-import 'package:open_tv/player/engine_picker.dart';
+-import 'package:open_tv/player/exo_engine.dart';
+ import 'package:open_tv/player/mpv_engine.dart';
+ import 'package:open_tv/player/player_engine.dart';
+ import 'package:open_tv/widgets/now_next_strip.dart';
+@@ -411,34 +408,23 @@ class _MultiViewCellState extends State<MultiViewCell> {
+     _lastErrorAt = null;
+     _lastBufferingState = null;
+     _eofRetryScheduled = false;
+-
+-    // Resolve which engine to use through the same picker the main player
+-    // uses — so per-channel and per-source overrides are honoured here too.
+-    final pickedType = EnginePicker.pick(
+-      channel: ch,
+-      settings: widget.settings,
+-      source: widget.source,
+-      url: ch.url,
+-    );
+     AppLog.info(
+       'MultiViewCell: starting engine'
+       ' cell=${widget.cellIndex}'
+       ' channel="${ch.name}"'
+       ' url="${ch.url ?? '<none>'}"'
+-      ' engine=${pickedType.name}'
++      ' engine=libmpv'
+       ' previewMode=true'
+       ' generation=$generation',
+     );
+     if (mounted) setState(() { _loading = true; _error = false; });
+ 
+-    PlayerEngine engine = pickedType == EngineType.exoplayer
+-        ? ExoEngine()
+-        : MpvEngine(
+-            channel: ch,
+-            settings: widget.settings,
+-            fullscreenOnOpen: false,
+-            previewMode: true,
+-          );
++    final PlayerEngine engine = MpvEngine(
++      channel: ch,
++      settings: widget.settings,
++      fullscreenOnOpen: false,
++      previewMode: true,
++    );
+ 
+     // Pull channel HTTP headers once and reuse below for both
+     // reapplyOptions() (ignoreSsl) and open() (UA/Referer/Origin).
+@@ -629,14 +615,10 @@ class _MultiViewCellState extends State<MultiViewCell> {
+     // fix94: arm startup watchdog — if no frame arrives, force a
+     // transient error so the retry/give-up path runs instead of
+     // waiting ~30s for mpv's internal timeout.
+-    // fix342: armed BEFORE engine.open() (was after). ExoPlayer auto-plays
+-    // during open(), so its one-shot liveness signal (fix335) could arrive
+-    // before the watchdog existed and be consumed — the watchdog then fired
+-    // on a healthy stream (every Exo cell with the stability buffer; a
+-    // latent race on all paths). Arming first makes the race impossible:
+-    // any liveness/buffering event now lands after arm and cancels via
+-    // _cancelStartupWatchdog. The generation guard keeps a fire during a
+-    // slow open() safe (stale generations are ignored).
++    // fix342: armed BEFORE engine.open() so a liveness/buffering event can
++    // never arrive before the watchdog exists and be consumed unseen (a
++    // latent race on all engine paths). The generation guard keeps a fire
++    // during a slow open() safe (stale generations are ignored).
+     // fix341: while the stability-buffer pause is active the cell is
+     // intentionally not rendering frames — extend the watchdog past the
+     // buffer window so it can't fire mid-pause and trigger a bogus retry.
+@@ -683,7 +665,7 @@ class _MultiViewCellState extends State<MultiViewCell> {
+     );
+ 
+     try {
+-      // fix339: multi-view is live-TV-only — suppress Exo completed loops.
++      // fix339: multi-view is live-TV-only.
+       _lastHttpHeaders = httpHeaders; // fix341: cache for quick re-open
+       await engine.open(url: ch.url ?? '', headers: httpHeaders, isLive: true);
+     } catch (err) {
+@@ -749,13 +731,9 @@ class _MultiViewCellState extends State<MultiViewCell> {
+         AppLog.info('MultiViewCell: stability buffer ready — playing'
+             ' cell=${widget.cellIndex}');
+         await engine.play();
+-        // fix342: cancel the startup watchdog here. ExoPlayer auto-plays
+-        // during open(), so its ONE-SHOT liveness signal (fix335) fires
+-        // before the watchdog is armed and is consumed; after the buffer
+-        // pause -> play, Exo never toggles isBuffering on raw .ts, so no
+-        // signal ever reaches the watchdog and it fired at base+buffer on
+-        // every Exo cell (S24 21:38 log). open() succeeded and playback has
+-        // deliberately begun — the watchdog's job is done.
++        // fix342: open() succeeded and playback has deliberately begun —
++        // the watchdog's job is done, so cancel it explicitly rather than
++        // relying on a buffering event to arrive after the pause window.
+         if (_startupWatchdog != null) {
+           _cancelStartupWatchdog();
+           AppLog.info('MultiViewCell: startup watchdog cancelled'
+diff --git a/lib/player.dart b/lib/player.dart
+index 97a73b9..74e035f 100644
+--- a/lib/player.dart
++++ b/lib/player.dart
+@@ -10,17 +10,14 @@ import 'package:open_tv/channel_tile.dart';
+ import 'package:open_tv/error.dart';
+ import 'package:open_tv/models/channel.dart';
+ import 'package:open_tv/models/channel_http_headers.dart';
+-import 'package:open_tv/models/engine_type.dart';
+ import 'package:open_tv/models/id_data.dart';
+ import 'package:open_tv/models/media_type.dart';
+ import 'package:open_tv/models/multi_view_layout.dart';
+ import 'package:open_tv/models/settings.dart';
+ import 'package:open_tv/models/source.dart';
+ import 'package:open_tv/player/cast_controller.dart';
+-import 'package:open_tv/player/engine_picker.dart';
+ import 'package:open_tv/player/overlay_player_controller.dart';
+ import 'package:open_tv/player/pip_controller.dart';
+-import 'package:open_tv/player/exo_engine.dart';
+ import 'package:open_tv/player/mpv_engine.dart';
+ import 'package:open_tv/player/player_engine.dart';
+ import 'package:open_tv/select_dialog.dart';
+@@ -30,7 +27,7 @@ class Player extends StatefulWidget {
+   final Settings settings;
+   final Source? source;
+   /// Overrides the channel's normal live URL (e.g. catchup / time-shift URL).
+-  /// When set, the pre-warm cache is bypassed and ExoPlayer is never auto-selected.
++  /// When set, the pre-warm cache is bypassed.
+   final String? overrideUrl;
+   /// fix116: an already-open, already-playing engine to adopt instead of
+   /// creating and opening a new one. Used by the swap path so the promoted
+@@ -72,9 +69,6 @@ class Player extends StatefulWidget {
+ }
+ 
+ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+-  // Reassignable so a mid-flight engine swap (ExoPlayer → libmpv fallback)
+-  // can replace the active engine without rebuilding the whole route.
+-  late EngineType _engineType;
+   late PlayerEngine _engine;
+ 
+   bool exiting = false;
+@@ -102,22 +96,9 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+ 
+   /// Subscriptions specifically tied to [_engine]'s streams (errorStream,
+   /// bufferingStream, completedStream). Tracked separately from
+-  /// [subscriptions] so we can cancel and re-subscribe when swapping engines
+-  /// mid-flight (e.g. ExoPlayer → libmpv fallback).
++  /// [subscriptions] so engine teardown can cancel exactly its own listeners.
+   final List<StreamSubscription<dynamic>> _engineSubs = [];
+ 
+-  /// True after a one-shot ExoPlayer → libmpv fallback has fired for this
+-  /// Player widget. Prevents an infinite swap loop if both engines fail.
+-  bool _exoFallbackTried = false;
+-
+-  /// fix316: one-shot runtime decode/engine fallback. When the primary engine
+-  /// fails to render (open error OR startup watchdog = open-succeeded-but-no-
+-  /// frame / black screen) and the user's enginePreference defines a fallback
+-  /// (libmpv↔ExoPlayer), swap to that engine once before burning the reconnect
+-  /// budget on the same engine. Cannot detect colour corruption — only stalls/
+-  /// black screen / open failures.
+-  bool _prefFallbackTried = false;
+-
+   // Reconnect bookkeeping
+   int _consecutiveOpenFailures = 0;
+   /// fix112: whether the most recent engine error arrived "instantly"
+@@ -143,13 +124,6 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+   Timer? _stableTimer;
+   bool _isReconnecting = false;
+   String? _bufferingState;
+-
+-  // fix336: VOD transport bar state, fed by engine position/playing streams.
+-  Duration _vodPosition = Duration.zero;
+-  Duration _vodDuration = Duration.zero;
+-  bool _vodPlaying = true;
+-  bool _scrubbing = false;
+-  Duration _scrubTarget = Duration.zero;
+   // Suppresses false reconnect triggers during the first 3s after open().
+   bool _startupGrace = false;
+ 
+@@ -173,7 +147,6 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+     if (adopt is MpvEngine) {
+       // fix116: adopt the already-playing engine from the swap. No create,
+       // no open — the stream stays live, avoiding the reopen stall.
+-      _engineType = EngineType.libmpv;
+       _engine = adopt;
+       _adopted = true;
+       AppLog.info(
+@@ -181,11 +154,10 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+         ' channel="${widget.channel.name}"',
+       );
+     } else {
+-      _engineType = _pickEngine();
+-      _engine = _createEngine(_engineType);
++      _engine = MpvEngine(channel: widget.channel, settings: widget.settings);
+       AppLog.info(
+         'Player: CREATED engine eid=${identityHashCode(_engine)}'
+-        ' type=$_engineType channel="${widget.channel.name}"',
++        ' channel="${widget.channel.name}"',
+       );
+     }
+     // Register so the overlay swap can pop this route and take over.
+@@ -204,25 +176,6 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+     initAsync();
+   }
+ 
+-  EngineType _pickEngine() {
+-    // If there is a catchup override URL, always use libmpv so the full
+-    // feature set (seek, subtitles) is available for VOD-style playback.
+-    if (widget.overrideUrl != null) return EngineType.libmpv;
+-    return EnginePicker.pick(
+-      channel: widget.channel,
+-      settings: widget.settings,
+-      source: widget.source,
+-      url: widget.channel.url,
+-    );
+-  }
+-
+-  PlayerEngine _createEngine(EngineType type) {
+-    return switch (type) {
+-      EngineType.exoplayer => ExoEngine(),
+-      _ => MpvEngine(channel: widget.channel, settings: widget.settings),
+-    };
+-  }
+-
+   Future<void> initAsync() async {
+     // Check cross-session give-up cooldown before attempting playback.
+     // When a channel hits max reconnects, a 60s cooldown is recorded in the
+@@ -404,23 +357,6 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+       onDisconnect(reason: 'player error: $err');
+     }));
+     _engineSubs.add(_engine.bufferingStream.listen(_onBufferingChanged));
+-
+-    // fix336: drive the VOD transport bar (duration is zero for live -> hidden).
+-    _engineSubs.add(_engine.positionStream.listen((pos) {
+-      if (!mounted || _scrubbing) return;
+-      final dur = _engine.duration;
+-      if (pos != _vodPosition || dur != _vodDuration) {
+-        setState(() {
+-          _vodPosition = pos;
+-          _vodDuration = dur;
+-        });
+-      }
+-    }));
+-    _engineSubs.add(_engine.playingStream.listen((playing) {
+-      if (mounted && playing != _vodPlaying) {
+-        setState(() => _vodPlaying = playing);
+-      }
+-    }));
+   }
+ 
+   String _playbackUrl() {
+@@ -695,7 +631,7 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+ 
+         _consecutiveOpenFailures = 0;
+         AppLog.info(
+-          'Player: open() succeeded — engine=$_engineType url="$playbackUrl"',
++          'Player: open() succeeded — engine=libmpv url="$playbackUrl"',
+         );
+         // fix94: arm a startup watchdog. If the stream opens but never
+         // produces a frame / buffering event, mpv can sit ~30s on its
+@@ -714,19 +650,7 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+                   ' — open succeeded but no frame'
+                   ' channel="${widget.channel.name}"',
+                 );
+-                // fix316: no-frame / black-screen after a successful open is
+-                // the classic "this engine can't render this stream" signal.
+-                // Try the configured fallback engine once before a same-engine
+-                // reconnect. If no fallback applies, fall through to the normal
+-                // disconnect/reconnect path.
+-                () async {
+-                  if (await _tryPreferenceFallback('startup watchdog')) {
+-                    if (!mounted || exiting) return;
+-                    await _startPlayback(null, headers: headers);
+-                  } else {
+-                    onDisconnect(reason: 'startup watchdog');
+-                  }
+-                }();
++                onDisconnect(reason: 'startup watchdog');
+               }
+             },
+           );
+@@ -747,40 +671,11 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+       } catch (e) {
+         _startupGrace = false;
+         _consecutiveOpenFailures++;
+-        final errStr = e.toString();
+-
+-        // One-shot ExoPlayer → libmpv fallback. ExoPlayer emits a generic
+-        // "Source error" / "VideoError" for streams whose codec or container
+-        // it cannot demux (most commonly IPTV MPEG-TS variants on Android TV
+-        // hardware where the codec/surface combination fails). Five more
+-        // retries on the same engine will not change that — switch to libmpv
+-        // immediately and let it try.
+-        if (!_exoFallbackTried &&
+-            _engineType == EngineType.exoplayer &&
+-            _isExoSourceError(errStr)) {
+-          _exoFallbackTried = true;
+-          AppLog.warn(
+-            'Player: ExoPlayer source error — falling back to libmpv'
+-            ' channel="${widget.channel.name}" — $errStr',
+-          );
+-          await _swapEngine(EngineType.libmpv);
+-          if (!mounted || exiting) return;
+-          _consecutiveOpenFailures = 0;
+-          continue;
+-        }
+-
+         AppLog.warn(
+           'Player: open() failed'
+           ' ($_consecutiveOpenFailures/${widget.settings.maxReconnectAttempts})'
+           ' — $e — channel="${widget.channel.name}"',
+         );
+-        // fix316: before spending the reconnect budget on the same engine,
+-        // try the user's configured fallback engine once (libmpv↔ExoPlayer).
+-        if (await _tryPreferenceFallback('open failed: $e')) {
+-          if (!mounted || exiting) return;
+-          _consecutiveOpenFailures = 0;
+-          continue;
+-        }
+         if (_consecutiveOpenFailures >= widget.settings.maxReconnectAttempts) {
+           if (mounted) {
+             setState(
+@@ -804,61 +699,6 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+   }
+ 
+-  /// True for the family of ExoPlayer errors that mean "I can't play this
+-  /// stream's codec/container", as opposed to network failures or 4xx
+-  /// responses. We use these to trigger the libmpv fallback rather than
+-  /// burn through the open-retry budget on a fundamentally incompatible
+-  /// engine choice.
+-  bool _isExoSourceError(String err) {
+-    return err.contains('Source error') ||
+-        err.contains('VideoError') ||
+-        err.contains('ExoPlaybackException');
+-  }
+-
+-  /// fix316: if the user's engine preference defines a fallback and we haven't
+-  /// used it yet, swap the current (primary) engine to the fallback engine and
+-  /// return true. Returns false when no fallback applies (single-engine modes,
+-  /// already tried, or already on the fallback engine). Used on no-frame /
+-  /// black-screen stalls and as the generalized open-error fallback.
+-  Future<bool> _tryPreferenceFallback(String reason) async {
+-    if (_prefFallbackTried) return false;
+-    final pref = widget.settings.enginePreference;
+-    if (!pref.hasFallback) return false;
+-    final target = pref.fallback;
+-    if (target == _engineType) return false; // already on the fallback engine
+-    _prefFallbackTried = true;
+-    AppLog.warn(
+-      'Player: fix316 engine fallback ${_engineType.name} → ${target.name}'
+-      ' (pref=${pref.name}, reason="$reason")'
+-      ' channel="${widget.channel.name}"',
+-    );
+-    await _swapEngine(target);
+-    return true;
+-  }
+-
+-  /// Mid-flight engine swap. Cancels the current engine's stream
+-  /// subscriptions, disposes it, instantiates [type], re-registers with the
+-  /// overlay controller, and re-subscribes to lifecycle streams. Triggers a
+-  /// rebuild so [_buildVideoArea] picks up the new engine widget.
+-  Future<void> _swapEngine(EngineType type) async {
+-    for (final s in _engineSubs) {
+-      await s.cancel();
+-    }
+-    _engineSubs.clear();
+-    await _engine.dispose();
+-    _engineType = type;
+-    _engine = _createEngine(type);
+-    OverlayPlayerController.instance.registerMain(
+-      widget.channel,
+-      widget.settings,
+-      widget.source,
+-      _engine,
+-    );
+-    _subscribeEngineStreams();
+-    if (mounted) setState(() {});
+-    AppLog.info('Player: swapped engine → $type');
+-  }
+-
+   @override
+   void dispose() {
+     WidgetsBinding.instance.removeObserver(this); // fix136
+@@ -1272,16 +1112,6 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+     if (_videoDetached) {
+       return const ColoredBox(color: Colors.black, child: SizedBox.expand());
+     }
+-    if (_engineType == EngineType.exoplayer) {
+-      // ExoPlayer path: plain video widget + our own controls overlay
+-      return Stack(
+-        children: [
+-          Center(child: _engine.buildVideoView(context)),
+-          _buildExoControls(),
+-        ],
+-      );
+-    }
+-
+     // libmpv path: use media_kit_video's full controls theme
+     return MaterialVideoControlsTheme(
+       normal: _mpvThemeData(context),
+@@ -1290,170 +1120,6 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+     );
+   }
+ 
+-  /// Minimal controls overlay for the ExoPlayer path (no media_kit_video).
+-  Widget _buildExoControls() {
+-    return Positioned.fill(
+-      child: GestureDetector(
+-        behavior: HitTestBehavior.translucent,
+-        onTap: () {},
+-        child: Column(
+-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+-          children: [
+-            // Top bar
+-            Container(
+-              color: Colors.black54,
+-              padding:
+-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+-              child: Row(
+-                children: [
+-                  IconButton(
+-                    onPressed: onExit,
+-                    icon: const Icon(
+-                      Icons.arrow_back,
+-                      color: Colors.white,
+-                      size: 32,
+-                    ),
+-                  ),
+-                  const SizedBox(width: 8),
+-                  Expanded(
+-                    child: Text(
+-                      widget.channel.name,
+-                      style: const TextStyle(color: Colors.white),
+-                      overflow: TextOverflow.ellipsis,
+-                    ),
+-                  ),
+-                  if (_castSupported)
+-                    IconButton(
+-                      onPressed: _onCastTap,
+-                      icon: Icon(_castIcon, color: Colors.white, size: 28),
+-                      tooltip: _isCasting ? 'Stop casting' : 'Cast to TV',
+-                    ),
+-                  if (_pipSupported &&
+-                      widget.settings.multiViewLayout ==
+-                          MultiViewLayout.none)
+-                    IconButton(
+-                      onPressed: () => PipController.enterPip(),
+-                      icon: const Icon(
+-                        Icons.picture_in_picture_alt,
+-                        color: Colors.white,
+-                        size: 28,
+-                      ),
+-                      tooltip: 'Picture-in-picture',
+-                    ),
+-                ],
+-              ),
+-            ),
+-            // Bottom bar — mini-player button (hidden when multi-view is
+-            // active; the overlay would float on top of the grid and serve
+-            // no useful purpose).
+-            if (widget.channel.mediaType == MediaType.livestream &&
+-                widget.settings.multiViewLayout == MultiViewLayout.none)
+-              Align(
+-                alignment: Alignment.bottomRight,
+-                child: Padding(
+-                  padding: const EdgeInsets.only(bottom: 8, right: 4),
+-                  child: IconButton(
+-                    onPressed: _minimizeToOverlay,
+-                    icon: const Icon(
+-                      Icons.picture_in_picture,
+-                      color: Colors.white,
+-                      size: 28,
+-                    ),
+-                    tooltip: 'Watch in mini-player',
+-                  ),
+-                ),
+-              ),
+-            // fix336: VOD transport bar (seekable media only; live duration=0).
+-            if (_vodDuration > Duration.zero) _buildVodTransportBar(),
+-          ],
+-        ),
+-      ),
+-    );
+-  }
+-
+-  // fix336: VOD transport bar — play/pause, +/-10s, seek slider, time.
+-  Widget _buildVodTransportBar() {
+-    final dur = _vodDuration;
+-    final pos = _scrubbing ? _scrubTarget : _vodPosition;
+-    final maxMs = dur.inMilliseconds.toDouble();
+-    final curMs = pos.inMilliseconds.clamp(0, dur.inMilliseconds).toDouble();
+-
+-    void seekTo(Duration target) {
+-      var t = target;
+-      if (t < Duration.zero) t = Duration.zero;
+-      if (t > dur) t = dur;
+-      _engine.seek(t);
+-      setState(() => _vodPosition = t);
+-    }
+-
+-    return Container(
+-      color: Colors.black54,
+-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+-      child: Row(
+-        children: [
+-          IconButton(
+-            onPressed: () => seekTo(pos - const Duration(seconds: 10)),
+-            icon: const Icon(Icons.replay_10, color: Colors.white, size: 30),
+-            tooltip: 'Back 10s',
+-          ),
+-          IconButton(
+-            autofocus: true,
+-            onPressed: () async {
+-              if (_vodPlaying) {
+-                await _engine.pause();
+-                if (mounted) setState(() => _vodPlaying = false);
+-              } else {
+-                await _engine.play();
+-                if (mounted) setState(() => _vodPlaying = true);
+-              }
+-            },
+-            icon: Icon(_vodPlaying ? Icons.pause : Icons.play_arrow,
+-                color: Colors.white, size: 38),
+-            tooltip: _vodPlaying ? 'Pause' : 'Play',
+-          ),
+-          IconButton(
+-            onPressed: () => seekTo(pos + const Duration(seconds: 10)),
+-            icon: const Icon(Icons.forward_10, color: Colors.white, size: 30),
+-            tooltip: 'Forward 10s',
+-          ),
+-          const SizedBox(width: 8),
+-          Text(_fmtDuration(pos),
+-              style: const TextStyle(color: Colors.white, fontSize: 13)),
+-          Expanded(
+-            child: Slider(
+-              value: curMs.clamp(0, maxMs <= 0 ? 1 : maxMs),
+-              max: maxMs <= 0 ? 1 : maxMs,
+-              onChangeStart: (_) => setState(() {
+-                _scrubbing = true;
+-                _scrubTarget = pos;
+-              }),
+-              onChanged: (v) => setState(
+-                  () => _scrubTarget = Duration(milliseconds: v.toInt())),
+-              onChangeEnd: (v) {
+-                final target = Duration(milliseconds: v.toInt());
+-                setState(() => _scrubbing = false);
+-                seekTo(target);
+-              },
+-            ),
+-          ),
+-          Text(_fmtDuration(dur),
+-              style: const TextStyle(color: Colors.white, fontSize: 13)),
+-          const SizedBox(width: 4),
+-        ],
+-      ),
+-    );
+-  }
+-
+-  // fix336: H:MM:SS or M:SS.
+-  String _fmtDuration(Duration d) {
+-    final h = d.inHours;
+-    final m = d.inMinutes.remainder(60);
+-    final sec = d.inSeconds.remainder(60);
+-    final mm = m.toString().padLeft(h > 0 ? 2 : 1, '0');
+-    final ss = sec.toString().padLeft(2, '0');
+-    return h > 0 ? '$h:$mm:$ss' : '$mm:$ss';
+-  }
+-
+   Widget _buildBufferingOverlay() {
+     final message = _bufferingState!;
+     // Cooldown / give-up states ("please wait …", "Unable to connect …") are
+diff --git a/lib/player/engine_picker.dart b/lib/player/engine_picker.dart
+deleted file mode 100644
+index b34db7f..0000000
+--- a/lib/player/engine_picker.dart
++++ /dev/null
+@@ -1,75 +0,0 @@
+-import 'package:open_tv/backend/app_logger.dart';
+-import 'package:open_tv/models/channel.dart';
+-import 'package:open_tv/models/engine_type.dart';
+-import 'package:open_tv/models/engine_preference.dart';
+-import 'package:open_tv/models/settings.dart';
+-import 'package:open_tv/models/source.dart';
+-
+-/// Determines which [EngineType] to use for a given playback context.
+-///
+-/// Resolution order (first non-auto wins):
+-///   1. Channel-level override  (`channel.engineOverride`)
+-///   2. Global settings override (`settings.forcedEngine`)
+-///   3. Source-level default    (`source?.defaultEngine`)
+-///   4. URL heuristic           (HLS / DASH / MP4 → ExoPlayer, else libmpv)
+-class EnginePicker {
+-  const EnginePicker._();
+-
+-  static EngineType pick({
+-    required Channel channel,
+-    required Settings settings,
+-    Source? source,
+-    String? url,
+-  }) {
+-    // 1. Per-channel override
+-    final chanOverride = channel.engineOverride;
+-    if (chanOverride != null && chanOverride != EngineType.auto) {
+-      AppLog.info(
+-        'EnginePicker: channel-override → ${chanOverride.name}'
+-        ' channel="${channel.name}"',
+-      );
+-      return chanOverride;
+-    }
+-
+-    // 2. Global preference (fix315). libmpvExo is the default "let the URL
+-    // heuristic decide" mode (old Auto behaviour), so it is NOT a hard
+-    // override — the heuristic below still runs. The other three modes set an
+-    // explicit primary engine.
+-    if (settings.enginePreference != EnginePreference.libmpvExo) {
+-      final primary = settings.enginePreference.primary;
+-      AppLog.info(
+-        'EnginePicker: global-preference → ${primary.name}'
+-        ' (${settings.enginePreference.name}) channel="${channel.name}"',
+-      );
+-      return primary;
+-    }
+-
+-    // 3. Source-level default
+-    final srcDefault = source?.defaultEngine;
+-    if (srcDefault != null && srcDefault != EngineType.auto) {
+-      AppLog.info(
+-        'EnginePicker: source-default → ${srcDefault.name}'
+-        ' channel="${channel.name}"',
+-      );
+-      return srcDefault;
+-    }
+-
+-    // 4. URL heuristic
+-    final u = (url ?? channel.url ?? '').toLowerCase();
+-    if (u.contains('.m3u8') || u.contains('.mpd') || u.endsWith('.mp4')) {
+-      AppLog.info(
+-        'EnginePicker: url-heuristic → ${EngineType.exoplayer.name}'
+-        ' channel="${channel.name}"'
+-        ' url="$u"',
+-      );
+-      return EngineType.exoplayer;
+-    }
+-
+-    AppLog.info(
+-      'EnginePicker: url-heuristic → ${EngineType.libmpv.name}'
+-      ' channel="${channel.name}"'
+-      ' url="$u"',
+-    );
+-    return EngineType.libmpv;
+-  }
+-}
+diff --git a/lib/player/exo_engine.dart b/lib/player/exo_engine.dart
+deleted file mode 100644
+index 67bcdb2..0000000
+--- a/lib/player/exo_engine.dart
++++ /dev/null
+@@ -1,369 +0,0 @@
+-import 'dart:async';
+-
+-import 'package:flutter/material.dart';
+-import 'package:open_tv/backend/app_logger.dart';
+-import 'package:open_tv/player/player_engine.dart';
+-import 'package:video_player/video_player.dart';
+-
+-/// ExoPlayer-backed engine via the video_player package.
+-///
+-/// Best for HLS (.m3u8), DASH (.mpd), and plain MP4/MKV files.
+-/// Does NOT support audio/subtitle track selection (video_player API
+-/// limitation); [supportsTrackSelection] returns false.
+-///
+-/// Fullscreen is handled by the [Player] widget via SystemChrome since
+-/// video_player has no built-in fullscreen controller.
+-class ExoEngine implements PlayerEngine {
+-  VideoPlayerController? _controller;
+-
+-  final _bufferingCtrl = StreamController<bool>.broadcast();
+-  final _completedCtrl = StreamController<bool>.broadcast();
+-  final _errorCtrl = StreamController<String>.broadcast();
+-  final _positionCtrl = StreamController<Duration>.broadcast();
+-  final _playingCtrl = StreamController<bool>.broadcast(); // fix336
+-
+-  Timer? _pollTimer;
+-  bool _wasBuffering = false;
+-
+-  /// fix345 (review HIGH-2): VideoPlayerValue.hasError stays LATCHED true and
+-  /// _onValueChanged runs on every value tick + the 1s poll, so one Exo error
+-  /// was re-emitted continuously — in a multi-view cell each emission >500ms
+-  /// apart burned a fresh retry slot, draining the whole budget on a single
+-  /// underlying fault. Mirror of MpvEngine's fix338 _emittedError: forward a
+-  /// given error once; reset on the next open().
+-  bool _emittedError = false;
+-
+-  /// fix339: set by open(). Live streams MUST NOT emit completed: video_player
+-  /// reports a tiny non-zero duration for raw .ts live (sub-second / segment
+-  /// window — logged as duration=0s via inSeconds), so the old
+-  /// duration > zero guard passed and position >= duration was instantly true,
+-  /// firing "stream completed" in a loop. On 1.26.54 (after fix335 kept Exo
+-  /// alive on live) this restarted every 2x2 cell about once per second
+-  /// (164 completed events in a 5-minute S24 log).
+-  bool _isLive = false;
+-
+-  /// fix335: one-shot guard — emit a single "playing" liveness signal the first
+-  /// time the controller reports initialized && playing, so the Player's
+-  /// startup watchdog cancels even when video_player never toggles isBuffering
+-  /// (observed on live .ts: Exo goes straight to playing, no buffering event,
+-  /// so the watchdog timed out at 15s and fell back to libmpv despite a healthy
+-  /// frame — SURFACE showed initialized=true playing=true size=1280x720).
+-  bool _signalledPlaying = false;
+-
+-
+-  @override
+-  Widget buildVideoView(BuildContext context) {
+-    final ctrl = _controller;
+-    if (ctrl == null) {
+-      return const ColoredBox(color: Colors.black);
+-    }
+-    // fix332: buildVideoView is called from Player.build, which only rebuilds
+-    // on its own setState (overlay/buffering). open() initializes the
+-    // controller asynchronously AFTER this view is first built, so on some
+-    // boxes (onn 4K Plus) no setState happened once isInitialized flipped true
+-    // and the VideoPlayer widget was never mounted — audio played but the
+-    // screen stayed on the black ColoredBox. Listen to the controller directly
+-    // so this view rebuilds itself the moment initialization completes,
+-    // independent of Player's setState.
+-    return ValueListenableBuilder<VideoPlayerValue>(
+-      valueListenable: ctrl,
+-      builder: (context, value, _) {
+-        if (!value.isInitialized) {
+-          return const ColoredBox(color: Colors.black);
+-        }
+-        // fix334: on the onn 4K Plus the controller is fully healthy
+-        // (initialized, real size, playing) yet the screen stays black until
+-        // something forces a relayout — the user found that pressing the cast
+-        // button made the picture appear. That is the Android video_player
+-        // first-frame stall: the platform texture is created but the first
+-        // frame is not pushed to the surface until a layout pass occurs.
+-        // _FirstFrameNudge forces exactly one post-frame relayout after mount,
+-        // reproducing the cast-button effect automatically.
+-        // fix340: the multi-view cell hosts this view in a
+-        // Stack(fit: StackFit.expand) — TIGHT constraints. Under tight
+-        // constraints AspectRatio cannot choose its size and is forced to
+-        // fill the cell, stretching 16:9 video into a tall portrait cell.
+-        // Center gives the AspectRatio loose constraints so it letterboxes
+-        // correctly (black bars from the ColoredBox behind). mpv's Video
+-        // widget letterboxes internally, which is why only Exo stretched.
+-        return _FirstFrameNudge(
+-          child: ColoredBox(
+-            color: Colors.black,
+-            child: Center(
+-              child: AspectRatio(
+-                aspectRatio: value.aspectRatio,
+-                child: VideoPlayer(ctrl),
+-              ),
+-            ),
+-          ),
+-        );
+-      },
+-    );
+-  }
+-
+-  @override
+-  Future<void> open({
+-    required String url,
+-    Duration? startPosition,
+-    Map<String, String>? headers,
+-    bool isLive = false, // fix339
+-  }) async {
+-    _isLive = isLive;
+-    _emittedError = false; // fix345: new controller, fresh fault domain
+-    AppLog.info('ExoEngine: open() url="$url" isLive=$isLive');
+-    await _controller?.dispose();
+-
+-    _controller = VideoPlayerController.networkUrl(
+-      Uri.parse(url),
+-      httpHeaders: headers ?? const {},
+-    );
+-
+-    await _controller!.initialize();
+-
+-    AppLog.info(
+-      'ExoEngine: initialised'
+-      ' duration=${_controller!.value.duration.inSeconds}s'
+-      ' size=${_controller!.value.size}',
+-    );
+-    // fix332: parity with the mpv mid-playback surface probe — log the view
+-    // state shortly after init so a black-screen-with-audio session on
+-    // ExoPlayer is diagnosable (size=0x0 / not initialized vs a real size).
+-    Future.delayed(const Duration(seconds: 2), () {
+-      final v = _controller?.value;
+-      if (v == null) return;
+-      AppLog.info('ExoEngine: SURFACE[mid-playback+2s]'
+-          ' initialized=${v.isInitialized}'
+-          ' size=${v.size.width.toInt()}x${v.size.height.toInt()}'
+-          ' playing=${v.isPlaying} buffering=${v.isBuffering}');
+-    });
+-
+-    if (startPosition != null && startPosition > Duration.zero) {
+-      await _controller!.seekTo(startPosition);
+-    }
+-
+-    _controller!.addListener(_onValueChanged);
+-    await _controller!.play();
+-
+-    _startPolling();
+-  }
+-
+-  @override
+-  Future<void> dispose() async {
+-    AppLog.info('ExoEngine: dispose()');
+-    _stopPolling();
+-    _controller?.removeListener(_onValueChanged);
+-    await _controller?.dispose();
+-    _controller = null;
+-    await _bufferingCtrl.close();
+-    await _completedCtrl.close();
+-    await _errorCtrl.close();
+-    await _positionCtrl.close();
+-    await _playingCtrl.close();
+-  }
+-
+-
+-  @override
+-  Stream<bool> get bufferingStream => _bufferingCtrl.stream;
+-  @override
+-  Stream<bool> get completedStream => _completedCtrl.stream;
+-  @override
+-  Stream<String> get errorStream => _errorCtrl.stream;
+-  @override
+-  Stream<Duration> get positionStream => _positionCtrl.stream;
+-
+-  @override
+-  Duration get position => _controller?.value.position ?? Duration.zero;
+-
+-  // fix336: transport surface for the VOD control bar.
+-  @override
+-  Duration get duration => _controller?.value.duration ?? Duration.zero;
+-
+-  @override
+-  Stream<bool> get playingStream => _playingCtrl.stream;
+-
+-  @override
+-  bool get isPlaying => _controller?.value.isPlaying ?? false;
+-
+-  @override
+-  Future<void> pause() async {
+-    await _controller?.pause();
+-    _playingCtrl.add(false);
+-  }
+-
+-  @override
+-  Future<void> play() async {
+-    await _controller?.play();
+-    _playingCtrl.add(true);
+-    // fix342: resuming playback is a liveness signal — emit buffering=false
+-    // so any armed startup watchdog cancels even when the one-shot fix335
+-    // signal was consumed before arming (Exo auto-plays during open()).
+-    _bufferingCtrl.add(false);
+-  }
+-
+-  @override
+-  Future<void> seek(Duration position) async {
+-    final d = _controller?.value.duration ?? Duration.zero;
+-    if (d <= Duration.zero) return; // live / non-seekable
+-    var target = position;
+-    if (target < Duration.zero) target = Duration.zero;
+-    if (target > d) target = d;
+-    await _controller?.seekTo(target);
+-  }
+-
+-
+-  @override
+-  bool get supportsTrackSelection => false;
+-
+-  @override
+-  List<TrackInfo> get subtitleTracks => const [];
+-  @override
+-  List<TrackInfo> get audioTracks => const [];
+-
+-  @override
+-  Future<void> setSubtitleTrack(int index) async {}
+-  @override
+-  Future<void> setAudioTrack(int index) async {}
+-
+-
+-  @override
+-  Future<void> setVolume(double volume) async {
+-    await _controller?.setVolume(volume);
+-  }
+-
+-
+-  @override
+-  bool get handlesOwnFullscreen => false;
+-
+-  @override
+-  Future<void> enterFullscreen() async {}
+-  @override
+-  Future<void> exitFullscreen() async {}
+-
+-  @override
+-  bool get isFullscreen => false;
+-
+-
+-  void _onValueChanged() {
+-    final v = _controller?.value;
+-    if (v == null) return;
+-
+-    // Error — fix345: emit once per fault (hasError is latched; see field).
+-    if (v.hasError && !_emittedError) {
+-      _emittedError = true;
+-      AppLog.warn('ExoEngine: error — "${v.errorDescription}"');
+-      _errorCtrl.add(v.errorDescription ?? 'ExoPlayer error');
+-    }
+-
+-    // End of stream for VOD only. fix339: NEVER for live (see _isLive) — and
+-    // even for unset callers require a real duration (>= 5s): raw .ts live
+-    // reports a tiny non-zero duration that position reaches instantly, which
+-    // looped "completed" restarts on every 2x2 cell.
+-    if (!_isLive &&
+-        !v.isPlaying &&
+-        v.isInitialized &&
+-        v.duration >= const Duration(seconds: 5) &&
+-        v.position >= v.duration) {
+-      AppLog.info('ExoEngine: stream completed');
+-      _completedCtrl.add(true);
+-    }
+-
+-    // Buffering: video_player emits isBuffering directly
+-    if (v.isBuffering != _wasBuffering) {
+-      _wasBuffering = v.isBuffering;
+-      if (AppLog.enabled) AppLog.info('ExoEngine: buffering=${v.isBuffering}');
+-      _bufferingCtrl.add(v.isBuffering);
+-    }
+-
+-    // fix335: live .ts streams can reach initialized && playing WITHOUT ever
+-    // emitting a buffering transition, so the Player's startup watchdog (which
+-    // only cancels on a buffering event) timed out and fell back to libmpv even
+-    // though Exo was rendering. Emit one buffering=false the first time we see
+-    // the engine actually playing — the watchdog's cancel path accepts any
+-    // buffering signal. One-shot so it doesn't fight the real buffering stream.
+-    if (!_signalledPlaying && v.isInitialized && v.isPlaying) {
+-      _signalledPlaying = true;
+-      if (AppLog.enabled) {
+-        AppLog.info('ExoEngine: first playing frame — signalling liveness');
+-      }
+-      _bufferingCtrl.add(false);
+-    }
+-  }
+-
+-  void _startPolling() {
+-    _pollTimer?.cancel();
+-    _pollTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+-      final v = _controller?.value;
+-      if (v == null) return;
+-      if (v.position != Duration.zero) _positionCtrl.add(v.position);
+-      // fix335: also drive the one-shot liveness signal from the poll, in case
+-      // the controller reaches playing without firing another value-change
+-      // event (so the watchdog still cancels within ~1s of real playback).
+-      if (!_signalledPlaying && v.isInitialized && v.isPlaying) {
+-        _signalledPlaying = true;
+-        if (AppLog.enabled) {
+-          AppLog.info('ExoEngine: first playing frame (poll) — '
+-              'signalling liveness');
+-        }
+-        _bufferingCtrl.add(false);
+-      }
+-    });
+-  }
+-
+-  void _stopPolling() {
+-    _pollTimer?.cancel();
+-    _pollTimer = null;
+-  }
+-}
+-
+-/// fix334: forces a single post-frame relayout after first mount so the
+-/// Android video_player platform texture pushes its first frame to the
+-/// surface. Without this, some boxes (onn 4K Plus) show audio-only black until
+-/// an unrelated relayout (e.g. opening the cast menu) happens to trigger it.
+-/// The nudge is a one-shot sub-pixel padding toggle on the next two frames;
+-/// it is imperceptible and runs once per mount.
+-class _FirstFrameNudge extends StatefulWidget {
+-  const _FirstFrameNudge({required this.child});
+-  final Widget child;
+-
+-  @override
+-  State<_FirstFrameNudge> createState() => _FirstFrameNudgeState();
+-}
+-
+-class _FirstFrameNudgeState extends State<_FirstFrameNudge> {
+-  double _pad = 0.001;
+-  Timer? _timer;
+-  int _ticks = 0;
+-
+-  @override
+-  void initState() {
+-    super.initState();
+-    // The texture attaches somewhere in the first few hundred ms after mount.
+-    // Toggle a sub-pixel pad a handful of times across that window to force a
+-    // relayout once the surface is ready, then stop. Imperceptible; one-shot.
+-    _timer = Timer.periodic(const Duration(milliseconds: 120), (t) {
+-      if (!mounted) {
+-        t.cancel();
+-        return;
+-      }
+-      setState(() => _pad = _pad == 0.0 ? 0.001 : 0.0);
+-      if (++_ticks >= 5) {
+-        t.cancel();
+-        if (mounted) setState(() => _pad = 0.0);
+-      }
+-    });
+-  }
+-
+-  @override
+-  void dispose() {
+-    _timer?.cancel();
+-    super.dispose();
+-  }
+-
+-  @override
+-  Widget build(BuildContext context) {
+-    return Padding(
+-      padding: EdgeInsets.only(bottom: _pad),
+-      child: widget.child,
+-    );
+-  }
+-}
+diff --git a/lib/player/mpv_engine.dart b/lib/player/mpv_engine.dart
+index e50a0c7..cc04b4f 100644
+--- a/lib/player/mpv_engine.dart
++++ b/lib/player/mpv_engine.dart
+@@ -69,7 +69,7 @@ class MpvEngine implements PlayerEngine {
+   bool _emittedError = false;
+ 
+   /// fix345 (review CRIT-2): one-shot — emit a single liveness buffering=false
+-  /// the first time mpv reports actually playing, mirroring fix335 on Exo.
++  /// the first time mpv reports actually playing (fix335 pattern).
+   /// mpv's own buffering events are broadcast and can fire during open(),
+   /// before the Player has subscribed (events dropped); a healthy live stream
+   /// may then never toggle buffering again, stranding the startup watchdog
+@@ -114,7 +114,7 @@ class MpvEngine implements PlayerEngine {
+     _subs.add(_player.stream.playing.listen((playing) {
+       // fix345: emit on EVERY transition to playing (not one-shot) — the
+       // Player arms its startup watchdog after open(), so a one-shot signal
+-      // fired during open() could be consumed pre-arm (the exact Exo bug
++      // fired during open() could be consumed pre-arm (the exact bug
+       // fix342 closed in cells). mpv's playing stream only fires on
+       // transitions, so this cannot spam.
+       if (playing && !_disposed) {
+@@ -406,7 +406,7 @@ class MpvEngine implements PlayerEngine {
+   }
+ 
+   // fix130: false — app drives fullscreen via _enterSystemFullscreen() (immersive
+-  // + landscape orientation), the same path ExoEngine uses. media_kit's
++  // + landscape orientation). media_kit's
+   // enterFullscreen() pushes a hidden second root-navigator route with a second
+   // Video on this controller; that orphaned route was the black-screen root cause.
+   @override
+diff --git a/lib/player/player_engine.dart b/lib/player/player_engine.dart
+index 6fbb261..1fd8629 100644
+--- a/lib/player/player_engine.dart
++++ b/lib/player/player_engine.dart
+@@ -9,9 +9,9 @@ class TrackInfo {
+ 
+ /// Abstract player engine interface.
+ ///
+-/// Concrete implementations:
+-///   • [MpvEngine]  — media_kit / libmpv (MPEG-TS, RTMP, any format)
+-///   • [ExoEngine]  — ExoPlayer via video_player (HLS, DASH, MP4)
++/// Concrete implementation: [MpvEngine] — media_kit / libmpv (MPEG-TS,
++/// HLS, DASH, MP4, RTMP — any format). fix350: ExoPlayer removed; the
++/// interface is retained as the engine seam (handoff/adoption typing).
+ ///
+ /// The [Player] widget owns one engine instance per playback session and
+ /// delegates all media operations through this interface.
+@@ -53,7 +53,7 @@ abstract class PlayerEngine {
+   Duration get position;
+ 
+   /// fix336: total media duration for VOD (zero for live). Drives the seek
+-  /// slider; the Exo VOD transport bar only shows when this is > 0.
++  /// slider (zero for live streams).
+   Duration get duration;
+ 
+   /// fix336: emits the playing/paused state so the transport bar stays in sync.
+@@ -73,7 +73,6 @@ abstract class PlayerEngine {
+ 
+ 
+   /// Whether this engine can enumerate and switch audio/subtitle tracks.
+-  /// [ExoEngine] returns false because video_player exposes no track API.
+   bool get supportsTrackSelection;
+ 
+   List<TrackInfo> get subtitleTracks;
+@@ -89,7 +88,7 @@ abstract class PlayerEngine {
+ 
+ 
+   /// Whether this engine controls its own fullscreen transition.
+-  /// MpvEngine uses media_kit_video's VideoState; ExoEngine delegates to the
++  /// MpvEngine uses media_kit_video's VideoState; it delegates to the
+   /// caller, which uses [SystemChrome] directly.
+   bool get handlesOwnFullscreen;
+ 
+diff --git a/lib/select_dialog.dart b/lib/select_dialog.dart
+index 28df854..c477982 100644
+--- a/lib/select_dialog.dart
++++ b/lib/select_dialog.dart
+@@ -23,7 +23,7 @@ class SelectDialog extends StatelessWidget {
+     // fix331: the old layout wrapped ONLY the first item in a bare
+     // Focus(autofocus: true). On a D-pad TV that captured focus but the inner
+     // ListTile showed no focus highlight and could not be activated — the
+-    // first option (e.g. "Libmpv → ExoPlayer") looked dead: no highlight,
++    // first option looked dead: no highlight,
+     // couldn't select. Each row is now an independently focusable, autofocus-
+     // aware ListTile so every option highlights and selects with the remote.
+     final hasSelection =
+diff --git a/lib/settings_view.dart b/lib/settings_view.dart
+index 9f9065b..92da1ef 100644
+--- a/lib/settings_view.dart
++++ b/lib/settings_view.dart
+@@ -12,7 +12,6 @@ import 'package:qr_flutter/qr_flutter.dart';
+ import 'package:open_tv/backend/playback_analyzer.dart';
+ import 'package:open_tv/backend/device_memory.dart';
+ import 'package:open_tv/models/device_detector.dart';
+-import 'package:open_tv/models/engine_preference.dart';
+ import 'package:open_tv/models/multi_view_layout.dart';
+ import 'package:open_tv/models/multi_view_decode.dart';
+ import 'package:open_tv/multi_view_picker_dialog.dart';
+@@ -1791,95 +1790,6 @@ class _SettingsState extends State<SettingsView> {
+     );
+   }
+ 
+-  /// A "popup menu" tile for the global engine selection setting.
+-  Widget _engineSelectionTile(Settings settings) {
+-    return ListTile(
+-      title: Row(
+-        children: [
+-          const Text('Player engine'),
+-          const SizedBox(width: 4),
+-          IconButton(
+-            icon: Icon(
+-              Icons.info_outline,
+-              size: 18,
+-              color: Theme.of(context)
+-                  .colorScheme
+-                  .onSurface
+-                  .withValues(alpha: 0.4),
+-            ),
+-            tooltip: 'About this setting',
+-            onPressed: () => SettingHelpDialog.show(
+-              context,
+-              title: 'Player Engine',
+-              body:
+-                  'Chooses which playback engine opens streams.\n\n'
+-                  'Default: Auto.\n\n'
+-                  'Auto: Recommended. The app chooses the best engine for each URL. '
+-                  'HLS, DASH, and MP4 streams generally use ExoPlayer for adaptive '
+-                  'streaming and battery efficiency. MPEG-TS, RTMP, and less standard '
+-                  'streams generally use libmpv for compatibility.\n\n'
+-                  'libmpv: Forces libmpv for every stream. Use this if a provider '
+-                  'works better with mpv or if ExoPlayer cannot open the stream.\n\n'
+-                  'ExoPlayer: Forces ExoPlayer for every stream. Use this only if '
+-                  'Auto picks the wrong engine for your source. Some advanced track '
+-                  'controls may not be available in ExoPlayer mode.',
+-            ),
+-          ),
+-        ],
+-      ),
+-      trailing: TextButton(
+-        onPressed: () => _showEnginePickerDialog(context),
+-        child: Row(
+-          mainAxisSize: MainAxisSize.min,
+-          children: [
+-            Text(
+-              settings.enginePreference.label,
+-              style: Theme.of(context).textTheme.bodyMedium,
+-            ),
+-            const SizedBox(width: 4),
+-            const Icon(Icons.arrow_drop_down),
+-          ],
+-        ),
+-      ),
+-    );
+-  }
+-
+-  // fix315: global engine preference picker — explicit primary + fallback
+-  // order, replacing the old Auto/libmpv/ExoPlayer list.
+-  static const _enginePreferenceOptions = [
+-    EnginePreference.libmpvExo,
+-    EnginePreference.exoLibmpv,
+-    EnginePreference.libmpvOnly,
+-    EnginePreference.exoOnly,
+-  ];
+-
+-  Future<void> _showEnginePickerDialog(BuildContext context) async {
+-    await showDialog(
+-      barrierDismissible: true,
+-      context: context,
+-      builder: (BuildContext context) {
+-        return SelectDialog(
+-          title: 'Player engine',
+-          // fix331: pre-select the active preference so the picker opens on it
+-          // and it shows highlighted (the index in _enginePreferenceOptions).
+-          selectedId: _enginePreferenceOptions
+-              .indexOf(settings.enginePreference),
+-          data: _enginePreferenceOptions
+-              .asMap()
+-              .entries
+-              .map((e) => IdData(id: e.key, data: e.value.label))
+-              .toList(),
+-          action: (idx) {
+-            setState(() {
+-              settings.enginePreference = _enginePreferenceOptions[idx];
+-              updateSettings();
+-            });
+-            Navigator.of(context).pop();
+-          },
+-        );
+-      },
+-    );
+-  }
+ 
+   Widget _multiViewTile(Settings settings) {
+     return ListTile(
+@@ -2258,7 +2168,6 @@ class _SettingsState extends State<SettingsView> {
+                           updateSettings();
+                         },
+                       ),
+-                      _engineSelectionTile(settings),
+                     ],
+                   ),
+ 
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 3057df1..07c830d 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.28.0': [
++    'libmpv is now the one and only playback engine. ExoPlayer has been removed entirely — along with the engine picker, the Player engine setting, per-source default engine, and the runtime engine-fallback machinery. libmpv already handled every format (MPEG-TS, HLS, DASH, MP4, RTMP) and carries all the device-specific decode fixes, so this removes a whole class of dual-engine bugs. Existing engine settings and backups are ignored harmlessly.',
++  ],
+   '1.27.1': [
+     'Background processing now covers more long tasks: EPG refresh, channel re-match, and the stream scanner keep running if you switch away from the app (previously only source refresh did). Enable it in Settings — "Keep long tasks running in background".',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 648c4ae..c5be68f 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.27.1+349
++version: 1.28.0+350
+ 
+ environment:
+   sdk: ^3.10.7
+@@ -61,7 +61,6 @@ dependencies:
+   workmanager: ^0.9.0
+   flutter_foreground_task: ^8.17.0 # fix318: keep long ops alive when backgrounded
+   intl: ^0.20.2
+-  video_player: ^2.9.2
+   xml: ^6.0.0
+   audio_session: ^0.2.3
+   qr_flutter: ^4.1.0    # fix158: QR code for TV export URL
+diff --git a/sql.dart b/sql.dart
+deleted file mode 100644
+index 2a4b717..0000000
+--- a/sql.dart
++++ /dev/null
+@@ -1,1584 +0,0 @@
+-import 'dart:collection';
+-
+-import 'package:open_tv/backend/app_logger.dart';
+-import 'package:open_tv/backend/playback_analyzer.dart';
+-import 'package:open_tv/backend/channel_search_cache.dart';
+-import 'package:open_tv/backend/db_factory.dart';
+-import 'package:open_tv/models/channel.dart';
+-import 'package:open_tv/models/engine_type.dart';
+-import 'package:open_tv/models/channel_http_headers.dart';
+-import 'package:open_tv/models/channel_preserve.dart';
+-import 'package:open_tv/models/filters.dart';
+-import 'package:open_tv/models/id_data.dart';
+-import 'package:open_tv/models/settings.dart';
+-import 'package:open_tv/models/media_type.dart';
+-import 'package:open_tv/models/program.dart';
+-import 'package:open_tv/models/source.dart';
+-import 'package:open_tv/models/source_type.dart';
+-import 'package:open_tv/models/view_type.dart';
+-import 'package:sqlite_async/sqlite3.dart';
+-import 'package:sqlite_async/sqlite_async.dart';
+-
+-const int pageSize = 36;
+-const int importBatchSize = 500;
+-// fix174.3: bulk insert binds 13 params/row; 60×13=780 < 999 (safe on all engines)
+-const int bulkInsertRows = 60;
+-
+-class Sql {
+-  static Future<void> commitWrite(
+-      List<Future<void> Function(SqliteWriteContext, Map<String, String>)>
+-          commits,
+-      {Map<String, String>? memory}) async {
+-    if (commits.isEmpty) return;
+-    var db = await DbFactory.db;
+-    final shared = memory ?? <String, String>{};
+-    await db.writeTransaction((tx) async {
+-      for (var commit in commits) {
+-        await commit(tx, shared);
+-      }
+-    });
+-  }
+-
+-  /// Large imports (M3U/Xtream) — same [memory] across batches so sourceId persists.
+-  static Future<void> commitWriteBatched(
+-    List<Future<void> Function(SqliteWriteContext, Map<String, String>)>
+-        commits, {
+-    int batchSize = importBatchSize,
+-    Map<String, String>? memory,
+-    void Function(int committedClosures)? onBatchCommitted,
+-  }) async {
+-    if (commits.isEmpty) return;
+-    final shared = memory ?? <String, String>{};
+-    for (var i = 0; i < commits.length; i += batchSize) {
+-      final end = (i + batchSize < commits.length) ? i + batchSize : commits.length;
+-      await commitWrite(commits.sublist(i, end), memory: shared);
+-      onBatchCommitted?.call(end);
+-    }
+-  }
+-
+-  static Future<void> Function(SqliteWriteContext, Map<String, String> memory)
+-      insertChannel(Channel channel) {
+-    return (SqliteWriteContext tx, Map<String, String> memory) async {
+-      await tx.execute('''
+-        INSERT INTO channels (
+-          name, image, url, source_id, media_type, series_id, favorite,
+-          stream_id, group_name, epg_channel_id,
+-          catchup_type, catchup_source, catchup_days
+-        )
+-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+-        ON CONFLICT (source_id, media_type, COALESCE(stream_id, -1), COALESCE(series_id, ''))
+-        DO UPDATE SET
+-          url = excluded.url,
+-          group_name = excluded.group_name,
+-          media_type = excluded.media_type,
+-          stream_id = excluded.stream_id,
+-          image = excluded.image,
+-          series_id = excluded.series_id,
+-          -- preserve any user-set epg_channel_id; only fill when the new
+-          -- import carries one and we have nothing stored yet
+-          epg_channel_id = COALESCE(channels.epg_channel_id, excluded.epg_channel_id),
+-          catchup_type = excluded.catchup_type,
+-          catchup_source = excluded.catchup_source,
+-          catchup_days = excluded.catchup_days
+-          -- engine_override intentionally omitted: preserve any user override
+-          ;
+-      ''', [
+-        channel.name,
+-        channel.image,
+-        channel.url,
+-        channel.sourceId == -1
+-            ? int.parse(memory['sourceId']!)
+-            : channel.sourceId,
+-        channel.mediaType.index,
+-        channel.seriesId,
+-        channel.favorite,
+-        channel.streamId,
+-        channel.group,
+-        channel.epgChannelId,
+-        channel.catchupType,
+-        channel.catchupSource,
+-        channel.catchupDays,
+-      ]);
+-      memory['lastChannelId'] =
+-          (await tx.get("SELECT last_insert_rowid()")).columnAt(0).toString();
+-    };
+-  }
+-
+-  /// fix174.3: bulk upsert for large imports. Same ON CONFLICT key as
+-  /// insertChannel (fix174.1). Does NOT read last_insert_rowid().
+-  static Future<void> Function(SqliteWriteContext, Map<String, String>)
+-      insertChannelsBulk(List<Channel> channels) {
+-    return (SqliteWriteContext tx, Map<String, String> memory) async {
+-      if (channels.isEmpty) return;
+-      final sourceId = int.parse(memory['sourceId']!);
+-      const cols = 13;
+-      final rowPlaceholder = '(${List.filled(cols, '?').join(', ')})';
+-      final values = List.filled(channels.length, rowPlaceholder).join(', ');
+-      final params = <Object?>[];
+-      for (final ch in channels) {
+-        params.addAll([
+-          ch.name, ch.image, ch.url,
+-          ch.sourceId == -1 ? sourceId : ch.sourceId,
+-          ch.mediaType.index, ch.seriesId, ch.favorite,
+-          ch.streamId, ch.group, ch.epgChannelId,
+-          ch.catchupType, ch.catchupSource, ch.catchupDays,
+-        ]);
+-      }
+-      await tx.execute('''
+-        INSERT INTO channels (
+-          name, image, url, source_id, media_type, series_id, favorite,
+-          stream_id, group_name, epg_channel_id,
+-          catchup_type, catchup_source, catchup_days
+-        )
+-        VALUES $values
+-        ON CONFLICT (source_id, media_type, COALESCE(stream_id, -1), COALESCE(series_id, ''))
+-        DO UPDATE SET
+-          url = excluded.url,
+-          group_name = excluded.group_name,
+-          media_type = excluded.media_type,
+-          stream_id = excluded.stream_id,
+-          image = excluded.image,
+-          series_id = excluded.series_id,
+-          epg_channel_id = COALESCE(channels.epg_channel_id, excluded.epg_channel_id),
+-          catchup_type = excluded.catchup_type,
+-          catchup_source = excluded.catchup_source,
+-          catchup_days = excluded.catchup_days;
+-      ''', params);
+-    };
+-  }
+-
+-  static Future<void> Function(SqliteWriteContext, Map<String, String>)
+-      updateGroups() {
+-    return (SqliteWriteContext tx, Map<String, String> memory) async {
+-      final sourceId = int.parse(memory['sourceId']!);
+-      await tx.execute('''
+-        INSERT INTO groups (name, image, source_id, media_type)
+-        SELECT group_name, image, ?, media_type
+-        FROM channels
+-        WHERE source_id = ?
+-        GROUP BY group_name
+-        ON CONFLICT(name, source_id) DO UPDATE SET
+-          media_type = excluded.media_type
+-      ''', [sourceId, sourceId]);
+-      await tx.execute('''
+-        UPDATE channels
+-        SET group_id = (
+-          SELECT id FROM groups
+-          WHERE groups.name = channels.group_name
+-            AND groups.source_id = ?
+-          LIMIT 1
+-        )
+-        WHERE source_id = ?
+-      ''', [sourceId, sourceId]);
+-    };
+-  }
+-
+-  static Future<void> Function(SqliteWriteContext, Map<String, String>)
+-      insertChannelHeaders(ChannelHttpHeaders headers) {
+-    return (SqliteWriteContext tx, Map<String, String> memory) async {
+-      await tx.execute('''
+-          INSERT OR IGNORE INTO channel_http_headers (channel_id, referrer, user_agent, http_origin, ignore_ssl)
+-          VALUES (?, ?, ?, ?, ?)
+-        ''', [
+-        int.parse(memory['lastChannelId']!),
+-        headers.referrer,
+-        headers.userAgent,
+-        headers.httpOrigin,
+-        headers.ignoreSSL
+-      ]);
+-    };
+-  }
+-
+-  static Future<ChannelHttpHeaders?> getChannelHeaders(int channelId) async {
+-    var db = await DbFactory.db;
+-    var result = await db.getOptional('''
+-        SELECT * FROM channel_http_headers
+-        WHERE channel_id = ?
+-        LIMIT 1
+-    ''', [channelId]);
+-    return result != null ? _rowToHeaders(result) : null;
+-  }
+-
+-  static ChannelHttpHeaders _rowToHeaders(Row row) {
+-    return ChannelHttpHeaders(
+-        id: row.columnAt(0),
+-        channelId: row.columnAt(1),
+-        referrer: row.columnAt(2),
+-        userAgent: row.columnAt(3),
+-        httpOrigin: row.columnAt(4),
+-        ignoreSSL: row.columnAt(5)?.toString());
+-  }
+-
+-  static Future<void> Function(SqliteWriteContext, Map<String, String>)
+-      getOrCreateSourceByName(Source source) {
+-    return (SqliteWriteContext tx, Map<String, String> memory) async {
+-      // INSERT OR REPLACE was rejected because AUTOINCREMENT assigns a new
+-      // id on each replace, which would orphan rows in `channels` that
+-      // reference `sources.id` via the source_id FK. The SELECT-first
+-      // pattern preserves the existing id while updating all other fields.
+-      final existing = await tx.getOptional(
+-        "SELECT id FROM sources WHERE name = ?",
+-        [source.name],
+-      );
+-
+-      if (existing != null) {
+-        // Source already exists — update all editable fields so a
+-        // re-import correctly applies the backup's values (especially
+-        // `enabled` and `default_engine`). The id is preserved, so
+-        // channel FK references are unaffected.
+-        final id = existing.columnAt(0);
+-        await tx.execute('''
+-              UPDATE sources
+-                 SET source_type    = ?,
+-                     url            = ?,
+-                     username       = COALESCE(?, username),
+-                     password       = COALESCE(?, password),
+-                     epg_url        = ?,
+-                     enabled        = ?,
+-                     default_engine = ?
+-               WHERE id = ?
+-            ''', [
+-          source.sourceType.index,
+-          source.url,
+-          source.username,
+-          source.password,
+-          source.epgUrl,
+-          source.enabled ? 1 : 0,
+-          source.defaultEngine?.toJson(),
+-          id,
+-        ]);
+-        memory['sourceId'] = id.toString();
+-      } else {
+-        await tx.execute('''
+-              INSERT INTO sources
+-                (name, source_type, url, username, password, epg_url,
+-                 enabled, default_engine)
+-              VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+-            ''', [
+-          source.name,
+-          source.sourceType.index,
+-          source.url,
+-          source.username,
+-          source.password,
+-          source.epgUrl,
+-          source.enabled ? 1 : 0,
+-          source.defaultEngine?.toJson(),
+-        ]);
+-        memory['sourceId'] =
+-            (await tx.get("SELECT last_insert_rowid();")).columnAt(0).toString();
+-      }
+-    };
+-  }
+-
+-  // Leading-wildcard LIKE forced a full-table scan; trigram FTS is index-backed.
+-  //
+-  /// [invocation] is an opaque correlation id passed through to log lines so
+-  /// the caller can tie search timing to its own load id.
+-  /// Safe to pass 0 if not correlating.
+-  static Future<List<Channel>> search(Filters filters,
+-      {int invocation = 0}) async {
+-    if (filters.viewType == ViewType.categories &&
+-        filters.groupId == null &&
+-        filters.seriesId == null) {
+-      return searchGroup(filters);
+-    }
+-    var db = await DbFactory.db;
+-    var offset = filters.page * pageSize - pageSize;
+-    var mediaTypes = filters.seriesId == null
+-        ? filters.mediaTypes!.map((x) => x.index)
+-        : [1];
+-    final rawQuery = (filters.query ?? "").trim();
+-    final useFts = rawQuery.isNotEmpty;
+-
+-    String sqlQuery;
+-    String branch = 'no-query';
+-    List<Object> params = [];
+-
+-    if (useFts) {
+-      if (filters.searchMethod == SearchMethod.inMemory) {
+-        return _searchInMemory(filters, rawQuery, mediaTypes, offset);
+-      }
+-      if (filters.searchMethod == SearchMethod.likeSubstring) {
+-        return _searchLike(filters, rawQuery, mediaTypes, offset);
+-      }
+-    }
+-
+-    // For ftsTrigram and ftsAnd, effectiveKeywords overrides the legacy flag.
+-    // ftsAnd splits on whitespace (AND mode); ftsTrigram keeps the raw phrase.
+-    final effectiveKeywords =
+-        filters.searchMethod == SearchMethod.ftsAnd || filters.useKeywords;
+-
+-    if (useFts) {
+-      // Build an FTS5 MATCH expression. Trigram tokenizer matches substrings
+-      // when the term is at least 3 characters; for shorter terms fall back
+-      // to LIKE so single/double-letter queries still work.
+-      final terms = effectiveKeywords
+-          ? rawQuery.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList()
+-          : [rawQuery];
+-      final longTerms = terms.where((t) => t.length >= 3).toList();
+-      final shortTerms = terms.where((t) => t.length < 3).toList();
+-
+-      if (longTerms.isNotEmpty) {
+-        // Quote each term to escape FTS5 syntax.
+-        final matchExpr = longTerms
+-            .map((t) => '"${t.replaceAll('"', '""')}"')
+-            .join(' AND ');
+-        sqlQuery = '''
+-          SELECT c.* FROM channels c
+-          INNER JOIN channels_fts ON channels_fts.rowid = c.id
+-          WHERE channels_fts MATCH ?
+-            AND c.media_type IN (${generatePlaceholders(mediaTypes.length)})
+-            AND c.source_id IN (${generatePlaceholders(filters.sourceIds!.length)})
+-            AND c.url IS NOT NULL
+-        ''';
+-        params.add(matchExpr);
+-        if (shortTerms.isNotEmpty) {
+-          sqlQuery += '\nAND (${shortTerms.map((_) => 'c.name LIKE ?').join(' AND ')})';
+-          params.addAll(shortTerms.map((t) => '%$t%'));
+-          branch = 'fts+like'; // long + short terms; rare
+-        } else {
+-          branch = 'fts'; // long terms only; the common ≥3-char case
+-        }
+-      } else {
+-        // A leading-wildcard LIKE scan here forces a full-table read that can
+-        // take 2–5 seconds on a 90k-channel source. The result set would be
+-        // enormous and unhelpful anyway. Return early with an empty list so
+-        // the UI stays snappy; the user hasn't typed a meaningful query yet.
+-        if (AppLog.enabled) {
+-          AppLog.info(
+-            'Sql.search[$invocation]: branch=short-skip'
+-            ' query="$rawQuery" — all terms < 3 chars, skipping scan',
+-          );
+-        }
+-        return [];
+-      }
+-      params.addAll(mediaTypes);
+-      params.addAll(filters.sourceIds!);
+-    } else {
+-      // No query — simple filter on indexed columns.
+-      sqlQuery = '''
+-        SELECT * FROM channels c
+-        WHERE media_type IN (${generatePlaceholders(mediaTypes.length)})
+-          AND source_id IN (${generatePlaceholders(filters.sourceIds!.length)})
+-          AND url IS NOT NULL
+-      ''';
+-      params.addAll(mediaTypes);
+-      params.addAll(filters.sourceIds!);
+-    }
+-
+-    if (filters.viewType == ViewType.favorites && filters.seriesId == null) {
+-      sqlQuery += "\nAND favorite = 1";
+-    }
+-    if (filters.viewType == ViewType.history) {
+-      sqlQuery += "\nAND last_watched IS NOT NULL";
+-    }
+-    if (filters.seriesId != null) {
+-      sqlQuery += "\nAND series_id = ?";
+-      params.add(filters.seriesId!);
+-    } else if (filters.groupId != null) {
+-      sqlQuery += "\nAND group_id = ?";
+-      params.add(filters.groupId!);
+-    }
+-
+-    // Must be before ORDER BY — AND clauses after ORDER BY are invalid SQL.
+-    final (smClause, smParams) = safeModeClause(filters.safeMode);
+-    sqlQuery += smClause;
+-    params.addAll(smParams);
+-    if (filters.safeMode && AppLog.enabled) {
+-      AppLog.info(
+-        'Sql.search[$invocation]: safeMode=true'
+-        ' blocking ${safeModeBlocklist.length} terms',
+-      );
+-    }
+-
+-    if (filters.viewType == ViewType.history) {
+-      sqlQuery += "\nORDER BY c.last_watched DESC";
+-    } else {
+-      // fix138: 6-tier sort matching _channelTier in channel_picker_screen.
+-      // Applies to ALL media-type browse views (Live/Movies/Series/All).
+-      sqlQuery += "\nORDER BY"
+-          " CASE"
+-          "   WHEN COALESCE(c.favorite,0)=1 AND COALESCE(c.stream_validated,0)=1 THEN 0"
+-          "   WHEN COALESCE(c.favorite,0)=1 THEN 1"
+-          "   WHEN c.last_watched IS NOT NULL AND COALESCE(c.stream_validated,0)=1 THEN 2"
+-          "   WHEN c.last_watched IS NOT NULL THEN 3"
+-          "   WHEN COALESCE(c.stream_validated,0)=1 THEN 4"
+-          "   ELSE 5"
+-          " END ASC,"
+-          " c.name COLLATE NOCASE ASC";
+-    }
+-
+-    sqlQuery += "\nLIMIT ?, ?";
+-    params.add(offset);
+-    params.add(pageSize);
+-
+-    // log can tell us which is the bottleneck.
+-    final sqlStart = DateTime.now();
+-    var results = await db.getAll(sqlQuery, params);
+-    final sqlElapsed = DateTime.now().difference(sqlStart).inMilliseconds;
+-
+-    final mapStart = DateTime.now();
+-    final mapped = results.map(rowToChannel).toList();
+-    final mapElapsed = DateTime.now().difference(mapStart).inMilliseconds;
+-
+-    if (AppLog.enabled) {
+-      final truncatedQuery = rawQuery.length > 40
+-          ? '${rawQuery.substring(0, 40)}…'
+-          : rawQuery;
+-      AppLog.info(
+-        'Sql.search[$invocation]: branch=$branch'
+-        ' rows=${results.length}'
+-        ' sql=${sqlElapsed}ms'
+-        ' map=${mapElapsed}ms'
+-        ' params=${params.length}'
+-        ' query="$truncatedQuery"',
+-      );
+-    }
+-
+-    return mapped;
+-  }
+-
+-  static Channel rowToChannel(Row row) {
+-    // Column order: id(0) name(1) group_name(2) image(3) url(4) media_type(5)
+-    //   source_id(6) favorite(7) series_id(8) group_id(9) stream_id(10)
+-    //   last_watched(11) epg_channel_id(12) epg_manual_override(13)
+-    //   catchup_type(14) catchup_source(15) catchup_days(16)
+-    final rawMediaType = row.columnAt(5) as int?;
+-    final mediaType = (rawMediaType != null &&
+-            rawMediaType >= 0 &&
+-            rawMediaType < MediaType.values.length)
+-        ? MediaType.values[rawMediaType]
+-        : MediaType.livestream;
+-    final sv = row.columnAt(18) as int?;
+-    return Channel(
+-      id: row.columnAt(0),
+-      name: row.columnAt(1),
+-      group: row.columnAt(2),
+-      image: row.columnAt(3),
+-      url: row.columnAt(4),
+-      mediaType: mediaType,
+-      sourceId: row.columnAt(6),
+-      favorite: row.columnAt(7) == 1,
+-      seriesId: row.columnAt(8),
+-      groupId: row.columnAt(9),
+-      streamId: row.columnAt(10) as int?,
+-      lastWatched: row.columnAt(11) as int?,
+-      epgChannelId: row.columnAt(12) as String?,
+-      epgManualOverride: row.columnAt(13) as String?,
+-      catchupType: row.columnAt(14) as String?,
+-      catchupSource: row.columnAt(15) as String?,
+-      catchupDays: row.columnAt(16) as int?,
+-      engineOverride: EngineType.fromJson(row.columnAt(17) as String?),
+-      streamValidated: sv == null ? null : sv == 1,
+-    );
+-  }
+-
+-  static String generatePlaceholders(int size) {
+-    return List.filled(size, "?").join(",");
+-  }
+-
+-  /// Returns channel data for the in-memory search cache.
+-  ///
+-  /// Returns 10-tuples: (id, name, group, mediaType, sourceId,
+-  ///                      favorite, lastWatched, groupId, seriesId,
+-  ///                      streamValidated).
+-  /// The cache uses these to apply ALL view filters before pagination so
+-  /// full Channel objects are only fetched for the final page of IDs.
+-  ///
+-  /// Includes stream validation so cache ordering can match SQL search.
+-  static Future<
+-      List<(int, String, String, int, int, bool, int?, int?, int?, bool?)>>
+-      getAllChannelNamesForCache() async {
+-    final db = await DbFactory.db;
+-    final rows = await db.getAll(
+-      'SELECT id, name, COALESCE(group_name, \'\'), media_type, source_id,'
+-      '       COALESCE(favorite, 0), last_watched, group_id, series_id,'
+-      '       stream_validated'
+-      ' FROM channels WHERE url IS NOT NULL',
+-    );
+-    return rows
+-        .map((r) => (
+-              r.columnAt(0) as int,
+-              r.columnAt(1) as String,
+-              r.columnAt(2) as String,
+-              r.columnAt(3) as int,
+-              r.columnAt(4) as int,
+-              (r.columnAt(5) as int) == 1,       // favorite
+-              r.columnAt(6) as int?,              // lastWatched (epoch-seconds)
+-              r.columnAt(7) as int?,              // groupId
+-              r.columnAt(8) as int?,              // seriesId
+-              (r.columnAt(9) as int?) == null
+-                  ? null
+-                  : (r.columnAt(9) as int) == 1,
+-            ))
+-        .toList(growable: false);
+-  }
+-
+-  /// Returns the channel with [id], or null if not found.
+-  static Future<Channel?> getChannelById(int id) async {
+-    final db = await DbFactory.db;
+-    final rows = await db.getAll(
+-      'SELECT * FROM channels WHERE id = ? LIMIT 1',
+-      [id],
+-    );
+-    if (rows.isEmpty) return null;
+-    return rowToChannel(rows.first);
+-  }
+-
+-  static String getKeywordsSql(int size) {
+-    return List.generate(size, (_) => "name LIKE ?").join(" AND ");
+-  }
+-
+-  static Future<List<Channel>> searchGroup(Filters filters) async {
+-    final rawGroupQuery = (filters.query ?? "").trim();
+-    if (rawGroupQuery.isNotEmpty) {
+-      final groupTerms = filters.useKeywords
+-          ? rawGroupQuery.split(RegExp(r'\s+')).where((t) => t.isNotEmpty)
+-          : [rawGroupQuery];
+-      if (groupTerms.every((t) => t.length < 3)) {
+-        AppLog.info(
+-          'Sql.searchGroup: branch=short-skip'
+-          ' query="$rawGroupQuery" — all terms < 3 chars, skipping scan',
+-        );
+-        return [];
+-      }
+-    }
+-    var db = await DbFactory.db;
+-    var offset = filters.page * pageSize - pageSize;
+-    var query = filters.query ?? "";
+-    var keywords = filters.useKeywords
+-        ? query.split(" ").map((f) => "%$f%").toList()
+-        : ["%$query%"];
+-    var mediaTypes = filters.mediaTypes!.map((x) => x.index);
+-    var sqlQuery = '''
+-        SELECT * FROM groups
+-        WHERE (${getKeywordsSql(keywords.length)})
+-        AND (media_type IS NULL OR media_type IN (${generatePlaceholders(mediaTypes.length)}))
+-        AND source_id IN (${generatePlaceholders(filters.sourceIds!.length)})
+-    ''';
+-    List<Object> params = [];
+-    params.addAll(keywords);
+-    params.addAll(mediaTypes);
+-    params.addAll(filters.sourceIds!);
+-
+-    final (smGroupClause, smGroupParams) = safeModeGroupClause(filters.safeMode);
+-    sqlQuery += smGroupClause;
+-    params.addAll(smGroupParams);
+-
+-    sqlQuery += '\nLIMIT ?, ?';
+-    params.add(offset);
+-    params.add(pageSize);
+-    var results = await db.getAll(sqlQuery, params);
+-    return results.map(groupChannelToRow).toList();
+-  }
+-
+-  static Channel groupChannelToRow(Row row) {
+-    return Channel(
+-        id: row.columnAt(0),
+-        name: row.columnAt(1),
+-        image: row.columnAt(2),
+-        sourceId: row.columnAt(3),
+-        favorite: false,
+-        mediaType: MediaType.group);
+-  }
+-
+-  static Future<bool> sourceNameExists(String? name) async {
+-    var db = await DbFactory.db;
+-    var result = await db.getOptional('''
+-      SELECT 1
+-      FROM sources
+-      WHERE name = ?
+-    ''', [name]);
+-    return result?.columnAt(0) == 1;
+-  }
+-
+-  static Future<List<Source>> getSources() async {
+-    var db = await DbFactory.db;
+-    var results = await db.getAll('''
+-      SELECT * 
+-      FROM sources 
+-    ''');
+-    return results.map(rowToSource).toList();
+-  }
+-
+-  static Future<Source?> getSourceById(int id) async {
+-    var db = await DbFactory.db;
+-    final row = await db.getOptional(
+-      'SELECT * FROM sources WHERE id = ?',
+-      [id],
+-    );
+-    return row == null ? null : rowToSource(row);
+-  }
+-
+-  static Source rowToSource(Row row) {
+-    // Column order: id(0) name(1) source_type(2) url(3) username(4)
+-    //   password(5) enabled(6) epg_url(7) default_engine(8)
+-    return Source(
+-      id: row.columnAt(0),
+-      name: row.columnAt(1),
+-      sourceType: SourceType.values[row.columnAt(2)],
+-      url: row.columnAt(3),
+-      username: row.columnAt(4),
+-      password: row.columnAt(5),
+-      enabled: row.columnAt(6) == 1,
+-      epgUrl: row.columnAt(7) as String?,
+-      defaultEngine: EngineType.fromJson(row.columnAt(8) as String?),
+-    );
+-  }
+-
+-  static Future<List<IdData<SourceType>>> getEnabledSourcesMinimal() async {
+-    var db = await DbFactory.db;
+-    var results = await db.getAll('''
+-      SELECT id, source_type
+-      FROM sources 
+-      WHERE enabled = 1
+-    ''');
+-    return results.map(rowToSourceMinimal).toList();
+-  }
+-
+-  static IdData<SourceType> rowToSourceMinimal(Row row) {
+-    return IdData(
+-        id: row.columnAt(0), data: SourceType.values[row.columnAt(1)]);
+-  }
+-
+-  static Future<bool> hasSources() async {
+-    var db = await DbFactory.db;
+-    var result = await db.getOptional('''
+-      SELECT 1
+-      FROM sources
+-      LIMIT 1
+-    ''');
+-    return result?.columnAt(0) == 1;
+-  }
+-
+-  static Future<void> favoriteChannel(int channelId, bool favorite) async {
+-    var db = await DbFactory.db;
+-    await db.execute('''
+-      UPDATE channels
+-      SET favorite = ?
+-      WHERE id = ?
+-    ''', [favorite ? 1 : 0, channelId]);
+-    ChannelSearchCache.updateFavorite(channelId, favorite);
+-  }
+-
+-  static Future<HashMap<String, String>> getSettings() async {
+-    var db = await DbFactory.db;
+-    var results = await db.getAll('''SELECT key, value FROM Settings''');
+-    return HashMap.fromEntries(
+-        results.map((f) => MapEntry(f.columnAt(0), f.columnAt(1))));
+-  }
+-
+-  static Future<void> updateSettings(HashMap<String, String> settings) async {
+-    var db = await DbFactory.db;
+-    await db.writeTransaction((tx) async {
+-      for (var entry in settings.entries) {
+-        await tx.execute('''
+-        INSERT INTO Settings (key, value)
+-        VALUES (?, ?)
+-        ON CONFLICT(key) DO UPDATE SET value = ?''',
+-            [entry.key, entry.value, entry.value]);
+-      }
+-    });
+-  }
+-
+-  static Future<void> deleteSource(int sourceId) async {
+-    // Clean up EPG data in epg.sqlite first (cross-file FK can't cascade).
+-    await deleteEpgForSource(sourceId);
+-    var db = await DbFactory.db;
+-    await db.writeTransaction((tx) async {
+-      await tx.execute("DELETE FROM channels WHERE source_id = ?", [sourceId]);
+-      await tx.execute("DELETE FROM groups WHERE source_id = ?", [sourceId]);
+-      await tx.execute("DELETE FROM sources WHERE id = ?", [sourceId]);
+-    });
+-  }
+-
+-  static Future<void> Function(SqliteWriteContext, Map<String, String>)
+-      wipeSource(int sourceId) {
+-    return (SqliteWriteContext tx, Map<String, String> memory) async {
+-      final countRow = await tx.getOptional(
+-        'SELECT COUNT(*) FROM channels WHERE source_id = ?', [sourceId]);
+-      final before = countRow?.columnAt(0) ?? 0;
+-      await tx.execute('''
+-        DELETE FROM channels
+-        WHERE source_id = ?
+-      ''', [sourceId]);
+-      await tx.execute('''
+-        DELETE FROM groups
+-        WHERE source_id = ?
+-      ''', [sourceId]);
+-      AppLog.info('Sql.wipeSource: sourceId=$sourceId deleted $before channels');
+-    };
+-  }
+-
+-  static Future<void> updateSource(Source source) async {
+-    var db = await DbFactory.db;
+-    await db.execute('''
+-      UPDATE sources
+-      SET url = ?, username = ?, password = ?, default_engine = ?
+-      WHERE id = ?
+-    ''', [
+-      source.url,
+-      source.username,
+-      source.password,
+-      source.defaultEngine == null || source.defaultEngine == EngineType.auto
+-          ? null
+-          : source.defaultEngine!.toJson(),
+-      source.id,
+-    ]);
+-  }
+-
+-  static Future<void> setChannelEngineOverride(
+-    int channelId,
+-    EngineType? engine,
+-  ) async {
+-    var db = await DbFactory.db;
+-    await db.execute(
+-      'UPDATE channels SET engine_override = ? WHERE id = ?',
+-      [
+-        engine == null || engine == EngineType.auto ? null : engine.toJson(),
+-        channelId,
+-      ],
+-    );
+-  }
+-
+-  static Future<Source> getSourceFromId(int id) async {
+-    var db = await DbFactory.db;
+-    var result = await db.get('''SELECT * FROM sources WHERE id = ?''', [id]);
+-    return rowToSource(result);
+-  }
+-
+-  static Future<void> setSourceEnabled(bool enabled, int sourceId) async {
+-    var db = await DbFactory.db;
+-    await db.execute('''
+-      UPDATE sources 
+-      SET enabled = ? 
+-      WHERE id = ?
+-    ''', [enabled, sourceId]);
+-  }
+-
+-  static Future setPosition(int channelId, int seconds) async {
+-    var db = await DbFactory.db;
+-    await db.execute('''
+-      INSERT INTO movie_positions (channel_id, position)
+-      VALUES (?, ?)
+-      ON CONFLICT (channel_id)
+-      DO UPDATE SET
+-      position = excluded.position;
+-    ''', [channelId, seconds]);
+-  }
+-
+-  static Future<int?> getPosition(int channelId) async {
+-    var db = await DbFactory.db;
+-    var result = await db.getOptional('''
+-      SELECT position FROM movie_positions
+-      WHERE channel_id = ?
+-    ''', [channelId]);
+-    return result?.columnAt(0);
+-  }
+-
+-  static Future<void> deleteHistoryEntry(int channelId) async {
+-    var db = await DbFactory.db;
+-    await db.execute(
+-      'UPDATE channels SET last_watched = NULL WHERE id = ?',
+-      [channelId],
+-    );
+-    ChannelSearchCache.updateLastWatched(channelId, null);
+-  }
+-
+-  static Future<void> addToHistory(int id) async {
+-    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+-    var db = await DbFactory.db;
+-    await db.execute(
+-      'UPDATE channels SET last_watched = ? WHERE id = ?',
+-      [now, id],
+-    );
+-    await db.execute('''
+-      UPDATE channels
+-      SET last_watched = NULL
+-      WHERE last_watched IS NOT NULL
+-		  AND id NOT IN (
+-				SELECT id
+-				FROM channels
+-				WHERE last_watched IS NOT NULL
+-				ORDER BY last_watched DESC
+-				LIMIT 36
+-		  )
+-    ''');
+-    // The pruning query above may null-out older entries in SQLite; the cache
+-    // stays slightly optimistic for those until the next rebuild (acceptable —
+-    // they're beyond top-36 history anyway).
+-    ChannelSearchCache.updateLastWatched(id, now);
+-  }
+-
+-  /// Capture per-channel attributes that must survive a source wipe.
+-  static Future<List<ChannelPreserve>> getChannelsPreserve(int sourceId) async {
+-    var db = await DbFactory.db;
+-    var results = await db.getAll('''
+-      SELECT name, favorite, last_watched, epg_channel_id, epg_manual_override,
+-             stream_validated
+-      FROM channels
+-      WHERE source_id = ?
+-        AND (
+-          favorite = 1
+-          OR last_watched IS NOT NULL
+-          OR epg_channel_id IS NOT NULL
+-          OR epg_manual_override IS NOT NULL
+-          OR stream_validated IS NOT NULL
+-        )
+-    ''', [sourceId]);
+-    final preserve = results.map(rowToChannelPreserve).toList();
+-    AppLog.info(
+-      'Sql.getChannelsPreserve: sourceId=$sourceId'
+-      ' total=${preserve.length}'
+-      ' favorites=${preserve.where((p) => p.favorite == 1).length}'
+-      ' lastWatched=${preserve.where((p) => p.lastWatched != null).length}'
+-      ' epgMatched=${preserve.where((p) => p.epgChannelId != null).length}'
+-      ' epgManual=${preserve.where((p) => p.epgManualOverride != null).length}',
+-    );
+-    return preserve;
+-  }
+-
+-  static ChannelPreserve rowToChannelPreserve(Row row) {
+-    return ChannelPreserve(
+-      name: row.columnAt(0),
+-      favorite: row.columnAt(1),
+-      lastWatched: row.columnAt(2),
+-      epgChannelId: row.columnAt(3) as String?,
+-      epgManualOverride: row.columnAt(4) as String?,
+-      streamValidated: row.columnAt(5) as int?,
+-    );
+-  }
+-
+-  /// Restore per-channel attributes after a wipe+re-import.
+-  ///
+-  /// When a manual override is present, write it to BOTH
+-  /// epg_manual_override AND epg_channel_id so that the guide lookup (which
+-  /// reads epg_channel_id) immediately reflects the user's explicit pin.
+-  /// Without this, the override was stored in epg_manual_override but
+-  /// epg_channel_id kept whatever the fresh M3U/Xtream import wrote, making
+-  /// the override appear set but have no effect on the EPG display.
+-  /// For non-manual restores, epg_channel_id uses COALESCE so a fresher
+-  /// value from the import is preserved.
+-  static Future<void> Function(SqliteWriteContext, Map<String, String>)
+-      restorePreserve(List<ChannelPreserve> preserve) {
+-    return (SqliteWriteContext tx, Map<String, String> memory) async {
+-      final sourceId = int.parse(memory['sourceId']!);
+-      int restoredEpg = 0;
+-      int restoredManual = 0;
+-      for (var channel in preserve) {
+-        if (channel.epgManualOverride != null) {
+-          // Manual override: both columns get the pinned value unconditionally.
+-          await tx.execute('''
+-            UPDATE channels
+-            SET favorite            = ?,
+-                last_watched        = ?,
+-                epg_channel_id      = ?,
+-                epg_manual_override = ?,
+-                stream_validated    = COALESCE(?, stream_validated)
+-            WHERE name = ?
+-            AND source_id = ?
+-          ''', [
+-            channel.favorite,
+-            channel.lastWatched,
+-            channel.epgManualOverride,
+-            channel.epgManualOverride,
+-            channel.streamValidated,
+-            channel.name,
+-            sourceId,
+-          ]);
+-          restoredManual++;
+-        } else {
+-          // Auto-matched EPG: only fill epg_channel_id if the fresh import
+-          // left it null (COALESCE preserves a fresher value from M3U/Xtream).
+-          await tx.execute('''
+-            UPDATE channels
+-            SET favorite            = ?,
+-                last_watched        = ?,
+-                epg_channel_id      = COALESCE(epg_channel_id, ?),
+-                epg_manual_override = NULL,
+-                stream_validated    = COALESCE(?, stream_validated)
+-            WHERE name = ?
+-            AND source_id = ?
+-          ''', [
+-            channel.favorite,
+-            channel.lastWatched,
+-            channel.epgChannelId,
+-            channel.streamValidated,
+-            channel.name,
+-            sourceId,
+-          ]);
+-          if (channel.epgChannelId != null) restoredEpg++;
+-        }
+-      }
+-      AppLog.info(
+-        'Sql.restorePreserve: sourceId=$sourceId'
+-        ' total=${preserve.length}'
+-        ' epgRestored=$restoredEpg'
+-        ' manualRestored=$restoredManual',
+-      );
+-    };
+-  }
+-
+-
+-  /// Persist a stream scan result for a channel.
+-  /// [isValid] = true → stream confirmed as media.
+-  /// [isValid] = false → stream unreachable or not media.
+-  /// The value persists across sessions and is only updated by a new scan.
+-  static Future<void> setStreamValidated(int channelId, bool isValid) async {
+-    final db = await DbFactory.db;
+-    await db.execute(
+-      'UPDATE channels SET stream_validated = ? WHERE id = ?',
+-      [isValid ? 1 : 0, channelId],
+-    );
+-    AppLog.info(
+-      'Sql.setStreamValidated: channel=$channelId'
+-      ' validated=${isValid ? "✓" : "✗"}',
+-    );
+-    // green validation indicator immediately.
+-    ChannelSearchCache.updateStreamValidated(channelId, isValid);
+-  }
+-
+-  /// Reset all stream_validated flags to NULL.
+-  /// Called from Settings → Reset → "Clear stream validation".
+-  static Future<void> clearAllStreamValidated() async {
+-    final db = await DbFactory.db;
+-    await db.execute('UPDATE channels SET stream_validated = NULL');
+-    AppLog.info('Sql.clearAllStreamValidated: reset all stream_validated flags');
+-    ChannelSearchCache.clearAllStreamValidated();
+-  }
+-
+-
+-  /// Persist the EPG URL for a source.
+-  static Future<void> setSourceEpgUrl(int sourceId, String? url) async {
+-    var db = await DbFactory.db;
+-    await db.execute(
+-      'UPDATE sources SET epg_url = ? WHERE id = ?',
+-      [url, sourceId],
+-    );
+-  }
+-
+-  /// Write matched/manual EPG channel IDs back to the channels table.
+-  ///
+-  /// Uses a chunked CTE-based UPDATE so a 10k-entry map costs ~50
+-  /// statements instead of 10k single-row UPDATEs.
+-  ///
+-  /// The earlier `UPDATE … FROM (VALUES …) AS _data(id, epg)` form
+-  /// required SQLite 3.39+ (for the derived-table column-alias-list
+-  /// syntax) and produced "syntax error near '('" on devices whose
+-  /// loaded sqlite is older. The CTE-based form below
+-  /// works on SQLite 3.8.3+ (2014), which covers every plausible
+-  /// runtime including the system sqlite on older Android.
+-  static Future<void> setChannelEpgIds(
+-    Map<int, String> channelIdToEpgId,
+-  ) async {
+-    if (channelIdToEpgId.isEmpty) return;
+-    // SQLite limits a single statement to 999 bind parameters; 2 params
+-    // per row → chunks of 200 stay well under that.
+-    const chunkSize = 200;
+-    final entries = channelIdToEpgId.entries.toList(growable: false);
+-    final db = await DbFactory.db;
+-    await db.writeTransaction((tx) async {
+-      for (var offset = 0; offset < entries.length; offset += chunkSize) {
+-        final end = offset + chunkSize > entries.length
+-            ? entries.length
+-            : offset + chunkSize;
+-        final chunk = entries.sublist(offset, end);
+-
+-        // Build a CTE that names its columns INSIDE the WITH clause —
+-        // the universally-supported way to alias derived-table columns
+-        //   WITH _data(id, epg) AS (VALUES (?,?), …)
+-        // The UPDATE then references _data.id / _data.epg normally.
+-        final placeholders = List.filled(chunk.length, '(?,?)').join(',');
+-        final params = <Object?>[];
+-        for (final e in chunk) {
+-          params
+-            ..add(e.key)
+-            ..add(e.value);
+-        }
+-        await tx.execute('''
+-          WITH _data(id, epg) AS (VALUES $placeholders)
+-          UPDATE channels
+-             SET epg_channel_id = (
+-               SELECT epg FROM _data WHERE _data.id = channels.id
+-             )
+-           WHERE id IN (SELECT id FROM _data)
+-        ''', params);
+-      }
+-    });
+-    AppLog.info(
+-        'Sql.setChannelEpgIds: wrote ${channelIdToEpgId.length} EPG assignments');
+-  }
+-
+-  /// Delete all programs for a source before re-importing.
+-  static Future<void> deleteProgramsForSource(int sourceId) async {
+-    final db = await EpgDbFactory.db;
+-    await db.execute(
+-      'DELETE FROM programmes WHERE source_id = ?',
+-      [sourceId],
+-    );
+-  }
+-
+-  /// Delete all EPG data for a source from epg.sqlite.
+-  /// Call this when deleting a source from db.sqlite, since the cross-file
+-  /// FK cannot cascade automatically.
+-  static Future<void> deleteEpgForSource(int sourceId) async {
+-    final db = await EpgDbFactory.db;
+-    await db.writeTransaction((tx) async {
+-      await tx.execute(
+-          'DELETE FROM programmes WHERE source_id = ?', [sourceId]);
+-      await tx.execute(
+-          'DELETE FROM epg_refresh_log WHERE source_id = ?', [sourceId]);
+-    });
+-    AppLog.info(
+-        'Sql.deleteEpgForSource: removed EPG data for source $sourceId');
+-  }
+-
+-  /// Insert a batch of programs using multi-row VALUES clauses for performance.
+-  /// SQLite supports up to 999 parameters per statement; with 8 columns we use
+-  /// chunks of 100 rows (800 params) to stay well within the limit.
+-  ///
+-  /// Idempotent: on conflict against the v8 unique index
+-  /// `(source_id, epg_channel_id, start_utc)` we update the mutable metadata
+-  /// (title / description / category / stop_utc / episode_num). This lets
+-  /// EPG refresh skip the upfront DELETE and just upsert — repeating programs
+-  /// stay put and live-sport overruns get the new stop_utc.
+-  static Future<void> insertProgramsBatch(
+-    List<Program> programs,
+-  ) async {
+-    if (programs.isEmpty) return;
+-    const chunkSize = 100;
+-    final db = await EpgDbFactory.db;
+-    await db.writeTransaction((tx) async {
+-      for (var offset = 0; offset < programs.length; offset += chunkSize) {
+-        final chunk = programs.sublist(
+-          offset,
+-          offset + chunkSize > programs.length
+-              ? programs.length
+-              : offset + chunkSize,
+-        );
+-        final placeholders =
+-            List.filled(chunk.length, '(?,?,?,?,?,?,?,?)').join(',');
+-        final params = <Object?>[];
+-        for (final p in chunk) {
+-          params.addAll([
+-            p.epgChannelId,
+-            p.sourceId,
+-            p.title,
+-            p.description,
+-            p.category,
+-            p.startUtc,
+-            p.stopUtc,
+-            p.episodeNum,
+-          ]);
+-        }
+-        await tx.execute('''
+-          INSERT INTO programmes
+-            (epg_channel_id, source_id, title, description, category,
+-             start_utc, stop_utc, episode_num)
+-          VALUES $placeholders
+-          ON CONFLICT(source_id, epg_channel_id, start_utc) DO UPDATE SET
+-            title       = excluded.title,
+-            description = excluded.description,
+-            category    = excluded.category,
+-            stop_utc    = excluded.stop_utc,
+-            episode_num = excluded.episode_num
+-        ''', params);
+-      }
+-    });
+-  }
+-
+-  /// Garbage-collect EPG programs that ended before [windowStartEpoch].
+-  /// Force a full WAL checkpoint and truncate the WAL file to zero.
+-  ///
+-  /// Call after large batch writes (e.g. EPG programme inserts) to prevent
+-  /// SQLite's automatic PASSIVE checkpoint from running concurrently with UI
+-  /// reads. An unmanaged checkpoint on a 100MB+ WAL blocks all read queries
+-  /// for 90–150 seconds on phone flash.
+-  ///
+-  /// TRUNCATE mode: waits for all active readers, flushes the entire WAL to
+-  /// the main DB file, then truncates the WAL file to 0 bytes. Subsequent
+-  /// writes start with a clean WAL.
+-  ///
+-  /// Uses db.execute (not writeTransaction) — PRAGMA wal_checkpoint must run
+-  /// outside a transaction.
+-  static Future<void> checkpointAndTruncateWal() async {
+-    // Checkpoint both databases — epg.sqlite is where the large writes
+-    // happen; db.sqlite may also have pending WAL from channel updates.
+-    for (final entry in [
+-      ('epg.sqlite', await EpgDbFactory.db),
+-      ('db.sqlite', await DbFactory.db),
+-    ]) {
+-      final label = entry.$1;
+-      final db = entry.$2;
+-      try {
+-        final rows = await db.getAll('PRAGMA wal_checkpoint(PASSIVE)');
+-        if (rows.isNotEmpty) {
+-          final pages = rows.first.columnAt(1) as int;
+-          final mb = (pages * 4096 / 1024 / 1024).toStringAsFixed(1);
+-          AppLog.info(
+-            'Sql.checkpoint [$label]: WAL has $pages pages (~${mb}MB)'
+-            ' — starting TRUNCATE',
+-          );
+-        }
+-      } catch (_) {
+-        AppLog.info(
+-            'Sql.checkpoint [$label]: WAL size unknown — starting TRUNCATE');
+-      }
+-      final t = DateTime.now();
+-      await db.execute('PRAGMA wal_checkpoint(TRUNCATE)');
+-      final ms = DateTime.now().difference(t).inMilliseconds;
+-      AppLog.info('Sql.checkpoint [$label]: WAL truncated in ${ms}ms');
+-    }
+-  }
+-
+-  /// Called after a successful XMLTV parse to keep the `programmes` table
+-  /// bounded to the configured EPG window without wiping rows the parse
+-  /// just rewrote.
+-  static Future<void> deleteStalePrograms(
+-    int sourceId,
+-    int windowStartEpoch,
+-  ) async {
+-    final db = await EpgDbFactory.db;
+-    await db.execute(
+-      'DELETE FROM programmes WHERE source_id = ? AND stop_utc < ?',
+-      [sourceId, windowStartEpoch],
+-    );
+-  }
+-
+-  /// Returns [now, next] programs for a channel, or null entries if none.
+-  static Future<(Program?, Program?)> getNowNext(
+-    String epgChannelId,
+-    int sourceId,
+-  ) async {
+-    final nowEpoch = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+-    final db = await EpgDbFactory.db;
+-    final rows = await db.getAll('''
+-      SELECT id, epg_channel_id, source_id, title, description, category,
+-             start_utc, stop_utc, episode_num
+-      FROM programmes
+-      WHERE epg_channel_id = ?
+-        AND source_id = ?
+-        AND stop_utc > ?
+-      ORDER BY start_utc ASC
+-      LIMIT 2
+-    ''', [epgChannelId, sourceId, nowEpoch]);
+-    final programs = rows.map(_rowToProgram).toList();
+-    final now = programs.isNotEmpty && programs[0].isOnNow(nowEpoch)
+-        ? programs[0]
+-        : null;
+-    final next = now != null && programs.length > 1
+-        ? programs[1]
+-        : (programs.isNotEmpty && !programs[0].isOnNow(nowEpoch)
+-            ? programs[0]
+-            : null);
+-    return (now, next);
+-  }
+-
+-  /// Returns all programs for a channel within [windowStart, windowEnd].
+-  static Future<List<Program>> getSchedule(
+-    String epgChannelId,
+-    int sourceId,
+-    int windowStartEpoch,
+-    int windowEndEpoch,
+-  ) async {
+-    final db = await EpgDbFactory.db;
+-    final rows = await db.getAll('''
+-      SELECT id, epg_channel_id, source_id, title, description, category,
+-             start_utc, stop_utc, episode_num
+-      FROM programmes
+-      WHERE epg_channel_id = ?
+-        AND source_id = ?
+-        AND start_utc < ?
+-        AND stop_utc > ?
+-      ORDER BY start_utc ASC
+-    ''', [epgChannelId, sourceId, windowEndEpoch, windowStartEpoch]);
+-    return rows.map(_rowToProgram).toList();
+-  }
+-
+-  static Program _rowToProgram(Row row) {
+-    return Program(
+-      id: row.columnAt(0) as int?,
+-      epgChannelId: row.columnAt(1) as String,
+-      sourceId: row.columnAt(2) as int,
+-      title: row.columnAt(3) as String,
+-      description: row.columnAt(4) as String?,
+-      category: row.columnAt(5) as String?,
+-      startUtc: row.columnAt(6) as int,
+-      stopUtc: row.columnAt(7) as int,
+-      episodeNum: row.columnAt(8) as String?,
+-    );
+-  }
+-
+-  /// Upsert a refresh log entry for a source.
+-  static Future<void> upsertEpgRefreshLog(
+-    int sourceId,
+-    int programsLoaded,
+-    String? lastError,
+-  ) async {
+-    final nowEpoch = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+-    final db = await EpgDbFactory.db;
+-    await db.execute('''
+-      INSERT INTO epg_refresh_log (source_id, last_refreshed_utc, programmes_loaded, last_error)
+-      VALUES (?, ?, ?, ?)
+-      ON CONFLICT(source_id) DO UPDATE SET
+-        last_refreshed_utc = excluded.last_refreshed_utc,
+-        programmes_loaded  = excluded.programmes_loaded,
+-        last_error         = excluded.last_error
+-    ''', [sourceId, nowEpoch, programsLoaded, lastError]);
+-  }
+-
+-  /// Returns the last refresh log for a source, or null if never refreshed.
+-  static Future<Map<String, dynamic>?> getEpgRefreshLog(int sourceId) async {
+-    final db = await EpgDbFactory.db;
+-    final row = await db.getOptional('''
+-      SELECT last_refreshed_utc, programmes_loaded, last_error
+-      FROM epg_refresh_log WHERE source_id = ?
+-    ''', [sourceId]);
+-    if (row == null) return null;
+-    return {
+-      'lastRefreshedUtc': row.columnAt(0) as int,
+-      'programsLoaded': row.columnAt(1) as int,
+-      'lastError': row.columnAt(2) as String?,
+-    };
+-  }
+-
+-  /// All channels for a source that need EPG matching (have no epg_channel_id yet,
+-  /// or have a manual override to respect).
+-  static Future<List<Channel>> getChannelsForEpgMatching(int sourceId) async {
+-    var db = await DbFactory.db;
+-    final rows = await db.getAll('''
+-      SELECT * FROM channels
+-      WHERE source_id = ? AND media_type = 0
+-    ''', [sourceId]);
+-    return rows.map(rowToChannel).toList();
+-  }
+-
+-  /// Live channels that need EPG matching: no existing assignment AND no
+-  /// manual override. Channels already matched (epg_channel_id IS NOT NULL)
+-  /// or manually pinned are excluded — they don't need re-matching.
+-  static Future<List<Channel>> getChannelsNeedingEpgMatch(
+-    int sourceId,
+-  ) async {
+-    var db = await DbFactory.db;
+-    final rows = await db.getAll('''
+-      SELECT * FROM channels
+-      WHERE source_id = ?
+-        AND media_type = 0
+-        AND epg_manual_override IS NULL
+-        AND epg_channel_id IS NULL
+-    ''', [sourceId]);
+-    return rows.map(rowToChannel).toList();
+-  }
+-
+-
+-  /// All live channels for a source, ordered: unmatched first then matched.
+-  static Future<List<Channel>> getLiveChannelsForMapping(int sourceId) async {
+-    var db = await DbFactory.db;
+-    final rows = await db.getAll('''
+-      SELECT * FROM channels
+-      WHERE source_id = ? AND media_type = 0
+-      ORDER BY epg_channel_id IS NOT NULL ASC, name ASC
+-    ''', [sourceId]);
+-    return rows.map(rowToChannel).toList();
+-  }
+-
+-  /// Distinct EPG channel IDs that have program data for a source,
+-  /// paired with the most recent title (as a display hint).
+-  static Future<List<(String, String)>> getAvailableEpgIds(
+-    int sourceId,
+-  ) async {
+-    final db = await EpgDbFactory.db;
+-    final rows = await db.getAll('''
+-      SELECT epg_channel_id,
+-             (SELECT title FROM programmes p2
+-              WHERE p2.epg_channel_id = p.epg_channel_id
+-                AND p2.source_id = p.source_id
+-              ORDER BY start_utc DESC LIMIT 1) AS sample_title
+-      FROM programmes p
+-      WHERE source_id = ?
+-      GROUP BY epg_channel_id
+-      ORDER BY epg_channel_id ASC
+-    ''', [sourceId]);
+-    return rows
+-        .map(
+-          (r) => (r.columnAt(0) as String, r.columnAt(1) as String? ?? ''),
+-        )
+-        .toList();
+-  }
+-
+-  /// Save a manual EPG override for a channel and update epg_channel_id.
+-  /// Pass null to clear the mapping.
+-  static Future<void> setManualEpgOverride(
+-    int channelId,
+-    String? epgChannelId,
+-  ) async {
+-    var db = await DbFactory.db;
+-    await db.execute('''
+-      UPDATE channels
+-      SET epg_channel_id = ?, epg_manual_override = ?
+-      WHERE id = ?
+-    ''', [epgChannelId, epgChannelId, channelId]);
+-  }
+-
+-
+-  /// Generates a SQL fragment and parameters that exclude channels whose
+-  /// `group_name` or `name` contains any term from [safeModeBlocklist].
+-  ///
+-  /// Uses a `c.` table alias — call this inside queries that alias the
+-  /// channels table as `c`. Returns ('', []) when [safeMode] is false.
+-  static (String, List<String>) safeModeClause(bool safeMode) {
+-    if (!safeMode) return ('', []);
+-    final conditions = safeModeBlocklist
+-        .expand((_) => [
+-              'LOWER(COALESCE(c.group_name, \'\')) NOT LIKE ?',
+-              'LOWER(COALESCE(c.name, \'\')) NOT LIKE ?',
+-            ])
+-        .join(' AND ');
+-    final params = safeModeBlocklist
+-        .expand((t) => ['%${t.toLowerCase()}%', '%${t.toLowerCase()}%'])
+-        .toList();
+-    return ('\nAND ($conditions)', params);
+-  }
+-
+-  /// Same as [safeModeClause] but for the groups table (Categories view).
+-  /// No table alias — queries use bare column names.
+-  static (String, List<String>) safeModeGroupClause(bool safeMode) {
+-    if (!safeMode) return ('', []);
+-    final conditions = safeModeBlocklist
+-        .map((_) => 'LOWER(COALESCE(name, \'\')) NOT LIKE ?')
+-        .join(' AND ');
+-    final params =
+-        safeModeBlocklist.map((t) => '%${t.toLowerCase()}%').toList();
+-    return ('\nAND ($conditions)', params);
+-  }
+-
+-
+-  /// In-memory search: uses [ChannelSearchCache] to get matching IDs
+-  /// then fetches full [Channel] rows by ID from SQLite.
+-  /// Zero FTS / WAL impact — the cache holds pre-lowercased name + group strings.
+-  static Future<List<Channel>> _searchInMemory(
+-    Filters filters,
+-    String rawQuery,
+-    Iterable<int> mediaTypes,
+-    int offset,
+-  ) async {
+-    final ids = ChannelSearchCache.search(
+-      query: rawQuery,
+-      mediaTypes: mediaTypes.toSet(),
+-      sourceIds: filters.sourceIds!.toSet(),
+-      viewType: filters.viewType,
+-      groupId: filters.groupId,
+-      seriesId: filters.seriesId,
+-      safeMode: filters.safeMode,
+-      limit: pageSize,
+-      offset: offset,
+-    );
+-    if (ids.isEmpty) return [];
+-
+-    final db = await DbFactory.db;
+-    final sqlQuery =
+-        'SELECT * FROM channels WHERE id IN (${generatePlaceholders(ids.length)})'
+-        ' AND url IS NOT NULL';
+-    final rows = await db.getAll(sqlQuery, [...ids]);
+-
+-    // Preserve the cache's result order — WHERE IN does not guarantee ordering.
+-    final byId = <int, Channel>{};
+-    for (final row in rows) {
+-      final ch = rowToChannel(row);
+-      if (ch.id != null) byId[ch.id!] = ch;
+-    }
+-
+-    AppLog.info(
+-      'Sql._searchInMemory: ids=${ids.length} matched=${rows.length}'
+-      ' offset=$offset',
+-    );
+-
+-    final mapped = [for (final id in ids) if (byId.containsKey(id)) byId[id]!];
+-    mapped.sort((a, b) {
+-      final favCmp = (b.favorite ? 1 : 0).compareTo(a.favorite ? 1 : 0);
+-      if (favCmp != 0) return favCmp;
+-      final valCmp = (b.streamValidated == true ? 1 : 0)
+-          .compareTo(a.streamValidated == true ? 1 : 0);
+-      if (valCmp != 0) return valCmp;
+-      final watchCmp = (b.lastWatched ?? 0).compareTo(a.lastWatched ?? 0);
+-      if (watchCmp != 0) return watchCmp;
+-      return a.name.compareTo(b.name);
+-    });
+-    return mapped;
+-  }
+-
+-  /// LIKE-scan search: full-table substring scan, no FTS index.
+-  /// Slower than FTS but works for any query length including < 3 chars.
+-  static Future<List<Channel>> _searchLike(
+-    Filters filters,
+-    String rawQuery,
+-    Iterable<int> mediaTypes,
+-    int offset,
+-  ) async {
+-    final db = await DbFactory.db;
+-    final terms = rawQuery
+-        .split(RegExp(r'\s+'))
+-        .where((t) => t.isNotEmpty)
+-        .map((t) => '%$t%')
+-        .toList();
+-    if (terms.isEmpty) return [];
+-
+-    var sqlQuery = '''
+-      SELECT * FROM channels c
+-      WHERE (${terms.map((_) => 'c.name LIKE ?').join(' AND ')})
+-        AND c.media_type IN (${generatePlaceholders(mediaTypes.length)})
+-        AND c.source_id IN (${generatePlaceholders(filters.sourceIds!.length)})
+-        AND c.url IS NOT NULL
+-    ''';
+-    final List<Object> params = [...terms, ...mediaTypes, ...filters.sourceIds!];
+-
+-    if (filters.viewType == ViewType.favorites && filters.seriesId == null) {
+-      sqlQuery += '\nAND c.favorite = 1';
+-    }
+-    if (filters.viewType == ViewType.history) {
+-      sqlQuery += '\nAND c.last_watched IS NOT NULL';
+-    }
+-    if (filters.seriesId != null) {
+-      sqlQuery += '\nAND c.series_id = ?';
+-      params.add(filters.seriesId!);
+-    } else if (filters.groupId != null) {
+-      sqlQuery += '\nAND c.group_id = ?';
+-      params.add(filters.groupId!);
+-    }
+-
+-    final (smClause, smParams) = safeModeClause(filters.safeMode);
+-    sqlQuery += smClause;
+-    params.addAll(smParams);
+-
+-    if (filters.viewType == ViewType.history) {
+-      sqlQuery += '\nORDER BY c.last_watched DESC';
+-    } else {
+-      sqlQuery += '\nORDER BY'
+-          ' COALESCE(c.favorite, 0) DESC,'
+-          ' COALESCE(c.stream_validated, 0) DESC,'
+-          ' COALESCE(c.last_watched, 0) DESC,'
+-          ' c.name ASC';
+-    }
+-
+-    sqlQuery += '\nLIMIT ?, ?';
+-    params.add(offset);
+-    params.add(pageSize);
+-
+-    final rows = await db.getAll(sqlQuery, params);
+-    AppLog.info(
+-      'Sql._searchLike: terms=${terms.length} matched=${rows.length}'
+-      ' offset=$offset query="$rawQuery"',
+-    );
+-    return rows.map(rowToChannel).toList();
+-  }
+-
+-  // ── fix154: Playback metrics rolling history ───────────────────────────────
+-
+-  /// Persist one session's metrics. Deletes any existing row with the same
+-  /// session_start (idempotent re-runs) then inserts, then caps to 50 newest.
+-  static Future<void> insertPlaybackMetrics(PlaybackMetrics m) async {
+-    final db = await DbFactory.db;
+-    final epochSecs = m.sessionStart.millisecondsSinceEpoch ~/ 1000;
+-    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+-    await db.writeTransaction((tx) async {
+-      await tx.execute(
+-        'DELETE FROM playback_metrics WHERE session_start = ?',
+-        [epochSecs],
+-      );
+-      await tx.execute(
+-        'INSERT INTO playback_metrics ('
+-        '  session_start, session_minutes, streams_opened,'
+-        '  median_first_frame_ms, median_stable_ms,'
+-        '  startup_visible_rebuffers,'
+-        '  total_rebuffers, visible_rebuffers, median_rebuffer_ms,'
+-        '  reconnects_watchdog, reconnects_error, gave_up, created_at'
+-        ') VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+-        [
+-          epochSecs,
+-          m.sessionMinutes,
+-          m.streamsOpened,
+-          m.medianFirstFrameMs,
+-          m.medianStableMs,
+-          m.startupVisibleRebuffers,
+-          m.totalRebuffers,
+-          m.visibleRebuffers,
+-          m.medianRebufferMs,
+-          m.reconnectsWatchdog,
+-          m.reconnectsError,
+-          m.gaveUp,
+-          now,
+-        ],
+-      );
+-      // keep newest 50
+-      await tx.execute(
+-        'DELETE FROM playback_metrics WHERE id NOT IN ('
+-        '  SELECT id FROM playback_metrics ORDER BY session_start DESC LIMIT 50'
+-        ')',
+-      );
+-    });
+-    AppLog.info('Sql.insertPlaybackMetrics: session=${m.sessionStart} '
+-        'minutes=${m.sessionMinutes.toStringAsFixed(1)} '
+-        'streams=${m.streamsOpened} rebuffers=${m.totalRebuffers}');
+-  }
+-
+-  /// Aggregate all stored sessions into a single weighted summary.
+-  static Future<AggregatedMetrics> getAggregatedMetrics() async {
+-    final db = await DbFactory.db;
+-    final rows = await db.getAll('SELECT * FROM playback_metrics', []);
+-    if (rows.isEmpty) {
+-      return const AggregatedMetrics(
+-        sessionCount: 0, totalMinutes: 0, totalStreams: 0,
+-        rebuffersPerHour: 0, medianFirstFrameMs: 0, medianStableMs: 0,
+-        medianRebufferMs: 0, startupVisibleRebufferRate: 0,
+-        reconnectsWatchdogPerHour: 0,
+-      );
+-    }
+-
+-    double totalMinutes = 0;
+-    int totalStreams = 0;
+-    int totalRebuffers = 0;
+-    int totalStartupVisible = 0;
+-    int totalWatchdog = 0;
+-    final List<int> firstFrames = [];
+-    final List<int> stable = [];
+-    final List<int> rebufDurs = [];
+-
+-    for (final row in rows) {
+-      final mins = (row['session_minutes'] as num).toDouble();
+-      final streams = row['streams_opened'] as int;
+-      totalMinutes += mins;
+-      totalStreams += streams;
+-      totalRebuffers += row['total_rebuffers'] as int;
+-      totalStartupVisible += row['startup_visible_rebuffers'] as int;
+-      totalWatchdog += row['reconnects_watchdog'] as int;
+-      final ffms = row['median_first_frame_ms'] as int;
+-      final sms = row['median_stable_ms'] as int;
+-      final rdms = row['median_rebuffer_ms'] as int;
+-      if (ffms > 0) firstFrames.add(ffms);
+-      if (sms > 0) stable.add(sms);
+-      if (rdms > 0) rebufDurs.add(rdms);
+-    }
+-
+-    int med(List<int> l) {
+-      if (l.isEmpty) return 0;
+-      final s = List<int>.from(l)..sort();
+-      final mid = s.length ~/ 2;
+-      return s.length.isOdd ? s[mid] : ((s[mid - 1] + s[mid]) ~/ 2);
+-    }
+-
+-    final hours = totalMinutes / 60.0;
+-    return AggregatedMetrics(
+-      sessionCount: rows.length,
+-      totalMinutes: totalMinutes,
+-      totalStreams: totalStreams,
+-      rebuffersPerHour: hours > 0 ? totalRebuffers / hours : 0,
+-      medianFirstFrameMs: med(firstFrames),
+-      medianStableMs: med(stable),
+-      medianRebufferMs: med(rebufDurs),
+-      startupVisibleRebufferRate:
+-          totalStreams > 0 ? totalStartupVisible / totalStreams : 0,
+-      reconnectsWatchdogPerHour: hours > 0 ? totalWatchdog / hours : 0,
+-    );
+-  }
+-
+-}
+diff --git a/test/engine_preference_test.dart b/test/engine_preference_test.dart
+deleted file mode 100644
+index d203864..0000000
+--- a/test/engine_preference_test.dart
++++ /dev/null
+@@ -1,45 +0,0 @@
+-// fix325: lock in the EnginePreference contract (fix315/fix316).
+-import 'package:flutter_test/flutter_test.dart';
+-import 'package:open_tv/models/engine_preference.dart';
+-import 'package:open_tv/models/engine_type.dart';
+-
+-void main() {
+-  group('EnginePreference', () {
+-    test('primary engine per preference', () {
+-      expect(EnginePreference.libmpvExo.primary, EngineType.libmpv);
+-      expect(EnginePreference.libmpvOnly.primary, EngineType.libmpv);
+-      expect(EnginePreference.exoLibmpv.primary, EngineType.exoplayer);
+-      expect(EnginePreference.exoOnly.primary, EngineType.exoplayer);
+-    });
+-
+-    test('fallback engine per preference', () {
+-      expect(EnginePreference.libmpvExo.fallback, EngineType.exoplayer);
+-      expect(EnginePreference.exoLibmpv.fallback, EngineType.libmpv);
+-      // Single-engine prefs report their own engine as "fallback".
+-      expect(EnginePreference.libmpvOnly.fallback, EngineType.libmpv);
+-      expect(EnginePreference.exoOnly.fallback, EngineType.exoplayer);
+-    });
+-
+-    test('hasFallback only for two-engine preferences', () {
+-      expect(EnginePreference.libmpvExo.hasFallback, isTrue);
+-      expect(EnginePreference.exoLibmpv.hasFallback, isTrue);
+-      expect(EnginePreference.libmpvOnly.hasFallback, isFalse);
+-      expect(EnginePreference.exoOnly.hasFallback, isFalse);
+-    });
+-
+-    test('fromJson: legacy "auto" and unknowns map to default libmpvExo', () {
+-      expect(EnginePreference.fromJson('auto'), EnginePreference.libmpvExo);
+-      expect(EnginePreference.fromJson(null), EnginePreference.libmpvExo);
+-      expect(EnginePreference.fromJson('garbage'), EnginePreference.libmpvExo);
+-      expect(EnginePreference.fromJson('exoLibmpv'), EnginePreference.exoLibmpv);
+-      expect(EnginePreference.fromJson('libmpvOnly'), EnginePreference.libmpvOnly);
+-      expect(EnginePreference.fromJson('exoOnly'), EnginePreference.exoOnly);
+-    });
+-
+-    test('toJson/fromJson round-trip', () {
+-      for (final p in EnginePreference.values) {
+-        expect(EnginePreference.fromJson(p.toJson()), p);
+-      }
+-    });
+-  });
+-}

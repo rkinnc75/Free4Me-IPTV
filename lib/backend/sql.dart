@@ -7,7 +7,6 @@ import 'package:open_tv/backend/playback_analyzer.dart';
 import 'package:open_tv/backend/channel_search_cache.dart';
 import 'package:open_tv/backend/db_factory.dart';
 import 'package:open_tv/models/channel.dart';
-import 'package:open_tv/models/engine_type.dart';
 import 'package:open_tv/models/channel_http_headers.dart';
 import 'package:open_tv/models/channel_preserve.dart';
 import 'package:open_tv/models/filters.dart';
@@ -169,7 +168,7 @@ class Sql {
           provider_order = excluded.provider_order,
           is_divider = excluded.is_divider,
           is_adult = excluded.is_adult
-          -- engine_override intentionally omitted: preserve any user override
+          -- engine_override column deprecated (fix350), never written
           ;
       ''', [
         channel.name,
@@ -378,7 +377,7 @@ class Sql {
       if (existing != null) {
         // Source already exists — update all editable fields so a
         // re-import correctly applies the backup's values (especially
-        // `enabled` and `default_engine`). The id is preserved, so
+        // `enabled`). The id is preserved, so
         // channel FK references are unaffected.
         final id = existing.columnAt(0);
         await tx.execute('''
@@ -388,8 +387,7 @@ class Sql {
                      username       = COALESCE(?, username),
                      password       = COALESCE(?, password),
                      epg_url        = ?,
-                     enabled        = ?,
-                     default_engine = ?
+                     enabled        = ?
                WHERE id = ?
             ''', [
           source.sourceType.index,
@@ -398,7 +396,6 @@ class Sql {
           source.password,
           source.epgUrl,
           source.enabled ? 1 : 0,
-          source.defaultEngine?.toJson(),
           id,
         ]);
         memory['sourceId'] = id.toString();
@@ -406,8 +403,8 @@ class Sql {
         await tx.execute('''
               INSERT INTO sources
                 (name, source_type, url, username, password, epg_url,
-                 enabled, default_engine)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+                 enabled)
+              VALUES (?, ?, ?, ?, ?, ?, ?);
             ''', [
           source.name,
           source.sourceType.index,
@@ -416,7 +413,6 @@ class Sql {
           source.password,
           source.epgUrl,
           source.enabled ? 1 : 0,
-          source.defaultEngine?.toJson(),
         ]);
         memory['sourceId'] =
             (await tx.get("SELECT last_insert_rowid();")).columnAt(0).toString();
@@ -639,7 +635,8 @@ class Sql {
       catchupType: row.columnAt(14) as String?,
       catchupSource: row.columnAt(15) as String?,
       catchupDays: row.columnAt(16) as int?,
-      engineOverride: EngineType.fromJson(row.columnAt(17) as String?),
+      // col 17 = engine_override — deprecated fix350 (ExoPlayer removed);
+      // column retained in schema to avoid a full-table rewrite migration.
       streamValidated: sv == null ? null : sv == 1,
       // fix256: provider_order is the last column added (migration 20).
       providerOrder: row.columnAt(19) as int?,
@@ -880,7 +877,7 @@ class Sql {
       password: row.columnAt(5),
       enabled: row.columnAt(6) == 1,
       epgUrl: row.columnAt(7) as String?,
-      defaultEngine: EngineType.fromJson(row.columnAt(8) as String?),
+      // col 8 = default_engine — deprecated fix350, retained in schema.
       maxConnections: row.columnAt(9) as int?,
       color: row.columnAt(10) as int?,
       sortMode: row.columnAt(11) as String?, // fix256 (migration 20 column)
@@ -1020,7 +1017,7 @@ class Sql {
     var db = await DbFactory.db;
     await db.execute('''
       UPDATE sources
-      SET url = ?, username = ?, password = ?, default_engine = ?,
+      SET url = ?, username = ?, password = ?,
           max_connections = ?, color = ?, sort_mode = ?,
           last_live_count = ?, last_movie_count = ?, last_series_count = ?,
           hide_dividers = ?
@@ -1029,9 +1026,6 @@ class Sql {
       source.url,
       source.username,
       source.password,
-      source.defaultEngine == null || source.defaultEngine == EngineType.auto
-          ? null
-          : source.defaultEngine!.toJson(),
       source.maxConnections,
       source.color,
       source.sortMode, // fix256
@@ -1041,20 +1035,6 @@ class Sql {
       source.hideDividers, // fix272
       source.id,
     ]);
-  }
-
-  static Future<void> setChannelEngineOverride(
-    int channelId,
-    EngineType? engine,
-  ) async {
-    var db = await DbFactory.db;
-    await db.execute(
-      'UPDATE channels SET engine_override = ? WHERE id = ?',
-      [
-        engine == null || engine == EngineType.auto ? null : engine.toJson(),
-        channelId,
-      ],
-    );
   }
 
   static Future<Source> getSourceFromId(int id) async {

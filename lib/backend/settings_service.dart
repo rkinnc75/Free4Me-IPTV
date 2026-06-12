@@ -3,11 +3,9 @@ import 'dart:collection';
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/device_memory.dart';
 import 'package:open_tv/backend/sql.dart';
-import 'package:open_tv/models/engine_type.dart';
 import 'package:open_tv/models/multi_view_layout.dart';
 import 'package:open_tv/models/multi_view_decode.dart';
 import 'package:open_tv/models/settings.dart';
-import 'package:open_tv/models/engine_preference.dart';
 import 'package:open_tv/models/view_type.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -31,10 +29,6 @@ const bufferingWatchdogSecsProp = "bufferingWatchdogSecs";
 const hwDecodeProp = "hwDecode";
 const preWarmOnFocusProp = "preWarmOnFocus";
 const backgroundProcessingProp = "backgroundProcessing"; // fix318
-
-// Engine override (v1.4)
-const forcedEngineProp = "forcedEngine";
-const enginePreferenceProp = "enginePreference"; // fix315
 
 // Reconnect stability (v1.11.9)
 const stableThresholdSecsProp = "stableThresholdSecs";
@@ -120,7 +114,6 @@ class SettingsService {
     var epgHour = settingsMap[epgRefreshHourProp];
     var epgPast = settingsMap[epgPastDaysProp];
     var epgForecast = settingsMap[epgForecastDaysProp];
-    var forcedEngine = settingsMap[forcedEngineProp];
     var stableThreshold = settingsMap[stableThresholdSecsProp];
     var startupGrace = settingsMap[startupGraceMsProp];
     var scanMaxCount = settingsMap[streamScanMaxCountProp];
@@ -160,14 +153,6 @@ class SettingsService {
     if (epgHour != null) settings.epgRefreshHour = int.parse(epgHour);
     if (epgPast != null) settings.epgPastDays = int.parse(epgPast);
     if (epgForecast != null) settings.epgForecastDays = int.parse(epgForecast);
-    if (forcedEngine != null) {
-      settings.forcedEngine = EngineType.fromJson(forcedEngine);
-    }
-    // fix315: global engine preference (primary + fallback order).
-    final enginePref = settingsMap[enginePreferenceProp];
-    if (enginePref != null) {
-      settings.enginePreference = EnginePreference.fromJson(enginePref);
-    }
     if (stableThreshold != null) {
       settings.stableThresholdSecs = int.parse(stableThreshold);
     }
@@ -283,8 +268,6 @@ class SettingsService {
     settingsMap[epgRefreshHourProp] = settings.epgRefreshHour.toString();
     settingsMap[epgPastDaysProp] = settings.epgPastDays.toString();
     settingsMap[epgForecastDaysProp] = settings.epgForecastDays.toString();
-    settingsMap[forcedEngineProp] = settings.forcedEngine.toJson();
-    settingsMap[enginePreferenceProp] = settings.enginePreference.toJson(); // fix315
     settingsMap[stableThresholdSecsProp] =
         settings.stableThresholdSecs.toString();
     settingsMap[startupGraceMsProp] = settings.startupGraceMs.toString();

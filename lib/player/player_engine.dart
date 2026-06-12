@@ -9,9 +9,9 @@ class TrackInfo {
 
 /// Abstract player engine interface.
 ///
-/// Concrete implementations:
-///   • [MpvEngine]  — media_kit / libmpv (MPEG-TS, RTMP, any format)
-///   • [ExoEngine]  — ExoPlayer via video_player (HLS, DASH, MP4)
+/// Concrete implementation: [MpvEngine] — media_kit / libmpv (MPEG-TS,
+/// HLS, DASH, MP4, RTMP — any format). fix350: ExoPlayer removed; the
+/// interface is retained as the engine seam (handoff/adoption typing).
 ///
 /// The [Player] widget owns one engine instance per playback session and
 /// delegates all media operations through this interface.
@@ -53,7 +53,7 @@ abstract class PlayerEngine {
   Duration get position;
 
   /// fix336: total media duration for VOD (zero for live). Drives the seek
-  /// slider; the Exo VOD transport bar only shows when this is > 0.
+  /// slider (zero for live streams).
   Duration get duration;
 
   /// fix336: emits the playing/paused state so the transport bar stays in sync.
@@ -73,7 +73,6 @@ abstract class PlayerEngine {
 
 
   /// Whether this engine can enumerate and switch audio/subtitle tracks.
-  /// [ExoEngine] returns false because video_player exposes no track API.
   bool get supportsTrackSelection;
 
   List<TrackInfo> get subtitleTracks;
@@ -89,7 +88,7 @@ abstract class PlayerEngine {
 
 
   /// Whether this engine controls its own fullscreen transition.
-  /// MpvEngine uses media_kit_video's VideoState; ExoEngine delegates to the
+  /// MpvEngine uses media_kit_video's VideoState; it delegates to the
   /// caller, which uses [SystemChrome] directly.
   bool get handlesOwnFullscreen;
 

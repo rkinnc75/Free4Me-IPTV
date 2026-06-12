@@ -1,4 +1,3 @@
-import 'package:open_tv/models/engine_type.dart';
 import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/settings.dart' show safeModeBlocklist;
 
@@ -31,9 +30,6 @@ class Channel {
   /// How many days back the provider promises catchup will work.
   /// Programs older than this hide the "Watch from beginning" button.
   int? catchupDays;
-
-  /// Per-channel engine override. Null = use source/global/auto selection.
-  EngineType? engineOverride;
 
   /// Unix epoch seconds of last watch event. Null = never watched.
   int? lastWatched;
@@ -100,7 +96,6 @@ class Channel {
     this.catchupType,
     this.catchupSource,
     this.catchupDays,
-    this.engineOverride,
     this.lastWatched,
     this.streamValidated,
     this.providerOrder,

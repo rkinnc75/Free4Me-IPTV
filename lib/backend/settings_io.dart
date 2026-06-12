@@ -8,9 +8,7 @@ import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/models/channel_preserve.dart';
-import 'package:open_tv/models/engine_type.dart';
 import 'package:open_tv/models/device_detector.dart';
-import 'package:open_tv/models/engine_preference.dart';
 import 'package:open_tv/models/multi_view_layout.dart';
 import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/source.dart';
@@ -206,7 +204,6 @@ class SettingsIo {
         sourceType: SourceType.values[map['sourceType'] as int? ?? 0],
         enabled: map['enabled'] as bool? ?? true,
         epgUrl: map['epgUrl'] as String?,
-        defaultEngine: EngineType.fromJson(map['defaultEngine'] as String?),
       );
       // getOrCreateSourceByName merges by name — existing sources are reused,
       // new ones created. Other settings are intentionally NOT touched.
@@ -342,15 +339,13 @@ class SettingsIo {
             sourceType: SourceType.values[map['sourceType'] as int? ?? 0],
             enabled: map['enabled'] as bool? ?? true,
             epgUrl: map['epgUrl'] as String?,
-            defaultEngine: EngineType.fromJson(map['defaultEngine'] as String?),
-          );
+              );
           await Sql.commitWrite([Sql.getOrCreateSourceByName(source)]);
 
           AppLog.info(
             'SettingsIo.import: source "${source.name}"'
             ' enabled=${source.enabled}'
             ' type=${source.sourceType.name}'
-            ' engine=${source.defaultEngine?.toJson() ?? "auto"}',
           );
 
           // Stage favorites / last-watched for re-application after the
@@ -466,8 +461,6 @@ class SettingsIo {
         'openTimeoutSecs': s.openTimeoutSecs,
         'bufferingWatchdogSecs': s.bufferingWatchdogSecs,
         'stableThresholdSecs': s.stableThresholdSecs,
-        'forcedEngine': s.forcedEngine.toJson(),
-        'enginePreference': s.enginePreference.toJson(), // fix315
         // EPG & debug (schema v2)
         'debugLogging': s.debugLogging,
         'epgAutoRefresh': s.epgAutoRefresh,
@@ -514,9 +507,6 @@ class SettingsIo {
       openTimeoutSecs: m['openTimeoutSecs'] as int? ?? 15,
       bufferingWatchdogSecs: m['bufferingWatchdogSecs'] as int? ?? 12,
       stableThresholdSecs: m['stableThresholdSecs'] as int? ?? 30,
-      forcedEngine: EngineType.fromJson(m['forcedEngine'] as String?),
-      enginePreference:
-          EnginePreference.fromJson(m['enginePreference'] as String?),
       debugLogging: m['debugLogging'] as bool? ?? false,
       epgAutoRefresh: m['epgAutoRefresh'] as bool? ?? true,
       epgRefreshHours: m['epgRefreshHours'] as int? ?? 24,
@@ -628,6 +618,5 @@ class SettingsIo {
         'password': includeCredentials ? s.password : null,
         'enabled': s.enabled,
         'epgUrl': s.epgUrl,
-        'defaultEngine': s.defaultEngine?.toJson(),
       };
 }

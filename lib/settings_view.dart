@@ -12,7 +12,6 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:open_tv/backend/playback_analyzer.dart';
 import 'package:open_tv/backend/device_memory.dart';
 import 'package:open_tv/models/device_detector.dart';
-import 'package:open_tv/models/engine_preference.dart';
 import 'package:open_tv/models/multi_view_layout.dart';
 import 'package:open_tv/models/multi_view_decode.dart';
 import 'package:open_tv/multi_view_picker_dialog.dart';
@@ -1791,95 +1790,6 @@ class _SettingsState extends State<SettingsView> {
     );
   }
 
-  /// A "popup menu" tile for the global engine selection setting.
-  Widget _engineSelectionTile(Settings settings) {
-    return ListTile(
-      title: Row(
-        children: [
-          const Text('Player engine'),
-          const SizedBox(width: 4),
-          IconButton(
-            icon: Icon(
-              Icons.info_outline,
-              size: 18,
-              color: Theme.of(context)
-                  .colorScheme
-                  .onSurface
-                  .withValues(alpha: 0.4),
-            ),
-            tooltip: 'About this setting',
-            onPressed: () => SettingHelpDialog.show(
-              context,
-              title: 'Player Engine',
-              body:
-                  'Chooses which playback engine opens streams.\n\n'
-                  'Default: Auto.\n\n'
-                  'Auto: Recommended. The app chooses the best engine for each URL. '
-                  'HLS, DASH, and MP4 streams generally use ExoPlayer for adaptive '
-                  'streaming and battery efficiency. MPEG-TS, RTMP, and less standard '
-                  'streams generally use libmpv for compatibility.\n\n'
-                  'libmpv: Forces libmpv for every stream. Use this if a provider '
-                  'works better with mpv or if ExoPlayer cannot open the stream.\n\n'
-                  'ExoPlayer: Forces ExoPlayer for every stream. Use this only if '
-                  'Auto picks the wrong engine for your source. Some advanced track '
-                  'controls may not be available in ExoPlayer mode.',
-            ),
-          ),
-        ],
-      ),
-      trailing: TextButton(
-        onPressed: () => _showEnginePickerDialog(context),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              settings.enginePreference.label,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(width: 4),
-            const Icon(Icons.arrow_drop_down),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // fix315: global engine preference picker — explicit primary + fallback
-  // order, replacing the old Auto/libmpv/ExoPlayer list.
-  static const _enginePreferenceOptions = [
-    EnginePreference.libmpvExo,
-    EnginePreference.exoLibmpv,
-    EnginePreference.libmpvOnly,
-    EnginePreference.exoOnly,
-  ];
-
-  Future<void> _showEnginePickerDialog(BuildContext context) async {
-    await showDialog(
-      barrierDismissible: true,
-      context: context,
-      builder: (BuildContext context) {
-        return SelectDialog(
-          title: 'Player engine',
-          // fix331: pre-select the active preference so the picker opens on it
-          // and it shows highlighted (the index in _enginePreferenceOptions).
-          selectedId: _enginePreferenceOptions
-              .indexOf(settings.enginePreference),
-          data: _enginePreferenceOptions
-              .asMap()
-              .entries
-              .map((e) => IdData(id: e.key, data: e.value.label))
-              .toList(),
-          action: (idx) {
-            setState(() {
-              settings.enginePreference = _enginePreferenceOptions[idx];
-              updateSettings();
-            });
-            Navigator.of(context).pop();
-          },
-        );
-      },
-    );
-  }
 
   Widget _multiViewTile(Settings settings) {
     return ListTile(
@@ -2258,7 +2168,6 @@ class _SettingsState extends State<SettingsView> {
                           updateSettings();
                         },
                       ),
-                      _engineSelectionTile(settings),
                     ],
                   ),
 

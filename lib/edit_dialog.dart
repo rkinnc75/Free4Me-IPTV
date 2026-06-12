@@ -72,7 +72,6 @@ class _EditDialogState extends State<EditDialog> {
                       // Without this it defaults to null and updateSource writes
                       // NULL, wiping the connection limit on every source edit.
                       maxConnections: widget.source.maxConnections,
-                      defaultEngine: widget.source.defaultEngine,
                       // fix256: persist the per-source browse order choice.
                       color: widget.source.color,
                       sortMode: _sortMode,

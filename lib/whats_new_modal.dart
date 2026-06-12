@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.28.0': [
+    'libmpv is now the one and only playback engine. ExoPlayer has been removed entirely — along with the engine picker, the Player engine setting, per-source default engine, and the runtime engine-fallback machinery. libmpv already handled every format (MPEG-TS, HLS, DASH, MP4, RTMP) and carries all the device-specific decode fixes, so this removes a whole class of dual-engine bugs. Existing engine settings and backups are ignored harmlessly.',
+  ],
   '1.27.1': [
     'Background processing now covers more long tasks: EPG refresh, channel re-match, and the stream scanner keep running if you switch away from the app (previously only source refresh did). Enable it in Settings — "Keep long tasks running in background".',
   ],
