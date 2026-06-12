@@ -1,8 +1,8 @@
 {
-  "latest": "1.28.0",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.28.0",
+  "latest": "1.28.1",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.28.1",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 libmpv is now the one and only playback engine. ExoPlayer has been removed entirely \u2014 along with the engine picker, the Player engine setting, per-source default engine, and the runtime engine-fallback machinery. libmpv already handled every format (MPEG-TS, HLS, DASH, MP4, RTMP) and carries all the device-specific decode fixes, so this removes a whole class of dual-engine bugs. Existing engine settings and backups are ignored harmlessly.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.28.0/Free4Me-IPTV-1.28.0-arm64.apk"
+  "releaseNotes": "\u2022 Multi-view fix: on sources that cycle connections (e.g. 1-connection providers in a 2\u00d72 grid), the silent quick-reconnect budget never replenished, so every cell hit its limit after a few minutes and did a visible full restart \u2014 spinner plus a fresh \"Building buffer\u2026\" pause \u2014 over and over. A clean provider drop now counts as a disturbance for the 15-second stability clock, so the budget refills between drops and cells recover with a brief freeze-frame indefinitely. The stability buffer is built once per cell and full restarts stop.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.28.1/Free4Me-IPTV-1.28.1-arm64.apk"
 }
