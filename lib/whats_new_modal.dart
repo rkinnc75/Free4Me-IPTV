@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.32.0': [
+    'Live DVR controls: when the Live DVR buffer is on, the full-screen player now shows rewind 10s, forward 10s, and a back-to-live button alongside play/pause — fully usable with the TV remote (D-pad). Rewind into the buffer to catch a replay, then jump back to the live edge. Controls appear only while DVR is active.',
+  ],
   '1.31.2': [
     'Internal robustness pass (from a code review): debug log now actually rotates at its 20 MB cap during a long session instead of only when toggled; the backup-import dialog wording now matches what it does (adds/updates sources, keeps existing ones); a database migration registration-order issue that could crash debug builds was corrected (release builds were never affected); and two minor resource-handling tidies (a slider focus-node leak and a stray empty DVR cache folder on low disk).',
   ],

@@ -40,6 +40,9 @@ class MpvEngine implements PlayerEngine {
   int _dvrLastDirBytes = 0;
   bool _dvrActive = false;
 
+  @override
+  bool get dvrActive => _dvrActive; // fix360
+
   late final mk.Player _player = mk.Player(
     configuration: mk.PlayerConfiguration(
       // bufferSizeMB from settings; mini-player (previewMode) uses half.

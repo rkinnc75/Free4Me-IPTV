@@ -92,6 +92,11 @@ abstract class PlayerEngine {
   /// caller, which uses [SystemChrome] directly.
   bool get handlesOwnFullscreen;
 
+  /// fix360: true when a live DVR-to-disk buffer is active for this engine
+  /// (fix357). Only then is live seeking (rewind/FF/back-to-live) meaningful.
+  /// Always false for VOD and for live without DVR.
+  bool get dvrActive => false;
+
   /// Request fullscreen entry (no-op if [handlesOwnFullscreen] is false).
   Future<void> enterFullscreen();
 
