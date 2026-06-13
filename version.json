@@ -1,8 +1,8 @@
 {
-  "latest": "1.29.3",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.29.3",
+  "latest": "1.30.0",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.30.0",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Multi-view audio fix: cells no longer finish opening at full volume when focus moved on during a slow start \u2014 only the focused cell plays sound.\n\u2022 Movies section fixed: series episodes no longer leak into Movies, search results, or favorites; they appear only inside their series.\n\u2022 Backups are now complete: favorite and hidden categories, VOD resume positions, and the multi-view stability buffer setting are all exported and restored (applied after the first refresh, like favorites). Older backups still import fine.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.29.3/Free4Me-IPTV-1.29.3-arm64.apk"
+  "releaseNotes": "\u2022 Favorites view is now grouped by source (A\u2013Z) with channels A\u2013Z within each source \u2014 no more mixed-up ordering when multiple sources are enabled.\n\u2022 Categories are now sorted alphabetically: favorited categories A\u2013Z on top, then the rest A\u2013Z. Disabled categories stay hidden.\n\u2022 Settings remembers which groups you opened or closed for the rest of the session.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.30.0/Free4Me-IPTV-1.30.0-arm64.apk"
 }
