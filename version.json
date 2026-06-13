@@ -1,8 +1,8 @@
 {
-  "latest": "1.32.1",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.32.1",
+  "latest": "1.32.2",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.32.2",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fixed channels with no sound on some TV boxes: surround (5.1) audio is now downmixed to stereo by default, which plays on every device (turn it off in Settings if you have an AV receiver).\n\u2022 Faster source refresh on large catalogs: when search indexing is on, a refresh no longer updates the search index row-by-row \u2014 it rebuilds once at the end, cutting big-provider refresh time substantially.\n\u2022 Multi-view on low-memory TV boxes (e.g. onn 4K) now uses software decode for the small preview tiles, avoiding the black/late tiles caused by too many hardware decoders at once.\n\u2022 The diagnostic log now records which search method is active.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.32.1/Free4Me-IPTV-1.32.1-arm64.apk"
+  "releaseNotes": "\u2022 Critical fix: opening a series now shows its episodes again. A guard added in 1.29.3 to keep episodes out of the Movies list was applied too broadly and accidentally made every series appear empty.\n\u2022 Episodes also no longer leak into search results when you type a query in Movies, All, or Favorites (the default search path was missed by the earlier fix).",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.32.2/Free4Me-IPTV-1.32.2-arm64.apk"
 }
