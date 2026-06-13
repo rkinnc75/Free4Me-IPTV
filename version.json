@@ -1,8 +1,8 @@
 {
-  "latest": "1.30.0",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.30.0",
+  "latest": "1.31.0",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.31.0",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Favorites view is now grouped by source (A\u2013Z) with channels A\u2013Z within each source \u2014 no more mixed-up ordering when multiple sources are enabled.\n\u2022 Categories are now sorted alphabetically: favorited categories A\u2013Z on top, then the rest A\u2013Z. Disabled categories stay hidden.\n\u2022 Settings remembers which groups you opened or closed for the rest of the session.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.30.0/Free4Me-IPTV-1.30.0-arm64.apk"
+  "releaseNotes": "\u2022 New Live DVR buffer (off by default): full-screen live TV can record up to 90 minutes to a temporary disk buffer, so you can pause live TV and let brief drops play through the cushion. The stream is stored as-is (no re-encoding) and the buffer auto-caps to leave 5 minutes of free disk, freezing growth if space runs low. Settings \u2192 Live DVR buffer.\n\u2022 The log now always identifies its app version: a version line is written every time the log is cleared and every time it is exported.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.31.0/Free4Me-IPTV-1.31.0-arm64.apk"
 }
