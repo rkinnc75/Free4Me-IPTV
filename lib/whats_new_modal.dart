@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.30.0': [
+    'Favorites view is now grouped by source (A–Z) with channels A–Z within each source — no more mixed-up ordering when multiple sources are enabled.',
+    'Categories are now sorted alphabetically: favorited categories A–Z on top, then the rest A–Z. Disabled categories stay hidden.',
+    'Settings remembers which groups you opened or closed for the rest of the session.',
+  ],
   '1.29.3': [
     'Multi-view audio fix: cells no longer finish opening at full volume when focus moved on during a slow start — only the focused cell plays sound.',
     'Movies section fixed: series episodes no longer leak into Movies, search results, or favorites; they appear only inside their series.',

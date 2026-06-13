@@ -1,0 +1,184 @@
+diff --git a/lib/backend/sql.dart b/lib/backend/sql.dart
+index a67dac2..e055e2f 100644
+--- a/lib/backend/sql.dart
++++ b/lib/backend/sql.dart
+@@ -564,7 +564,15 @@ class Sql {
+           "(SELECT g.enabled FROM groups g WHERE g.id = c.group_id), 1) = 1";
+     }
+ 
+-    if (filters.viewType == ViewType.history) {
++    if (filters.viewType == ViewType.favorites && filters.seriesId == null) {
++      // fix356: Favorites view — group by source (A–Z), channels A–Z within.
++      // Correlated source-name subquery is fine here: favorites lists are
++      // tiny (tens of rows), unlike the full-catalogue browse paths.
++      sqlQuery += '\nORDER BY'
++          ' (SELECT s.name FROM sources s WHERE s.id = c.source_id)'
++          ' COLLATE NOCASE ASC,'
++          ' c.name COLLATE NOCASE ASC';
++    } else if (filters.viewType == ViewType.history) {
+       sqlQuery += "\nORDER BY c.last_watched DESC";
+     } else {
+       // fix138/256/258/272 sort semantics, built by BrowseOrder (fix344).
+@@ -806,9 +814,11 @@ class Sql {
+     sqlQuery += smGroupClause;
+     params.addAll(smGroupParams);
+ 
+-    // fix308: favorited categories sort to the top; existing order (rowid)
++    // fix308: favorited categories sort to the top.
++    // fix356: alphabetical within each tier (was rowid order).
+     // is preserved below via the stable secondary sort.
+-    sqlQuery += '\nORDER BY COALESCE(favorite, 0) DESC, id ASC';
++    sqlQuery += '\nORDER BY COALESCE(favorite, 0) DESC,'
++        ' name COLLATE NOCASE ASC, id ASC';
+ 
+     sqlQuery += '\nLIMIT ?, ?';
+     params.add(offset);
+@@ -1869,7 +1879,15 @@ class Sql {
+     sqlQuery += "\nAND COALESCE("
+         "(SELECT g.enabled FROM groups g WHERE g.id = c.group_id), 1) = 1";
+ 
+-    if (filters.viewType == ViewType.history) {
++    if (filters.viewType == ViewType.favorites && filters.seriesId == null) {
++      // fix356: Favorites view — group by source (A–Z), channels A–Z within.
++      // Correlated source-name subquery is fine here: favorites lists are
++      // tiny (tens of rows), unlike the full-catalogue browse paths.
++      sqlQuery += '\nORDER BY'
++          ' (SELECT s.name FROM sources s WHERE s.id = c.source_id)'
++          ' COLLATE NOCASE ASC,'
++          ' c.name COLLATE NOCASE ASC';
++    } else if (filters.viewType == ViewType.history) {
+       sqlQuery += '\nORDER BY c.last_watched DESC';
+     } else {
+       // fix345: this path carried a STALE pre-fix138 inline ORDER BY (4-tier
+diff --git a/lib/settings_view.dart b/lib/settings_view.dart
+index 3945c24..d318d34 100644
+--- a/lib/settings_view.dart
++++ b/lib/settings_view.dart
+@@ -346,6 +346,10 @@ class SettingsView extends StatefulWidget {
+ }
+ 
+ class _SettingsState extends State<SettingsView> {
++  /// fix356: per-group expand/collapse, remembered for the app session only
++  /// (static — survives the settings route closing, dies with the process).
++  static final Map<String, bool> _groupOpen = {};
++
+   Settings settings = Settings();
+   List<Source> sources = [];
+   bool loading = true;
+@@ -2121,7 +2125,9 @@ class _SettingsState extends State<SettingsView> {
+                     ),
+                     tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+                     childrenPadding: EdgeInsets.zero,
+-                    initiallyExpanded: false,
++                    initiallyExpanded: _groupOpen['playback'] ?? false,
++                    // fix356: remember open/close for this app session only.
++                    onExpansionChanged: (v) => _groupOpen['playback'] = v,
+                     children: [
+                       _switchTile(
+                         label: "Force TV Mode",
+@@ -2199,7 +2205,9 @@ class _SettingsState extends State<SettingsView> {
+                     ),
+                     tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+                     childrenPadding: EdgeInsets.zero,
+-                    initiallyExpanded: false,
++                    initiallyExpanded: _groupOpen['buffering'] ?? false,
++                    // fix356: remember open/close for this app session only.
++                    onExpansionChanged: (v) => _groupOpen['buffering'] = v,
+                     children: [
+ 
+                   _bufferSlider(
+@@ -2469,7 +2477,9 @@ class _SettingsState extends State<SettingsView> {
+                     ),
+                     tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+                     childrenPadding: EdgeInsets.zero,
+-                    initiallyExpanded: false,
++                    initiallyExpanded: _groupOpen['multiview'] ?? false,
++                    // fix356: remember open/close for this app session only.
++                    onExpansionChanged: (v) => _groupOpen['multiview'] = v,
+                     children: [
+                       _multiViewTile(settings),
+                       _multiViewDecodeTile(settings),
+@@ -2526,7 +2536,9 @@ class _SettingsState extends State<SettingsView> {
+                     ),
+                     tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+                     childrenPadding: EdgeInsets.zero,
+-                    initiallyExpanded: false,
++                    initiallyExpanded: _groupOpen['content'] ?? false,
++                    // fix356: remember open/close for this app session only.
++                    onExpansionChanged: (v) => _groupOpen['content'] = v,
+                     children: [
+                       ListTile(
+                         // fix156: plain text title so ListTile is the
+@@ -2730,7 +2742,9 @@ class _SettingsState extends State<SettingsView> {
+                     ),
+                     tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+                     childrenPadding: EdgeInsets.zero,
+-                    initiallyExpanded: false,
++                    initiallyExpanded: _groupOpen['epg'] ?? false,
++                    // fix356: remember open/close for this app session only.
++                    onExpansionChanged: (v) => _groupOpen['epg'] = v,
+                     children: [
+                   ...sources.map(
+                     (source) => ListTile(
+@@ -3001,7 +3015,9 @@ class _SettingsState extends State<SettingsView> {
+                     ),
+                     tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+                     childrenPadding: EdgeInsets.zero,
+-                    initiallyExpanded: false,
++                    initiallyExpanded: _groupOpen['backuprestore'] ?? false,
++                    // fix356: remember open/close for this app session only.
++                    onExpansionChanged: (v) => _groupOpen['backuprestore'] = v,
+                     children: [
+                   ListTile(
+                     leading: const Icon(Icons.upload_file),
+@@ -3081,7 +3097,9 @@ class _SettingsState extends State<SettingsView> {
+                     ),
+                     tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+                     childrenPadding: EdgeInsets.zero,
+-                    initiallyExpanded: false,
++                    initiallyExpanded: _groupOpen['reset'] ?? false,
++                    // fix356: remember open/close for this app session only.
++                    onExpansionChanged: (v) => _groupOpen['reset'] = v,
+                     children: [
+                   ListTile(
+                     leading: const Icon(Icons.refresh),
+@@ -3281,7 +3299,9 @@ class _SettingsState extends State<SettingsView> {
+                     ),
+                     tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+                     childrenPadding: EdgeInsets.zero,
+-                    initiallyExpanded: false,
++                    initiallyExpanded: _groupOpen['diagnostics'] ?? false,
++                    // fix356: remember open/close for this app session only.
++                    onExpansionChanged: (v) => _groupOpen['diagnostics'] = v,
+                     children: [
+                   _switchTile(
+                     label: "Enable debug logging",
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 7a111fc..401502a 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.30.0': [
++    'Favorites view is now grouped by source (A–Z) with channels A–Z within each source — no more mixed-up ordering when multiple sources are enabled.',
++    'Categories are now sorted alphabetically: favorited categories A–Z on top, then the rest A–Z. Disabled categories stay hidden.',
++    'Settings remembers which groups you opened or closed for the rest of the session.',
++  ],
+   '1.29.3': [
+     'Multi-view audio fix: cells no longer finish opening at full volume when focus moved on during a slow start — only the focused cell plays sound.',
+     'Movies section fixed: series episodes no longer leak into Movies, search results, or favorites; they appear only inside their series.',
+diff --git a/pubspec.yaml b/pubspec.yaml
+index d5778e7..6c400a8 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.29.3+355
++version: 1.30.0+356
+ 
+ environment:
+   sdk: ^3.10.7

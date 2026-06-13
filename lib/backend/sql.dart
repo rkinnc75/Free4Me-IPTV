@@ -564,7 +564,15 @@ class Sql {
           "(SELECT g.enabled FROM groups g WHERE g.id = c.group_id), 1) = 1";
     }
 
-    if (filters.viewType == ViewType.history) {
+    if (filters.viewType == ViewType.favorites && filters.seriesId == null) {
+      // fix356: Favorites view — group by source (A–Z), channels A–Z within.
+      // Correlated source-name subquery is fine here: favorites lists are
+      // tiny (tens of rows), unlike the full-catalogue browse paths.
+      sqlQuery += '\nORDER BY'
+          ' (SELECT s.name FROM sources s WHERE s.id = c.source_id)'
+          ' COLLATE NOCASE ASC,'
+          ' c.name COLLATE NOCASE ASC';
+    } else if (filters.viewType == ViewType.history) {
       sqlQuery += "\nORDER BY c.last_watched DESC";
     } else {
       // fix138/256/258/272 sort semantics, built by BrowseOrder (fix344).
@@ -806,9 +814,11 @@ class Sql {
     sqlQuery += smGroupClause;
     params.addAll(smGroupParams);
 
-    // fix308: favorited categories sort to the top; existing order (rowid)
+    // fix308: favorited categories sort to the top.
+    // fix356: alphabetical within each tier (was rowid order).
     // is preserved below via the stable secondary sort.
-    sqlQuery += '\nORDER BY COALESCE(favorite, 0) DESC, id ASC';
+    sqlQuery += '\nORDER BY COALESCE(favorite, 0) DESC,'
+        ' name COLLATE NOCASE ASC, id ASC';
 
     sqlQuery += '\nLIMIT ?, ?';
     params.add(offset);
@@ -1869,7 +1879,15 @@ class Sql {
     sqlQuery += "\nAND COALESCE("
         "(SELECT g.enabled FROM groups g WHERE g.id = c.group_id), 1) = 1";
 
-    if (filters.viewType == ViewType.history) {
+    if (filters.viewType == ViewType.favorites && filters.seriesId == null) {
+      // fix356: Favorites view — group by source (A–Z), channels A–Z within.
+      // Correlated source-name subquery is fine here: favorites lists are
+      // tiny (tens of rows), unlike the full-catalogue browse paths.
+      sqlQuery += '\nORDER BY'
+          ' (SELECT s.name FROM sources s WHERE s.id = c.source_id)'
+          ' COLLATE NOCASE ASC,'
+          ' c.name COLLATE NOCASE ASC';
+    } else if (filters.viewType == ViewType.history) {
       sqlQuery += '\nORDER BY c.last_watched DESC';
     } else {
       // fix345: this path carried a STALE pre-fix138 inline ORDER BY (4-tier

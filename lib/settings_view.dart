@@ -346,6 +346,10 @@ class SettingsView extends StatefulWidget {
 }
 
 class _SettingsState extends State<SettingsView> {
+  /// fix356: per-group expand/collapse, remembered for the app session only
+  /// (static — survives the settings route closing, dies with the process).
+  static final Map<String, bool> _groupOpen = {};
+
   Settings settings = Settings();
   List<Source> sources = [];
   bool loading = true;
@@ -2121,7 +2125,9 @@ class _SettingsState extends State<SettingsView> {
                     ),
                     tilePadding: const EdgeInsets.symmetric(horizontal: 10),
                     childrenPadding: EdgeInsets.zero,
-                    initiallyExpanded: false,
+                    initiallyExpanded: _groupOpen['playback'] ?? false,
+                    // fix356: remember open/close for this app session only.
+                    onExpansionChanged: (v) => _groupOpen['playback'] = v,
                     children: [
                       _switchTile(
                         label: "Force TV Mode",
@@ -2199,7 +2205,9 @@ class _SettingsState extends State<SettingsView> {
                     ),
                     tilePadding: const EdgeInsets.symmetric(horizontal: 10),
                     childrenPadding: EdgeInsets.zero,
-                    initiallyExpanded: false,
+                    initiallyExpanded: _groupOpen['buffering'] ?? false,
+                    // fix356: remember open/close for this app session only.
+                    onExpansionChanged: (v) => _groupOpen['buffering'] = v,
                     children: [
 
                   _bufferSlider(
@@ -2469,7 +2477,9 @@ class _SettingsState extends State<SettingsView> {
                     ),
                     tilePadding: const EdgeInsets.symmetric(horizontal: 10),
                     childrenPadding: EdgeInsets.zero,
-                    initiallyExpanded: false,
+                    initiallyExpanded: _groupOpen['multiview'] ?? false,
+                    // fix356: remember open/close for this app session only.
+                    onExpansionChanged: (v) => _groupOpen['multiview'] = v,
                     children: [
                       _multiViewTile(settings),
                       _multiViewDecodeTile(settings),
@@ -2526,7 +2536,9 @@ class _SettingsState extends State<SettingsView> {
                     ),
                     tilePadding: const EdgeInsets.symmetric(horizontal: 10),
                     childrenPadding: EdgeInsets.zero,
-                    initiallyExpanded: false,
+                    initiallyExpanded: _groupOpen['content'] ?? false,
+                    // fix356: remember open/close for this app session only.
+                    onExpansionChanged: (v) => _groupOpen['content'] = v,
                     children: [
                       ListTile(
                         // fix156: plain text title so ListTile is the
@@ -2730,7 +2742,9 @@ class _SettingsState extends State<SettingsView> {
                     ),
                     tilePadding: const EdgeInsets.symmetric(horizontal: 10),
                     childrenPadding: EdgeInsets.zero,
-                    initiallyExpanded: false,
+                    initiallyExpanded: _groupOpen['epg'] ?? false,
+                    // fix356: remember open/close for this app session only.
+                    onExpansionChanged: (v) => _groupOpen['epg'] = v,
                     children: [
                   ...sources.map(
                     (source) => ListTile(
@@ -3001,7 +3015,9 @@ class _SettingsState extends State<SettingsView> {
                     ),
                     tilePadding: const EdgeInsets.symmetric(horizontal: 10),
                     childrenPadding: EdgeInsets.zero,
-                    initiallyExpanded: false,
+                    initiallyExpanded: _groupOpen['backuprestore'] ?? false,
+                    // fix356: remember open/close for this app session only.
+                    onExpansionChanged: (v) => _groupOpen['backuprestore'] = v,
                     children: [
                   ListTile(
                     leading: const Icon(Icons.upload_file),
@@ -3081,7 +3097,9 @@ class _SettingsState extends State<SettingsView> {
                     ),
                     tilePadding: const EdgeInsets.symmetric(horizontal: 10),
                     childrenPadding: EdgeInsets.zero,
-                    initiallyExpanded: false,
+                    initiallyExpanded: _groupOpen['reset'] ?? false,
+                    // fix356: remember open/close for this app session only.
+                    onExpansionChanged: (v) => _groupOpen['reset'] = v,
                     children: [
                   ListTile(
                     leading: const Icon(Icons.refresh),
@@ -3281,7 +3299,9 @@ class _SettingsState extends State<SettingsView> {
                     ),
                     tilePadding: const EdgeInsets.symmetric(horizontal: 10),
                     childrenPadding: EdgeInsets.zero,
-                    initiallyExpanded: false,
+                    initiallyExpanded: _groupOpen['diagnostics'] ?? false,
+                    // fix356: remember open/close for this app session only.
+                    onExpansionChanged: (v) => _groupOpen['diagnostics'] = v,
                     children: [
                   _switchTile(
                     label: "Enable debug logging",
