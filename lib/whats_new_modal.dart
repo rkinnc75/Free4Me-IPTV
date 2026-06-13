@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.29.3': [
+    'Multi-view audio fix: cells no longer finish opening at full volume when focus moved on during a slow start — only the focused cell plays sound.',
+    'Movies section fixed: series episodes no longer leak into Movies, search results, or favorites; they appear only inside their series.',
+    'Backups are now complete: favorite and hidden categories, VOD resume positions, and the multi-view stability buffer setting are all exported and restored (applied after the first refresh, like favorites). Older backups still import fine.',
+  ],
   '1.29.2': [
     'New "VOD/Movie pre-buffer" setting (default 15 s): movies and episodes now buffer ahead before starting — and refill properly after running dry — instead of stuttering continuously on servers that send files slowly. Set it to 0 for the old start-immediately behaviour. Live TV is unaffected.',
   ],

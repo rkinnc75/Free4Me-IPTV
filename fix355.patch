@@ -1,0 +1,334 @@
+diff --git a/lib/backend/settings_io.dart b/lib/backend/settings_io.dart
+index a293173..6ad0176 100644
+--- a/lib/backend/settings_io.dart
++++ b/lib/backend/settings_io.dart
+@@ -17,7 +17,7 @@ import 'package:open_tv/models/view_type.dart';
+ import 'package:package_info_plus/package_info_plus.dart';
+ import 'package:path_provider/path_provider.dart';
+ 
+-const int _schemaVersion = 3;
++const int _schemaVersion = 4; // fix355: + groups (category state) + positions
+ 
+ class SettingsIo {
+   /// fix166: local snapshot stamp `yyyymmdd-HHMMSS` for export filenames.
+@@ -46,6 +46,33 @@ class SettingsIo {
+   /// adds schema-migration work; not worth it for a rare edge case.
+   static final Map<String, List<ChannelPreserve>> _pendingPreserves = {};
+ 
++  /// fix355: staged category state / resume positions, applied with the
++  /// preserves once a refresh populates groups+channels for the source.
++  static final Map<String, List<Map<String, dynamic>>> _pendingGroups = {};
++  static final Map<String, List<Map<String, dynamic>>> _pendingPositions = {};
++
++  static void _stageGroupsAndPositions(
++      String sourceName, Map<String, dynamic> map) {
++    final groupsRaw = map['groups'] as List<dynamic>?;
++    if (groupsRaw != null && groupsRaw.isNotEmpty) {
++      _pendingGroups[sourceName] =
++          groupsRaw.map((g) => (g as Map).cast<String, dynamic>()).toList();
++    }
++    final posRaw = map['positions'] as List<dynamic>?;
++    if (posRaw != null && posRaw.isNotEmpty) {
++      _pendingPositions[sourceName] =
++          posRaw.map((p) => (p as Map).cast<String, dynamic>()).toList();
++    }
++    if (groupsRaw != null || posRaw != null) {
++      AppLog.info(
++        'SettingsIo: staged for "$sourceName"'
++        ' groups=${groupsRaw?.length ?? 0} positions=${posRaw?.length ?? 0}',
++      );
++    }
++  }
++
++  /// fix355: stage category state and resume positions from a backup map.
++
+   /// Export all sources + settings to a JSON file chosen by the user.
+   /// [includeCredentials] controls whether Xtream username/password are written.
+   // fix158: extracted so TV export can build the payload without FilePicker.
+@@ -73,6 +100,11 @@ class SettingsIo {
+                   })
+               .toList();
+         }
++        // fix355: curated category state + VOD resume positions.
++        final curatedGroups = await Sql.getGroupsCurated(s.id!);
++        if (curatedGroups.isNotEmpty) base['groups'] = curatedGroups;
++        final positions = await Sql.getMoviePositionsForExport(s.id!);
++        if (positions.isNotEmpty) base['positions'] = positions;
+       }
+       sourcesPayload.add(base);
+     }
+@@ -125,6 +157,11 @@ class SettingsIo {
+                   })
+               .toList();
+         }
++        // fix355: curated category state + VOD resume positions.
++        final curatedGroups = await Sql.getGroupsCurated(s.id!);
++        if (curatedGroups.isNotEmpty) base['groups'] = curatedGroups;
++        final positions = await Sql.getMoviePositionsForExport(s.id!);
++        if (positions.isNotEmpty) base['positions'] = positions;
+       }
+       sourcesPayload.add(base);
+     }
+@@ -228,6 +265,7 @@ class SettingsIo {
+             })
+             .toList();
+       }
++      _stageGroupsAndPositions(source.name, map); // fix355
+     }
+     AppLog.info('SettingsIo.importSourcesOnly: imported $count source(s)');
+     return count;
+@@ -375,6 +413,7 @@ class SettingsIo {
+               ' favorites=${preserveList.where((p) => p.favorite == 1).length}',
+             );
+           }
++          _stageGroupsAndPositions(source.name, map); // fix355
+         }
+       }
+ 
+@@ -403,9 +442,15 @@ class SettingsIo {
+   /// Called from Utils.refreshSource after channels are populated.
+   static Future<void> applyPendingPreserves(String sourceName) async {
+     final preserve = _pendingPreserves.remove(sourceName);
+-    if (preserve == null || preserve.isEmpty) {
++    // fix355: drain staged category state and resume positions in the same
++    // pass; any of the three being present is reason to proceed.
++    final groups = _pendingGroups.remove(sourceName);
++    final positions = _pendingPositions.remove(sourceName);
++    if ((preserve == null || preserve.isEmpty) &&
++        (groups == null || groups.isEmpty) &&
++        (positions == null || positions.isEmpty)) {
+       AppLog.info(
+-        'SettingsIo.applyPendingPreserves: no staged preserves'
++        'SettingsIo.applyPendingPreserves: nothing staged'
+         ' for "$sourceName" — skipping',
+       );
+       return;
+@@ -422,21 +467,51 @@ class SettingsIo {
+     if (source == null || source.id == null) {
+       AppLog.warn(
+         'SettingsIo.applyPendingPreserves: source "$sourceName" not found'
+-        ' in DB — dropping ${preserve.length} staged preserves',
++        ' in DB — dropping ${preserve?.length ?? 0} staged preserves'
++        ' (+${groups?.length ?? 0} groups, ${positions?.length ?? 0} positions)',
+       );
+       return;
+     }
+ 
+-    AppLog.info(
+-      'SettingsIo.applyPendingPreserves: applying ${preserve.length}'
+-      ' preserves to "$sourceName" (sourceId=${source.id})'
+-      ' epg=${preserve.where((p) => p.epgChannelId != null).length}'
+-      ' favorites=${preserve.where((p) => p.favorite == 1).length}',
+-    );
+-    await Sql.commitWrite(
+-      [Sql.restorePreserve(preserve)],
+-      memory: {'sourceId': source.id!.toString()},
+-    );
++    if (preserve != null && preserve.isNotEmpty) {
++      AppLog.info(
++        'SettingsIo.applyPendingPreserves: applying ${preserve.length}'
++        ' preserves to "$sourceName" (sourceId=${source.id})'
++        ' epg=${preserve.where((p) => p.epgChannelId != null).length}'
++        ' favorites=${preserve.where((p) => p.favorite == 1).length}',
++      );
++      await Sql.commitWrite(
++        [Sql.restorePreserve(preserve)],
++        memory: {'sourceId': source.id!.toString()},
++      );
++    }
++    // fix355: apply staged category state and resume positions.
++    var gApplied = 0;
++    for (final g in groups ?? const <Map<String, dynamic>>[]) {
++      final name = g['name'] as String?;
++      if (name == null) continue;
++      await Sql.applyGroupState(
++        source.id!,
++        name,
++        (g['favorite'] as int?) ?? 0,
++        (g['enabled'] as int?) ?? 1,
++      );
++      gApplied++;
++    }
++    var pApplied = 0;
++    for (final p in positions ?? const <Map<String, dynamic>>[]) {
++      final url = p['url'] as String?;
++      final pos = p['position'] as int?;
++      if (url == null || pos == null) continue;
++      await Sql.applyMoviePosition(source.id!, url, pos);
++      pApplied++;
++    }
++    if (gApplied > 0 || pApplied > 0) {
++      AppLog.info(
++        'SettingsIo.applyPendingPreserves: "$sourceName"'
++        ' groups=$gApplied positions=$pApplied applied',
++      );
++    }
+     await Sql.checkpointAndTruncateWal();
+     AppLog.info(
+       'SettingsIo.applyPendingPreserves: done for "$sourceName"',
+@@ -445,6 +520,8 @@ class SettingsIo {
+ 
+   static Map<String, dynamic> _settingsToMap(Settings s) => {
+         'defaultView': s.defaultView.index,
++        'multiViewStabilityBufferSecs':
++            s.multiViewStabilityBufferSecs, // fix355: was missing from backup
+         'refreshOnStart': s.refreshOnStart,
+         'showLivestreams': s.showLivestreams,
+         'showMovies': s.showMovies,
+@@ -492,6 +569,8 @@ class SettingsIo {
+     // which matches user expectation when restoring a v2 backup.
+     final s = Settings(
+       defaultView: ViewType.values[m['defaultView'] as int? ?? 0],
++      multiViewStabilityBufferSecs:
++          m['multiViewStabilityBufferSecs'] as int? ?? 0, // fix355
+       refreshOnStart: m['refreshOnStart'] as bool? ?? false,
+       showLivestreams: m['showLivestreams'] as bool? ?? true,
+       showMovies: m['showMovies'] as bool? ?? true,
+diff --git a/lib/backend/sql.dart b/lib/backend/sql.dart
+index 6712e27..a67dac2 100644
+--- a/lib/backend/sql.dart
++++ b/lib/backend/sql.dart
+@@ -484,6 +484,7 @@ class Sql {
+             AND c.media_type IN (${generatePlaceholders(mediaTypes.length)})
+             AND c.source_id IN (${generatePlaceholders(filters.sourceIds!.length)})
+             AND c.url IS NOT NULL
++            AND c.series_id IS NULL -- fix355: episodes only in series view
+         ''';
+         params.add(matchExpr);
+         if (shortTerms.isNotEmpty) {
+@@ -515,6 +516,7 @@ class Sql {
+         WHERE media_type IN (${generatePlaceholders(mediaTypes.length)})
+           AND source_id IN (${generatePlaceholders(filters.sourceIds!.length)})
+           AND url IS NOT NULL
++          AND series_id IS NULL -- fix355: episodes only in series view
+       ''';
+       params.addAll(mediaTypes);
+       params.addAll(filters.sourceIds!);
+@@ -1052,6 +1054,72 @@ class Sql {
+     ''', [enabled, sourceId]);
+   }
+ 
++  /// fix355 (backup): per-source curated category state — only rows the
++  /// user actually changed (favorited or disabled), keeping exports small.
++  static Future<List<Map<String, Object?>>> getGroupsCurated(
++      int sourceId) async {
++    final db = await DbFactory.db;
++    final rows = await db.getAll(
++      'SELECT name, COALESCE(favorite,0) f, COALESCE(enabled,1) e'
++      ' FROM groups WHERE source_id = ?'
++      ' AND (COALESCE(favorite,0) = 1 OR COALESCE(enabled,1) = 0)',
++      [sourceId],
++    );
++    return [
++      for (final r in rows)
++        {
++          'name': r.columnAt(0) as String?,
++          'favorite': r.columnAt(1) as int,
++          'enabled': r.columnAt(2) as int,
++        }
++    ];
++  }
++
++  /// fix355 (backup): apply imported category state by (source, name).
++  static Future<void> applyGroupState(
++      int sourceId, String name, int favorite, int enabled) async {
++    final db = await DbFactory.db;
++    await db.execute(
++      'UPDATE groups SET favorite = ?, enabled = ?'
++      ' WHERE source_id = ? AND name = ?',
++      [favorite, enabled, sourceId, name],
++    );
++  }
++
++  /// fix355 (backup): VOD resume positions keyed by channel URL (the stable
++  /// identity across devices; names repeat across series episodes).
++  static Future<List<Map<String, Object?>>> getMoviePositionsForExport(
++      int sourceId) async {
++    final db = await DbFactory.db;
++    final rows = await db.getAll(
++      'SELECT c.url, mp.position FROM movie_positions mp'
++      ' JOIN channels c ON c.id = mp.channel_id'
++      ' WHERE c.source_id = ? AND c.url IS NOT NULL AND mp.position > 0',
++      [sourceId],
++    );
++    return [
++      for (final r in rows)
++        {
++          'url': r.columnAt(0) as String?,
++          'position': r.columnAt(1) as int,
++        }
++    ];
++  }
++
++  /// fix355 (backup): re-attach an imported resume position to the local
++  /// channel row matching (source, url). No-op when the channel does not
++  /// exist yet (e.g. an episode whose series has not been opened).
++  static Future<void> applyMoviePosition(
++      int sourceId, String url, int position) async {
++    final db = await DbFactory.db;
++    await db.execute('''
++      INSERT INTO movie_positions (channel_id, position)
++      SELECT id, ? FROM channels WHERE source_id = ? AND url = ?
++      ON CONFLICT (channel_id)
++      DO UPDATE SET position = excluded.position;
++    ''', [position, sourceId, url]);
++  }
++
+   static Future setPosition(int channelId, int seconds) async {
+     var db = await DbFactory.db;
+     await db.execute('''
+@@ -1771,6 +1839,7 @@ class Sql {
+         AND c.media_type IN (${generatePlaceholders(mediaTypes.length)})
+         AND c.source_id IN (${generatePlaceholders(filters.sourceIds!.length)})
+         AND c.url IS NOT NULL
++        AND c.series_id IS NULL -- fix355: episodes only in series view
+     ''';
+     final List<Object> params = [...terms, ...mediaTypes, ...filters.sourceIds!];
+ 
+diff --git a/lib/multi_view_cell.dart b/lib/multi_view_cell.dart
+index 2aded8b..8b53318 100644
+--- a/lib/multi_view_cell.dart
++++ b/lib/multi_view_cell.dart
+@@ -718,6 +718,13 @@ class _MultiViewCellState extends State<MultiViewCell> {
+     );
+     setState(() {
+       _engine = engine;
++      // fix355: re-sync volume to the CURRENT focus state. Volume was set
++      // before open() using the focus state at open-start; during the multi-
++      // second open the focus handler's `_engine?.setVolume` silently no-ops
++      // (field still null), so a cell that lost focus mid-open finished at
++      // full volume — "sound from all four cells" on staggered 2x2 startup
++      // (S24 2026-06-12 18:22 log). _engine is assigned now; apply the truth.
++      unawaited(engine.setVolume(widget.isFocused ? 1.0 : 0.0));
+       _loading = false;
+       _retryMessage = null;
+     });
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 50d482c..7a111fc 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.29.3': [
++    'Multi-view audio fix: cells no longer finish opening at full volume when focus moved on during a slow start — only the focused cell plays sound.',
++    'Movies section fixed: series episodes no longer leak into Movies, search results, or favorites; they appear only inside their series.',
++    'Backups are now complete: favorite and hidden categories, VOD resume positions, and the multi-view stability buffer setting are all exported and restored (applied after the first refresh, like favorites). Older backups still import fine.',
++  ],
+   '1.29.2': [
+     'New "VOD/Movie pre-buffer" setting (default 15 s): movies and episodes now buffer ahead before starting — and refill properly after running dry — instead of stuttering continuously on servers that send files slowly. Set it to 0 for the old start-immediately behaviour. Live TV is unaffected.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index d350324..d5778e7 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.29.2+354
++version: 1.29.3+355
+ 
+ environment:
+   sdk: ^3.10.7

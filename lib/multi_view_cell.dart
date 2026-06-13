@@ -718,6 +718,13 @@ class _MultiViewCellState extends State<MultiViewCell> {
     );
     setState(() {
       _engine = engine;
+      // fix355: re-sync volume to the CURRENT focus state. Volume was set
+      // before open() using the focus state at open-start; during the multi-
+      // second open the focus handler's `_engine?.setVolume` silently no-ops
+      // (field still null), so a cell that lost focus mid-open finished at
+      // full volume — "sound from all four cells" on staggered 2x2 startup
+      // (S24 2026-06-12 18:22 log). _engine is assigned now; apply the truth.
+      unawaited(engine.setVolume(widget.isFocused ? 1.0 : 0.0));
       _loading = false;
       _retryMessage = null;
     });

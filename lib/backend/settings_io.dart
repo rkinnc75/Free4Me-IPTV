@@ -17,7 +17,7 @@ import 'package:open_tv/models/view_type.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
-const int _schemaVersion = 3;
+const int _schemaVersion = 4; // fix355: + groups (category state) + positions
 
 class SettingsIo {
   /// fix166: local snapshot stamp `yyyymmdd-HHMMSS` for export filenames.
@@ -46,6 +46,33 @@ class SettingsIo {
   /// adds schema-migration work; not worth it for a rare edge case.
   static final Map<String, List<ChannelPreserve>> _pendingPreserves = {};
 
+  /// fix355: staged category state / resume positions, applied with the
+  /// preserves once a refresh populates groups+channels for the source.
+  static final Map<String, List<Map<String, dynamic>>> _pendingGroups = {};
+  static final Map<String, List<Map<String, dynamic>>> _pendingPositions = {};
+
+  static void _stageGroupsAndPositions(
+      String sourceName, Map<String, dynamic> map) {
+    final groupsRaw = map['groups'] as List<dynamic>?;
+    if (groupsRaw != null && groupsRaw.isNotEmpty) {
+      _pendingGroups[sourceName] =
+          groupsRaw.map((g) => (g as Map).cast<String, dynamic>()).toList();
+    }
+    final posRaw = map['positions'] as List<dynamic>?;
+    if (posRaw != null && posRaw.isNotEmpty) {
+      _pendingPositions[sourceName] =
+          posRaw.map((p) => (p as Map).cast<String, dynamic>()).toList();
+    }
+    if (groupsRaw != null || posRaw != null) {
+      AppLog.info(
+        'SettingsIo: staged for "$sourceName"'
+        ' groups=${groupsRaw?.length ?? 0} positions=${posRaw?.length ?? 0}',
+      );
+    }
+  }
+
+  /// fix355: stage category state and resume positions from a backup map.
+
   /// Export all sources + settings to a JSON file chosen by the user.
   /// [includeCredentials] controls whether Xtream username/password are written.
   // fix158: extracted so TV export can build the payload without FilePicker.
@@ -73,6 +100,11 @@ class SettingsIo {
                   })
               .toList();
         }
+        // fix355: curated category state + VOD resume positions.
+        final curatedGroups = await Sql.getGroupsCurated(s.id!);
+        if (curatedGroups.isNotEmpty) base['groups'] = curatedGroups;
+        final positions = await Sql.getMoviePositionsForExport(s.id!);
+        if (positions.isNotEmpty) base['positions'] = positions;
       }
       sourcesPayload.add(base);
     }
@@ -125,6 +157,11 @@ class SettingsIo {
                   })
               .toList();
         }
+        // fix355: curated category state + VOD resume positions.
+        final curatedGroups = await Sql.getGroupsCurated(s.id!);
+        if (curatedGroups.isNotEmpty) base['groups'] = curatedGroups;
+        final positions = await Sql.getMoviePositionsForExport(s.id!);
+        if (positions.isNotEmpty) base['positions'] = positions;
       }
       sourcesPayload.add(base);
     }
@@ -228,6 +265,7 @@ class SettingsIo {
             })
             .toList();
       }
+      _stageGroupsAndPositions(source.name, map); // fix355
     }
     AppLog.info('SettingsIo.importSourcesOnly: imported $count source(s)');
     return count;
@@ -375,6 +413,7 @@ class SettingsIo {
               ' favorites=${preserveList.where((p) => p.favorite == 1).length}',
             );
           }
+          _stageGroupsAndPositions(source.name, map); // fix355
         }
       }
 
@@ -403,9 +442,15 @@ class SettingsIo {
   /// Called from Utils.refreshSource after channels are populated.
   static Future<void> applyPendingPreserves(String sourceName) async {
     final preserve = _pendingPreserves.remove(sourceName);
-    if (preserve == null || preserve.isEmpty) {
+    // fix355: drain staged category state and resume positions in the same
+    // pass; any of the three being present is reason to proceed.
+    final groups = _pendingGroups.remove(sourceName);
+    final positions = _pendingPositions.remove(sourceName);
+    if ((preserve == null || preserve.isEmpty) &&
+        (groups == null || groups.isEmpty) &&
+        (positions == null || positions.isEmpty)) {
       AppLog.info(
-        'SettingsIo.applyPendingPreserves: no staged preserves'
+        'SettingsIo.applyPendingPreserves: nothing staged'
         ' for "$sourceName" — skipping',
       );
       return;
@@ -422,21 +467,51 @@ class SettingsIo {
     if (source == null || source.id == null) {
       AppLog.warn(
         'SettingsIo.applyPendingPreserves: source "$sourceName" not found'
-        ' in DB — dropping ${preserve.length} staged preserves',
+        ' in DB — dropping ${preserve?.length ?? 0} staged preserves'
+        ' (+${groups?.length ?? 0} groups, ${positions?.length ?? 0} positions)',
       );
       return;
     }
 
-    AppLog.info(
-      'SettingsIo.applyPendingPreserves: applying ${preserve.length}'
-      ' preserves to "$sourceName" (sourceId=${source.id})'
-      ' epg=${preserve.where((p) => p.epgChannelId != null).length}'
-      ' favorites=${preserve.where((p) => p.favorite == 1).length}',
-    );
-    await Sql.commitWrite(
-      [Sql.restorePreserve(preserve)],
-      memory: {'sourceId': source.id!.toString()},
-    );
+    if (preserve != null && preserve.isNotEmpty) {
+      AppLog.info(
+        'SettingsIo.applyPendingPreserves: applying ${preserve.length}'
+        ' preserves to "$sourceName" (sourceId=${source.id})'
+        ' epg=${preserve.where((p) => p.epgChannelId != null).length}'
+        ' favorites=${preserve.where((p) => p.favorite == 1).length}',
+      );
+      await Sql.commitWrite(
+        [Sql.restorePreserve(preserve)],
+        memory: {'sourceId': source.id!.toString()},
+      );
+    }
+    // fix355: apply staged category state and resume positions.
+    var gApplied = 0;
+    for (final g in groups ?? const <Map<String, dynamic>>[]) {
+      final name = g['name'] as String?;
+      if (name == null) continue;
+      await Sql.applyGroupState(
+        source.id!,
+        name,
+        (g['favorite'] as int?) ?? 0,
+        (g['enabled'] as int?) ?? 1,
+      );
+      gApplied++;
+    }
+    var pApplied = 0;
+    for (final p in positions ?? const <Map<String, dynamic>>[]) {
+      final url = p['url'] as String?;
+      final pos = p['position'] as int?;
+      if (url == null || pos == null) continue;
+      await Sql.applyMoviePosition(source.id!, url, pos);
+      pApplied++;
+    }
+    if (gApplied > 0 || pApplied > 0) {
+      AppLog.info(
+        'SettingsIo.applyPendingPreserves: "$sourceName"'
+        ' groups=$gApplied positions=$pApplied applied',
+      );
+    }
     await Sql.checkpointAndTruncateWal();
     AppLog.info(
       'SettingsIo.applyPendingPreserves: done for "$sourceName"',
@@ -445,6 +520,8 @@ class SettingsIo {
 
   static Map<String, dynamic> _settingsToMap(Settings s) => {
         'defaultView': s.defaultView.index,
+        'multiViewStabilityBufferSecs':
+            s.multiViewStabilityBufferSecs, // fix355: was missing from backup
         'refreshOnStart': s.refreshOnStart,
         'showLivestreams': s.showLivestreams,
         'showMovies': s.showMovies,
@@ -492,6 +569,8 @@ class SettingsIo {
     // which matches user expectation when restoring a v2 backup.
     final s = Settings(
       defaultView: ViewType.values[m['defaultView'] as int? ?? 0],
+      multiViewStabilityBufferSecs:
+          m['multiViewStabilityBufferSecs'] as int? ?? 0, // fix355
       refreshOnStart: m['refreshOnStart'] as bool? ?? false,
       showLivestreams: m['showLivestreams'] as bool? ?? true,
       showMovies: m['showMovies'] as bool? ?? true,

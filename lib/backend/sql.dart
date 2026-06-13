@@ -484,6 +484,7 @@ class Sql {
             AND c.media_type IN (${generatePlaceholders(mediaTypes.length)})
             AND c.source_id IN (${generatePlaceholders(filters.sourceIds!.length)})
             AND c.url IS NOT NULL
+            AND c.series_id IS NULL -- fix355: episodes only in series view
         ''';
         params.add(matchExpr);
         if (shortTerms.isNotEmpty) {
@@ -515,6 +516,7 @@ class Sql {
         WHERE media_type IN (${generatePlaceholders(mediaTypes.length)})
           AND source_id IN (${generatePlaceholders(filters.sourceIds!.length)})
           AND url IS NOT NULL
+          AND series_id IS NULL -- fix355: episodes only in series view
       ''';
       params.addAll(mediaTypes);
       params.addAll(filters.sourceIds!);
@@ -1050,6 +1052,72 @@ class Sql {
       SET enabled = ? 
       WHERE id = ?
     ''', [enabled, sourceId]);
+  }
+
+  /// fix355 (backup): per-source curated category state — only rows the
+  /// user actually changed (favorited or disabled), keeping exports small.
+  static Future<List<Map<String, Object?>>> getGroupsCurated(
+      int sourceId) async {
+    final db = await DbFactory.db;
+    final rows = await db.getAll(
+      'SELECT name, COALESCE(favorite,0) f, COALESCE(enabled,1) e'
+      ' FROM groups WHERE source_id = ?'
+      ' AND (COALESCE(favorite,0) = 1 OR COALESCE(enabled,1) = 0)',
+      [sourceId],
+    );
+    return [
+      for (final r in rows)
+        {
+          'name': r.columnAt(0) as String?,
+          'favorite': r.columnAt(1) as int,
+          'enabled': r.columnAt(2) as int,
+        }
+    ];
+  }
+
+  /// fix355 (backup): apply imported category state by (source, name).
+  static Future<void> applyGroupState(
+      int sourceId, String name, int favorite, int enabled) async {
+    final db = await DbFactory.db;
+    await db.execute(
+      'UPDATE groups SET favorite = ?, enabled = ?'
+      ' WHERE source_id = ? AND name = ?',
+      [favorite, enabled, sourceId, name],
+    );
+  }
+
+  /// fix355 (backup): VOD resume positions keyed by channel URL (the stable
+  /// identity across devices; names repeat across series episodes).
+  static Future<List<Map<String, Object?>>> getMoviePositionsForExport(
+      int sourceId) async {
+    final db = await DbFactory.db;
+    final rows = await db.getAll(
+      'SELECT c.url, mp.position FROM movie_positions mp'
+      ' JOIN channels c ON c.id = mp.channel_id'
+      ' WHERE c.source_id = ? AND c.url IS NOT NULL AND mp.position > 0',
+      [sourceId],
+    );
+    return [
+      for (final r in rows)
+        {
+          'url': r.columnAt(0) as String?,
+          'position': r.columnAt(1) as int,
+        }
+    ];
+  }
+
+  /// fix355 (backup): re-attach an imported resume position to the local
+  /// channel row matching (source, url). No-op when the channel does not
+  /// exist yet (e.g. an episode whose series has not been opened).
+  static Future<void> applyMoviePosition(
+      int sourceId, String url, int position) async {
+    final db = await DbFactory.db;
+    await db.execute('''
+      INSERT INTO movie_positions (channel_id, position)
+      SELECT id, ? FROM channels WHERE source_id = ? AND url = ?
+      ON CONFLICT (channel_id)
+      DO UPDATE SET position = excluded.position;
+    ''', [position, sourceId, url]);
   }
 
   static Future setPosition(int channelId, int seconds) async {
@@ -1771,6 +1839,7 @@ class Sql {
         AND c.media_type IN (${generatePlaceholders(mediaTypes.length)})
         AND c.source_id IN (${generatePlaceholders(filters.sourceIds!.length)})
         AND c.url IS NOT NULL
+        AND c.series_id IS NULL -- fix355: episodes only in series view
     ''';
     final List<Object> params = [...terms, ...mediaTypes, ...filters.sourceIds!];
 
