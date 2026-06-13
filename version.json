@@ -1,8 +1,8 @@
 {
-  "latest": "1.31.1",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.31.1",
+  "latest": "1.31.2",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.31.2",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 TV fix: the channel picker (used to assign a channel to a multi-view cell) now clearly highlights the row you are on with the D-pad \\u2014 previously the source color tint hid the focus indicator.\n\u2022 QR/LAN source import now also carries each source\\u2019s own settings (connection limit, tag color, sort mode) along with the EPG URL, favorites, category state and resume positions \\u2014 not just the bare source.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.31.1/Free4Me-IPTV-1.31.1-arm64.apk"
+  "releaseNotes": "\u2022 Internal robustness pass (from a code review): debug log now actually rotates at its 20 MB cap during a long session instead of only when toggled; the backup-import dialog wording now matches what it does (adds/updates sources, keeps existing ones); a database migration registration-order issue that could crash debug builds was corrected (release builds were never affected); and two minor resource-handling tidies (a slider focus-node leak and a stray empty DVR cache folder on low disk).",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.31.2/Free4Me-IPTV-1.31.2-arm64.apk"
 }
