@@ -247,6 +247,19 @@ const _helpVodPrebufferSecs = (
       'Restart required: applied when player instances are created.',
 );
 
+const _helpAudioDownmix = (
+  title: 'Downmix audio to stereo',
+  body:
+      'Mixes surround-sound (5.1) audio down to stereo before playback.\n\n'
+      'Default: ON. Keep this on for TV boxes and TVs without an AV '
+      'receiver — some channels send Dolby Digital Plus (E-AC3) 5.1 '
+      'audio that those devices cannot decode, causing repeated audio '
+      'errors or silence. Stereo downmix plays everywhere.\n\n'
+      'Turn OFF only if you have a receiver/soundbar that handles '
+      'multichannel audio and want the original surround mix.\n\n'
+      'Restart required: applied when player instances are created.',
+);
+
 const _helpDvr = (
   title: 'Live DVR Buffer',
   body:
@@ -2339,6 +2352,15 @@ class _SettingsState extends State<SettingsView> {
                     help: _helpVodPrebufferSecs,
                     onChanged: (v) {
                       setState(() => settings.vodPrebufferSecs = v.round());
+                      updateSettings();
+                    },
+                  ),
+                  _switchTile(
+                    label: "Downmix audio to stereo",
+                    value: settings.audioDownmixStereo,
+                    help: _helpAudioDownmix,
+                    onChanged: (v) {
+                      setState(() => settings.audioDownmixStereo = v);
                       updateSettings();
                     },
                   ),

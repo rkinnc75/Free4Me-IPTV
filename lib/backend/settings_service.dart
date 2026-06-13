@@ -25,6 +25,7 @@ const liveDemuxerMaxMBProp = "liveDemuxerMaxMB";
 const vodCacheSecsProp = "vodCacheSecs";
 const vodPrebufferSecsProp = "vodPrebufferSecs"; // fix354
 const dvrEnabledProp = "dvrEnabled"; // fix357
+const audioDownmixStereoProp = "audioDownmixStereo"; // fix361
 const dvrMinutesProp = "dvrMinutes"; // fix357
 const vodDemuxerMaxMBProp = "vodDemuxerMaxMB";
 const openTimeoutSecsProp = "openTimeoutSecs";
@@ -107,6 +108,7 @@ class SettingsService {
     var vodSecs = settingsMap[vodCacheSecsProp];
     var vodPre = settingsMap[vodPrebufferSecsProp];
     var dvrEn = settingsMap[dvrEnabledProp];
+    var audioDmx = settingsMap[audioDownmixStereoProp];
     var dvrMin = settingsMap[dvrMinutesProp];
     var vodMB = settingsMap[vodDemuxerMaxMBProp];
     var openTimeout = settingsMap[openTimeoutSecsProp];
@@ -149,6 +151,7 @@ class SettingsService {
     if (vodSecs != null) settings.vodCacheSecs = int.parse(vodSecs);
     if (vodPre != null) settings.vodPrebufferSecs = int.parse(vodPre);
     if (dvrEn != null) settings.dvrEnabled = dvrEn == 'true';
+    if (audioDmx != null) settings.audioDownmixStereo = audioDmx == 'true';
     if (dvrMin != null) settings.dvrMinutes = int.parse(dvrMin);
     if (vodMB != null) settings.vodDemuxerMaxMB = int.parse(vodMB);
     if (openTimeout != null) settings.openTimeoutSecs = int.parse(openTimeout);
@@ -263,6 +266,7 @@ class SettingsService {
     settingsMap[vodCacheSecsProp] = settings.vodCacheSecs.toString();
     settingsMap[vodPrebufferSecsProp] = settings.vodPrebufferSecs.toString();
     settingsMap[dvrEnabledProp] = settings.dvrEnabled.toString();
+    settingsMap[audioDownmixStereoProp] = settings.audioDownmixStereo.toString();
     settingsMap[dvrMinutesProp] = settings.dvrMinutes.toString();
     settingsMap[vodDemuxerMaxMBProp] = settings.vodDemuxerMaxMB.toString();
     settingsMap[openTimeoutSecsProp] = settings.openTimeoutSecs.toString();

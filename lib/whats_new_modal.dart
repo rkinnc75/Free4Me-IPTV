@@ -6,15 +6,18 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
-  '1.32.0': [
-    'Live DVR controls: when the Live DVR buffer is on, the full-screen player now shows rewind 10s, forward 10s, and a back-to-live button alongside play/pause — fully usable with the TV remote (D-pad). Rewind into the buffer to catch a replay, then jump back to the live edge. Controls appear only while DVR is active.',
+  '1.32.1': [
+    'Fixed channels with no sound on some TV boxes: surround (5.1) audio is now downmixed to stereo by default, which plays on every device (turn it off in Settings if you have an AV receiver).',
+    'Faster source refresh on large catalogs: when search indexing is on, a refresh no longer updates the search index row-by-row — it rebuilds once at the end, cutting big-provider refresh time substantially.',
+    'Multi-view on low-memory TV boxes (e.g. onn 4K) now uses software decode for the small preview tiles, avoiding the black/late tiles caused by too many hardware decoders at once.',
+    'The diagnostic log now records which search method is active.',
   ],
   '1.31.2': [
     'Internal robustness pass (from a code review): debug log now actually rotates at its 20 MB cap during a long session instead of only when toggled; the backup-import dialog wording now matches what it does (adds/updates sources, keeps existing ones); a database migration registration-order issue that could crash debug builds was corrected (release builds were never affected); and two minor resource-handling tidies (a slider focus-node leak and a stray empty DVR cache folder on low disk).',
   ],
   '1.31.1': [
-    'TV fix: the channel picker (used to assign a channel to a multi-view cell) now clearly highlights the row you are on with the D-pad \u2014 previously the source color tint hid the focus indicator.',
-    'QR/LAN source import now also carries each source\u2019s own settings (connection limit, tag color, sort mode) along with the EPG URL, favorites, category state and resume positions \u2014 not just the bare source.',
+    'TV fix: the channel picker (used to assign a channel to a multi-view cell) now clearly highlights the row you are on with the D-pad — previously the source color tint hid the focus indicator.',
+    'QR/LAN source import now also carries each source’s own settings (connection limit, tag color, sort mode) along with the EPG URL, favorites, category state and resume positions — not just the bare source.',
   ],
   '1.31.0': [
     'New Live DVR buffer (off by default): full-screen live TV can record up to 90 minutes to a temporary disk buffer, so you can pause live TV and let brief drops play through the cushion. The stream is stored as-is (no re-encoding) and the buffer auto-caps to leave 5 minutes of free disk, freezing growth if space runs low. Settings → Live DVR buffer.',

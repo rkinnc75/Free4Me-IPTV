@@ -78,7 +78,10 @@ Future<void> main() async {
   final packageInfo = await PackageInfo.fromPlatform();
   AppLog.info(
     'App started — version=${packageInfo.version}'
-    ' build=${packageInfo.buildNumber}',
+    ' build=${packageInfo.buildNumber}'
+    ' searchMethod=${settings.searchMethod.name}' // fix361: which search
+    ' (ftsTriggers=${settings.searchMethod == SearchMethod.ftsAnd ||
+        settings.searchMethod == SearchMethod.ftsTrigram})',
   );
   // fix314: log SoC/board + Tegra detection so multi-view decode routing is
   // verifiable on real hardware (Shield colour-corruption investigation).

@@ -1,4 +1,6 @@
 import 'dart:io';
+
+import 'package:open_tv/backend/device_memory.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 
 class DeviceDetector {
@@ -102,6 +104,17 @@ class DeviceDetector {
     } catch (_) {
       return false;
     }
+  }
+
+  /// fix361: a low-RAM Android TV box (e.g. onn 4K Plus, ~1.9 GB, Amlogic).
+  /// Used to route multi-view preview tiles to software decode: 4 concurrent
+  /// mediacodec-copy pipelines exhaust shared GPU texture memory on these
+  /// devices (TEXTURE-ATTACH-FAILED). Threshold 2300 MB matches the existing
+  /// ChannelSearchCache low-RAM cutoff.
+  static Future<bool> isLowRamTv() async {
+    if (!Platform.isAndroid) return false;
+    if (!await isTV()) return false;
+    return DeviceMemory.totalMb > 0 && DeviceMemory.totalMb < 2300;
   }
 
   /// fix314: human-readable Android board/SoC info for the startup diagnostic,

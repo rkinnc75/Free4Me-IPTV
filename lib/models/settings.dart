@@ -54,6 +54,12 @@ class Settings {
   /// fix357: live DVR-to-disk buffer (full-screen single view only).
   bool dvrEnabled;
 
+  /// fix361: downmix multichannel audio (E-AC3/AC3 5.1) to stereo. Default ON.
+  /// On TV boxes whose HDMI/codec path can't render multichannel E-AC3 the
+  /// stream throws repeated 'Error decoding audio' (onn 4K, YES Network,
+  /// 2026-06-13). Stereo downmix decodes in software and plays everywhere.
+  bool audioDownmixStereo;
+
   /// fix357: DVR window length in minutes (5–90, steps of 5).
   int dvrMinutes;
 
@@ -186,6 +192,7 @@ class Settings {
     this.vodCacheSecs = 60,
     this.vodPrebufferSecs = 15,
     this.dvrEnabled = false,
+    this.audioDownmixStereo = true,
     this.dvrMinutes = 5,
     this.vodDemuxerMaxMB = 256,
     this.openTimeoutSecs = 15,
@@ -311,6 +318,7 @@ class Settings {
     s.vodCacheSecs = 60;
     s.vodPrebufferSecs = 15;
     s.dvrEnabled = false;
+    s.audioDownmixStereo = true;
     s.dvrMinutes = 5;
 
     // Retry / reconnect timing.

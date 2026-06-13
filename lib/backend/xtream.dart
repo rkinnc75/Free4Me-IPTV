@@ -281,16 +281,21 @@ Future<void> getXtream(
     await Sql.logRefreshQueryPlans(source.id!);
   }
   final swCommit = Stopwatch()..start();
-  await Sql.commitWriteBatched(
-    statements,
-    onBatchCommitted: onRowProgress == null
-        ? null
-        : (committedClosures) {
-            final approxRows = committedClosures * bulkInsertRows;
-            onRowProgress(
-                approxRows > totalRows ? totalRows : approxRows, totalRows);
-          },
-  );
+  // fix361/Issue4: suspend FTS triggers around the bulk wipe+reinsert so a
+  // large catalog (Dino ~148K rows) doesn't fire per-row FTS maintenance;
+  // index rebuilt once afterwards. No-op when no FTS method is active.
+  await Sql.withSuspendedFtsTriggers(() async {
+    await Sql.commitWriteBatched(
+      statements,
+      onBatchCommitted: onRowProgress == null
+          ? null
+          : (committedClosures) {
+              final approxRows = committedClosures * bulkInsertRows;
+              onRowProgress(
+                  approxRows > totalRows ? totalRows : approxRows, totalRows);
+            },
+    );
+  });
   swCommit.stop();
   AppLog.info('getXtream: DB commit phase for source="${source.name}" '
       'took ${swCommit.elapsedMilliseconds}ms ($totalRows fetched rows)');

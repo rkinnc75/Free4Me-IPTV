@@ -40,9 +40,6 @@ class MpvEngine implements PlayerEngine {
   int _dvrLastDirBytes = 0;
   bool _dvrActive = false;
 
-  @override
-  bool get dvrActive => _dvrActive; // fix360
-
   late final mk.Player _player = mk.Player(
     configuration: mk.PlayerConfiguration(
       // bufferSizeMB from settings; mini-player (previewMode) uses half.
@@ -497,6 +494,19 @@ class MpvEngine implements PlayerEngine {
     await np.setProperty('cache', 'yes');
     await np.setProperty('network-timeout', '30');
 
+    // fix361: downmix multichannel audio to stereo when enabled (default).
+    // Repeated 'Error decoding audio' on E-AC3 5.1 feeds (onn 4K / YES
+    // Network, 2026-06-13) clears when the audio is downmixed and decoded in
+    // software rather than pushed multichannel into a path the device can't
+    // render. NOTE: the cold-eyes suggestion of audio-spdif passthrough was
+    // NOT used — it requires a capable AV receiver downstream and would
+    // SILENCE audio on a plain box->TV HDMI path. Downmix-to-stereo is the
+    // safe direction (works on every output) and is a user-toggle, default ON.
+    if (s.audioDownmixStereo) {
+      await np.setProperty('audio-channels', 'stereo');
+      await np.setProperty('ad-lavc-downmix', 'yes');
+    }
+
     if (ignoreSsl) {
       await np.setProperty('tls-verify', 'no');
     }
@@ -519,10 +529,17 @@ class MpvEngine implements PlayerEngine {
       //   auto         → software on Tegra/Shield, mediacodec-copy elsewhere
       //   hardwareCopy → force mediacodec-copy (pre-fix314 behaviour)
       //   software     → force CPU decode
+      // fix361: 'auto' now also picks software decode on low-RAM TV boxes
+      // (onn 4K Plus, ~1925MB / Amlogic). With 4 mediacodec-copy pipelines the
+      // SoC times out allocating video textures (TEXTURE-ATTACH-FAILED x3 in
+      // the 2026-06-13 onn 2×2 log); software decode for preview tiles avoids
+      // the shared GPU texture contention. Phones/large-RAM TVs keep
+      // mediacodec-copy.
       final wantSoftware = switch (s.multiViewDecode) {
         MultiViewDecode.software => true,
         MultiViewDecode.hardwareCopy => false,
-        MultiViewDecode.auto => await DeviceDetector.isTegra(),
+        MultiViewDecode.auto =>
+          await DeviceDetector.isTegra() || await DeviceDetector.isLowRamTv(),
       };
       if (wantSoftware) {
         await np.setProperty('hwdec', 'no');

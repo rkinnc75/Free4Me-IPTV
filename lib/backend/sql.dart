@@ -204,6 +204,45 @@ class Sql {
   ///     index is stale, so rebuild it once from the content table first.
   /// Called from a one-time boot check (main) and on every settings change
   /// (SettingsService.updateSettings). Idempotent.
+  /// fix361/Issue4: run [body] with the FTS sync triggers suspended, then
+  /// rebuild the FTS index ONCE. A large source refresh (Dino ~148K rows on
+  /// the onn 4K: DELETE 26s, commit 60s) fires channels_ad/channels_ai per
+  /// row when an FTS search method is active — ~300K trigger executions of
+  /// FTS trigram maintenance. Dropping the triggers around the bulk DELETE +
+  /// reinsert and rebuilding once collapses that to a single index build.
+  ///
+  /// No-op for non-FTS users: their triggers are already absent (fix212), so
+  /// [hadTriggers] is false and we neither drop nor rebuild — body runs as-is.
+  /// Safe if [body] throws: the finally clause restores triggers + rebuild so
+  /// search is never left stale.
+  static Future<void> withSuspendedFtsTriggers(
+      Future<void> Function() body) async {
+    final db = await DbFactory.db;
+    final existing = await db.getAll(
+      "SELECT name FROM sqlite_master WHERE type = 'trigger' "
+      "AND name IN ('channels_ai', 'channels_au', 'channels_ad')",
+    );
+    final hadTriggers = existing.length == 3;
+    if (hadTriggers) {
+      await db.execute('DROP TRIGGER IF EXISTS channels_ai;');
+      await db.execute('DROP TRIGGER IF EXISTS channels_au;');
+      await db.execute('DROP TRIGGER IF EXISTS channels_ad;');
+      AppLog.info('Sql.withSuspendedFtsTriggers: FTS triggers dropped'
+          ' for bulk refresh');
+    }
+    try {
+      await body();
+    } finally {
+      if (hadTriggers) {
+        // reconcileFtsTriggers(true) recreates the triggers AND, because they
+        // were absent, rebuilds the FTS index once from the content table.
+        await reconcileFtsTriggers(true);
+        AppLog.info('Sql.withSuspendedFtsTriggers: FTS triggers restored'
+            ' + index rebuilt');
+      }
+    }
+  }
+
   static Future<void> reconcileFtsTriggers(bool ftsActive) async {
     final db = await DbFactory.db;
     final existing = await db.getAll(
