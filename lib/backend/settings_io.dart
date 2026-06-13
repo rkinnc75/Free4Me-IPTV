@@ -241,6 +241,10 @@ class SettingsIo {
         sourceType: SourceType.values[map['sourceType'] as int? ?? 0],
         enabled: map['enabled'] as bool? ?? true,
         epgUrl: map['epgUrl'] as String?,
+        // fix358: carry source-level settings through QR/LAN import.
+        maxConnections: map['maxConnections'] as int?,
+        color: map['color'] as int?,
+        sortMode: map['sortMode'] as String?,
       );
       // getOrCreateSourceByName merges by name — existing sources are reused,
       // new ones created. Other settings are intentionally NOT touched.
@@ -703,5 +707,10 @@ class SettingsIo {
         'password': includeCredentials ? s.password : null,
         'enabled': s.enabled,
         'epgUrl': s.epgUrl,
+        // fix358: source-level settings were dropped on export, so QR/LAN
+        // sources-import lost EPG URL was already carried; these were not.
+        'maxConnections': s.maxConnections,
+        'color': s.color,
+        'sortMode': s.sortMode,
       };
 }

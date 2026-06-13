@@ -394,12 +394,44 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
 
     // fix228: tint the row by source tag color (~35%), matching the live
     // picker's ChannelTile (fix196). Null color = surface unchanged.
-    return Container(
-      color: SourcePalette.tintOver(
-        _sourceColors[ch.sourceId],
-        Theme.of(context).colorScheme.surfaceContainer,
+    // fix358: the opaque source tint overpainted ListTile's built-in focus
+    // highlight, so on TV there was no indication which row had D-pad focus.
+    // Wrap in a Builder-driven Focus so the row brightens + gains a primary
+    // border when focused. The ListTile keeps onTap/autofocus; the Focus is
+    // non-blocking (canRequestFocus:false) so traversal still lands on the
+    // tile itself, not this wrapper.
+    final scheme = Theme.of(context).colorScheme;
+    final baseColor = SourcePalette.tintOver(
+      _sourceColors[ch.sourceId],
+      scheme.surfaceContainer,
+    );
+    return Focus(
+      canRequestFocus: false,
+      child: Builder(
+        builder: (context) {
+          final focused = Focus.of(context).hasFocus;
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            decoration: BoxDecoration(
+              color: focused
+                  ? Color.alphaBlend(
+                      scheme.primary.withValues(alpha: 0.30), baseColor)
+                  : baseColor,
+              border: Border.all(
+                color: focused ? scheme.primary : Colors.transparent,
+                width: focused ? 2.5 : 0,
+              ),
+            ),
+            child: _pickerListTile(context, ch, logo, scanOk, autofocus),
+          );
+        },
       ),
-      child: ListTile(
+    );
+  }
+
+  Widget _pickerListTile(BuildContext context, Channel ch, Widget logo,
+      bool scanOk, bool autofocus) {
+    return ListTile(
         autofocus: autofocus, // fix252: first tile gets initial D-pad focus
         leading: logo,
         title: Text(
@@ -416,7 +448,6 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
               )
             : null,
         onTap: () => Navigator.of(context).pop(ch),
-      ),
     );
   }
 

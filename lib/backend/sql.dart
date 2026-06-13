@@ -387,7 +387,10 @@ class Sql {
                      username       = COALESCE(?, username),
                      password       = COALESCE(?, password),
                      epg_url        = ?,
-                     enabled        = ?
+                     enabled        = ?,
+                     max_connections = COALESCE(?, max_connections),
+                     color           = COALESCE(?, color),
+                     sort_mode       = COALESCE(?, sort_mode)
                WHERE id = ?
             ''', [
           source.sourceType.index,
@@ -396,6 +399,9 @@ class Sql {
           source.password,
           source.epgUrl,
           source.enabled ? 1 : 0,
+          source.maxConnections,
+          source.color,
+          source.sortMode,
           id,
         ]);
         memory['sourceId'] = id.toString();
@@ -403,8 +409,8 @@ class Sql {
         await tx.execute('''
               INSERT INTO sources
                 (name, source_type, url, username, password, epg_url,
-                 enabled)
-              VALUES (?, ?, ?, ?, ?, ?, ?);
+                 enabled, max_connections, color, sort_mode)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             ''', [
           source.name,
           source.sourceType.index,
@@ -413,6 +419,9 @@ class Sql {
           source.password,
           source.epgUrl,
           source.enabled ? 1 : 0,
+          source.maxConnections,
+          source.color,
+          source.sortMode,
         ]);
         memory['sourceId'] =
             (await tx.get("SELECT last_insert_rowid();")).columnAt(0).toString();
