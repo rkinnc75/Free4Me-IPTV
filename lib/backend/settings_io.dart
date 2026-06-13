@@ -324,7 +324,8 @@ class SettingsIo {
           content: Text(
             'Exported: ${payload['exportedAt'] ?? 'unknown'}\n'
             'App version: ${payload['appVersion'] ?? 'unknown'}\n\n'
-            'This will overwrite your current settings and replace all sources.',
+            'This will update your settings and add or update the sources in '
+            'this backup. Existing sources not in the backup are kept. ',  // fix359: dialog matched merge semantics (was "replace all sources")
           ),
           actions: [
             TextButton(

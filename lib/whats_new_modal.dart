@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.31.2': [
+    'Internal robustness pass (from a code review): debug log now actually rotates at its 20 MB cap during a long session instead of only when toggled; the backup-import dialog wording now matches what it does (adds/updates sources, keeps existing ones); a database migration registration-order issue that could crash debug builds was corrected (release builds were never affected); and two minor resource-handling tidies (a slider focus-node leak and a stray empty DVR cache folder on low disk).',
+  ],
   '1.31.1': [
     'TV fix: the channel picker (used to assign a channel to a multi-view cell) now clearly highlights the row you are on with the D-pad \u2014 previously the source color tint hid the focus indicator.',
     'QR/LAN source import now also carries each source\u2019s own settings (connection limit, tag color, sort mode) along with the EPG URL, favorites, category state and resume positions \u2014 not just the bare source.',

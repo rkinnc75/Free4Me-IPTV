@@ -3482,9 +3482,15 @@ class _DpadFriendlySlider extends StatefulWidget {
 class _DpadFriendlySliderState extends State<_DpadFriendlySlider> {
   late final FocusNode _focusNode = FocusNode(debugLabel: 'DpadSlider');
 
+  /// fix359: the stock Slider's inert focus node, hoisted out of build() so it
+  /// is allocated once and disposed (was leaking one node per rebuild).
+  late final FocusNode _innerInertNode =
+      FocusNode(skipTraversal: true, canRequestFocus: false);
+
   @override
   void dispose() {
     _focusNode.dispose();
+    _innerInertNode.dispose();
     super.dispose();
   }
 
@@ -3530,7 +3536,9 @@ class _DpadFriendlySliderState extends State<_DpadFriendlySlider> {
         label: widget.label,
         // Do not let the stock Slider grab keyboard focus — our outer
         // Focus node receives keys and forwards left/right manually.
-        focusNode: FocusNode(skipTraversal: true, canRequestFocus: false),
+        // fix359: hoisted out of build() (was allocating a leaked FocusNode
+        // per rebuild during drag); disposed with the state.
+        focusNode: _innerInertNode,
         onChanged: widget.onChanged,
       ),
     );

@@ -653,10 +653,11 @@ class MpvEngine implements PlayerEngine {
     try {
       final tmp = await getTemporaryDirectory();
       final dir = Directory('${tmp.path}/free4me_dvr');
-      if (!await dir.exists()) await dir.create(recursive: true);
-      _dvrDir = dir;
+      // fix359: do NOT create the dir or set _dvrDir yet — a low-disk return 0
+      // below would leave an empty free4me_dvr behind (cleanup only runs when
+      // _dvrActive). Size first; commit the dir only once the window is > 0.
       var minutes = settings.dvrMinutes.clamp(5, 90);
-      final freeMB = await _dfAvailableMB(dir.path);
+      final freeMB = await _dfAvailableMB(tmp.path);
       if (freeMB != null) {
         final fitMinutes = (freeMB ~/ _dvrEstMBPerMin) - 5; // 5-min margin
         if (fitMinutes < minutes) {
@@ -671,6 +672,9 @@ class MpvEngine implements PlayerEngine {
             ' headroom available');
         return 0;
       }
+      // fix359: window committed — now create the cache dir and record it.
+      if (!await dir.exists()) await dir.create(recursive: true);
+      _dvrDir = dir;
       return minutes * _dvrEstMBPerMin;
     } catch (e) {
       AppLog.warn('MpvEngine: DVR sizing failed — disabled ($e)');

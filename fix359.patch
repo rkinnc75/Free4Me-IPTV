@@ -1,0 +1,233 @@
+diff --git a/lib/backend/app_logger.dart b/lib/backend/app_logger.dart
+index 643b295..eeaf8a7 100644
+--- a/lib/backend/app_logger.dart
++++ b/lib/backend/app_logger.dart
+@@ -55,6 +55,42 @@ class AppLogger {
+     final line = '[$ts] [$prefix] $message\n';
+     debugPrint(line.trimRight());
+     _sink?.write(line);
++    // fix359: rotation was only evaluated in _ensureOpen() (enable/clear),
++    // so a long logging SESSION grew unbounded past _maxBytes. Track bytes
++    // written and trigger an async rotation when the cap is crossed. The
++    // estimate uses the line length (UTF-16 code units ≈ bytes for ASCII
++    // logs); exactness is not required, only that rotation fires mid-session.
++    _bytesSinceOpen += line.length;
++    if (_bytesSinceOpen > _maxBytes && !_rotating) {
++      _rotating = true;
++      // ignore: discarded_futures
++      _rotate();
++    }
++  }
++
++  /// fix359: in-session rotation. Closes the sink, renames the current file
++  /// to `.old` (replacing any previous `.old`), and reopens a fresh file.
++  bool _rotating = false;
++  int _bytesSinceOpen = 0;
++
++  Future<void> _rotate() async {
++    try {
++      await _close();
++      final path = await logPath;
++      final f = File(path);
++      if (await f.exists()) {
++        final old = File('$path.old');
++        if (await old.exists()) await old.delete();
++        await f.rename('$path.old');
++      }
++      _bytesSinceOpen = 0;
++      if (_enabled) await _ensureOpen();
++      log('--- Log rotated (size cap) ---', level: LogLevel.info);
++    } catch (e) {
++      debugPrint('AppLogger: rotation failed — $e');
++    } finally {
++      _rotating = false;
++    }
+   }
+ 
+   void info(String message) => log(message, level: LogLevel.info);
+@@ -132,6 +168,7 @@ class AppLogger {
+ 
+ 
+   Future<void> _ensureOpen() async {
++    _bytesSinceOpen = 0; // fix359
+     if (_sink != null || _initializing) return;
+     _initializing = true;
+     try {
+diff --git a/lib/backend/db_factory.dart b/lib/backend/db_factory.dart
+index 3363bf8..a103f3e 100644
+--- a/lib/backend/db_factory.dart
++++ b/lib/backend/db_factory.dart
+@@ -264,31 +264,11 @@ class DbFactory {
+           'ALTER TABLE channels ADD COLUMN stream_validated INTEGER;',
+         );
+       }))
+-      ..add(SqliteMigration(12, (tx) async {
+-        // fix154: rolling playback metrics history (local, no telemetry).
+-        // One row per analyzed session summary. Capped to newest 50 by DAO.
+-        await tx.execute('''
+-          CREATE TABLE "playback_metrics" (
+-            id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+-            session_start             INTEGER NOT NULL,
+-            session_minutes           REAL    NOT NULL,
+-            streams_opened            INTEGER NOT NULL,
+-            median_first_frame_ms     INTEGER NOT NULL,
+-            median_stable_ms          INTEGER NOT NULL,
+-            startup_visible_rebuffers INTEGER NOT NULL,
+-            total_rebuffers           INTEGER NOT NULL,
+-            visible_rebuffers         INTEGER NOT NULL,
+-            median_rebuffer_ms        INTEGER NOT NULL,
+-            reconnects_watchdog       INTEGER NOT NULL,
+-            reconnects_error          INTEGER NOT NULL,
+-            gave_up                   INTEGER NOT NULL,
+-            created_at                INTEGER NOT NULL
+-          );
+-        ''');
+-        await tx.execute(
+-            'CREATE INDEX idx_pm_session '
+-            'ON playback_metrics(session_start);');
+-      }))
++      // fix359: 11 registered before 12 (was 12-before-11). sqlite_async
++      // 0.13.1 asserts migrations are added in ascending toVersion order;
++      // the old order tripped that assert in any asserts-enabled build
++      // (debug/profile/widget tests). 12's table+index are also re-created
++      // IF NOT EXISTS by 13, so reordering changes no resulting schema.
+       ..add(SqliteMigration(11, (tx) async {
+         // The previous trigger (AFTER UPDATE ON channels) fired for every
+         // column write — favorites, history, stream_validated, EPG — causing
+@@ -316,10 +296,31 @@ class DbFactory {
+           WHERE url IS NOT NULL;
+         ''');
+       }))
+-      // fix170: migration 12 (CREATE TABLE playback_metrics) was registered
+-      // out of order (after 10, before 11), so sqlite_async's version-tracked
+-      // migrate() skipped it on upgraded devices. New highest-version migration
+-      // is guaranteed to run everywhere; IF NOT EXISTS is a no-op on fresh installs.
++      ..add(SqliteMigration(12, (tx) async {
++        // fix154: rolling playback metrics history (local, no telemetry).
++        // One row per analyzed session summary. Capped to newest 50 by DAO.
++        await tx.execute('''
++          CREATE TABLE "playback_metrics" (
++            id                        INTEGER PRIMARY KEY AUTOINCREMENT,
++            session_start             INTEGER NOT NULL,
++            session_minutes           REAL    NOT NULL,
++            streams_opened            INTEGER NOT NULL,
++            median_first_frame_ms     INTEGER NOT NULL,
++            median_stable_ms          INTEGER NOT NULL,
++            startup_visible_rebuffers INTEGER NOT NULL,
++            total_rebuffers           INTEGER NOT NULL,
++            visible_rebuffers         INTEGER NOT NULL,
++            median_rebuffer_ms        INTEGER NOT NULL,
++            reconnects_watchdog       INTEGER NOT NULL,
++            reconnects_error          INTEGER NOT NULL,
++            gave_up                   INTEGER NOT NULL,
++            created_at                INTEGER NOT NULL
++          );
++        ''');
++        await tx.execute(
++            'CREATE INDEX idx_pm_session '
++            'ON playback_metrics(session_start);');
++      }))
+       ..add(SqliteMigration(13, (tx) async {
+         await tx.execute('''
+           CREATE TABLE IF NOT EXISTS "playback_metrics" (
+diff --git a/lib/backend/settings_io.dart b/lib/backend/settings_io.dart
+index d1f0d08..f1012ff 100644
+--- a/lib/backend/settings_io.dart
++++ b/lib/backend/settings_io.dart
+@@ -324,7 +324,8 @@ class SettingsIo {
+           content: Text(
+             'Exported: ${payload['exportedAt'] ?? 'unknown'}\n'
+             'App version: ${payload['appVersion'] ?? 'unknown'}\n\n'
+-            'This will overwrite your current settings and replace all sources.',
++            'This will update your settings and add or update the sources in '
++            'this backup. Existing sources not in the backup are kept. ',  // fix359: dialog matched merge semantics (was "replace all sources")
+           ),
+           actions: [
+             TextButton(
+diff --git a/lib/player/mpv_engine.dart b/lib/player/mpv_engine.dart
+index ef8b584..96549d8 100644
+--- a/lib/player/mpv_engine.dart
++++ b/lib/player/mpv_engine.dart
+@@ -653,10 +653,11 @@ class MpvEngine implements PlayerEngine {
+     try {
+       final tmp = await getTemporaryDirectory();
+       final dir = Directory('${tmp.path}/free4me_dvr');
+-      if (!await dir.exists()) await dir.create(recursive: true);
+-      _dvrDir = dir;
++      // fix359: do NOT create the dir or set _dvrDir yet — a low-disk return 0
++      // below would leave an empty free4me_dvr behind (cleanup only runs when
++      // _dvrActive). Size first; commit the dir only once the window is > 0.
+       var minutes = settings.dvrMinutes.clamp(5, 90);
+-      final freeMB = await _dfAvailableMB(dir.path);
++      final freeMB = await _dfAvailableMB(tmp.path);
+       if (freeMB != null) {
+         final fitMinutes = (freeMB ~/ _dvrEstMBPerMin) - 5; // 5-min margin
+         if (fitMinutes < minutes) {
+@@ -671,6 +672,9 @@ class MpvEngine implements PlayerEngine {
+             ' headroom available');
+         return 0;
+       }
++      // fix359: window committed — now create the cache dir and record it.
++      if (!await dir.exists()) await dir.create(recursive: true);
++      _dvrDir = dir;
+       return minutes * _dvrEstMBPerMin;
+     } catch (e) {
+       AppLog.warn('MpvEngine: DVR sizing failed — disabled ($e)');
+diff --git a/lib/settings_view.dart b/lib/settings_view.dart
+index 47f07fc..01dec11 100644
+--- a/lib/settings_view.dart
++++ b/lib/settings_view.dart
+@@ -3482,9 +3482,15 @@ class _DpadFriendlySlider extends StatefulWidget {
+ class _DpadFriendlySliderState extends State<_DpadFriendlySlider> {
+   late final FocusNode _focusNode = FocusNode(debugLabel: 'DpadSlider');
+ 
++  /// fix359: the stock Slider's inert focus node, hoisted out of build() so it
++  /// is allocated once and disposed (was leaking one node per rebuild).
++  late final FocusNode _innerInertNode =
++      FocusNode(skipTraversal: true, canRequestFocus: false);
++
+   @override
+   void dispose() {
+     _focusNode.dispose();
++    _innerInertNode.dispose();
+     super.dispose();
+   }
+ 
+@@ -3530,7 +3536,9 @@ class _DpadFriendlySliderState extends State<_DpadFriendlySlider> {
+         label: widget.label,
+         // Do not let the stock Slider grab keyboard focus — our outer
+         // Focus node receives keys and forwards left/right manually.
+-        focusNode: FocusNode(skipTraversal: true, canRequestFocus: false),
++        // fix359: hoisted out of build() (was allocating a leaked FocusNode
++        // per rebuild during drag); disposed with the state.
++        focusNode: _innerInertNode,
+         onChanged: widget.onChanged,
+       ),
+     );
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index d03bb56..2d8ce5c 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.31.2': [
++    'Internal robustness pass (from a code review): debug log now actually rotates at its 20 MB cap during a long session instead of only when toggled; the backup-import dialog wording now matches what it does (adds/updates sources, keeps existing ones); a database migration registration-order issue that could crash debug builds was corrected (release builds were never affected); and two minor resource-handling tidies (a slider focus-node leak and a stray empty DVR cache folder on low disk).',
++  ],
+   '1.31.1': [
+     'TV fix: the channel picker (used to assign a channel to a multi-view cell) now clearly highlights the row you are on with the D-pad \u2014 previously the source color tint hid the focus indicator.',
+     'QR/LAN source import now also carries each source\u2019s own settings (connection limit, tag color, sort mode) along with the EPG URL, favorites, category state and resume positions \u2014 not just the bare source.',
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 5ff70be..f817a25 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.31.1+358
++version: 1.31.2+359
+ 
+ environment:
+   sdk: ^3.10.7

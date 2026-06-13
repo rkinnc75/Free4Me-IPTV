@@ -55,6 +55,42 @@ class AppLogger {
     final line = '[$ts] [$prefix] $message\n';
     debugPrint(line.trimRight());
     _sink?.write(line);
+    // fix359: rotation was only evaluated in _ensureOpen() (enable/clear),
+    // so a long logging SESSION grew unbounded past _maxBytes. Track bytes
+    // written and trigger an async rotation when the cap is crossed. The
+    // estimate uses the line length (UTF-16 code units ≈ bytes for ASCII
+    // logs); exactness is not required, only that rotation fires mid-session.
+    _bytesSinceOpen += line.length;
+    if (_bytesSinceOpen > _maxBytes && !_rotating) {
+      _rotating = true;
+      // ignore: discarded_futures
+      _rotate();
+    }
+  }
+
+  /// fix359: in-session rotation. Closes the sink, renames the current file
+  /// to `.old` (replacing any previous `.old`), and reopens a fresh file.
+  bool _rotating = false;
+  int _bytesSinceOpen = 0;
+
+  Future<void> _rotate() async {
+    try {
+      await _close();
+      final path = await logPath;
+      final f = File(path);
+      if (await f.exists()) {
+        final old = File('$path.old');
+        if (await old.exists()) await old.delete();
+        await f.rename('$path.old');
+      }
+      _bytesSinceOpen = 0;
+      if (_enabled) await _ensureOpen();
+      log('--- Log rotated (size cap) ---', level: LogLevel.info);
+    } catch (e) {
+      debugPrint('AppLogger: rotation failed — $e');
+    } finally {
+      _rotating = false;
+    }
   }
 
   void info(String message) => log(message, level: LogLevel.info);
@@ -132,6 +168,7 @@ class AppLogger {
 
 
   Future<void> _ensureOpen() async {
+    _bytesSinceOpen = 0; // fix359
     if (_sink != null || _initializing) return;
     _initializing = true;
     try {

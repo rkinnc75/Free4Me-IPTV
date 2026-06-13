@@ -264,31 +264,11 @@ class DbFactory {
           'ALTER TABLE channels ADD COLUMN stream_validated INTEGER;',
         );
       }))
-      ..add(SqliteMigration(12, (tx) async {
-        // fix154: rolling playback metrics history (local, no telemetry).
-        // One row per analyzed session summary. Capped to newest 50 by DAO.
-        await tx.execute('''
-          CREATE TABLE "playback_metrics" (
-            id                        INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_start             INTEGER NOT NULL,
-            session_minutes           REAL    NOT NULL,
-            streams_opened            INTEGER NOT NULL,
-            median_first_frame_ms     INTEGER NOT NULL,
-            median_stable_ms          INTEGER NOT NULL,
-            startup_visible_rebuffers INTEGER NOT NULL,
-            total_rebuffers           INTEGER NOT NULL,
-            visible_rebuffers         INTEGER NOT NULL,
-            median_rebuffer_ms        INTEGER NOT NULL,
-            reconnects_watchdog       INTEGER NOT NULL,
-            reconnects_error          INTEGER NOT NULL,
-            gave_up                   INTEGER NOT NULL,
-            created_at                INTEGER NOT NULL
-          );
-        ''');
-        await tx.execute(
-            'CREATE INDEX idx_pm_session '
-            'ON playback_metrics(session_start);');
-      }))
+      // fix359: 11 registered before 12 (was 12-before-11). sqlite_async
+      // 0.13.1 asserts migrations are added in ascending toVersion order;
+      // the old order tripped that assert in any asserts-enabled build
+      // (debug/profile/widget tests). 12's table+index are also re-created
+      // IF NOT EXISTS by 13, so reordering changes no resulting schema.
       ..add(SqliteMigration(11, (tx) async {
         // The previous trigger (AFTER UPDATE ON channels) fired for every
         // column write — favorites, history, stream_validated, EPG — causing
@@ -316,10 +296,31 @@ class DbFactory {
           WHERE url IS NOT NULL;
         ''');
       }))
-      // fix170: migration 12 (CREATE TABLE playback_metrics) was registered
-      // out of order (after 10, before 11), so sqlite_async's version-tracked
-      // migrate() skipped it on upgraded devices. New highest-version migration
-      // is guaranteed to run everywhere; IF NOT EXISTS is a no-op on fresh installs.
+      ..add(SqliteMigration(12, (tx) async {
+        // fix154: rolling playback metrics history (local, no telemetry).
+        // One row per analyzed session summary. Capped to newest 50 by DAO.
+        await tx.execute('''
+          CREATE TABLE "playback_metrics" (
+            id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_start             INTEGER NOT NULL,
+            session_minutes           REAL    NOT NULL,
+            streams_opened            INTEGER NOT NULL,
+            median_first_frame_ms     INTEGER NOT NULL,
+            median_stable_ms          INTEGER NOT NULL,
+            startup_visible_rebuffers INTEGER NOT NULL,
+            total_rebuffers           INTEGER NOT NULL,
+            visible_rebuffers         INTEGER NOT NULL,
+            median_rebuffer_ms        INTEGER NOT NULL,
+            reconnects_watchdog       INTEGER NOT NULL,
+            reconnects_error          INTEGER NOT NULL,
+            gave_up                   INTEGER NOT NULL,
+            created_at                INTEGER NOT NULL
+          );
+        ''');
+        await tx.execute(
+            'CREATE INDEX idx_pm_session '
+            'ON playback_metrics(session_start);');
+      }))
       ..add(SqliteMigration(13, (tx) async {
         await tx.execute('''
           CREATE TABLE IF NOT EXISTS "playback_metrics" (
