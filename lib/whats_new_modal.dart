@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.32.3': [
+    'Live DVR is now isolated per playback session, so quickly leaving one channel and opening another can no longer corrupt the new channel’s recording buffer.',
+    'Channel picker search no longer tries to load an entire large catalog into memory for short queries.',
+    'Smaller fixes from a code review: the export portal’s Back link keeps working, the updater no longer leaks a network connection on a failed download, and disk-space detection for DVR is more robust on devices with long storage names.',
+  ],
   '1.32.2': [
     'Critical fix: opening a series now shows its episodes again. A guard added in 1.29.3 to keep episodes out of the Movies list was applied too broadly and accidentally made every series appear empty.',
     'Episodes also no longer leak into search results when you type a query in Movies, All, or Favorites (the default search path was missed by the earlier fix).',

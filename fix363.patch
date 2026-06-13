@@ -1,0 +1,201 @@
+diff --git a/lib/backend/export_server.dart b/lib/backend/export_server.dart
+index fa26d43..87d8342 100644
+--- a/lib/backend/export_server.dart
++++ b/lib/backend/export_server.dart
+@@ -219,7 +219,7 @@ class ExportServer {
+               '<meta name="viewport" content="width=device-width,initial-scale=1">'
+               '<body style="font-family:sans-serif;padding:2em;max-width:32em;'
+               'margin:auto"><h2>${ok ? 'Done' : 'Error'}</h2><p>$msg</p>'
+-              '<p><a href="/">← Back</a></p></body>');
++              '<p><a href="/?t=$token">← Back</a></p></body>'); // fix363/LOW-2: keep token
+         await req.response.close();
+         AppLog.info('ExportServer: import-sources result n=$n');
+       } catch (e) {
+@@ -229,7 +229,7 @@ class ExportServer {
+           ..headers.contentType = ContentType.html
+           ..write('<!doctype html><body style="font-family:sans-serif;'
+               'padding:2em"><h2>Error</h2><p>Import failed: $e</p>'
+-              '<p><a href="/">← Back</a></p></body>');
++              '<p><a href="/?t=$token">← Back</a></p></body>'); // fix363/LOW-2: keep token
+         await req.response.close();
+       }
+       return;
+diff --git a/lib/backend/update_checker.dart b/lib/backend/update_checker.dart
+index 2b201cd..097b289 100644
+--- a/lib/backend/update_checker.dart
++++ b/lib/backend/update_checker.dart
+@@ -206,10 +206,10 @@ class UpdateChecker {
+     }
+ 
+     File? outFile;
++    final client = HttpClient(); // fix363/LOW-3: hoisted for finally
+     try {
+       final dir = await getApplicationSupportDirectory();
+       outFile = File('${dir.path}/Free4Me-IPTV-$version.apk');
+-      final client = HttpClient();
+       final request = await client.getUrl(uri);
+       final response = await request.close();
+       if (response.statusCode != 200) {
+@@ -231,9 +231,9 @@ class UpdateChecker {
+         if (total > 0) progress.value = received / total;
+       }
+       await sink.close();
+-      client.close();
+       AppLog.info('UpdateChecker: downloaded $received bytes to ${outFile.path}');
+     } catch (e) {
++      // fix363/LOW-3: client released in finally; error path no longer leaks it.
+       AppLog.warn('UpdateChecker: download failed — $e');
+       if (context.mounted) {
+         Navigator.of(context, rootNavigator: true).pop(); // dismiss progress
+@@ -242,6 +242,8 @@ class UpdateChecker {
+         );
+       }
+       return;
++    } finally {
++      client.close(); // fix363/LOW-3: always release the HttpClient
+     }
+ 
+     if (context.mounted) {
+diff --git a/lib/channel_picker_screen.dart b/lib/channel_picker_screen.dart
+index c3c4052..da0b049 100644
+--- a/lib/channel_picker_screen.dart
++++ b/lib/channel_picker_screen.dart
+@@ -275,9 +275,13 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
+     final inv = ++_loadInvocation;
+     setState(() => _loading = true);
+ 
++    // fix363/MED-2: cap total results so a short query against a 700k-channel
++    // catalog can't pull the whole table into memory. 10 pages is well beyond
++    // what a user scans in a picker; narrowing the query reaches the rest.
++    const maxPages = 10;
+     final all = <Channel>[];
+     var page = 1;
+-    while (true) {
++    while (page <= maxPages) {
+       if (_loadInvocation != inv) return;
+       final pageResults = await Sql.search(
+         _liveTvPickerFilters(query: trimmed, page: page),
+diff --git a/lib/player/mpv_engine.dart b/lib/player/mpv_engine.dart
+index 746e1ab..4f0a209 100644
+--- a/lib/player/mpv_engine.dart
++++ b/lib/player/mpv_engine.dart
+@@ -188,15 +188,10 @@ class MpvEngine implements PlayerEngine {
+     // Calling _applyMpvOptions() here would set mpv properties on the
+     // still-active previous stream, triggering a demuxer reset and seek
+     // probe on non-seekable MPEG-TS livestreams → "Cannot seek in this stream."
+-    //
+-    // force-seekable=no is also passed via extras so it survives mpv's
+-    // internal demuxer reset on open(). Setting it via setProperty() alone
+-    // is insufficient — mpv resets stream-level runtime properties when
+-    // initializing a new stream, wiping the value before the seek probe runs.
+-    final extras = channel.mediaType == MediaType.livestream
+-        ? const {'force-seekable': 'no'}
+-        : null;
+-
++    // fix363/LOW-1: removed the Media.extras={'force-seekable':'no'} map —
++    // media_kit 1.2.6 does not forward Media.extras to libmpv, so it was a
++    // no-op. force-seekable is set authoritatively in _applyMpvOptions (live
++    // branch: 'no' normally, 'yes' under DVR), which is what actually takes.
+     // fix337: force controller creation NOW, one engine at a time, and give
+     // its platform init a head start before opening the stream. See
+     // _textureInitChain. Holding the lock briefly (max 1.5s) prevents the
+@@ -218,7 +213,6 @@ class MpvEngine implements PlayerEngine {
+         url,
+         start: startPosition,
+         httpHeaders: headers,
+-        extras: extras,
+       ),
+     );
+     AppLog.info('MpvEngine: open() command sent channel="${channel.name}"');
+@@ -672,7 +666,13 @@ class MpvEngine implements PlayerEngine {
+   Future<int> _computeDvrWindowMB() async {
+     try {
+       final tmp = await getTemporaryDirectory();
+-      final dir = Directory('${tmp.path}/free4me_dvr');
++      // fix363/MED-1: per-engine subdir so a previous engine's async
++      // _cleanupDvrDir can never unlink THIS engine's in-use cache file
++      // (rapid full-screen A->Back->B both pointed cache-dir at one shared
++      // free4me_dvr; A's teardown wiped B's live window). identityHashCode is
++      // unique per live engine instance.
++      final dir = Directory(
++          '${tmp.path}/free4me_dvr/e${identityHashCode(this)}');
+       // fix359: do NOT create the dir or set _dvrDir yet — a low-disk return 0
+       // below would leave an empty free4me_dvr behind (cleanup only runs when
+       // _dvrActive). Size first; commit the dir only once the window is > 0.
+@@ -708,13 +708,28 @@ class MpvEngine implements PlayerEngine {
+     try {
+       final res = await Process.run('df', ['-k', path]);
+       if (res.exitCode != 0) return null;
++      // fix363/LOW-4: df wraps a long source/device name onto its own line,
++      // so the data row can be split across two physical lines. Join all
++      // post-header output and take the 1k-blocks/used/avail numeric triplet:
++      // Filesystem 1K-blocks Used Available Use% Mounted. Available is the
++      // 3rd numeric token. Scanning numerics is robust to the wrap and to
++      // extra leading columns.
+       final lines = (res.stdout as String).trim().split('\n');
+       if (lines.length < 2) return null;
+-      final cols =
+-          lines.last.split(RegExp(r'\s+')).where((c) => c.isNotEmpty).toList();
+-      if (cols.length < 4) return null;
+-      final availKB = int.tryParse(cols[3]);
+-      if (availKB == null) return null;
++      final tokens = lines
++          .skip(1)
++          .join(' ')
++          .split(RegExp(r'\s+'))
++          .where((c) => c.isNotEmpty)
++          .toList();
++      final nums = <int>[];
++      for (final t in tokens) {
++        final n = int.tryParse(t);
++        if (n != null) nums.add(n);
++      }
++      // Expect at least [1K-blocks, used, available]; Available is index 2.
++      if (nums.length < 3) return null;
++      final availKB = nums[2];
+       return availKB ~/ 1024;
+     } catch (_) {
+       return null;
+@@ -777,11 +792,8 @@ class MpvEngine implements PlayerEngine {
+     final dir = _dvrDir;
+     if (dir == null) return;
+     try {
+-      await for (final f in dir.list(followLinks: false)) {
+-        try {
+-          await f.delete(recursive: true);
+-        } catch (_) {}
+-      }
++      // fix363/MED-1: delete only THIS engine's subdir — never siblings.
++      if (await dir.exists()) await dir.delete(recursive: true);
+       AppLog.info('MpvEngine: DVR cache cleaned (${dir.path})');
+     } catch (_) {}
+   }
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 31893bc..7d27df6 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.32.3': [
++    'Live DVR is now isolated per playback session, so quickly leaving one channel and opening another can no longer corrupt the new channel’s recording buffer.',
++    'Channel picker search no longer tries to load an entire large catalog into memory for short queries.',
++    'Smaller fixes from a code review: the export portal’s Back link keeps working, the updater no longer leaks a network connection on a failed download, and disk-space detection for DVR is more robust on devices with long storage names.',
++  ],
+   '1.32.2': [
+     'Critical fix: opening a series now shows its episodes again. A guard added in 1.29.3 to keep episodes out of the Movies list was applied too broadly and accidentally made every series appear empty.',
+     'Episodes also no longer leak into search results when you type a query in Movies, All, or Favorites (the default search path was missed by the earlier fix).',
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 6011df8..d93df0d 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.32.2+362
++version: 1.32.3+363
+ 
+ environment:
+   sdk: ^3.10.7

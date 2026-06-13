@@ -206,10 +206,10 @@ class UpdateChecker {
     }
 
     File? outFile;
+    final client = HttpClient(); // fix363/LOW-3: hoisted for finally
     try {
       final dir = await getApplicationSupportDirectory();
       outFile = File('${dir.path}/Free4Me-IPTV-$version.apk');
-      final client = HttpClient();
       final request = await client.getUrl(uri);
       final response = await request.close();
       if (response.statusCode != 200) {
@@ -231,9 +231,9 @@ class UpdateChecker {
         if (total > 0) progress.value = received / total;
       }
       await sink.close();
-      client.close();
       AppLog.info('UpdateChecker: downloaded $received bytes to ${outFile.path}');
     } catch (e) {
+      // fix363/LOW-3: client released in finally; error path no longer leaks it.
       AppLog.warn('UpdateChecker: download failed — $e');
       if (context.mounted) {
         Navigator.of(context, rootNavigator: true).pop(); // dismiss progress
@@ -242,6 +242,8 @@ class UpdateChecker {
         );
       }
       return;
+    } finally {
+      client.close(); // fix363/LOW-3: always release the HttpClient
     }
 
     if (context.mounted) {

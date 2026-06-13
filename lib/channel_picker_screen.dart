@@ -275,9 +275,13 @@ class _ChannelPickerScreenState extends State<ChannelPickerScreen> {
     final inv = ++_loadInvocation;
     setState(() => _loading = true);
 
+    // fix363/MED-2: cap total results so a short query against a 700k-channel
+    // catalog can't pull the whole table into memory. 10 pages is well beyond
+    // what a user scans in a picker; narrowing the query reaches the rest.
+    const maxPages = 10;
     final all = <Channel>[];
     var page = 1;
-    while (true) {
+    while (page <= maxPages) {
       if (_loadInvocation != inv) return;
       final pageResults = await Sql.search(
         _liveTvPickerFilters(query: trimmed, page: page),

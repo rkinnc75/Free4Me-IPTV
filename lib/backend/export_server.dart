@@ -219,7 +219,7 @@ class ExportServer {
               '<meta name="viewport" content="width=device-width,initial-scale=1">'
               '<body style="font-family:sans-serif;padding:2em;max-width:32em;'
               'margin:auto"><h2>${ok ? 'Done' : 'Error'}</h2><p>$msg</p>'
-              '<p><a href="/">← Back</a></p></body>');
+              '<p><a href="/?t=$token">← Back</a></p></body>'); // fix363/LOW-2: keep token
         await req.response.close();
         AppLog.info('ExportServer: import-sources result n=$n');
       } catch (e) {
@@ -229,7 +229,7 @@ class ExportServer {
           ..headers.contentType = ContentType.html
           ..write('<!doctype html><body style="font-family:sans-serif;'
               'padding:2em"><h2>Error</h2><p>Import failed: $e</p>'
-              '<p><a href="/">← Back</a></p></body>');
+              '<p><a href="/?t=$token">← Back</a></p></body>'); // fix363/LOW-2: keep token
         await req.response.close();
       }
       return;

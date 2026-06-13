@@ -188,15 +188,10 @@ class MpvEngine implements PlayerEngine {
     // Calling _applyMpvOptions() here would set mpv properties on the
     // still-active previous stream, triggering a demuxer reset and seek
     // probe on non-seekable MPEG-TS livestreams → "Cannot seek in this stream."
-    //
-    // force-seekable=no is also passed via extras so it survives mpv's
-    // internal demuxer reset on open(). Setting it via setProperty() alone
-    // is insufficient — mpv resets stream-level runtime properties when
-    // initializing a new stream, wiping the value before the seek probe runs.
-    final extras = channel.mediaType == MediaType.livestream
-        ? const {'force-seekable': 'no'}
-        : null;
-
+    // fix363/LOW-1: removed the Media.extras={'force-seekable':'no'} map —
+    // media_kit 1.2.6 does not forward Media.extras to libmpv, so it was a
+    // no-op. force-seekable is set authoritatively in _applyMpvOptions (live
+    // branch: 'no' normally, 'yes' under DVR), which is what actually takes.
     // fix337: force controller creation NOW, one engine at a time, and give
     // its platform init a head start before opening the stream. See
     // _textureInitChain. Holding the lock briefly (max 1.5s) prevents the
@@ -218,7 +213,6 @@ class MpvEngine implements PlayerEngine {
         url,
         start: startPosition,
         httpHeaders: headers,
-        extras: extras,
       ),
     );
     AppLog.info('MpvEngine: open() command sent channel="${channel.name}"');
@@ -672,7 +666,13 @@ class MpvEngine implements PlayerEngine {
   Future<int> _computeDvrWindowMB() async {
     try {
       final tmp = await getTemporaryDirectory();
-      final dir = Directory('${tmp.path}/free4me_dvr');
+      // fix363/MED-1: per-engine subdir so a previous engine's async
+      // _cleanupDvrDir can never unlink THIS engine's in-use cache file
+      // (rapid full-screen A->Back->B both pointed cache-dir at one shared
+      // free4me_dvr; A's teardown wiped B's live window). identityHashCode is
+      // unique per live engine instance.
+      final dir = Directory(
+          '${tmp.path}/free4me_dvr/e${identityHashCode(this)}');
       // fix359: do NOT create the dir or set _dvrDir yet — a low-disk return 0
       // below would leave an empty free4me_dvr behind (cleanup only runs when
       // _dvrActive). Size first; commit the dir only once the window is > 0.
@@ -708,13 +708,28 @@ class MpvEngine implements PlayerEngine {
     try {
       final res = await Process.run('df', ['-k', path]);
       if (res.exitCode != 0) return null;
+      // fix363/LOW-4: df wraps a long source/device name onto its own line,
+      // so the data row can be split across two physical lines. Join all
+      // post-header output and take the 1k-blocks/used/avail numeric triplet:
+      // Filesystem 1K-blocks Used Available Use% Mounted. Available is the
+      // 3rd numeric token. Scanning numerics is robust to the wrap and to
+      // extra leading columns.
       final lines = (res.stdout as String).trim().split('\n');
       if (lines.length < 2) return null;
-      final cols =
-          lines.last.split(RegExp(r'\s+')).where((c) => c.isNotEmpty).toList();
-      if (cols.length < 4) return null;
-      final availKB = int.tryParse(cols[3]);
-      if (availKB == null) return null;
+      final tokens = lines
+          .skip(1)
+          .join(' ')
+          .split(RegExp(r'\s+'))
+          .where((c) => c.isNotEmpty)
+          .toList();
+      final nums = <int>[];
+      for (final t in tokens) {
+        final n = int.tryParse(t);
+        if (n != null) nums.add(n);
+      }
+      // Expect at least [1K-blocks, used, available]; Available is index 2.
+      if (nums.length < 3) return null;
+      final availKB = nums[2];
       return availKB ~/ 1024;
     } catch (_) {
       return null;
@@ -777,11 +792,8 @@ class MpvEngine implements PlayerEngine {
     final dir = _dvrDir;
     if (dir == null) return;
     try {
-      await for (final f in dir.list(followLinks: false)) {
-        try {
-          await f.delete(recursive: true);
-        } catch (_) {}
-      }
+      // fix363/MED-1: delete only THIS engine's subdir — never siblings.
+      if (await dir.exists()) await dir.delete(recursive: true);
       AppLog.info('MpvEngine: DVR cache cleaned (${dir.path})');
     } catch (_) {}
   }
