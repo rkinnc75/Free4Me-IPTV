@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:package_info_plus/package_info_plus.dart';
+
 import 'package:flutter/foundation.dart';
 import 'package:open_tv/backend/utils.dart';
 
@@ -87,6 +89,20 @@ class AppLogger {
     await _clearXtreamDumps();
     if (_enabled) await _ensureOpen();
     log('--- Log cleared ---', level: LogLevel.info);
+    await stampVersion('log cleared'); // fix357
+  }
+
+  /// fix357: write the app version into the log. Called on every clear and
+  /// before every export/save so a log file always identifies its version
+  /// (the 2026-06-12 Shield log had no version line at all).
+  Future<void> stampVersion(String context) async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      log('Free4Me-IPTV ${info.version}+${info.buildNumber} — $context',
+          level: LogLevel.info);
+    } catch (e) {
+      log('version stamp failed ($context): $e', level: LogLevel.warning);
+    }
   }
 
   /// fix266: delete every `xtream_dump_*.json` in the app dir. Best-effort —

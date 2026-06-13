@@ -154,7 +154,13 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
         ' channel="${widget.channel.name}"',
       );
     } else {
-      _engine = MpvEngine(channel: widget.channel, settings: widget.settings);
+      _engine = MpvEngine(
+        channel: widget.channel,
+        settings: widget.settings,
+        // fix357: live DVR buffer only for genuine live full-screen playback
+        // (never catch-up; mini-player and multi-view construct elsewhere).
+        dvrEligible: widget.overrideUrl == null,
+      );
       AppLog.info(
         'Player: CREATED engine eid=${identityHashCode(_engine)}'
         ' channel="${widget.channel.name}"',

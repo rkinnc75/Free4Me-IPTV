@@ -247,6 +247,23 @@ const _helpVodPrebufferSecs = (
       'Restart required: applied when player instances are created.',
 );
 
+const _helpDvr = (
+  title: 'Live DVR Buffer',
+  body:
+      'Full-screen live TV only (single view). Records the incoming stream '
+      'to a temporary disk buffer so you can pause live TV — pausing builds '
+      'a cushion that brief network drops can play through.\n\n'
+      'The stream is stored as-is (no re-encoding — a bit-identical copy is '
+      'the most space-efficient option these devices can do in real time; '
+      'expect roughly 30–60 MB per minute depending on the channel).\n\n'
+      'Disk safety: the window is automatically capped so recording stops '
+      'about 5 minutes short of filling free space, and growth freezes if '
+      'space runs low mid-session. The buffer is deleted when playback '
+      'ends.\n\n'
+      'Default: OFF. Length: 5–90 minutes in 5-minute steps.\n\n'
+      'Restart required: applied when player instances are created.',
+);
+
 const _helpVodDemuxerMB = (
   title: 'VOD/Movie Demuxer Buffer (MB)',
   body:
@@ -1048,6 +1065,10 @@ class _SettingsState extends State<SettingsView> {
   }) async {
     final stepNotifier = ValueNotifier<String>('Preparing export…');
     var dialogOpen = true;
+    // fix357: unawaited — an await here would put an async gap before the
+    // showDialog(context:) below (analyzer INFO). Line order in the log may
+    // shift by a few entries; the stamp still lands at export start.
+    unawaited(AppLog.stampVersion('log export'));
     AppLog.info('TV export: starting (stamp=$stamp)');
     // Progress dialog (not dismissible — closed programmatically).
     // ignore: unawaited_futures
@@ -2318,6 +2339,27 @@ class _SettingsState extends State<SettingsView> {
                     help: _helpVodPrebufferSecs,
                     onChanged: (v) {
                       setState(() => settings.vodPrebufferSecs = v.round());
+                      updateSettings();
+                    },
+                  ),
+                  _switchTile(
+                    label: "Live DVR buffer (single view)",
+                    value: settings.dvrEnabled,
+                    help: _helpDvr,
+                    onChanged: (v) {
+                      setState(() => settings.dvrEnabled = v);
+                      updateSettings();
+                    },
+                  ),
+                  _bufferSlider(
+                    label: "DVR length (minutes)",
+                    value: settings.dvrMinutes.toDouble(),
+                    min: 5,
+                    max: 90,
+                    divisions: 17,
+                    help: _helpDvr,
+                    onChanged: (v) {
+                      setState(() => settings.dvrMinutes = v.round());
                       updateSettings();
                     },
                   ),

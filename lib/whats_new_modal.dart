@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.31.0': [
+    'New Live DVR buffer (off by default): full-screen live TV can record up to 90 minutes to a temporary disk buffer, so you can pause live TV and let brief drops play through the cushion. The stream is stored as-is (no re-encoding) and the buffer auto-caps to leave 5 minutes of free disk, freezing growth if space runs low. Settings → Live DVR buffer.',
+    'The log now always identifies its app version: a version line is written every time the log is cleared and every time it is exported.',
+  ],
   '1.30.0': [
     'Favorites view is now grouped by source (A–Z) with channels A–Z within each source — no more mixed-up ordering when multiple sources are enabled.',
     'Categories are now sorted alphabetically: favorited categories A–Z on top, then the rest A–Z. Disabled categories stay hidden.',

@@ -535,6 +535,8 @@ class SettingsIo {
         'liveDemuxerMaxMB': s.liveDemuxerMaxMB,
         'vodCacheSecs': s.vodCacheSecs,
         'vodPrebufferSecs': s.vodPrebufferSecs, // fix354
+        'dvrEnabled': s.dvrEnabled, // fix357
+        'dvrMinutes': s.dvrMinutes, // fix357
         'vodDemuxerMaxMB': s.vodDemuxerMaxMB,
         'openTimeoutSecs': s.openTimeoutSecs,
         'bufferingWatchdogSecs': s.bufferingWatchdogSecs,
@@ -584,6 +586,8 @@ class SettingsIo {
       liveDemuxerMaxMB: m['liveDemuxerMaxMB'] as int? ?? 150,
       vodCacheSecs: m['vodCacheSecs'] as int? ?? 60,
       vodPrebufferSecs: m['vodPrebufferSecs'] as int? ?? 15,
+      dvrEnabled: m['dvrEnabled'] as bool? ?? false,
+      dvrMinutes: m['dvrMinutes'] as int? ?? 5,
       vodDemuxerMaxMB: m['vodDemuxerMaxMB'] as int? ?? 256,
       openTimeoutSecs: m['openTimeoutSecs'] as int? ?? 15,
       bufferingWatchdogSecs: m['bufferingWatchdogSecs'] as int? ?? 12,

@@ -51,6 +51,12 @@ class Settings {
   /// before resuming after an underrun). 0 disables the pre-buffer pause.
   int vodPrebufferSecs;
 
+  /// fix357: live DVR-to-disk buffer (full-screen single view only).
+  bool dvrEnabled;
+
+  /// fix357: DVR window length in minutes (5–90, steps of 5).
+  int dvrMinutes;
+
   /// libmpv forward demuxer cache (MB) for VOD.
   int vodDemuxerMaxMB;
 
@@ -179,6 +185,8 @@ class Settings {
     this.liveDemuxerMaxMB = 150,
     this.vodCacheSecs = 60,
     this.vodPrebufferSecs = 15,
+    this.dvrEnabled = false,
+    this.dvrMinutes = 5,
     this.vodDemuxerMaxMB = 256,
     this.openTimeoutSecs = 15,
     this.bufferingWatchdogSecs = 12,
@@ -302,6 +310,8 @@ class Settings {
     s.liveCacheSecs = isTV ? 45 : 30;
     s.vodCacheSecs = 60;
     s.vodPrebufferSecs = 15;
+    s.dvrEnabled = false;
+    s.dvrMinutes = 5;
 
     // Retry / reconnect timing.
     s.openTimeoutSecs = isTV ? 20 : 12;

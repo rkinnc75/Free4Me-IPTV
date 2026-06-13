@@ -24,6 +24,8 @@ const liveCacheSecsProp = "liveCacheSecs";
 const liveDemuxerMaxMBProp = "liveDemuxerMaxMB";
 const vodCacheSecsProp = "vodCacheSecs";
 const vodPrebufferSecsProp = "vodPrebufferSecs"; // fix354
+const dvrEnabledProp = "dvrEnabled"; // fix357
+const dvrMinutesProp = "dvrMinutes"; // fix357
 const vodDemuxerMaxMBProp = "vodDemuxerMaxMB";
 const openTimeoutSecsProp = "openTimeoutSecs";
 const bufferingWatchdogSecsProp = "bufferingWatchdogSecs";
@@ -104,6 +106,8 @@ class SettingsService {
     var liveMB = settingsMap[liveDemuxerMaxMBProp];
     var vodSecs = settingsMap[vodCacheSecsProp];
     var vodPre = settingsMap[vodPrebufferSecsProp];
+    var dvrEn = settingsMap[dvrEnabledProp];
+    var dvrMin = settingsMap[dvrMinutesProp];
     var vodMB = settingsMap[vodDemuxerMaxMBProp];
     var openTimeout = settingsMap[openTimeoutSecsProp];
     var watchdog = settingsMap[bufferingWatchdogSecsProp];
@@ -144,6 +148,8 @@ class SettingsService {
     if (liveMB != null) settings.liveDemuxerMaxMB = int.parse(liveMB);
     if (vodSecs != null) settings.vodCacheSecs = int.parse(vodSecs);
     if (vodPre != null) settings.vodPrebufferSecs = int.parse(vodPre);
+    if (dvrEn != null) settings.dvrEnabled = dvrEn == 'true';
+    if (dvrMin != null) settings.dvrMinutes = int.parse(dvrMin);
     if (vodMB != null) settings.vodDemuxerMaxMB = int.parse(vodMB);
     if (openTimeout != null) settings.openTimeoutSecs = int.parse(openTimeout);
     if (watchdog != null) settings.bufferingWatchdogSecs = int.parse(watchdog);
@@ -256,6 +262,8 @@ class SettingsService {
     settingsMap[liveDemuxerMaxMBProp] = settings.liveDemuxerMaxMB.toString();
     settingsMap[vodCacheSecsProp] = settings.vodCacheSecs.toString();
     settingsMap[vodPrebufferSecsProp] = settings.vodPrebufferSecs.toString();
+    settingsMap[dvrEnabledProp] = settings.dvrEnabled.toString();
+    settingsMap[dvrMinutesProp] = settings.dvrMinutes.toString();
     settingsMap[vodDemuxerMaxMBProp] = settings.vodDemuxerMaxMB.toString();
     settingsMap[openTimeoutSecsProp] = settings.openTimeoutSecs.toString();
     settingsMap[bufferingWatchdogSecsProp] =

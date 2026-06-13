@@ -9,6 +9,7 @@ import 'package:open_tv/models/channel.dart';
 import 'package:open_tv/models/device_detector.dart';
 import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/multi_view_decode.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/player/player_engine.dart';
 
@@ -27,6 +28,17 @@ class MpvEngine implements PlayerEngine {
   /// preview mode to avoid surface-binding contention when multiple cells
   /// share the same hardware decoder pool.
   final bool previewMode;
+
+  /// fix357: when true (full-screen Player, live, no catch-up override) the
+  /// live DVR-to-disk buffer may be enabled per settings. Mini-player and
+  /// multi-view cells never set this.
+  final bool dvrEligible;
+
+  // fix357: DVR runtime state.
+  Directory? _dvrDir;
+  Timer? _dvrGuard;
+  int _dvrLastDirBytes = 0;
+  bool _dvrActive = false;
 
   late final mk.Player _player = mk.Player(
     configuration: mk.PlayerConfiguration(
@@ -90,6 +102,7 @@ class MpvEngine implements PlayerEngine {
     required this.settings,
     this.fullscreenOnOpen = true,
     this.previewMode = false,
+    this.dvrEligible = false,
   }) {
     _player.setPlaylistMode(mk.PlaylistMode.none);
 
@@ -311,6 +324,8 @@ class MpvEngine implements PlayerEngine {
       return;
     }
     _disposed = true;
+    _dvrGuard?.cancel(); // fix357
+    if (_dvrActive) unawaited(_cleanupDvrDir()); // fix357
     AppLog.info(
       'MpvEngine: dispose() eid=${identityHashCode(this)}'
       ' channel="${channel.name}"'
@@ -547,7 +562,27 @@ class MpvEngine implements PlayerEngine {
       // player error and triggering an unnecessary reconnect on every open.
       // (mpv even reports the fix itself: "You can force it with
       //  '--force-seekable=yes'." — the inverse, 'no', suppresses the probe.)
-      await np.setProperty('force-seekable', 'no');
+      // fix357: live DVR buffer (full-screen single view only). Records the
+      // incoming stream to a disk-backed cache (stream-copy — the original
+      // codec untouched; re-encoding on these devices is not feasible, so
+      // bit-identical copy IS the most space-efficient viable option) and
+      // makes the window seekable, so pause builds a cushion and brief
+      // drops can play through it.
+      final dvrBackMB = (dvrEligible &&
+              !previewMode &&
+              settings.dvrEnabled)
+          ? await _computeDvrWindowMB()
+          : 0;
+      if (dvrBackMB > 0) {
+        _dvrActive = true;
+        await np.setProperty('force-seekable', 'yes');
+        await np.setProperty('cache-on-disk', 'yes');
+        await np.setProperty('cache-dir', _dvrDir!.path);
+        AppLog.info('MpvEngine: DVR enabled — window=${dvrBackMB ~/ 60}min'
+            ' (${dvrBackMB}MiB back buffer, dir=${_dvrDir!.path})');
+      } else {
+        await np.setProperty('force-seekable', 'no');
+      }
 
       // Back buffer disabled for all live branches: MPEG-TS and most IPTV
       // streams reject seeks, which mpv surfaces as a fatal player error
@@ -560,7 +595,9 @@ class MpvEngine implements PlayerEngine {
         await np.setProperty('cache-secs', s.liveCacheSecs.toString());
         final liveMB = previewMode ? s.miniDemuxerMaxMB : s.liveDemuxerMaxMB;
         await np.setProperty('demuxer-max-bytes', '${liveMB}MiB');
-        await np.setProperty('demuxer-max-back-bytes', '0');
+        await np.setProperty(
+            'demuxer-max-back-bytes', dvrBackMB > 0 ? '${dvrBackMB}MiB' : '0');
+        if (dvrBackMB > 0) _startDvrGuard(dvrBackMB);
       }
     } else {
       await np.setProperty('cache-secs', s.vodCacheSecs.toString());
@@ -602,5 +639,126 @@ class MpvEngine implements PlayerEngine {
       url: url ?? channel.url ?? '',
       ignoreSsl: ignoreSsl,
     );
+  }
+
+  // ===================== fix357: live DVR buffer =====================
+
+  /// Conservative size estimate: ~8 Mbps live ≈ 60 MiB per minute.
+  static const int _dvrEstMBPerMin = 60;
+
+  /// Resolve the DVR window in MiB: the configured minutes, capped so the
+  /// recording stops 5 minutes short of what free disk can hold. Returns 0
+  /// (DVR disabled) when less than 5 minutes would fit or sizing fails.
+  Future<int> _computeDvrWindowMB() async {
+    try {
+      final tmp = await getTemporaryDirectory();
+      final dir = Directory('${tmp.path}/free4me_dvr');
+      if (!await dir.exists()) await dir.create(recursive: true);
+      _dvrDir = dir;
+      var minutes = settings.dvrMinutes.clamp(5, 90);
+      final freeMB = await _dfAvailableMB(dir.path);
+      if (freeMB != null) {
+        final fitMinutes = (freeMB ~/ _dvrEstMBPerMin) - 5; // 5-min margin
+        if (fitMinutes < minutes) {
+          AppLog.warn('MpvEngine: DVR window capped by disk —'
+              ' requested=${settings.dvrMinutes}min fit=${fitMinutes}min'
+              ' (free=${freeMB}MB, est=${_dvrEstMBPerMin}MB/min)');
+          minutes = fitMinutes;
+        }
+      }
+      if (minutes < 5) {
+        AppLog.warn('MpvEngine: DVR disabled — under 5 minutes of disk'
+            ' headroom available');
+        return 0;
+      }
+      return minutes * _dvrEstMBPerMin;
+    } catch (e) {
+      AppLog.warn('MpvEngine: DVR sizing failed — disabled ($e)');
+      return 0;
+    }
+  }
+
+  /// Available MB on the filesystem holding [path] via toybox `df -k`
+  /// (present on Android 6+). Null when unavailable/unparseable.
+  Future<int?> _dfAvailableMB(String path) async {
+    try {
+      final res = await Process.run('df', ['-k', path]);
+      if (res.exitCode != 0) return null;
+      final lines = (res.stdout as String).trim().split('\n');
+      if (lines.length < 2) return null;
+      final cols =
+          lines.last.split(RegExp(r'\s+')).where((c) => c.isNotEmpty).toList();
+      if (cols.length < 4) return null;
+      final availKB = int.tryParse(cols[3]);
+      if (availKB == null) return null;
+      return availKB ~/ 1024;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Every 60 s: measure the DVR cache's real growth rate and free disk; if
+  /// free space falls under 5 minutes' worth, freeze the back buffer at its
+  /// current size (stop growing) rather than filling the disk.
+  void _startDvrGuard(int backMB) {
+    _dvrGuard?.cancel();
+    _dvrGuard = Timer.periodic(const Duration(seconds: 60), (t) async {
+      if (_disposed) {
+        t.cancel();
+        return;
+      }
+      try {
+        final dirBytes = await _dvrDirBytes();
+        final grewMB = ((dirBytes - _dvrLastDirBytes) / (1024 * 1024)).round();
+        _dvrLastDirBytes = dirBytes;
+        final ratePerMin = grewMB > 0 ? grewMB : _dvrEstMBPerMin;
+        final freeMB = await _dfAvailableMB(_dvrDir!.path);
+        if (AppLog.enabled) {
+          AppLog.info('MpvEngine: DVR guard — cache=${dirBytes ~/ 1048576}MB'
+              ' rate=${ratePerMin}MB/min free=${freeMB ?? -1}MB');
+        }
+        if (freeMB != null && freeMB < 5 * ratePerMin) {
+          final frozenMB = (dirBytes ~/ 1048576).clamp(64, 1 << 20);
+          if (_player.platform is mk.NativePlayer) {
+            await (_player.platform as mk.NativePlayer)
+                .setProperty('demuxer-max-back-bytes', '${frozenMB}MiB');
+          }
+          AppLog.warn('MpvEngine: DVR frozen at ${frozenMB}MiB —'
+              ' free disk under 5-minute margin');
+          t.cancel();
+        }
+      } catch (e) {
+        AppLog.warn('MpvEngine: DVR guard error — $e');
+      }
+    });
+  }
+
+  Future<int> _dvrDirBytes() async {
+    final dir = _dvrDir;
+    if (dir == null || !await dir.exists()) return 0;
+    var total = 0;
+    await for (final f in dir.list(recursive: true, followLinks: false)) {
+      if (f is File) {
+        try {
+          total += await f.length();
+        } catch (_) {}
+      }
+    }
+    return total;
+  }
+
+  /// Best-effort wipe of the DVR cache directory on engine teardown (mpv
+  /// removes its own temp files on clean close; this covers unclean paths).
+  Future<void> _cleanupDvrDir() async {
+    final dir = _dvrDir;
+    if (dir == null) return;
+    try {
+      await for (final f in dir.list(followLinks: false)) {
+        try {
+          await f.delete(recursive: true);
+        } catch (_) {}
+      }
+      AppLog.info('MpvEngine: DVR cache cleaned (${dir.path})');
+    } catch (_) {}
   }
 }
