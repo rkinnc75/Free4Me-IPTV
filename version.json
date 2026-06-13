@@ -1,8 +1,8 @@
 {
-  "latest": "1.32.3",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.32.3",
+  "latest": "1.32.4",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.32.4",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Live DVR is now isolated per playback session, so quickly leaving one channel and opening another can no longer corrupt the new channel\u2019s recording buffer.\n\u2022 Channel picker search no longer tries to load an entire large catalog into memory for short queries.\n\u2022 Smaller fixes from a code review: the export portal\u2019s Back link keeps working, the updater no longer leaks a network connection on a failed download, and disk-space detection for DVR is more robust on devices with long storage names.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.32.3/Free4Me-IPTV-1.32.3-arm64.apk"
+  "releaseNotes": "\u2022 Fixed the Live DVR controls not appearing: rewind, forward, and back-to-live now show on live TV when the DVR buffer is on (they were silently hidden by a missing internal flag in the 1.32.0 release).",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.32.4/Free4Me-IPTV-1.32.4-arm64.apk"
 }
