@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.32.2': [
+    'Critical fix: opening a series now shows its episodes again. A guard added in 1.29.3 to keep episodes out of the Movies list was applied too broadly and accidentally made every series appear empty.',
+    'Episodes also no longer leak into search results when you type a query in Movies, All, or Favorites (the default search path was missed by the earlier fix).',
+  ],
   '1.32.1': [
     'Fixed channels with no sound on some TV boxes: surround (5.1) audio is now downmixed to stereo by default, which plays on every device (turn it off in Settings if you have an AV receiver).',
     'Faster source refresh on large catalogs: when search indexing is on, a refresh no longer updates the search index row-by-row — it rebuilds once at the end, cutting big-provider refresh time substantially.',

@@ -532,7 +532,6 @@ class Sql {
             AND c.media_type IN (${generatePlaceholders(mediaTypes.length)})
             AND c.source_id IN (${generatePlaceholders(filters.sourceIds!.length)})
             AND c.url IS NOT NULL
-            AND c.series_id IS NULL -- fix355: episodes only in series view
         ''';
         params.add(matchExpr);
         if (shortTerms.isNotEmpty) {
@@ -564,7 +563,6 @@ class Sql {
         WHERE media_type IN (${generatePlaceholders(mediaTypes.length)})
           AND source_id IN (${generatePlaceholders(filters.sourceIds!.length)})
           AND url IS NOT NULL
-          AND series_id IS NULL -- fix355: episodes only in series view
       ''';
       params.addAll(mediaTypes);
       params.addAll(filters.sourceIds!);
@@ -577,11 +575,18 @@ class Sql {
       sqlQuery += "\nAND last_watched IS NOT NULL";
     }
     if (filters.seriesId != null) {
+      // fix362: series view — ONLY this series' episodes. (CRIT-1: the old
+      // unconditional "series_id IS NULL" in the base ANDed with this and made
+      // every series view empty.)
       sqlQuery += "\nAND series_id = ?";
       params.add(filters.seriesId!);
-    } else if (filters.groupId != null) {
-      sqlQuery += "\nAND group_id = ?";
-      params.add(filters.groupId!);
+    } else {
+      // fix362: not a series view — exclude episodes (fix355 intent).
+      sqlQuery += "\nAND series_id IS NULL";
+      if (filters.groupId != null) {
+        sqlQuery += "\nAND group_id = ?";
+        params.add(filters.groupId!);
+      }
     }
 
     // Must be before ORDER BY — AND clauses after ORDER BY are invalid SQL.
@@ -1897,7 +1902,6 @@ class Sql {
         AND c.media_type IN (${generatePlaceholders(mediaTypes.length)})
         AND c.source_id IN (${generatePlaceholders(filters.sourceIds!.length)})
         AND c.url IS NOT NULL
-        AND c.series_id IS NULL -- fix355: episodes only in series view
     ''';
     final List<Object> params = [...terms, ...mediaTypes, ...filters.sourceIds!];
 
@@ -1908,11 +1912,14 @@ class Sql {
       sqlQuery += '\nAND c.last_watched IS NOT NULL';
     }
     if (filters.seriesId != null) {
-      sqlQuery += '\nAND c.series_id = ?';
+      sqlQuery += '\nAND c.series_id = ?'; // fix362: series view only
       params.add(filters.seriesId!);
-    } else if (filters.groupId != null) {
-      sqlQuery += '\nAND c.group_id = ?';
-      params.add(filters.groupId!);
+    } else {
+      sqlQuery += '\nAND c.series_id IS NULL'; // fix362: exclude episodes
+      if (filters.groupId != null) {
+        sqlQuery += '\nAND c.group_id = ?';
+        params.add(filters.groupId!);
+      }
     }
 
     final (smClause, smParams) = safeModeClause(filters.safeMode);

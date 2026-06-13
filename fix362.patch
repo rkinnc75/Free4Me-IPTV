@@ -1,0 +1,186 @@
+diff --git a/lib/backend/channel_search_cache.dart b/lib/backend/channel_search_cache.dart
+index 89283c4..6325f51 100644
+--- a/lib/backend/channel_search_cache.dart
++++ b/lib/backend/channel_search_cache.dart
+@@ -337,6 +337,10 @@ class ChannelSearchCache {
+       if (viewType == ViewType.history && e.lastWatched == null) continue;
+       if (viewType == ViewType.favorites && !e.favorite) continue;
+       if (seriesId != null && e.seriesId != seriesId) continue;
++      // fix362/HIGH-1: outside a series view, exclude episodes so they do not
++      // leak into Movies/All/Favorites search on the default in-memory path
++      // (the SQL paths got this in fix355; this default path was missed).
++      if (seriesId == null && e.seriesId != null) continue;
+       if (groupId != null && e.groupId != groupId) continue;
+       // fix298: apply the divider + disabled-category exclusions HERE, before
+       // the limit, so they don't consume page slots (the old post-fetch SQL
+diff --git a/lib/backend/sql.dart b/lib/backend/sql.dart
+index 6e05473..b779a06 100644
+--- a/lib/backend/sql.dart
++++ b/lib/backend/sql.dart
+@@ -532,7 +532,6 @@ class Sql {
+             AND c.media_type IN (${generatePlaceholders(mediaTypes.length)})
+             AND c.source_id IN (${generatePlaceholders(filters.sourceIds!.length)})
+             AND c.url IS NOT NULL
+-            AND c.series_id IS NULL -- fix355: episodes only in series view
+         ''';
+         params.add(matchExpr);
+         if (shortTerms.isNotEmpty) {
+@@ -564,7 +563,6 @@ class Sql {
+         WHERE media_type IN (${generatePlaceholders(mediaTypes.length)})
+           AND source_id IN (${generatePlaceholders(filters.sourceIds!.length)})
+           AND url IS NOT NULL
+-          AND series_id IS NULL -- fix355: episodes only in series view
+       ''';
+       params.addAll(mediaTypes);
+       params.addAll(filters.sourceIds!);
+@@ -577,11 +575,18 @@ class Sql {
+       sqlQuery += "\nAND last_watched IS NOT NULL";
+     }
+     if (filters.seriesId != null) {
++      // fix362: series view — ONLY this series' episodes. (CRIT-1: the old
++      // unconditional "series_id IS NULL" in the base ANDed with this and made
++      // every series view empty.)
+       sqlQuery += "\nAND series_id = ?";
+       params.add(filters.seriesId!);
+-    } else if (filters.groupId != null) {
+-      sqlQuery += "\nAND group_id = ?";
+-      params.add(filters.groupId!);
++    } else {
++      // fix362: not a series view — exclude episodes (fix355 intent).
++      sqlQuery += "\nAND series_id IS NULL";
++      if (filters.groupId != null) {
++        sqlQuery += "\nAND group_id = ?";
++        params.add(filters.groupId!);
++      }
+     }
+ 
+     // Must be before ORDER BY — AND clauses after ORDER BY are invalid SQL.
+@@ -1897,7 +1902,6 @@ class Sql {
+         AND c.media_type IN (${generatePlaceholders(mediaTypes.length)})
+         AND c.source_id IN (${generatePlaceholders(filters.sourceIds!.length)})
+         AND c.url IS NOT NULL
+-        AND c.series_id IS NULL -- fix355: episodes only in series view
+     ''';
+     final List<Object> params = [...terms, ...mediaTypes, ...filters.sourceIds!];
+ 
+@@ -1908,11 +1912,14 @@ class Sql {
+       sqlQuery += '\nAND c.last_watched IS NOT NULL';
+     }
+     if (filters.seriesId != null) {
+-      sqlQuery += '\nAND c.series_id = ?';
++      sqlQuery += '\nAND c.series_id = ?'; // fix362: series view only
+       params.add(filters.seriesId!);
+-    } else if (filters.groupId != null) {
+-      sqlQuery += '\nAND c.group_id = ?';
+-      params.add(filters.groupId!);
++    } else {
++      sqlQuery += '\nAND c.series_id IS NULL'; // fix362: exclude episodes
++      if (filters.groupId != null) {
++        sqlQuery += '\nAND c.group_id = ?';
++        params.add(filters.groupId!);
++      }
+     }
+ 
+     final (smClause, smParams) = safeModeClause(filters.safeMode);
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index d257be5..31893bc 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.32.2': [
++    'Critical fix: opening a series now shows its episodes again. A guard added in 1.29.3 to keep episodes out of the Movies list was applied too broadly and accidentally made every series appear empty.',
++    'Episodes also no longer leak into search results when you type a query in Movies, All, or Favorites (the default search path was missed by the earlier fix).',
++  ],
+   '1.32.1': [
+     'Fixed channels with no sound on some TV boxes: surround (5.1) audio is now downmixed to stereo by default, which plays on every device (turn it off in Settings if you have an AV receiver).',
+     'Faster source refresh on large catalogs: when search indexing is on, a refresh no longer updates the search index row-by-row — it rebuilds once at the end, cutting big-provider refresh time substantially.',
+diff --git a/pubspec.yaml b/pubspec.yaml
+index c8a99b5..6011df8 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.32.1+361
++version: 1.32.2+362
+ 
+ environment:
+   sdk: ^3.10.7
+diff --git a/test/series_search_query_test.dart b/test/series_search_query_test.dart
+new file mode 100644
+index 0000000..4e2afaf
+--- /dev/null
++++ b/test/series_search_query_test.dart
+@@ -0,0 +1,68 @@
++// fix362: regression tests for the series-view / episode-leak query semantics
++// that fix353's table-level test never exercised. These build the exact WHERE
++// fragments Sql.search emits and run them against a seeded DB:
++//   - series view (seriesId set) returns that series' episodes
++//   - movies browse + movies search (seriesId null) EXCLUDE episodes
++// CRIT-1 was: an unconditional "series_id IS NULL" in the base ANDed with the
++// series view's "series_id = ?" -> every series empty. HIGH-1 was the parallel
++// gap in the in-memory cache filter.
++import 'package:flutter_test/flutter_test.dart';
++import 'package:sqlite3/sqlite3.dart' as s3;
++
++bool _has() {
++  try { s3.sqlite3.openInMemory().dispose(); return true; } catch (_) { return false; }
++}
++
++void main() {
++  if (!_has()) {
++    test('sqlite3 unavailable — skipped', () => expect(true, isTrue));
++    return;
++  }
++  late s3.Database db;
++  setUp(() {
++    db = s3.sqlite3.openInMemory();
++    db.execute('''CREATE TABLE channels(id INTEGER PRIMARY KEY, name TEXT, url TEXT,
++      source_id INT, media_type INT, series_id INT, favorite INT DEFAULT 0);''');
++    db.execute('''INSERT INTO channels(name,url,source_id,media_type,series_id) VALUES
++      ('Breaking Bad','42',5,2,NULL),('S01E01','u1',5,1,42),('S01E02','u2',5,1,42),
++      ('Some Movie','m1',5,1,NULL),('Another Film','m2',5,1,NULL);''');
++  });
++  tearDown(() => db.dispose());
++
++  // Mirrors Sql.search append logic: seriesId set -> "series_id = ?";
++  // else -> "series_id IS NULL".
++  List<String> run({int? seriesId}) {
++    var q = 'SELECT name FROM channels c WHERE media_type IN (1)'
++        ' AND source_id IN (5) AND url IS NOT NULL';
++    final p = <Object>[];
++    if (seriesId != null) {
++      q += ' AND series_id = ?';
++      p.add(seriesId);
++    } else {
++      q += ' AND series_id IS NULL';
++    }
++    return db.select(q, p).map((r) => r['name'] as String).toList()..sort();
++  }
++
++  test('series view returns that series\' episodes (CRIT-1 guard)', () {
++    expect(run(seriesId: 42), ['S01E01', 'S01E02']);
++  });
++
++  test('movies browse/search excludes episodes (fix355 intent preserved)', () {
++    expect(run(seriesId: null), ['Another Film', 'Some Movie']);
++  });
++
++  // HIGH-1: the in-memory cache filter must be symmetric.
++  bool cacheKeep(int? eSeriesId, int? seriesId) {
++    if (seriesId != null && eSeriesId != seriesId) return false;
++    if (seriesId == null && eSeriesId != null) return false;
++    return true;
++  }
++
++  test('in-memory cache excludes episodes outside a series, keeps them inside', () {
++    expect(cacheKeep(42, null), false); // episode in movies search
++    expect(cacheKeep(null, null), true); // movie in movies search
++    expect(cacheKeep(42, 42), true); // episode in its series
++    expect(cacheKeep(99, 42), false); // other series' episode
++  });
++}

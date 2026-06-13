@@ -337,6 +337,10 @@ class ChannelSearchCache {
       if (viewType == ViewType.history && e.lastWatched == null) continue;
       if (viewType == ViewType.favorites && !e.favorite) continue;
       if (seriesId != null && e.seriesId != seriesId) continue;
+      // fix362/HIGH-1: outside a series view, exclude episodes so they do not
+      // leak into Movies/All/Favorites search on the default in-memory path
+      // (the SQL paths got this in fix355; this default path was missed).
+      if (seriesId == null && e.seriesId != null) continue;
       if (groupId != null && e.groupId != groupId) continue;
       // fix298: apply the divider + disabled-category exclusions HERE, before
       // the limit, so they don't consume page slots (the old post-fetch SQL
