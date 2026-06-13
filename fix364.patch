@@ -1,0 +1,128 @@
+diff --git a/lib/player.dart b/lib/player.dart
+index 16b1cbc..938e689 100644
+--- a/lib/player.dart
++++ b/lib/player.dart
+@@ -871,6 +871,29 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+   }
+ 
+ 
++  // ===================== fix360 (re-applied fix364): DVR transport ========
++
++  Future<void> _dvrSeekBy(Duration delta) async {
++    if (!_engine.dvrActive) return;
++    final target = _engine.position + delta;
++    final clamped = target.isNegative ? Duration.zero : target;
++    await _engine.seek(clamped);
++    AppLog.info('Player: DVR seek ${delta.inSeconds}s -> ${clamped.inSeconds}s');
++  }
++
++  Future<void> _dvrGoLive() async {
++    if (!_engine.dvrActive) return;
++    await _engine.seek(const Duration(days: 1)); // mpv clamps to live edge
++    if (!_engine.isPlaying) await _engine.play();
++    AppLog.info('Player: DVR back to live edge');
++  }
++
++  Widget _dvrButton(IconData icon, String tip, VoidCallback onTap) => IconButton(
++        icon: Icon(icon, color: Colors.white, size: 40),
++        tooltip: tip,
++        onPressed: onTap,
++      );
++
+   void toggleZoom() {
+     final engine = _engine;
+     if (engine is! MpvEngine) return;
+@@ -1205,13 +1228,28 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+       // VOD keeps the package default. A 300s DVR-to-disk buffer (which would
+       // make live seeking real) is deferred as a future feature.
+       primaryButtonBar: widget.channel.mediaType == MediaType.livestream
+-          ? const [
+-              Spacer(flex: 2),
+-              Spacer(),
+-              MaterialPlayOrPauseButton(iconSize: 48.0),
+-              Spacer(),
+-              Spacer(flex: 2),
+-            ]
++          ? (_engine.dvrActive
++              // fix360 (re-applied fix364): DVR active -> full transport row.
++              ? [
++                  const Spacer(flex: 2),
++                  _dvrButton(Icons.replay_10, 'Rewind 10s',
++                      () => _dvrSeekBy(const Duration(seconds: -10))),
++                  const Spacer(),
++                  const MaterialPlayOrPauseButton(iconSize: 48.0),
++                  const Spacer(),
++                  _dvrButton(Icons.forward_10, 'Forward 10s',
++                      () => _dvrSeekBy(const Duration(seconds: 10))),
++                  const Spacer(),
++                  _dvrButton(Icons.live_tv, 'Back to live', _dvrGoLive),
++                  const Spacer(flex: 2),
++                ]
++              : const [
++                  Spacer(flex: 2),
++                  Spacer(),
++                  MaterialPlayOrPauseButton(iconSize: 48.0),
++                  Spacer(),
++                  Spacer(flex: 2),
++                ])
+           : const [
+               Spacer(flex: 2),
+               MaterialSkipPreviousButton(),
+diff --git a/lib/player/mpv_engine.dart b/lib/player/mpv_engine.dart
+index 4f0a209..4ba7c50 100644
+--- a/lib/player/mpv_engine.dart
++++ b/lib/player/mpv_engine.dart
+@@ -40,6 +40,11 @@ class MpvEngine implements PlayerEngine {
+   int _dvrLastDirBytes = 0;
+   bool _dvrActive = false;
+ 
++  @override
++  bool get dvrActive => _dvrActive; // fix364: was missing — UI read the
++  // interface default (false), so the DVR transport bar never showed even
++  // though the engine had DVR fully active (1.32.3 screenshot bug).
++
+   late final mk.Player _player = mk.Player(
+     configuration: mk.PlayerConfiguration(
+       // bufferSizeMB from settings; mini-player (previewMode) uses half.
+diff --git a/lib/player/player_engine.dart b/lib/player/player_engine.dart
+index 1fd8629..5f4148e 100644
+--- a/lib/player/player_engine.dart
++++ b/lib/player/player_engine.dart
+@@ -92,6 +92,10 @@ abstract class PlayerEngine {
+   /// caller, which uses [SystemChrome] directly.
+   bool get handlesOwnFullscreen;
+ 
++  /// fix360/re-fix364: true when a live DVR-to-disk buffer is active (fix357).
++  /// Only then is live seeking (rewind/FF/back-to-live) meaningful.
++  bool get dvrActive => false;
++
+   /// Request fullscreen entry (no-op if [handlesOwnFullscreen] is false).
+   Future<void> enterFullscreen();
+ 
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 7d27df6..2e5eafe 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.32.4': [
++    'Fixed the Live DVR controls not appearing: rewind, forward, and back-to-live now show on live TV when the DVR buffer is on (they were silently hidden by a missing internal flag in the 1.32.0 release).',
++  ],
+   '1.32.3': [
+     'Live DVR is now isolated per playback session, so quickly leaving one channel and opening another can no longer corrupt the new channel’s recording buffer.',
+     'Channel picker search no longer tries to load an entire large catalog into memory for short queries.',
+diff --git a/pubspec.yaml b/pubspec.yaml
+index d93df0d..8b3d53b 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.32.3+363
++version: 1.32.4+364
+ 
+ environment:
+   sdk: ^3.10.7

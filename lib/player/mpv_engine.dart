@@ -40,6 +40,11 @@ class MpvEngine implements PlayerEngine {
   int _dvrLastDirBytes = 0;
   bool _dvrActive = false;
 
+  @override
+  bool get dvrActive => _dvrActive; // fix364: was missing — UI read the
+  // interface default (false), so the DVR transport bar never showed even
+  // though the engine had DVR fully active (1.32.3 screenshot bug).
+
   late final mk.Player _player = mk.Player(
     configuration: mk.PlayerConfiguration(
       // bufferSizeMB from settings; mini-player (previewMode) uses half.

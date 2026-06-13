@@ -871,6 +871,29 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   }
 
 
+  // ===================== fix360 (re-applied fix364): DVR transport ========
+
+  Future<void> _dvrSeekBy(Duration delta) async {
+    if (!_engine.dvrActive) return;
+    final target = _engine.position + delta;
+    final clamped = target.isNegative ? Duration.zero : target;
+    await _engine.seek(clamped);
+    AppLog.info('Player: DVR seek ${delta.inSeconds}s -> ${clamped.inSeconds}s');
+  }
+
+  Future<void> _dvrGoLive() async {
+    if (!_engine.dvrActive) return;
+    await _engine.seek(const Duration(days: 1)); // mpv clamps to live edge
+    if (!_engine.isPlaying) await _engine.play();
+    AppLog.info('Player: DVR back to live edge');
+  }
+
+  Widget _dvrButton(IconData icon, String tip, VoidCallback onTap) => IconButton(
+        icon: Icon(icon, color: Colors.white, size: 40),
+        tooltip: tip,
+        onPressed: onTap,
+      );
+
   void toggleZoom() {
     final engine = _engine;
     if (engine is! MpvEngine) return;
@@ -1205,13 +1228,28 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
       // VOD keeps the package default. A 300s DVR-to-disk buffer (which would
       // make live seeking real) is deferred as a future feature.
       primaryButtonBar: widget.channel.mediaType == MediaType.livestream
-          ? const [
-              Spacer(flex: 2),
-              Spacer(),
-              MaterialPlayOrPauseButton(iconSize: 48.0),
-              Spacer(),
-              Spacer(flex: 2),
-            ]
+          ? (_engine.dvrActive
+              // fix360 (re-applied fix364): DVR active -> full transport row.
+              ? [
+                  const Spacer(flex: 2),
+                  _dvrButton(Icons.replay_10, 'Rewind 10s',
+                      () => _dvrSeekBy(const Duration(seconds: -10))),
+                  const Spacer(),
+                  const MaterialPlayOrPauseButton(iconSize: 48.0),
+                  const Spacer(),
+                  _dvrButton(Icons.forward_10, 'Forward 10s',
+                      () => _dvrSeekBy(const Duration(seconds: 10))),
+                  const Spacer(),
+                  _dvrButton(Icons.live_tv, 'Back to live', _dvrGoLive),
+                  const Spacer(flex: 2),
+                ]
+              : const [
+                  Spacer(flex: 2),
+                  Spacer(),
+                  MaterialPlayOrPauseButton(iconSize: 48.0),
+                  Spacer(),
+                  Spacer(flex: 2),
+                ])
           : const [
               Spacer(flex: 2),
               MaterialSkipPreviousButton(),

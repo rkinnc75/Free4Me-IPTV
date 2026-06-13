@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.32.4': [
+    'Fixed the Live DVR controls not appearing: rewind, forward, and back-to-live now show on live TV when the DVR buffer is on (they were silently hidden by a missing internal flag in the 1.32.0 release).',
+  ],
   '1.32.3': [
     'Live DVR is now isolated per playback session, so quickly leaving one channel and opening another can no longer corrupt the new channel’s recording buffer.',
     'Channel picker search no longer tries to load an entire large catalog into memory for short queries.',
