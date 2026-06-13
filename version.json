@@ -1,8 +1,8 @@
 {
-  "latest": "1.29.2",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.29.2",
+  "latest": "1.29.3",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.29.3",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 New \"VOD/Movie pre-buffer\" setting (default 15 s): movies and episodes now buffer ahead before starting \u2014 and refill properly after running dry \u2014 instead of stuttering continuously on servers that send files slowly. Set it to 0 for the old start-immediately behaviour. Live TV is unaffected.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.29.2/Free4Me-IPTV-1.29.2-arm64.apk"
+  "releaseNotes": "\u2022 Multi-view audio fix: cells no longer finish opening at full volume when focus moved on during a slow start \u2014 only the focused cell plays sound.\n\u2022 Movies section fixed: series episodes no longer leak into Movies, search results, or favorites; they appear only inside their series.\n\u2022 Backups are now complete: favorite and hidden categories, VOD resume positions, and the multi-view stability buffer setting are all exported and restored (applied after the first refresh, like favorites). Older backups still import fine.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.29.3/Free4Me-IPTV-1.29.3-arm64.apk"
 }
