@@ -1,8 +1,8 @@
 {
-  "latest": "1.31.2",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.31.2",
+  "latest": "1.32.0",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.32.0",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Internal robustness pass (from a code review): debug log now actually rotates at its 20 MB cap during a long session instead of only when toggled; the backup-import dialog wording now matches what it does (adds/updates sources, keeps existing ones); a database migration registration-order issue that could crash debug builds was corrected (release builds were never affected); and two minor resource-handling tidies (a slider focus-node leak and a stray empty DVR cache folder on low disk).",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.31.2/Free4Me-IPTV-1.31.2-arm64.apk"
+  "releaseNotes": "\u2022 Live DVR controls: when the Live DVR buffer is on, the full-screen player now shows rewind 10s, forward 10s, and a back-to-live button alongside play/pause \u2014 fully usable with the TV remote (D-pad). Rewind into the buffer to catch a replay, then jump back to the live edge. Controls appear only while DVR is active.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.32.0/Free4Me-IPTV-1.32.0-arm64.apk"
 }
