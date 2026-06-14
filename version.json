@@ -1,8 +1,8 @@
 {
-  "latest": "1.33.0",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.33.0",
+  "latest": "1.33.1",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.33.1",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Major speed fix: Live, Movies, and Series grids now load almost instantly when you have most categories disabled. They were taking several seconds per switch because the app re-checked every channel\u2019s category one row at a time; that check is now built into the database index.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.33.0/Free4Me-IPTV-1.33.0-arm64.apk"
+  "releaseNotes": "\u2022 Live DVR controls now actually appear: the rewind / forward / back-to-live buttons were being built a moment before the DVR buffer turned on, so they stayed hidden on channels that started cleanly. They now show as soon as playback begins.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.33.1/Free4Me-IPTV-1.33.1-arm64.apk"
 }
