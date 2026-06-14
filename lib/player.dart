@@ -639,6 +639,14 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
         AppLog.info(
           'Player: open() succeeded — engine=libmpv url="$playbackUrl"',
         );
+        // fix366: the DVR buffer is enabled INSIDE open() (engine sets
+        // _dvrActive late), but primaryButtonBar was already built during the
+        // initial controls-theme render with dvrActive=false — so the
+        // rewind/forward/back-to-live row never appeared on a stream that then
+        // played without any further setState (1.32.4 on-device: DVR active,
+        // only play/pause shown). Trigger one rebuild now that open() (and DVR
+        // activation) has completed so the bar re-evaluates _engine.dvrActive.
+        if (mounted && _engine.dvrActive) setState(() {});
         // fix94: arm a startup watchdog. If the stream opens but never
         // produces a frame / buffering event, mpv can sit ~30s on its
         // internal read timeout. Catch it sooner. Cancelled by the first
