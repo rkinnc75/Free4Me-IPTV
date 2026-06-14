@@ -1,8 +1,8 @@
 {
-  "latest": "1.33.3",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.33.3",
+  "latest": "1.33.4",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.33.4",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 First-time setup can now receive your sources from another device over Wi-Fi: the welcome screen has a new \"Receive via QR / Wi-Fi\" option, so a fresh install can be set up by uploading a backup from your phone or PC without needing a local file.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.33.3/Free4Me-IPTV-1.33.3-arm64.apk"
+  "releaseNotes": "\u2022 Internal code-health pass: the app now passes static analysis cleanly (two long-standing analyzer hints about using a screen reference after a background operation were resolved). No change to how anything works.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.33.4/Free4Me-IPTV-1.33.4-arm64.apk"
 }
