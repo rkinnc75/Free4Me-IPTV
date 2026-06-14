@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.33.3': [
+    'First-time setup can now receive your sources from another device over Wi-Fi: the welcome screen has a new "Receive via QR / Wi-Fi" option, so a fresh install can be set up by uploading a backup from your phone or PC without needing a local file.',
+  ],
   '1.33.2': [
     'Live DVR controls now appear reliably. The video control bar was caching its buttons before the DVR buffer turned on; it is now refreshed the moment DVR becomes active, so rewind / forward / back-to-live show up as expected.',
   ],

@@ -8,6 +8,9 @@ import 'package:form_builder_validators/form_builder_validators.dart';
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/epg_service.dart';
 import 'package:open_tv/backend/settings_io.dart';
+import 'package:open_tv/backend/export_server.dart'; // fix368
+import 'package:open_tv/models/device_detector.dart'; // fix368
+import 'package:qr_flutter/qr_flutter.dart'; // fix368
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/backend/utils.dart';
 import 'package:open_tv/correction_modal.dart';
@@ -366,6 +369,103 @@ class _SetupState extends State<Setup> {
     navigateToHome();
   }
 
+  /// fix368: receive sources from another device via the LAN export portal
+  /// during first-run setup. Previously only a local backup FILE could be
+  /// imported here (_importBackup); a QR/Wi-Fi push (the same ExportServer the
+  /// running app exposes in Settings) was unavailable until after setup, so a
+  /// fresh install could not be provisioned from another device's QR. Starts a
+  /// receive-only portal (empty export items -> import form only), shows the
+  /// QR + URL, and proceeds to a refresh once sources are imported.
+  Future<void> _receiveViaQr() async {
+    AppLog.info('Setup: receive via QR — starting portal');
+    var imported = 0;
+    final deviceName = await DeviceDetector.deviceLabel();
+    if (!mounted) return;
+
+    final server = ExportServer(
+      const [], // receive-only: no export payloads, import form only
+      deviceName: deviceName,
+      onImportSources: (bytes) async {
+        final n = await SettingsIo.importSourcesOnly(bytes);
+        if (n > 0) imported = n;
+        return n;
+      },
+    );
+
+    List<String> urls;
+    try {
+      urls = await server.start();
+    } catch (e) {
+      AppLog.error('Setup: receive via QR — server start failed — $e');
+      if (mounted) {
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Could not start receiver'),
+            content: Text('The local network server could not start.\n\n$e'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+      return;
+    }
+
+    final primaryUrl = urls.isNotEmpty ? urls.first : '';
+    if (mounted) {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Receive sources from another device'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'On your phone or PC (same Wi-Fi), open this address and '
+                'upload a settings/sources backup:',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              if (primaryUrl.isNotEmpty)
+                QrImageView(
+                  data: primaryUrl,
+                  size: 200,
+                  backgroundColor: Colors.white,
+                ),
+              const SizedBox(height: 12),
+              for (final u in urls)
+                SelectableText(u, textAlign: TextAlign.center),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Done'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    await server.stop();
+    if (!mounted) return;
+
+    if (imported <= 0) {
+      AppLog.info('Setup: receive via QR — closed, no sources imported');
+      return;
+    }
+    AppLog.info('Setup: receive via QR — $imported source(s) imported,'
+        ' launching refresh');
+    await showSourcesRefreshDialog(context);
+    if (!mounted) return;
+    navigateToHome();
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -520,6 +620,20 @@ class _SetupState extends State<Setup> {
                     onPressed: _isFinishing ? null : _importBackup,
                     icon: const Icon(Icons.download_for_offline),
                     label: const Text('Import settings backup'),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 16,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // fix368: receive a backup pushed from another device over
+                  // the LAN (QR / Wi-Fi) during first-run setup.
+                  FilledButton.tonalIcon(
+                    onPressed: _isFinishing ? null : _receiveViaQr,
+                    icon: const Icon(Icons.qr_code_2),
+                    label: const Text('Receive via QR / Wi-Fi'),
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 24,
