@@ -1,8 +1,8 @@
 {
-  "latest": "1.33.2",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.33.2",
+  "latest": "1.33.3",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.33.3",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Live DVR controls now appear reliably. The video control bar was caching its buttons before the DVR buffer turned on; it is now refreshed the moment DVR becomes active, so rewind / forward / back-to-live show up as expected.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.33.2/Free4Me-IPTV-1.33.2-arm64.apk"
+  "releaseNotes": "\u2022 First-time setup can now receive your sources from another device over Wi-Fi: the welcome screen has a new \"Receive via QR / Wi-Fi\" option, so a fresh install can be set up by uploading a backup from your phone or PC without needing a local file.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.33.3/Free4Me-IPTV-1.33.3-arm64.apk"
 }
