@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.33.4': [
+    'Internal code-health pass: the app now passes static analysis cleanly (two long-standing analyzer hints about using a screen reference after a background operation were resolved). No change to how anything works.',
+  ],
   '1.33.3': [
     'First-time setup can now receive your sources from another device over Wi-Fi: the welcome screen has a new "Receive via QR / Wi-Fi" option, so a fresh install can be set up by uploading a backup from your phone or PC without needing a local file.',
   ],

@@ -2717,8 +2717,11 @@ class _SettingsState extends State<SettingsView> {
                         onChanged: (v) async {
                           setState(() => settings.safeMode = v);
                           await updateSettings();
-                          if (!mounted) return;
-                          // Capture messenger before the async gap is crossed.
+                          // fix369: guard the build context's OWN mounted across
+                          // the async gap before using it — the State's `mounted`
+                          // is an "unrelated" check for a local BuildContext
+                          // (use_build_context_synchronously).
+                          if (!context.mounted) return;
                           final messenger = ScaffoldMessenger.of(context);
                           messenger.showSnackBar(
                             SnackBar(
@@ -3261,7 +3264,10 @@ class _SettingsState extends State<SettingsView> {
                       if (confirmed == true && mounted) {
                         await Sql.clearAllStreamValidated();
                         StreamScanner.clearResults();
-                        if (mounted) {
+                        // fix369: guard the build context's OWN mounted (not the
+                        // State's) before using it after the async gap
+                        // (use_build_context_synchronously).
+                        if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
                               content: Text("Stream validation cleared."),
