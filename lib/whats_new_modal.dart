@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.33.0': [
+    'Major speed fix: Live, Movies, and Series grids now load almost instantly when you have most categories disabled. They were taking several seconds per switch because the app re-checked every channel’s category one row at a time; that check is now built into the database index.',
+  ],
   '1.32.4': [
     'Fixed the Live DVR controls not appearing: rewind, forward, and back-to-live now show on live TV when the DVR buffer is on (they were silently hidden by a missing internal flag in the 1.32.0 release).',
   ],

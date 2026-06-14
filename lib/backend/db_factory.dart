@@ -525,6 +525,39 @@ class DbFactory {
           ON channels(source_id, series_id, url)
           WHERE series_id IS NOT NULL;
         ''');
+      }))
+      // fix365: browse (Live/VOD/Series) ran a correlated (SELECT g.enabled …)
+      // subquery PER ROW. With most categories disabled and the enabled ones
+      // sorting late, SQLite walked deep into idx_channels_browse_tier running
+      // that subquery thousands of times before LIMIT 36 was satisfied — 5s+
+      // grid loads on a large catalog (S24 2026-06-13 log: 4.8–5.6s/switch).
+      // Denormalize the category-enabled flag onto channels.cat_enabled and add
+      // a partial browse index that EXCLUDES disabled rows, so the scan stops at
+      // 36 immediately. cat_enabled is maintained at group_id resolution
+      // (refresh) and on every category toggle.
+      ..add(SqliteMigration(29, (tx) async {
+        await tx.execute(
+            'ALTER TABLE channels ADD COLUMN cat_enabled INTEGER DEFAULT 1;');
+        // Backfill from the current groups.enabled (default 1 when no group).
+        await tx.execute('''
+          UPDATE channels SET cat_enabled = COALESCE(
+            (SELECT g.enabled FROM groups g WHERE g.id = channels.group_id), 1);
+        ''');
+        await tx.execute('''
+          CREATE INDEX IF NOT EXISTS idx_channels_browse_enabled
+          ON channels(
+            source_id,
+            (CASE
+              WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0
+              WHEN COALESCE(favorite,0)=1 THEN 1
+              WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2
+              WHEN last_watched IS NOT NULL THEN 3
+              WHEN COALESCE(stream_validated,0)=1 THEN 4
+              ELSE 5 END),
+            name COLLATE NOCASE
+          )
+          WHERE url IS NOT NULL AND series_id IS NULL AND cat_enabled = 1;
+        ''');
       }));
     await migrations.migrate(db);
 

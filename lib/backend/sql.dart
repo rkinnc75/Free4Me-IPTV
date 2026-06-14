@@ -362,6 +362,14 @@ class Sql {
         )
         WHERE source_id = ?
       ''', [sourceId, sourceId]);
+      // fix365: denormalize the category-enabled flag so the browse index can
+      // exclude disabled-category channels without a per-row subquery.
+      await tx.execute('''
+        UPDATE channels
+        SET cat_enabled = COALESCE(
+          (SELECT g.enabled FROM groups g WHERE g.id = channels.group_id), 1)
+        WHERE source_id = ?
+      ''', [sourceId]);
     };
   }
 
@@ -613,8 +621,10 @@ class Sql {
     // checkbox — the checkbox governs aggregated views (All/search), not
     // browsing a category you deliberately opened.
     if (filters.groupId == null) {
-      sqlQuery += "\nAND COALESCE("
-          "(SELECT g.enabled FROM groups g WHERE g.id = c.group_id), 1) = 1";
+      // fix365: was a per-row correlated subquery (5s grid loads when most
+      // categories are disabled). cat_enabled is the denormalized equivalent,
+      // covered by idx_channels_browse_enabled so disabled rows are skipped.
+      sqlQuery += "\nAND c.cat_enabled = 1";
     }
 
     if (filters.viewType == ViewType.favorites && filters.seriesId == null) {
@@ -780,6 +790,11 @@ class Sql {
       'UPDATE groups SET enabled = ? WHERE id = ?',
       [enabled ? 1 : 0, groupId],
     );
+    // fix365: sync denormalized channels.cat_enabled for this group.
+    await db.execute(
+      'UPDATE channels SET cat_enabled = ? WHERE group_id = ?',
+      [enabled ? 1 : 0, groupId],
+    );
     // fix298: keep the in-memory search cache's disabled set in sync so the
     // keystroke search reflects the toggle immediately (no rebuild needed).
     ChannelSearchCache.setGroupEnabled(groupId, enabled);
@@ -814,6 +829,16 @@ class Sql {
       'UPDATE groups SET enabled = ?'
       ' WHERE source_id IN (${generatePlaceholders(sourceIds.length)})'
       '$mediaClause',
+      [enabled ? 1 : 0, ...sourceIds, ...mt],
+    );
+    // fix365: sync channels.cat_enabled for every channel whose group is in the
+    // affected set (same WHERE as the groups UPDATE, via group membership).
+    await db.execute(
+      'UPDATE channels SET cat_enabled = ?'
+      ' WHERE group_id IN ('
+      '   SELECT id FROM groups'
+      '   WHERE source_id IN (${generatePlaceholders(sourceIds.length)})'
+      '$mediaClause)',
       [enabled ? 1 : 0, ...sourceIds, ...mt],
     );
     // fix298: resync the search cache's disabled set for the affected groups.

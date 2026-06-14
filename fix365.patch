@@ -1,0 +1,198 @@
+diff --git a/lib/backend/db_factory.dart b/lib/backend/db_factory.dart
+index a103f3e..c829426 100644
+--- a/lib/backend/db_factory.dart
++++ b/lib/backend/db_factory.dart
+@@ -525,6 +525,39 @@ class DbFactory {
+           ON channels(source_id, series_id, url)
+           WHERE series_id IS NOT NULL;
+         ''');
++      }))
++      // fix365: browse (Live/VOD/Series) ran a correlated (SELECT g.enabled …)
++      // subquery PER ROW. With most categories disabled and the enabled ones
++      // sorting late, SQLite walked deep into idx_channels_browse_tier running
++      // that subquery thousands of times before LIMIT 36 was satisfied — 5s+
++      // grid loads on a large catalog (S24 2026-06-13 log: 4.8–5.6s/switch).
++      // Denormalize the category-enabled flag onto channels.cat_enabled and add
++      // a partial browse index that EXCLUDES disabled rows, so the scan stops at
++      // 36 immediately. cat_enabled is maintained at group_id resolution
++      // (refresh) and on every category toggle.
++      ..add(SqliteMigration(29, (tx) async {
++        await tx.execute(
++            'ALTER TABLE channels ADD COLUMN cat_enabled INTEGER DEFAULT 1;');
++        // Backfill from the current groups.enabled (default 1 when no group).
++        await tx.execute('''
++          UPDATE channels SET cat_enabled = COALESCE(
++            (SELECT g.enabled FROM groups g WHERE g.id = channels.group_id), 1);
++        ''');
++        await tx.execute('''
++          CREATE INDEX IF NOT EXISTS idx_channels_browse_enabled
++          ON channels(
++            source_id,
++            (CASE
++              WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0
++              WHEN COALESCE(favorite,0)=1 THEN 1
++              WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2
++              WHEN last_watched IS NOT NULL THEN 3
++              WHEN COALESCE(stream_validated,0)=1 THEN 4
++              ELSE 5 END),
++            name COLLATE NOCASE
++          )
++          WHERE url IS NOT NULL AND series_id IS NULL AND cat_enabled = 1;
++        ''');
+       }));
+     await migrations.migrate(db);
+ 
+diff --git a/lib/backend/sql.dart b/lib/backend/sql.dart
+index b779a06..158dd9a 100644
+--- a/lib/backend/sql.dart
++++ b/lib/backend/sql.dart
+@@ -362,6 +362,14 @@ class Sql {
+         )
+         WHERE source_id = ?
+       ''', [sourceId, sourceId]);
++      // fix365: denormalize the category-enabled flag so the browse index can
++      // exclude disabled-category channels without a per-row subquery.
++      await tx.execute('''
++        UPDATE channels
++        SET cat_enabled = COALESCE(
++          (SELECT g.enabled FROM groups g WHERE g.id = channels.group_id), 1)
++        WHERE source_id = ?
++      ''', [sourceId]);
+     };
+   }
+ 
+@@ -613,8 +621,10 @@ class Sql {
+     // checkbox — the checkbox governs aggregated views (All/search), not
+     // browsing a category you deliberately opened.
+     if (filters.groupId == null) {
+-      sqlQuery += "\nAND COALESCE("
+-          "(SELECT g.enabled FROM groups g WHERE g.id = c.group_id), 1) = 1";
++      // fix365: was a per-row correlated subquery (5s grid loads when most
++      // categories are disabled). cat_enabled is the denormalized equivalent,
++      // covered by idx_channels_browse_enabled so disabled rows are skipped.
++      sqlQuery += "\nAND c.cat_enabled = 1";
+     }
+ 
+     if (filters.viewType == ViewType.favorites && filters.seriesId == null) {
+@@ -780,6 +790,11 @@ class Sql {
+       'UPDATE groups SET enabled = ? WHERE id = ?',
+       [enabled ? 1 : 0, groupId],
+     );
++    // fix365: sync denormalized channels.cat_enabled for this group.
++    await db.execute(
++      'UPDATE channels SET cat_enabled = ? WHERE group_id = ?',
++      [enabled ? 1 : 0, groupId],
++    );
+     // fix298: keep the in-memory search cache's disabled set in sync so the
+     // keystroke search reflects the toggle immediately (no rebuild needed).
+     ChannelSearchCache.setGroupEnabled(groupId, enabled);
+@@ -816,6 +831,16 @@ class Sql {
+       '$mediaClause',
+       [enabled ? 1 : 0, ...sourceIds, ...mt],
+     );
++    // fix365: sync channels.cat_enabled for every channel whose group is in the
++    // affected set (same WHERE as the groups UPDATE, via group membership).
++    await db.execute(
++      'UPDATE channels SET cat_enabled = ?'
++      ' WHERE group_id IN ('
++      '   SELECT id FROM groups'
++      '   WHERE source_id IN (${generatePlaceholders(sourceIds.length)})'
++      '$mediaClause)',
++      [enabled ? 1 : 0, ...sourceIds, ...mt],
++    );
+     // fix298: resync the search cache's disabled set for the affected groups.
+     // Re-query the exact rows the UPDATE touched (same WHERE) and apply the new
+     // state to the cache so keystroke search reflects it without a rebuild.
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 2e5eafe..28a2ecc 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.33.0': [
++    'Major speed fix: Live, Movies, and Series grids now load almost instantly when you have most categories disabled. They were taking several seconds per switch because the app re-checked every channel’s category one row at a time; that check is now built into the database index.',
++  ],
+   '1.32.4': [
+     'Fixed the Live DVR controls not appearing: rewind, forward, and back-to-live now show on live TV when the DVR buffer is on (they were silently hidden by a missing internal flag in the 1.32.0 release).',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 8b3d53b..b59834b 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.32.4+364
++version: 1.33.0+365
+ 
+ environment:
+   sdk: ^3.10.7
+diff --git a/test/browse_enabled_index_test.dart b/test/browse_enabled_index_test.dart
+new file mode 100644
+index 0000000..9ec948e
+--- /dev/null
++++ b/test/browse_enabled_index_test.dart
+@@ -0,0 +1,60 @@
++// fix365: the Live/VOD/Series browse query must use idx_channels_browse_enabled
++// (the partial index excluding disabled-category + episode rows) and must NOT
++// fall back to the per-row correlated g.enabled subquery that caused 5s grid
++// loads when most categories were disabled. Verifies index usage + that
++// cat_enabled stays consistent with groups.enabled after toggles.
++import 'package:flutter_test/flutter_test.dart';
++import 'package:sqlite3/sqlite3.dart' as s3;
++
++bool _has() { try { s3.sqlite3.openInMemory().dispose(); return true; } catch (_) { return false; } }
++
++void main() {
++  if (!_has()) { test('sqlite3 unavailable — skipped', () => expect(true, isTrue)); return; }
++  late s3.Database db;
++  setUp(() {
++    db = s3.sqlite3.openInMemory();
++    db.execute('''CREATE TABLE groups(id INTEGER PRIMARY KEY, name TEXT, source_id INT, enabled INT);''');
++    db.execute('''CREATE TABLE channels(id INTEGER PRIMARY KEY, name TEXT, url TEXT,
++      source_id INT, media_type INT, series_id INT, favorite INT, stream_validated INT,
++      last_watched INT, is_adult INT, is_divider INT, group_id INT, cat_enabled INT DEFAULT 1);''');
++    db.execute('''CREATE INDEX idx_channels_browse_enabled ON channels(source_id,
++      (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0
++       WHEN COALESCE(favorite,0)=1 THEN 1 WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2
++       WHEN last_watched IS NOT NULL THEN 3 WHEN COALESCE(stream_validated,0)=1 THEN 4 ELSE 5 END),
++      name COLLATE NOCASE) WHERE url IS NOT NULL AND series_id IS NULL AND cat_enabled=1;''');
++    for (var g = 1; g <= 20; g++) {
++      db.execute('INSERT INTO groups VALUES(?,?,1,?)', [g, 'G$g', g <= 2 ? 1 : 0]);
++    }
++    for (var i = 0; i < 5000; i++) {
++      final g = (i % 20) + 1;
++      db.execute('INSERT INTO channels(name,url,source_id,media_type,series_id,favorite,'
++          'stream_validated,is_adult,is_divider,group_id,cat_enabled) '
++          'VALUES(?,?,1,1,?,0,0,0,0,?,?)',
++          ['C$i', 'u$i', i % 5 == 0 ? null : 42, g, g <= 2 ? 1 : 0]);
++    }
++    db.execute('ANALYZE');
++  });
++  tearDown(() => db.dispose());
++
++  const browse = '''SELECT * FROM channels c WHERE media_type IN (1) AND source_id IN (1)
++    AND url IS NOT NULL AND series_id IS NULL AND COALESCE(c.is_adult,0)=0
++    AND c.cat_enabled = 1
++    ORDER BY source_id,(CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0
++     WHEN COALESCE(favorite,0)=1 THEN 1 WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2
++     WHEN last_watched IS NOT NULL THEN 3 WHEN COALESCE(stream_validated,0)=1 THEN 4 ELSE 5 END),
++     name COLLATE NOCASE LIMIT 36''';
++
++  test('browse uses idx_channels_browse_enabled, not a correlated subquery', () {
++    final plan = db.select('EXPLAIN QUERY PLAN $browse').map((r) => r['detail'] as String).join(' | ');
++    expect(plan, contains('idx_channels_browse_enabled'));
++    expect(plan.toLowerCase(), isNot(contains('correlated')));
++  });
++
++  test('toggle keeps cat_enabled consistent with groups.enabled', () {
++    db.execute('UPDATE groups SET enabled=1 WHERE id=5');
++    db.execute('UPDATE channels SET cat_enabled=1 WHERE group_id=5');
++    final mism = db.select('''SELECT COUNT(*) n FROM channels c JOIN groups g ON g.id=c.group_id
++      WHERE c.cat_enabled != g.enabled''').first['n'] as int;
++    expect(mism, 0);
++  });
++}
