@@ -1,8 +1,8 @@
 {
-  "latest": "1.33.4",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.33.4",
+  "latest": "1.33.5",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.33.5",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Internal code-health pass: the app now passes static analysis cleanly (two long-standing analyzer hints about using a screen reference after a background operation were resolved). No change to how anything works.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.33.4/Free4Me-IPTV-1.33.4-arm64.apk"
+  "releaseNotes": "\u2022 Restoring a backup now correctly hides categories you had disabled \u2014 previously a restored hidden category could still show up in the grids until the next refresh.\n\u2022 Live DVR now works even with Low Latency enabled: the DVR buffer is kept (and low latency is skipped) so rewind and back-to-live actually have something to seek through.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.33.5/Free4Me-IPTV-1.33.5-arm64.apk"
 }
