@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.33.5': [
+    'Restoring a backup now correctly hides categories you had disabled — previously a restored hidden category could still show up in the grids until the next refresh.',
+    'Live DVR now works even with Low Latency enabled: the DVR buffer is kept (and low latency is skipped) so rewind and back-to-live actually have something to seek through.',
+  ],
   '1.33.4': [
     'Internal code-health pass: the app now passes static analysis cleanly (two long-standing analyzer hints about using a screen reference after a background operation were resolved). No change to how anything works.',
   ],

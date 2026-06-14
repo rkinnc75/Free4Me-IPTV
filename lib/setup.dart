@@ -416,43 +416,47 @@ class _SetupState extends State<Setup> {
     }
 
     final primaryUrl = urls.isNotEmpty ? urls.first : '';
-    if (mounted) {
-      await showDialog<void>(
-        context: context,
-        barrierDismissible: true,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Receive sources from another device'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'On your phone or PC (same Wi-Fi), open this address and '
-                'upload a settings/sources backup:',
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              if (primaryUrl.isNotEmpty)
-                QrImageView(
-                  data: primaryUrl,
-                  size: 200,
-                  backgroundColor: Colors.white,
+    // fix370/LOW-1: guarantee the receiver is stopped (port 9479 released) even
+    // if the dialog throws — previously a thrown showDialog leaked the server.
+    try {
+      if (mounted) {
+        await showDialog<void>(
+          context: context,
+          barrierDismissible: true,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Receive sources from another device'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'On your phone or PC (same Wi-Fi), open this address and '
+                  'upload a settings/sources backup:',
+                  textAlign: TextAlign.center,
                 ),
-              const SizedBox(height: 12),
-              for (final u in urls)
-                SelectableText(u, textAlign: TextAlign.center),
+                const SizedBox(height: 16),
+                if (primaryUrl.isNotEmpty)
+                  QrImageView(
+                    data: primaryUrl,
+                    size: 200,
+                    backgroundColor: Colors.white,
+                  ),
+                const SizedBox(height: 12),
+                for (final u in urls)
+                  SelectableText(u, textAlign: TextAlign.center),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Done'),
+              ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Done'),
-            ),
-          ],
-        ),
-      );
+        );
+      }
+    } finally {
+      await server.stop();
     }
-
-    await server.stop();
     if (!mounted) return;
 
     if (imported <= 0) {

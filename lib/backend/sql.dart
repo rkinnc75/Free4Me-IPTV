@@ -1172,6 +1172,17 @@ class Sql {
       ' WHERE source_id = ? AND name = ?',
       [favorite, enabled, sourceId, name],
     );
+    // fix370/HIGH-1: keep the denormalized channels.cat_enabled (fix365) in
+    // sync. applyGroupState runs during backup restore AFTER the refresh that
+    // sets cat_enabled, so without this a restored "disabled" category leaked
+    // into browse until the next manual refresh. Match channels by the group's
+    // resolved id for this source+name.
+    await db.execute(
+      'UPDATE channels SET cat_enabled = ?'
+      ' WHERE source_id = ? AND group_id ='
+      ' (SELECT id FROM groups WHERE source_id = ? AND name = ? LIMIT 1)',
+      [enabled, sourceId, sourceId, name],
+    );
   }
 
   /// fix355 (backup): VOD resume positions keyed by channel URL (the stable

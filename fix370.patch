@@ -1,0 +1,161 @@
+diff --git a/lib/backend/sql.dart b/lib/backend/sql.dart
+index 158dd9a..d232159 100644
+--- a/lib/backend/sql.dart
++++ b/lib/backend/sql.dart
+@@ -1172,6 +1172,17 @@ class Sql {
+       ' WHERE source_id = ? AND name = ?',
+       [favorite, enabled, sourceId, name],
+     );
++    // fix370/HIGH-1: keep the denormalized channels.cat_enabled (fix365) in
++    // sync. applyGroupState runs during backup restore AFTER the refresh that
++    // sets cat_enabled, so without this a restored "disabled" category leaked
++    // into browse until the next manual refresh. Match channels by the group's
++    // resolved id for this source+name.
++    await db.execute(
++      'UPDATE channels SET cat_enabled = ?'
++      ' WHERE source_id = ? AND group_id ='
++      ' (SELECT id FROM groups WHERE source_id = ? AND name = ? LIMIT 1)',
++      [enabled, sourceId, sourceId, name],
++    );
+   }
+ 
+   /// fix355 (backup): VOD resume positions keyed by channel URL (the stable
+diff --git a/lib/player/mpv_engine.dart b/lib/player/mpv_engine.dart
+index 4ba7c50..12be911 100644
+--- a/lib/player/mpv_engine.dart
++++ b/lib/player/mpv_engine.dart
+@@ -607,10 +607,20 @@ class MpvEngine implements PlayerEngine {
+       // streams reject seeks, which mpv surfaces as a fatal player error
+       // ("Cannot seek in this stream.") causing an immediate reconnect loop.
+       // VOD keeps its back buffer for normal reverse-seek support.
+-      if (s.lowLatency) {
++      if (s.lowLatency && dvrBackMB <= 0) {
++        // Low latency only when DVR is NOT active — DVR needs the back buffer.
+         await np.setProperty('profile', 'low-latency');
+         await np.setProperty('demuxer-max-back-bytes', '0');
+       } else {
++        // fix370/MED-1: DVR active wins over low-latency. Previously
++        // s.lowLatency zeroed demuxer-max-back-bytes while _dvrActive stayed
++        // true, so the transport controls appeared but rewind/back-to-live had
++        // no buffer to seek in. When DVR is on we keep its back buffer (and
++        // skip the low-latency profile, which is fundamentally at odds with a
++        // multi-minute disk buffer).
++        if (s.lowLatency && dvrBackMB > 0) {
++          AppLog.info('MpvEngine: low-latency suppressed — DVR buffer active');
++        }
+         await np.setProperty('cache-secs', s.liveCacheSecs.toString());
+         final liveMB = previewMode ? s.miniDemuxerMaxMB : s.liveDemuxerMaxMB;
+         await np.setProperty('demuxer-max-bytes', '${liveMB}MiB');
+diff --git a/lib/setup.dart b/lib/setup.dart
+index 43f1ead..867be72 100644
+--- a/lib/setup.dart
++++ b/lib/setup.dart
+@@ -416,43 +416,47 @@ class _SetupState extends State<Setup> {
+     }
+ 
+     final primaryUrl = urls.isNotEmpty ? urls.first : '';
+-    if (mounted) {
+-      await showDialog<void>(
+-        context: context,
+-        barrierDismissible: true,
+-        builder: (ctx) => AlertDialog(
+-          title: const Text('Receive sources from another device'),
+-          content: Column(
+-            mainAxisSize: MainAxisSize.min,
+-            children: [
+-              const Text(
+-                'On your phone or PC (same Wi-Fi), open this address and '
+-                'upload a settings/sources backup:',
+-                textAlign: TextAlign.center,
+-              ),
+-              const SizedBox(height: 16),
+-              if (primaryUrl.isNotEmpty)
+-                QrImageView(
+-                  data: primaryUrl,
+-                  size: 200,
+-                  backgroundColor: Colors.white,
++    // fix370/LOW-1: guarantee the receiver is stopped (port 9479 released) even
++    // if the dialog throws — previously a thrown showDialog leaked the server.
++    try {
++      if (mounted) {
++        await showDialog<void>(
++          context: context,
++          barrierDismissible: true,
++          builder: (ctx) => AlertDialog(
++            title: const Text('Receive sources from another device'),
++            content: Column(
++              mainAxisSize: MainAxisSize.min,
++              children: [
++                const Text(
++                  'On your phone or PC (same Wi-Fi), open this address and '
++                  'upload a settings/sources backup:',
++                  textAlign: TextAlign.center,
+                 ),
+-              const SizedBox(height: 12),
+-              for (final u in urls)
+-                SelectableText(u, textAlign: TextAlign.center),
++                const SizedBox(height: 16),
++                if (primaryUrl.isNotEmpty)
++                  QrImageView(
++                    data: primaryUrl,
++                    size: 200,
++                    backgroundColor: Colors.white,
++                  ),
++                const SizedBox(height: 12),
++                for (final u in urls)
++                  SelectableText(u, textAlign: TextAlign.center),
++              ],
++            ),
++            actions: [
++              TextButton(
++                onPressed: () => Navigator.pop(ctx),
++                child: const Text('Done'),
++              ),
+             ],
+           ),
+-          actions: [
+-            TextButton(
+-              onPressed: () => Navigator.pop(ctx),
+-              child: const Text('Done'),
+-            ),
+-          ],
+-        ),
+-      );
++        );
++      }
++    } finally {
++      await server.stop();
+     }
+-
+-    await server.stop();
+     if (!mounted) return;
+ 
+     if (imported <= 0) {
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 4d55a65..938d8d6 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.33.5': [
++    'Restoring a backup now correctly hides categories you had disabled — previously a restored hidden category could still show up in the grids until the next refresh.',
++    'Live DVR now works even with Low Latency enabled: the DVR buffer is kept (and low latency is skipped) so rewind and back-to-live actually have something to seek through.',
++  ],
+   '1.33.4': [
+     'Internal code-health pass: the app now passes static analysis cleanly (two long-standing analyzer hints about using a screen reference after a background operation were resolved). No change to how anything works.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 42851a2..cd1b2c3 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.33.4+369
++version: 1.33.5+370
+ 
+ environment:
+   sdk: ^3.10.7

@@ -607,10 +607,20 @@ class MpvEngine implements PlayerEngine {
       // streams reject seeks, which mpv surfaces as a fatal player error
       // ("Cannot seek in this stream.") causing an immediate reconnect loop.
       // VOD keeps its back buffer for normal reverse-seek support.
-      if (s.lowLatency) {
+      if (s.lowLatency && dvrBackMB <= 0) {
+        // Low latency only when DVR is NOT active — DVR needs the back buffer.
         await np.setProperty('profile', 'low-latency');
         await np.setProperty('demuxer-max-back-bytes', '0');
       } else {
+        // fix370/MED-1: DVR active wins over low-latency. Previously
+        // s.lowLatency zeroed demuxer-max-back-bytes while _dvrActive stayed
+        // true, so the transport controls appeared but rewind/back-to-live had
+        // no buffer to seek in. When DVR is on we keep its back buffer (and
+        // skip the low-latency profile, which is fundamentally at odds with a
+        // multi-minute disk buffer).
+        if (s.lowLatency && dvrBackMB > 0) {
+          AppLog.info('MpvEngine: low-latency suppressed — DVR buffer active');
+        }
         await np.setProperty('cache-secs', s.liveCacheSecs.toString());
         final liveMB = previewMode ? s.miniDemuxerMaxMB : s.liveDemuxerMaxMB;
         await np.setProperty('demuxer-max-bytes', '${liveMB}MiB');
