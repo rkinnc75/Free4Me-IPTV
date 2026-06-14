@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.33.2': [
+    'Live DVR controls now appear reliably. The video control bar was caching its buttons before the DVR buffer turned on; it is now refreshed the moment DVR becomes active, so rewind / forward / back-to-live show up as expected.',
+  ],
   '1.33.1': [
     'Live DVR controls now actually appear: the rewind / forward / back-to-live buttons were being built a moment before the DVR buffer turned on, so they stayed hidden on channels that started cleanly. They now show as soon as playback begins.',
   ],

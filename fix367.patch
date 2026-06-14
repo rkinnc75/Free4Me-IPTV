@@ -1,0 +1,51 @@
+diff --git a/lib/player.dart b/lib/player.dart
+index 7a6746d..feff37f 100644
+--- a/lib/player.dart
++++ b/lib/player.dart
+@@ -1149,8 +1149,18 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+     if (_videoDetached) {
+       return const ColoredBox(color: Colors.black, child: SizedBox.expand());
+     }
+-    // libmpv path: use media_kit_video's full controls theme
++    // libmpv path: use media_kit_video's full controls theme.
++    // fix367: media_kit's controls state reads primaryButtonBar once at its own
++    // mount and does NOT rebuild when the MaterialVideoControlsTheme inherited
++    // widget changes. DVR activates INSIDE open() (after first mount), so the
++    // transport bar (rewind/forward/back-to-live) never appeared even though
++    // _engine.dvrActive was true and the parent rebuilt (fix360/364/366 all
++    // failed for this reason). Keying the theme subtree on dvrActive forces
++    // media_kit's controls to remount exactly once when DVR turns on, so they
++    // re-read primaryButtonBar and render the transport row. Cheap: flips false
++    // -> true a single time per playback.
+     return MaterialVideoControlsTheme(
++      key: ValueKey('mvct-dvr-${_engine.dvrActive}'),
+       normal: _mpvThemeData(context),
+       fullscreen: _mpvThemeData(context),
+       child: _engine.buildVideoView(context),
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 3c9a794..5956b0d 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.33.2': [
++    'Live DVR controls now appear reliably. The video control bar was caching its buttons before the DVR buffer turned on; it is now refreshed the moment DVR becomes active, so rewind / forward / back-to-live show up as expected.',
++  ],
+   '1.33.1': [
+     'Live DVR controls now actually appear: the rewind / forward / back-to-live buttons were being built a moment before the DVR buffer turned on, so they stayed hidden on channels that started cleanly. They now show as soon as playback begins.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 4bfa069..9fb4346 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.33.1+366
++version: 1.33.2+367
+ 
+ environment:
+   sdk: ^3.10.7

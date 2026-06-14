@@ -1149,8 +1149,18 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     if (_videoDetached) {
       return const ColoredBox(color: Colors.black, child: SizedBox.expand());
     }
-    // libmpv path: use media_kit_video's full controls theme
+    // libmpv path: use media_kit_video's full controls theme.
+    // fix367: media_kit's controls state reads primaryButtonBar once at its own
+    // mount and does NOT rebuild when the MaterialVideoControlsTheme inherited
+    // widget changes. DVR activates INSIDE open() (after first mount), so the
+    // transport bar (rewind/forward/back-to-live) never appeared even though
+    // _engine.dvrActive was true and the parent rebuilt (fix360/364/366 all
+    // failed for this reason). Keying the theme subtree on dvrActive forces
+    // media_kit's controls to remount exactly once when DVR turns on, so they
+    // re-read primaryButtonBar and render the transport row. Cheap: flips false
+    // -> true a single time per playback.
     return MaterialVideoControlsTheme(
+      key: ValueKey('mvct-dvr-${_engine.dvrActive}'),
       normal: _mpvThemeData(context),
       fullscreen: _mpvThemeData(context),
       child: _engine.buildVideoView(context),
