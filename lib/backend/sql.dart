@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/browse_order.dart';
+import 'package:open_tv/backend/visibility_clause.dart';
 import 'package:open_tv/backend/playback_analyzer.dart';
 import 'package:open_tv/backend/channel_search_cache.dart';
 import 'package:open_tv/backend/db_factory.dart';
@@ -582,20 +583,12 @@ class Sql {
     if (filters.viewType == ViewType.history) {
       sqlQuery += "\nAND last_watched IS NOT NULL";
     }
-    if (filters.seriesId != null) {
-      // fix362: series view — ONLY this series' episodes. (CRIT-1: the old
-      // unconditional "series_id IS NULL" in the base ANDed with this and made
-      // every series view empty.)
-      sqlQuery += "\nAND series_id = ?";
-      params.add(filters.seriesId!);
-    } else {
-      // fix362: not a series view — exclude episodes (fix355 intent).
-      sqlQuery += "\nAND series_id IS NULL";
-      if (filters.groupId != null) {
-        sqlQuery += "\nAND group_id = ?";
-        params.add(filters.groupId!);
-      }
-    }
+    // fix371: single source of truth for series/divider/category visibility.
+    final (visSql, visParams) = VisibilityClause.build(
+      alias: 'c.',
+      seriesId: filters.seriesId,
+      groupId: filters.groupId,
+    );
 
     // Must be before ORDER BY — AND clauses after ORDER BY are invalid SQL.
     final (smClause, smParams) = safeModeClause(filters.safeMode);
@@ -608,24 +601,8 @@ class Sql {
       );
     }
 
-    // fix272: hide provider divider channels when the source opts in. Indexed
-    // by idx_channel_divider(source_id, is_divider). Correlated subquery so it
-    // works for multi-source views (each source honors its own setting).
-    sqlQuery += "\nAND NOT (COALESCE(c.is_divider,0) = 1 AND "
-        "COALESCE((SELECT hide_dividers FROM sources WHERE id = c.source_id),0) = 1)";
-
-    // fix278: hide channels whose category (group) is disabled in the
-    // Categories view. enabled defaults to 1, so untouched categories show.
-    // fix302: but when the user has explicitly tapped INTO a category
-    // (groupId set), show all of its channels regardless of the enabled
-    // checkbox — the checkbox governs aggregated views (All/search), not
-    // browsing a category you deliberately opened.
-    if (filters.groupId == null) {
-      // fix365: was a per-row correlated subquery (5s grid loads when most
-      // categories are disabled). cat_enabled is the denormalized equivalent,
-      // covered by idx_channels_browse_enabled so disabled rows are skipped.
-      sqlQuery += "\nAND c.cat_enabled = 1";
-    }
+    sqlQuery += visSql;
+    params.addAll(visParams);
 
     if (filters.viewType == ViewType.favorites && filters.seriesId == null) {
       // fix356: Favorites view — group by source (A–Z), channels A–Z within.
@@ -1947,28 +1924,23 @@ class Sql {
     if (filters.viewType == ViewType.history) {
       sqlQuery += '\nAND c.last_watched IS NOT NULL';
     }
-    if (filters.seriesId != null) {
-      sqlQuery += '\nAND c.series_id = ?'; // fix362: series view only
-      params.add(filters.seriesId!);
-    } else {
-      sqlQuery += '\nAND c.series_id IS NULL'; // fix362: exclude episodes
-      if (filters.groupId != null) {
-        sqlQuery += '\nAND c.group_id = ?';
-        params.add(filters.groupId!);
-      }
-    }
+    // fix371: same VisibilityClause as the FTS/no-query path. This path
+    // previously carried its OWN copy of these predicates and was the one that
+    // drifted — it still used the slow correlated (SELECT g.enabled …)
+    // subquery after fix365 migrated the other path to cat_enabled. Now both
+    // share one builder, so they cannot diverge again.
+    final (visSql, visParams) = VisibilityClause.build(
+      alias: 'c.',
+      seriesId: filters.seriesId,
+      groupId: filters.groupId,
+    );
 
     final (smClause, smParams) = safeModeClause(filters.safeMode);
     sqlQuery += smClause;
     params.addAll(smParams);
 
-    // fix272: hide divider channels when the source opts in.
-    sqlQuery += "\nAND NOT (COALESCE(c.is_divider,0) = 1 AND "
-        "COALESCE((SELECT hide_dividers FROM sources WHERE id = c.source_id),0) = 1)";
-
-    // fix278: hide channels whose category (group) is disabled.
-    sqlQuery += "\nAND COALESCE("
-        "(SELECT g.enabled FROM groups g WHERE g.id = c.group_id), 1) = 1";
+    sqlQuery += visSql;
+    params.addAll(visParams);
 
     if (filters.viewType == ViewType.favorites && filters.seriesId == null) {
       // fix356: Favorites view — group by source (A–Z), channels A–Z within.

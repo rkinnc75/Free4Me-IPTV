@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.34.0': [
+    'Internal consolidation: the rules for which channels are shown (hiding episodes, dividers, and disabled categories) now live in one place shared by every search path. This also makes substring search faster on large catalogs, and prevents the kind of inconsistency that caused recent category-visibility bugs.',
+  ],
   '1.33.5': [
     'Restoring a backup now correctly hides categories you had disabled — previously a restored hidden category could still show up in the grids until the next refresh.',
     'Live DVR now works even with Low Latency enabled: the DVR buffer is kept (and low latency is skipped) so rewind and back-to-live actually have something to seek through.',

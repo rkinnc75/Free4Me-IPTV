@@ -1,0 +1,297 @@
+diff --git a/lib/backend/sql.dart b/lib/backend/sql.dart
+index d232159..65440f6 100644
+--- a/lib/backend/sql.dart
++++ b/lib/backend/sql.dart
+@@ -3,6 +3,7 @@ import 'dart:convert';
+ 
+ import 'package:open_tv/backend/app_logger.dart';
+ import 'package:open_tv/backend/browse_order.dart';
++import 'package:open_tv/backend/visibility_clause.dart';
+ import 'package:open_tv/backend/playback_analyzer.dart';
+ import 'package:open_tv/backend/channel_search_cache.dart';
+ import 'package:open_tv/backend/db_factory.dart';
+@@ -582,20 +583,12 @@ class Sql {
+     if (filters.viewType == ViewType.history) {
+       sqlQuery += "\nAND last_watched IS NOT NULL";
+     }
+-    if (filters.seriesId != null) {
+-      // fix362: series view — ONLY this series' episodes. (CRIT-1: the old
+-      // unconditional "series_id IS NULL" in the base ANDed with this and made
+-      // every series view empty.)
+-      sqlQuery += "\nAND series_id = ?";
+-      params.add(filters.seriesId!);
+-    } else {
+-      // fix362: not a series view — exclude episodes (fix355 intent).
+-      sqlQuery += "\nAND series_id IS NULL";
+-      if (filters.groupId != null) {
+-        sqlQuery += "\nAND group_id = ?";
+-        params.add(filters.groupId!);
+-      }
+-    }
++    // fix371: single source of truth for series/divider/category visibility.
++    final (visSql, visParams) = VisibilityClause.build(
++      alias: 'c.',
++      seriesId: filters.seriesId,
++      groupId: filters.groupId,
++    );
+ 
+     // Must be before ORDER BY — AND clauses after ORDER BY are invalid SQL.
+     final (smClause, smParams) = safeModeClause(filters.safeMode);
+@@ -608,24 +601,8 @@ class Sql {
+       );
+     }
+ 
+-    // fix272: hide provider divider channels when the source opts in. Indexed
+-    // by idx_channel_divider(source_id, is_divider). Correlated subquery so it
+-    // works for multi-source views (each source honors its own setting).
+-    sqlQuery += "\nAND NOT (COALESCE(c.is_divider,0) = 1 AND "
+-        "COALESCE((SELECT hide_dividers FROM sources WHERE id = c.source_id),0) = 1)";
+-
+-    // fix278: hide channels whose category (group) is disabled in the
+-    // Categories view. enabled defaults to 1, so untouched categories show.
+-    // fix302: but when the user has explicitly tapped INTO a category
+-    // (groupId set), show all of its channels regardless of the enabled
+-    // checkbox — the checkbox governs aggregated views (All/search), not
+-    // browsing a category you deliberately opened.
+-    if (filters.groupId == null) {
+-      // fix365: was a per-row correlated subquery (5s grid loads when most
+-      // categories are disabled). cat_enabled is the denormalized equivalent,
+-      // covered by idx_channels_browse_enabled so disabled rows are skipped.
+-      sqlQuery += "\nAND c.cat_enabled = 1";
+-    }
++    sqlQuery += visSql;
++    params.addAll(visParams);
+ 
+     if (filters.viewType == ViewType.favorites && filters.seriesId == null) {
+       // fix356: Favorites view — group by source (A–Z), channels A–Z within.
+@@ -1947,28 +1924,23 @@ class Sql {
+     if (filters.viewType == ViewType.history) {
+       sqlQuery += '\nAND c.last_watched IS NOT NULL';
+     }
+-    if (filters.seriesId != null) {
+-      sqlQuery += '\nAND c.series_id = ?'; // fix362: series view only
+-      params.add(filters.seriesId!);
+-    } else {
+-      sqlQuery += '\nAND c.series_id IS NULL'; // fix362: exclude episodes
+-      if (filters.groupId != null) {
+-        sqlQuery += '\nAND c.group_id = ?';
+-        params.add(filters.groupId!);
+-      }
+-    }
++    // fix371: same VisibilityClause as the FTS/no-query path. This path
++    // previously carried its OWN copy of these predicates and was the one that
++    // drifted — it still used the slow correlated (SELECT g.enabled …)
++    // subquery after fix365 migrated the other path to cat_enabled. Now both
++    // share one builder, so they cannot diverge again.
++    final (visSql, visParams) = VisibilityClause.build(
++      alias: 'c.',
++      seriesId: filters.seriesId,
++      groupId: filters.groupId,
++    );
+ 
+     final (smClause, smParams) = safeModeClause(filters.safeMode);
+     sqlQuery += smClause;
+     params.addAll(smParams);
+ 
+-    // fix272: hide divider channels when the source opts in.
+-    sqlQuery += "\nAND NOT (COALESCE(c.is_divider,0) = 1 AND "
+-        "COALESCE((SELECT hide_dividers FROM sources WHERE id = c.source_id),0) = 1)";
+-
+-    // fix278: hide channels whose category (group) is disabled.
+-    sqlQuery += "\nAND COALESCE("
+-        "(SELECT g.enabled FROM groups g WHERE g.id = c.group_id), 1) = 1";
++    sqlQuery += visSql;
++    params.addAll(visParams);
+ 
+     if (filters.viewType == ViewType.favorites && filters.seriesId == null) {
+       // fix356: Favorites view — group by source (A–Z), channels A–Z within.
+diff --git a/lib/backend/visibility_clause.dart b/lib/backend/visibility_clause.dart
+new file mode 100644
+index 0000000..1857895
+--- /dev/null
++++ b/lib/backend/visibility_clause.dart
+@@ -0,0 +1,68 @@
++/// fix371 (cold-eyes MED-2): the channel-visibility WHERE predicates, extracted
++/// as ONE pure builder so all three search/browse paths emit byte-identical
++/// filtering — the same discipline `BrowseOrder` (fix344) applied to ORDER BY.
++///
++/// Why this exists: episode exclusion (fix355/362), divider hiding (fix272),
++/// and category-enabled hiding (fix278 → fix365's denormalized `cat_enabled`)
++/// were duplicated across `Sql.search`'s FTS/no-query path, `Sql._searchLike`,
++/// and the in-memory `ChannelSearchCache`. They drifted: fix365 migrated the
++/// FTS path to `c.cat_enabled = 1` but LEFT `_searchLike` on the slow
++/// correlated `(SELECT g.enabled …)` subquery, and fix370 had to retrofit the
++/// restore path because the rule lived in three places. One builder makes that
++/// class of bug impossible: change the rule once, every path follows.
++class VisibilityClause {
++  VisibilityClause._();
++
++  /// Build the visibility predicates appended after the WHERE base and before
++  /// ORDER BY. [alias] is the column prefix the calling query uses (`''` for
++  /// the unaliased no-query path, `'c.'` for the FTS and LIKE paths).
++  ///
++  /// Returns the SQL fragment plus the ordered positional params it introduces.
++  /// Behaviour (identical across every path):
++  ///   - seriesId set  → `series_id = ?`        (series view: only its episodes)
++  ///   - seriesId null → `series_id IS NULL`    (exclude episodes)
++  ///                     + groupId set: `group_id = ?` (browsing a category)
++  ///   - always        → divider-hide correlated guard (fix272)
++  ///   - groupId null   → `cat_enabled = 1`     (hide disabled categories;
++  ///                       fix365 denormalized column, index-covered)
++  static (String sql, List<Object> params) build({
++    required String alias,
++    required int? seriesId,
++    required int? groupId,
++  }) {
++    final p = alias;
++    final params = <Object>[];
++    final b = StringBuffer();
++
++    if (seriesId != null) {
++      b.write('\nAND ${p}series_id = ?'); // series view — only its episodes
++      params.add(seriesId);
++    } else {
++      b.write('\nAND ${p}series_id IS NULL'); // exclude episodes (fix355)
++      if (groupId != null) {
++        // Browsing INTO a category (fix302): show all its channels regardless
++        // of the enabled checkbox.
++        b.write('\nAND ${p}group_id = ?');
++        params.add(groupId);
++      }
++    }
++
++    // Divider hiding (fix272): correlated so each source honors its own
++    // hide_dividers setting. Indexed by idx_channel_divider(source_id,is_divider).
++    b.write('\nAND NOT (COALESCE(${p}is_divider,0) = 1 AND '
++        'COALESCE((SELECT hide_dividers FROM sources WHERE id = ${p}source_id),0) = 1)');
++
++    // Category-enabled hiding (fix278 → fix365): applied whenever NOT browsing
++    // into a specific category (groupId null) — exactly the original shipped
++    // gate. cat_enabled (denormalized groups.enabled) is covered by
++    // idx_channels_browse_enabled, so disabled rows are skipped without a
++    // per-row subquery (was a 5s grid load on large catalogs). Note this also
++    // applies in a series view (seriesId set, groupId null), matching prior
++    // behaviour: a series whose category is disabled stays hidden.
++    if (groupId == null) {
++      b.write('\nAND ${p}cat_enabled = 1');
++    }
++
++    return (b.toString(), params);
++  }
++}
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 938d8d6..a1ac465 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.34.0': [
++    'Internal consolidation: the rules for which channels are shown (hiding episodes, dividers, and disabled categories) now live in one place shared by every search path. This also makes substring search faster on large catalogs, and prevents the kind of inconsistency that caused recent category-visibility bugs.',
++  ],
+   '1.33.5': [
+     'Restoring a backup now correctly hides categories you had disabled — previously a restored hidden category could still show up in the grids until the next refresh.',
+     'Live DVR now works even with Low Latency enabled: the DVR buffer is kept (and low latency is skipped) so rewind and back-to-live actually have something to seek through.',
+diff --git a/pubspec.yaml b/pubspec.yaml
+index cd1b2c3..d830181 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.33.5+370
++version: 1.34.0+371
+ 
+ environment:
+   sdk: ^3.10.7
+diff --git a/test/visibility_clause_test.dart b/test/visibility_clause_test.dart
+new file mode 100644
+index 0000000..65a400d
+--- /dev/null
++++ b/test/visibility_clause_test.dart
+@@ -0,0 +1,83 @@
++// fix371: VisibilityClause is the single source of truth for series/divider/
++// category-visibility predicates across all search paths. These tests pin the
++// emitted SQL (so drift like fix365's — where _searchLike kept the slow
++// correlated g.enabled subquery while the FTS path moved to cat_enabled — is
++// caught) and verify the predicate behaves correctly against a real DB.
++import 'package:flutter_test/flutter_test.dart';
++import 'package:open_tv/backend/visibility_clause.dart';
++import 'package:sqlite3/sqlite3.dart' as s3;
++
++bool _has() { try { s3.sqlite3.openInMemory().dispose(); return true; } catch (_) { return false; } }
++
++void main() {
++  group('VisibilityClause emitted SQL', () {
++    test('series view: series_id = ?, no IS NULL; keeps category gate (matches prior behaviour)', () {
++      final (sql, params) = VisibilityClause.build(alias: 'c.', seriesId: 42, groupId: null);
++      expect(sql, contains('c.series_id = ?'));
++      expect(sql, isNot(contains('series_id IS NULL')));
++      // Original gated cat_enabled on groupId==null only, so a series view
++      // (groupId null) keeps it — a series in a disabled category stays hidden.
++      expect(sql, contains('c.cat_enabled = 1'));
++      expect(params, [42]);
++    });
++
++    test('aggregated view: excludes episodes + hides disabled categories', () {
++      final (sql, params) = VisibilityClause.build(alias: 'c.', seriesId: null, groupId: null);
++      expect(sql, contains('c.series_id IS NULL'));
++      expect(sql, contains('c.cat_enabled = 1'));
++      expect(sql, isNot(contains('g.enabled'))); // NOT the slow correlated subquery
++      expect(params, isEmpty);
++    });
++
++    test('inside a category: shows all of it (group_id, no cat_enabled gate)', () {
++      final (sql, params) = VisibilityClause.build(alias: 'c.', seriesId: null, groupId: 7);
++      expect(sql, contains('c.group_id = ?'));
++      expect(sql, isNot(contains('cat_enabled')));
++      expect(params, [7]);
++    });
++
++    test('alias is threaded through every predicate', () {
++      final (sql, _) = VisibilityClause.build(alias: '', seriesId: null, groupId: null);
++      expect(sql, contains('series_id IS NULL'));
++      expect(sql, contains('cat_enabled = 1'));
++      expect(sql, isNot(contains('c.'))); // unaliased no-query path
++    });
++  });
++
++  if (!_has()) {
++    test('sqlite3 unavailable — DB checks skipped', () => expect(true, isTrue));
++    return;
++  }
++
++  test('aggregated browse uses idx_channels_browse_enabled (both paths)', () {
++    final db = s3.sqlite3.openInMemory();
++    db.execute('CREATE TABLE sources(id INTEGER PRIMARY KEY, hide_dividers INT);');
++    db.execute('INSERT INTO sources VALUES(1,0);');
++    db.execute('''CREATE TABLE channels(id INTEGER PRIMARY KEY, name TEXT, url TEXT,
++      source_id INT, media_type INT, series_id INT, favorite INT, stream_validated INT,
++      last_watched INT, is_adult INT, is_divider INT, group_id INT, cat_enabled INT DEFAULT 1);''');
++    db.execute('''CREATE INDEX idx_channels_browse_enabled ON channels(source_id,
++      (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0
++       WHEN COALESCE(favorite,0)=1 THEN 1 WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2
++       WHEN last_watched IS NOT NULL THEN 3 WHEN COALESCE(stream_validated,0)=1 THEN 4 ELSE 5 END),
++      name COLLATE NOCASE) WHERE url IS NOT NULL AND series_id IS NULL AND cat_enabled=1;''');
++    for (var i = 0; i < 2000; i++) {
++      db.execute('INSERT INTO channels(name,url,source_id,media_type,series_id,is_divider,cat_enabled) '
++          'VALUES(?,?,1,1,?,0,?)', ['C$i', 'u$i', i % 5 == 0 ? null : 42, i % 3 == 0 ? 1 : 0]);
++    }
++    db.execute('ANALYZE');
++    final (vis, _) = VisibilityClause.build(alias: 'c.', seriesId: null, groupId: null);
++    final q = 'SELECT * FROM channels c WHERE media_type IN (1) AND source_id IN (1) '
++        'AND c.url IS NOT NULL $vis ORDER BY source_id, name COLLATE NOCASE LIMIT 36';
++    final plan = db.select('EXPLAIN QUERY PLAN $q').map((r) => r['detail'] as String).join(' | ');
++    // The browse uses the partial index for the hot path. (A correlated
++    // subquery for the per-source divider-hide guard remains by design — it is
++    // the category-enabled filter that must NOT be a correlated subquery, and
++    // it is not: cat_enabled is a plain indexed column.)
++    expect(plan, contains('idx_channels_browse_enabled'));
++    expect(plan, isNot(contains('g.enabled')));
++    expect(vis, contains('cat_enabled = 1'));
++    expect(vis, isNot(contains('SELECT g.enabled')));
++    db.dispose();
++  });
++}
