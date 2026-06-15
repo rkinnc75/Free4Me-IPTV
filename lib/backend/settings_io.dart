@@ -368,6 +368,7 @@ class SettingsIo {
         // install that imports a backup with debugLogging=true
         // produces an empty log file for the entire first session.
         await AppLog.setEnabled(settings.debugLogging);
+        AppLog.logUserPass = settings.logUserPass;
       }
 
       if (payload['sources'] != null) {
@@ -549,6 +550,7 @@ class SettingsIo {
         'stableThresholdSecs': s.stableThresholdSecs,
         // EPG & debug (schema v2)
         'debugLogging': s.debugLogging,
+        'logUserPass': s.logUserPass,
         'epgAutoRefresh': s.epgAutoRefresh,
         'epgRefreshHours': s.epgRefreshHours,
         'epgRefreshHour': s.epgRefreshHour,
@@ -600,6 +602,7 @@ class SettingsIo {
       bufferingWatchdogSecs: m['bufferingWatchdogSecs'] as int? ?? 12,
       stableThresholdSecs: m['stableThresholdSecs'] as int? ?? 30,
       debugLogging: m['debugLogging'] as bool? ?? false,
+      logUserPass: m['logUserPass'] as bool? ?? false,
       epgAutoRefresh: m['epgAutoRefresh'] as bool? ?? true,
       epgRefreshHours: m['epgRefreshHours'] as int? ?? 24,
       epgRefreshHour: m['epgRefreshHour'] as int? ?? 3,

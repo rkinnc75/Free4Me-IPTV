@@ -46,6 +46,8 @@ Future<void> main() async {
   // reflect the device's true RAM.
   final earlySettings = await SettingsService.getSettings();
   await AppLog.setEnabled(earlySettings.debugLogging);
+  AppLog.logUserPass = earlySettings.logUserPass;
+  AppLog.setSourceSecrets(await Sql.getSources());
   await DeviceMemory.init();
   final settings = await SettingsService.reload();
 

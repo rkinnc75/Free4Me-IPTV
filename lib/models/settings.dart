@@ -95,6 +95,10 @@ class Settings {
 
   bool debugLogging;
 
+  /// fix374: when true, log source usernames/passwords verbatim (developer's
+  /// own testing). Default false -> credentials are redacted in the log.
+  bool logUserPass;
+
   bool epgAutoRefresh;
   int epgRefreshHours;
   int epgRefreshHour;
@@ -203,6 +207,7 @@ class Settings {
     this.preWarmOnFocus = true,
     this.backgroundProcessing = false,
     this.debugLogging = false,
+    this.logUserPass = false,
     this.epgAutoRefresh = true,
     this.epgRefreshHours = 24,
     this.epgRefreshHour = 3,

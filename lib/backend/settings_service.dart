@@ -40,6 +40,7 @@ const startupGraceMsProp = "startupGraceMs";
 
 // EPG settings (v1.2)
 const debugLoggingProp = "debugLogging";
+const logUserPassProp = "logUserPass";
 const epgAutoRefreshProp = "epgAutoRefresh";
 const epgRefreshHoursProp = "epgRefreshHours";
 const epgRefreshHourProp = "epgRefreshHour";
@@ -117,6 +118,7 @@ class SettingsService {
     var prewarm = settingsMap[preWarmOnFocusProp];
     var bgProc = settingsMap[backgroundProcessingProp];
     var debugLog = settingsMap[debugLoggingProp];
+    var logUserPass = settingsMap[logUserPassProp];
     var epgAuto = settingsMap[epgAutoRefreshProp];
     var epgHours = settingsMap[epgRefreshHoursProp];
     var epgHour = settingsMap[epgRefreshHourProp];
@@ -160,6 +162,7 @@ class SettingsService {
     if (prewarm != null) settings.preWarmOnFocus = int.parse(prewarm) == 1;
     if (bgProc != null) settings.backgroundProcessing = int.parse(bgProc) == 1;
     if (debugLog != null) settings.debugLogging = int.parse(debugLog) == 1;
+    if (logUserPass != null) settings.logUserPass = int.parse(logUserPass) == 1;
     if (epgAuto != null) settings.epgAutoRefresh = int.parse(epgAuto) == 1;
     if (epgHours != null) settings.epgRefreshHours = int.parse(epgHours);
     if (epgHour != null) settings.epgRefreshHour = int.parse(epgHour);
@@ -278,6 +281,7 @@ class SettingsService {
     settingsMap[preWarmOnFocusProp] = (settings.preWarmOnFocus ? 1 : 0)
         .toString();
     settingsMap[debugLoggingProp] = (settings.debugLogging ? 1 : 0).toString();
+    settingsMap[logUserPassProp] = (settings.logUserPass ? 1 : 0).toString();
     settingsMap[epgAutoRefreshProp] = (settings.epgAutoRefresh ? 1 : 0)
         .toString();
     settingsMap[epgRefreshHoursProp] = settings.epgRefreshHours.toString();

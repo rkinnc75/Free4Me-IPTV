@@ -959,10 +959,15 @@ class Sql {
   static Future<List<Source>> getSources() async {
     var db = await DbFactory.db;
     var results = await db.getAll('''
-      SELECT * 
-      FROM sources 
+      SELECT *
+      FROM sources
     ''');
-    return results.map(rowToSource).toList();
+    final sources = results.map(rowToSource).toList();
+    // fix374: keep the log-redaction table current. getSources() is the read
+    // chokepoint hit at startup and after every add/edit/delete/import, so the
+    // token map always reflects the live source set without scattered hooks.
+    AppLog.setSourceSecrets(sources);
+    return sources;
   }
 
   static Future<Source?> getSourceById(int id) async {

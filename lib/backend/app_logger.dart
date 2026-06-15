@@ -5,6 +5,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:open_tv/backend/utils.dart';
+import 'package:open_tv/models/source.dart';
 
 enum LogLevel { info, warning, error }
 
@@ -27,6 +28,18 @@ class AppLogger {
   IOSink? _sink;
   bool _initializing = false;
 
+  /// fix374: credential redaction. When [logUserPass] is false (default), each
+  /// source username/password substring in a log message is replaced with a
+  /// labelled token (`<NAME_USER>`/`<NAME_PASS>`) so logs shared for troubleshooting
+  /// never leak provider credentials. Set true only for the developer's own
+  /// testing (driven by the "Log User/Pass" debug setting).
+  bool logUserPass = false;
+
+  /// (secret, token) pairs built from ALL sources regardless of enabled state,
+  /// ordered longest-secret-first so a password that contains the username as a
+  /// substring still redacts cleanly. Rebuilt by [setSourceSecrets].
+  List<MapEntry<String, String>> _secrets = [];
+
   bool get enabled => _enabled;
 
   /// Enable or disable logging. When enabled, the log file is opened for
@@ -46,6 +59,7 @@ class AppLogger {
   /// Write a log entry. No-ops when logging is disabled.
   void log(String message, {LogLevel level = LogLevel.info}) {
     if (!_enabled && level != LogLevel.error) return;
+    if (!logUserPass) message = _redactSecrets(message);
     final ts = DateTime.now().toLocal().toString().substring(0, 19);
     final prefix = switch (level) {
       LogLevel.info => 'INFO',
@@ -96,6 +110,34 @@ class AppLogger {
   void info(String message) => log(message, level: LogLevel.info);
   void warn(String message) => log(message, level: LogLevel.warning);
   void error(String message) => log(message, level: LogLevel.error);
+
+  /// fix374: rebuild the redaction table from [sources]. Checks EVERY source
+  /// regardless of enabled state. Empty/whitespace credentials are skipped (an
+  /// empty secret would otherwise match everywhere). The source name has spaces
+  /// stripped to form the token tag, e.g. "A 3000" -> `<A3000_USER>`.
+  void setSourceSecrets(List<Source> sources) {
+    final out = <MapEntry<String, String>>[];
+    for (final s in sources) {
+      final tag = s.name.replaceAll(' ', '');
+      final u = s.username ?? '';
+      final p = s.password ?? '';
+      if (u.trim().isNotEmpty) out.add(MapEntry(u, '<${tag}_USER>'));
+      if (p.trim().isNotEmpty) out.add(MapEntry(p, '<${tag}_PASS>'));
+    }
+    out.sort((a, b) => b.key.length.compareTo(a.key.length));
+    _secrets = out;
+  }
+
+  /// fix374: replace every known credential literal in [s] with its token.
+  /// String.replaceAll uses literal (non-regex) matching for a String pattern,
+  /// so credential values containing regex metacharacters are handled safely.
+  String _redactSecrets(String s) {
+    if (_secrets.isEmpty) return s;
+    for (final e in _secrets) {
+      if (s.contains(e.key)) s = s.replaceAll(e.key, e.value);
+    }
+    return s;
+  }
 
   /// Returns the path of the log file (whether or not logging is enabled).
   Future<String> get logPath async {

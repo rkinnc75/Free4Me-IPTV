@@ -1716,6 +1716,7 @@ class _SettingsState extends State<SettingsView> {
 
     final fresh = builder()
       ..debugLogging = settings.debugLogging
+      ..logUserPass = settings.logUserPass
       ..multiViewLayout = settings.multiViewLayout
       ..multiViewCells1x2 = settings.multiViewCells1x2
       ..multiViewCells2x2 = settings.multiViewCells2x2;
@@ -3389,6 +3390,27 @@ class _SettingsState extends State<SettingsView> {
                       setState(() => settings.debugLogging = v);
                       await AppLog.setEnabled(v);
                       AppLog.info('Debug logging ${v ? "enabled" : "disabled"}');
+                      updateSettings();
+                    },
+                  ),
+                  _switchTile(
+                    label: "Log User/Pass",
+                    value: settings.logUserPass,
+                    help: (
+                      title: 'Log User/Pass',
+                      body:
+                          'When OFF (default), source usernames and passwords '
+                          'are removed from the debug log and replaced with '
+                          'labelled tokens like <A3000_USER> / <A3000_PASS>, so '
+                          'you can safely share a log for troubleshooting. Turn '
+                          'ON only for your own testing — it writes credentials '
+                          'verbatim. Default: OFF.',
+                    ),
+                    onChanged: (v) async {
+                      setState(() => settings.logUserPass = v);
+                      AppLog.logUserPass = v;
+                      AppLog.info(
+                          'Log User/Pass ${v ? "ON (raw credentials)" : "OFF (redacted)"}');
                       updateSettings();
                     },
                   ),
