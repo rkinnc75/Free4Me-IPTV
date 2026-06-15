@@ -1,0 +1,47 @@
+diff --git a/lib/backend/sql.dart b/lib/backend/sql.dart
+index 65440f6..f04229b 100644
+--- a/lib/backend/sql.dart
++++ b/lib/backend/sql.dart
+@@ -871,8 +871,14 @@ class Sql {
+ 
+     // fix308: favorited categories sort to the top.
+     // fix356: alphabetical within each tier (was rowid order).
+-    // is preserved below via the stable secondary sort.
++    // fix372: enabled categories sort above disabled ones. The Categories home
++    // view shows disabled categories grayed-out (groupEnabled drives the tile
++    // styling), but they were intermixed alphabetically with enabled ones — so
++    // an enabled category could sit below a wall of disabled ones. Tier order
++    // is now: favorites first, then enabled-before-disabled, then A–Z. enabled
++    // defaults to 1, so a brand-new source (nothing toggled) is unaffected.
+     sqlQuery += '\nORDER BY COALESCE(favorite, 0) DESC,'
++        ' COALESCE(enabled, 1) DESC,'
+         ' name COLLATE NOCASE ASC, id ASC';
+ 
+     sqlQuery += '\nLIMIT ?, ?';
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index a1ac465..5f9a154 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.34.1': [
++    'Categories screen now lists your enabled categories first, with disabled ones (grayed out) below — previously enabled and disabled categories were mixed together alphabetically, so an enabled category could appear far down the list.',
++  ],
+   '1.34.0': [
+     'Internal consolidation: the rules for which channels are shown (hiding episodes, dividers, and disabled categories) now live in one place shared by every search path. This also makes substring search faster on large catalogs, and prevents the kind of inconsistency that caused recent category-visibility bugs.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index d830181..214af8e 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.34.0+371
++version: 1.34.1+372
+ 
+ environment:
+   sdk: ^3.10.7

@@ -871,8 +871,14 @@ class Sql {
 
     // fix308: favorited categories sort to the top.
     // fix356: alphabetical within each tier (was rowid order).
-    // is preserved below via the stable secondary sort.
+    // fix372: enabled categories sort above disabled ones. The Categories home
+    // view shows disabled categories grayed-out (groupEnabled drives the tile
+    // styling), but they were intermixed alphabetically with enabled ones — so
+    // an enabled category could sit below a wall of disabled ones. Tier order
+    // is now: favorites first, then enabled-before-disabled, then A–Z. enabled
+    // defaults to 1, so a brand-new source (nothing toggled) is unaffected.
     sqlQuery += '\nORDER BY COALESCE(favorite, 0) DESC,'
+        ' COALESCE(enabled, 1) DESC,'
         ' name COLLATE NOCASE ASC, id ASC';
 
     sqlQuery += '\nLIMIT ?, ?';
