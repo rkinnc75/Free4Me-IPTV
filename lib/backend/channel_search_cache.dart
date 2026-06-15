@@ -16,6 +16,9 @@ class _CacheEntry {
   final int mediaType;
   final int sourceId;
   final bool favorite;
+  /// fix375: the provider's intended channel order (channels.provider_order).
+  /// Null sorts first in ASC, matching SQLite's NULL ordering.
+  final int? providerOrder;
   final int? lastWatched;     // epoch-seconds; null = never watched
   final int? groupId;
   final int? seriesId;
@@ -36,6 +39,7 @@ class _CacheEntry {
     required this.mediaType,
     required this.sourceId,
     required this.favorite,
+    required this.providerOrder,
     required this.lastWatched,
     required this.groupId,
     required this.seriesId,
@@ -61,6 +65,7 @@ class _CacheEntry {
       mediaType:       mediaType,
       sourceId:        sourceId,
       favorite:        favorite ?? this.favorite,
+      providerOrder:   providerOrder,
       lastWatched:     lastWatched == _absent
           ? this.lastWatched
           : lastWatched as int?,
@@ -92,6 +97,11 @@ class ChannelSearchCache {
 
   /// Pre-sorted by: lastWatched DESC (history view).
   static List<_CacheEntry> _entriesByHistoryOrder = [];
+
+  /// fix375: pre-sorted to mirror BrowseOrder's provider / category modes, so
+  /// in-memory search matches browse when in-scope sources use those modes.
+  static List<_CacheEntry> _entriesByProviderOrder = [];
+  static List<_CacheEntry> _entriesByCategoryOrder = [];
 
   /// ID → index in [_entries] for O(1) targeted mutations.
   static Map<int, int> _indexById = {};
@@ -138,6 +148,44 @@ class ChannelSearchCache {
     return a.nameLower.compareTo(b.nameLower);
   }
 
+  // fix375: keys mirroring BrowseOrder. Favorites first (_favKey), then
+  // validated favorites floated to the top of the favorites block (_valFloat),
+  // matching the SQL ORDER BY for provider/category modes exactly.
+  static int _favKey(_CacheEntry e) => e.favorite ? 0 : 1;
+  static int _valFloatKey(_CacheEntry e) =>
+      (e.favorite && e.streamValidated == true) ? 0 : 1;
+  static int _cmpProviderOrder(int? a, int? b) {
+    if (a == null) return b == null ? 0 : -1; // NULL sorts first (SQLite ASC)
+    if (b == null) return 1;
+    return a.compareTo(b);
+  }
+
+  /// Mirrors BrowseOrder.orderBy('provider'):
+  /// favFirst, valFloat, provider_order, name.
+  static int _providerCompare(_CacheEntry a, _CacheEntry b) {
+    var c = _favKey(a).compareTo(_favKey(b));
+    if (c != 0) return c;
+    c = _valFloatKey(a).compareTo(_valFloatKey(b));
+    if (c != 0) return c;
+    c = _cmpProviderOrder(a.providerOrder, b.providerOrder);
+    if (c != 0) return c;
+    return a.nameLower.compareTo(b.nameLower);
+  }
+
+  /// Mirrors BrowseOrder.orderBy('category'):
+  /// favFirst, valFloat, group_name, provider_order, name.
+  static int _categoryCompare(_CacheEntry a, _CacheEntry b) {
+    var c = _favKey(a).compareTo(_favKey(b));
+    if (c != 0) return c;
+    c = _valFloatKey(a).compareTo(_valFloatKey(b));
+    if (c != 0) return c;
+    c = a.groupLower.compareTo(b.groupLower);
+    if (c != 0) return c;
+    c = _cmpProviderOrder(a.providerOrder, b.providerOrder);
+    if (c != 0) return c;
+    return a.nameLower.compareTo(b.nameLower);
+  }
+
   /// Rebuild [_entriesByDefaultOrder] and [_entriesByHistoryOrder] from
   /// current [_entries]. Called after rebuild and after mutations.
   static void _rebuildSortedViews() {
@@ -145,6 +193,9 @@ class ChannelSearchCache {
     _entriesByHistoryOrder = [..._entries]..sort(
       (a, b) => (b.lastWatched ?? 0).compareTo(a.lastWatched ?? 0),
     );
+    // fix375: provider/category views so in-memory search can match browse.
+    _entriesByProviderOrder = [..._entries]..sort(_providerCompare);
+    _entriesByCategoryOrder = [..._entries]..sort(_categoryCompare);
   }
 
 
@@ -177,6 +228,7 @@ class ChannelSearchCache {
         mediaType:       r.$4,
         sourceId:        r.$5,
         favorite:        r.$6,
+        providerOrder:   r.$14,
         lastWatched:     r.$7,
         groupId:         r.$8,
         seriesId:        r.$9,
@@ -315,6 +367,7 @@ class ChannelSearchCache {
     required bool safeMode,
     required int limit,
     required int offset,
+    String? sortMode,
   }) {
     if (!_built) return [];
 
@@ -324,9 +377,19 @@ class ChannelSearchCache {
         .where((t) => t.isNotEmpty)
         .toList();
 
-    final source = viewType == ViewType.history
-        ? _entriesByHistoryOrder
-        : _entriesByDefaultOrder;
+    // fix375: history always orders by recency; otherwise honor the in-scope
+    // sources' uniform sort mode so search matches browse. 'alpha'/null/mixed
+    // keep the default (validated/favorite/name) order.
+    final List<_CacheEntry> source;
+    if (viewType == ViewType.history) {
+      source = _entriesByHistoryOrder;
+    } else if (sortMode == 'provider') {
+      source = _entriesByProviderOrder;
+    } else if (sortMode == 'category') {
+      source = _entriesByCategoryOrder;
+    } else {
+      source = _entriesByDefaultOrder;
+    }
 
     final results = <int>[];
     var seen = 0; // entries that passed all filters (for skip/offset)
@@ -367,6 +430,8 @@ class ChannelSearchCache {
     _entries = [];
     _entriesByDefaultOrder = [];
     _entriesByHistoryOrder = [];
+    _entriesByProviderOrder = [];
+    _entriesByCategoryOrder = [];
     _indexById = {};
     _built = false;
     _buildFuture = null;

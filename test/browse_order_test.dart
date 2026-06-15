@@ -27,10 +27,14 @@ void main() {
       final p = BrowseOrder.orderBy('provider');
       expect(p, contains('c.provider_order'));
       expect(p, isNot(contains('select sort_mode')));
+      expect(p, contains('stream_validated'),
+          reason: 'fix375: validated favorites float in provider mode');
       final c = BrowseOrder.orderBy('category');
       expect(c, contains('c.group_name COLLATE NOCASE'));
       expect(c, contains('c.provider_order'));
       expect(c, isNot(contains('select sort_mode')));
+      expect(c, contains('stream_validated'),
+          reason: 'fix375: validated favorites float in category mode');
     });
     test('mixed (null) keeps the legacy correlated form', () {
       final m = BrowseOrder.orderBy(null);

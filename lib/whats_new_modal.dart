@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.34.4': [
+    'Search now uses the same ordering as browsing when a source is set to Provider or Category order — previously search always fell back to a fixed favorite/A–Z order, so results could appear in a different sequence than the channel list.',
+    'Validated favorites (the ones with a confirmed working stream) now rise to the top of your favorites in Provider and Category order, both when browsing and searching.',
+  ],
   '1.34.2': [
     'Much faster first screen after opening the app, especially with multiple sources: the channel list was doing a full sort across every source on a cold start (several seconds). A new database index handles the common Live/Movies/Series views directly, and the list is now pre-warmed in the background at launch.',
   ],

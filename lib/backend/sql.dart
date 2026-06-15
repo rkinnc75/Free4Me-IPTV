@@ -709,7 +709,7 @@ class Sql {
   /// Includes stream validation so cache ordering can match SQL search.
   static Future<
       List<(int, String, String, int, int, bool, int?, int?, int?, bool?,
-          bool, bool, bool)>>
+          bool, bool, bool, int?)>>
       getAllChannelNamesForCache() async {
     final db = await DbFactory.db;
     final rows = await db.getAll(
@@ -719,7 +719,8 @@ class Sql {
       '       COALESCE(c.favorite, 0), c.last_watched, c.group_id, c.series_id,'
       '       c.stream_validated, COALESCE(c.is_divider, 0),'
       '       COALESCE(s.hide_dividers, 0),'
-      '       COALESCE(c.is_adult, 0)'
+      '       COALESCE(c.is_adult, 0),'
+      '       c.provider_order'
       ' FROM channels c'
       ' LEFT JOIN sources s ON s.id = c.source_id'
       ' WHERE c.url IS NOT NULL',
@@ -741,6 +742,7 @@ class Sql {
               (r.columnAt(10) as int) == 1,       // isDivider
               (r.columnAt(11) as int) == 1,       // hideDividers (source flag)
               (r.columnAt(12) as int) == 1,       // isAdult (fix300)
+              r.columnAt(13) as int?,             // providerOrder (fix375)
             ))
         .toList(growable: false);
   }
@@ -1874,6 +1876,9 @@ class Sql {
     Iterable<int> mediaTypes,
     int offset,
   ) async {
+    // fix375: honor the in-scope sources' uniform sort mode so in-memory
+    // search matches browse for provider/category. null/mixed => default order.
+    final sortMode = await _uniformSortMode(filters.sourceIds!.toList());
     final ids = ChannelSearchCache.search(
       query: rawQuery,
       mediaTypes: mediaTypes.toSet(),
@@ -1884,6 +1889,7 @@ class Sql {
       safeMode: filters.safeMode,
       limit: pageSize,
       offset: offset,
+      sortMode: sortMode,
     );
     if (ids.isEmpty) return [];
 
@@ -1910,18 +1916,12 @@ class Sql {
       ' offset=$offset',
     );
 
-    final mapped = [for (final id in ids) if (byId.containsKey(id)) byId[id]!];
-    mapped.sort((a, b) {
-      final favCmp = (b.favorite ? 1 : 0).compareTo(a.favorite ? 1 : 0);
-      if (favCmp != 0) return favCmp;
-      final valCmp = (b.streamValidated == true ? 1 : 0)
-          .compareTo(a.streamValidated == true ? 1 : 0);
-      if (valCmp != 0) return valCmp;
-      final watchCmp = (b.lastWatched ?? 0).compareTo(a.lastWatched ?? 0);
-      if (watchCmp != 0) return watchCmp;
-      return a.name.compareTo(b.name);
-    });
-    return mapped;
+    // fix375: the ids already arrive in the cache's correct order, which now
+    // honors the in-scope sources' uniform sort mode (provider/category/alpha).
+    // Rebuilding by iterating ids preserves that order (WHERE IN does not).
+    // We must NOT re-sort here: the old fixed favorite/validated/watched/name
+    // comparator would override the cache's provider/category ordering.
+    return [for (final id in ids) if (byId.containsKey(id)) byId[id]!];
   }
 
   /// LIKE-scan search: full-table substring scan, no FTS index.

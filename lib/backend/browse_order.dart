@@ -35,6 +35,14 @@ class BrowseOrder {
   static const String _favFirst =
       '(CASE WHEN COALESCE(c.favorite,0)=1 THEN 0 ELSE 1 END)';
 
+  /// fix375 (option A): within the favorites block, float VALIDATED favorites
+  /// above unvalidated ones in provider/category modes. 0 only for
+  /// favorite AND stream_validated; 1 for everything else (unvalidated
+  /// favorites and ALL non-favorites), so non-favorite ordering is unchanged.
+  /// Alpha mode already encodes this via the 6-tier [tier].
+  static const String _valFloat = '(CASE WHEN COALESCE(c.favorite,0)=1'
+      ' AND COALESCE(c.stream_validated,0)=1 THEN 0 ELSE 1 END)';
+
   /// Returns the full "\nORDER BY …" clause for a browse view.
   ///
   /// [uniformMode] is the single sort mode shared by every in-scope source
@@ -43,12 +51,16 @@ class BrowseOrder {
     switch (uniformMode) {
       case 'provider':
         // fix258: favorites first, then the provider's exact sequence.
+        // fix375: validated favorites float to the top of the favorites block.
         return '\nORDER BY $_favFirst ASC,'
+            ' $_valFloat ASC,'
             ' c.provider_order ASC,'
             ' c.name COLLATE NOCASE ASC';
       case 'category':
         // fix272: favorites first, then category, then provider order within.
+        // fix375: validated favorites float to the top of the favorites block.
         return '\nORDER BY $_favFirst ASC,'
+            ' $_valFloat ASC,'
             ' c.group_name COLLATE NOCASE ASC,'
             ' c.provider_order ASC,'
             ' c.name COLLATE NOCASE ASC';
