@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.34.2': [
+    'Much faster first screen after opening the app, especially with multiple sources: the channel list was doing a full sort across every source on a cold start (several seconds). A new database index handles the common Live/Movies/Series views directly, and the list is now pre-warmed in the background at launch.',
+  ],
   '1.34.1': [
     'Categories screen now lists your enabled categories first, with disabled ones (grayed out) below — previously enabled and disabled categories were mixed together alphabetically, so an enabled category could appear far down the list.',
   ],

@@ -833,6 +833,43 @@ class Sql {
     );
   }
 
+  /// fix373: warm the SQLite page cache for the browse path at startup so the
+  /// first user-facing Home.load doesn't eat the cold-disk fault cost (a
+  /// ~5.8s first paint on a large 2-source catalog). Runs ONE representative
+  /// browse — the default view across all sources — discarding the result; the
+  /// point is the side effect of pulling idx_channels_browse_mt /
+  /// idx_channels_browse_enabled and their data pages into cache. Best-effort:
+  /// any error is swallowed by the caller. Returns elapsed ms for logging.
+  static Future<int> warmBrowseCache(Settings settings) async {
+    final sw = Stopwatch()..start();
+    try {
+      final sourceIds = await _allSourceIds();
+      if (sourceIds.isEmpty) return 0;
+      // Mirror the default browse: livestream first (what the home screen loads
+      // first), no query, page 1. Small LIMIT — we only need to touch the hot
+      // pages, not materialize the whole view.
+      final filters = Filters(
+        sourceIds: sourceIds,
+        mediaTypes: [MediaType.livestream],
+        viewType: ViewType.all,
+        page: 1,
+        safeMode: settings.safeMode,
+        searchMethod: settings.searchMethod,
+      );
+      await search(filters);
+    } catch (_) {
+      // Best-effort warm-up; never block or crash startup.
+    }
+    sw.stop();
+    return sw.elapsedMilliseconds;
+  }
+
+  static Future<List<int>> _allSourceIds() async {
+    final db = await DbFactory.db;
+    final rows = await db.getAll('SELECT id FROM sources');
+    return rows.map((r) => r.columnAt(0) as int).toList();
+  }
+
   static Future<List<Channel>> searchGroup(Filters filters) async {
     final rawGroupQuery = (filters.query ?? "").trim();
     if (rawGroupQuery.isNotEmpty) {

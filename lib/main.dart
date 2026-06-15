@@ -90,6 +90,18 @@ Future<void> main() async {
     final tegra = await DeviceDetector.isTegra();
     AppLog.info('fix314 device: $board | isTegra=$tegra');
   }());
+  // fix373: warm the SQLite page cache for the browse path BEFORE first paint.
+  // The first browse query on a cold DB (esp. multi-source) faults its index +
+  // data pages from disk; doing a representative browse in the background here
+  // pulls those pages into cache so the user's first Home.load is fast. Off the
+  // render path (unawaited); skipped when there are no sources yet.
+  if (hasSources) {
+    unawaited(Sql.warmBrowseCache(settings).then((ms) {
+      AppLog.info('main: browse cache warm-up complete (${ms}ms)');
+    }).catchError((e) {
+      AppLog.warn('main: browse warm-up failed — $e');
+    }));
+  }
   unawaited(EpgService.scheduleBackgroundRefresh());
   runApp(
     MyApp(

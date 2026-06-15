@@ -558,6 +558,34 @@ class DbFactory {
           )
           WHERE url IS NOT NULL AND series_id IS NULL AND cat_enabled = 1;
         ''');
+      }))
+      // fix373: the fix365 index leads with source_id, so a MULTI-source browse
+      // (e.g. 2 providers) could not satisfy the global ORDER BY tier,name from
+      // the index — SQLite built a TEMP B-TREE sorting every enabled row across
+      // sources to return the top 36. On a large 2-source catalog with a cold
+      // page cache this was a ~5.8s first paint (S24 2026-06-15 09:01 log,
+      // mediaTypes=livestream). This index leads with media_type instead: for a
+      // single-media-type browse (Live / VOD / Series) media_type is pinned and
+      // (tier, name) then matches the ORDER BY directly — no temp b-tree, stops
+      // at LIMIT. source_id IN (...) is residual. (The mixed-media "All" view
+      // keeps a temp b-tree because media_type IN (0,1,2) can't pin; the
+      // startup warm-up in main.dart covers that cold-start case.)
+      ..add(SqliteMigration(30, (tx) async {
+        await tx.execute('''
+          CREATE INDEX IF NOT EXISTS idx_channels_browse_mt
+          ON channels(
+            media_type,
+            (CASE
+              WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0
+              WHEN COALESCE(favorite,0)=1 THEN 1
+              WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2
+              WHEN last_watched IS NOT NULL THEN 3
+              WHEN COALESCE(stream_validated,0)=1 THEN 4
+              ELSE 5 END),
+            name COLLATE NOCASE
+          )
+          WHERE url IS NOT NULL AND series_id IS NULL AND cat_enabled = 1;
+        ''');
       }));
     await migrations.migrate(db);
 
