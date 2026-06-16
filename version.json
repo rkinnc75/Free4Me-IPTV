@@ -1,8 +1,8 @@
 {
-  "latest": "1.34.5",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.34.5",
+  "latest": "1.34.6",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.34.6",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 When you add a new Xtream source, its Live TV / Movies / Series counts now appear right away in Settings \u2192 Sources \u2192 (edit), instead of showing a dash until the next refresh.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.34.5/Free4Me-IPTV-1.34.5-arm64.apk"
+  "releaseNotes": "\u2022 Favorites view now follows the channel order you picked for each source (Provider order, By category, or Alphabetical) \u2014 it used to always sort favorites by source name then channel name, ignoring your channel order setting.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.34.6/Free4Me-IPTV-1.34.6-arm64.apk"
 }
