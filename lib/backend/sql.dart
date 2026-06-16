@@ -1165,16 +1165,24 @@ class Sql {
     };
   }
 
-  static Future<void> updateSource(Source source) async {
-    var db = await DbFactory.db;
-    await db.execute('''
+  // fix387: the SET clause omitted `name = ?`, so Edit Source renames
+  // (made editable in fix385) were silently dropped — every other editable
+  // field was persisted, the name alone was not. Extracted to a const so the
+  // Rule-8 test executes the exact statement the app runs; a future regression
+  // that drops a SET column changes the placeholder count and fails the test.
+  static const String updateSourceSql = '''
       UPDATE sources
-      SET url = ?, username = ?, password = ?,
+      SET name = ?, url = ?, username = ?, password = ?,
           max_connections = ?, color = ?, sort_mode = ?,
           last_live_count = ?, last_movie_count = ?, last_series_count = ?,
           hide_dividers = ?
       WHERE id = ?
-    ''', [
+    ''';
+
+  static Future<void> updateSource(Source source) async {
+    var db = await DbFactory.db;
+    await db.execute(updateSourceSql, [
+      source.name,
       source.url,
       source.username,
       source.password,
