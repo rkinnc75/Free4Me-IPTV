@@ -1,8 +1,8 @@
 {
-  "latest": "1.34.14",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.34.14",
+  "latest": "1.34.15",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.34.15",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Edit Source dialog: name and color are now editable, a Test connection button verifies the source still works before saving, and the connection counts (live TV / movies / series) appear at the top of the dialog for quick reference. Also fixed: opening the dialog no longer auto-fires Save on D-pad Center / Enter.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.34.14/Free4Me-IPTV-1.34.14-arm64.apk"
+  "releaseNotes": "\u2022 When you add a new Xtream source, the app now automatically probes the provider for an XMLTV feed at one of three common endpoints and fills in the EPG URL for you. The probe is silent (no spinner), runs in the background, and is sticky: a successful auto-detect never re-probes; if the provider has no EPG, the source is marked as such and you can set one manually or use the global EPG.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.34.15/Free4Me-IPTV-1.34.15-arm64.apk"
 }
