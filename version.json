@@ -1,8 +1,8 @@
 {
-  "latest": "1.34.11",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.34.11",
+  "latest": "1.34.12",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.34.12",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fixed search returning nothing when you open a disabled category and start typing \u2014 the channels are right there when you scroll, and now they show up in search too. (Browsing and the other search modes were already correct; only the default in-memory search was over-filtering.)\n\u2022 A rare search-cache startup hiccup can no longer leave the search box permanently greyed out.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.34.11/Free4Me-IPTV-1.34.11-arm64.apk"
+  "releaseNotes": "\u2022 Adding a source that gets rejected (wrong URL, username, or password) no longer leaves a broken, empty source behind. Previously the failed source stuck around, so correcting it and trying again hit a \"name already exists\" error or created a duplicate. Now a failed add cleans up after itself, and re-adding with the same name just works.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.34.12/Free4Me-IPTV-1.34.12-arm64.apk"
 }
