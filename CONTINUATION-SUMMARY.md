@@ -1,6 +1,6 @@
 # Continuation Summary — free4me-iptv fix release process
 
-**Last updated: 2026-06-15 · covers fix369–fix377 · current version: 1.34.6+377**
+**Last updated: 2026-06-16 · covers fix369–fix381 · current version: 1.34.10+381**
 
 This document is ground zero. A fresh session with only this file should be able to release any `fixNNN.md` without asking the user a single question.
 
@@ -23,9 +23,9 @@ This document is ground zero. A fresh session with only this file should be able
 
 ## 2. Current state (as of this summary)
 
-- **Last released: fix377 → v1.34.6+377**
-- All fix files through fix377 are in `runbooks/`. No `fixNNN.md` in repo root.
-- Test suite: 13 files in `test/`, 43 tests total. CI runs `flutter test` on every tag push.
+- **Last released: fix381 → v1.34.10+381**
+- All fix files through fix381 are in `runbooks/`. No `fixNNN.md` in repo root.
+- Test suite: 17 files in `test/`. CI runs `flutter test` on every tag push.
 - Analyze gate: **0 issues** — `No issues found!` is the expected analyzer output as of fix369.
 - SQLite migration ceiling: **migration 30** (`idx_channels_browse_mt`).
 
@@ -61,13 +61,14 @@ ls ~/git/free4me-iptv/*.md ~/git/free4me-iptv/*.txt 2>/dev/null
 
 Move or remove any stale files (e.g., old CONTINUATION-*.md, scratch notes) before proceeding.
 
-### 4b. Extract the patch
+### 4b. Extract the patch (optional — script does it automatically)
+
+`apply_fix.sh` now auto-extracts `fixNNN.patch` from the embedded diff block when the `.patch` file is missing (updated in the fix379 window). You can still extract manually to do a pre-flight check:
 
 ```bash
 cd ~/git/free4me-iptv
 awk '/^```diff$/{f=1;next}/^```$/{if(f)exit}f' fixNNN.md > fixNNN.patch
 head -5 fixNNN.patch   # should start with "diff --git a/..."
-wc -l fixNNN.patch     # should be > 10 lines
 ```
 
 ### 4c. Pre-flight check
@@ -168,7 +169,7 @@ Step 11  git fetch origin tag vX.Y.Z → verify tag exists on GitHub
 
 ### Analyze gate note
 
-The script's success message says "2 tolerated INFOs accepted" — this is **stale hardcoded text**. The actual gate since fix369 is `--no-fatal-infos` with **0 errors and 0 warnings**. Expected output: `No issues found!`. Any warnings or errors must be fixed before proceeding.
+Since the fix379 window, the script requires the literal string `No issues found!` in the `flutter analyze` output (and zero exit code). The previous success log "2 tolerated INFOs accepted" was stale text — it has been corrected in the script. Any warnings or errors must be fixed before proceeding.
 
 ---
 
@@ -228,24 +229,32 @@ If a patch adds doc comments containing raw `<NAME>` tokens (HTML-like), `uninte
 - fix375: `getAllChannelNamesForCache()` adds `c.provider_order`; `_searchInMemory` resolves `_uniformSortMode` and passes `sortMode` to cache; removes redundant `mapped.sort(...)`
 - fix376: `getOrCreateSourceByName` committed up front with shared `memory` map; `memory: memory` threaded into `commitWriteBatched`
 - fix377: Favorites branch resolves `_uniformSortMode` → `BrowseOrder.orderBy(uniformMode)`; falls back to fix356 source-name A–Z subquery when null/mixed
+- fix378: Categories view groups by source when `sort_mode` is `provider` (new `searchGroup` branch)
+- fix379: `isLowRamTv` renamed to `isLowRamDevice`; isTV gate dropped — low-RAM phones get same multi-view mitigation
+- fix380: Suppressed-seek-probe-error log latched to once-per-open during startup grace period
+- fix381: Add Source wizard collapsed to single form page (name + url/credentials/file + EPG, conditional per source type)
 
 ---
 
-## 10. Test suite (13 files, 43 tests as of fix377)
+## 10. Test suite (17 files as of fix381)
 
 ```
 test/browse_enabled_index_test.dart
-test/browse_mt_index_test.dart          (fix373)
+test/browse_mt_index_test.dart              (fix373)
 test/browse_order_test.dart
+test/device_lowram_threshold_test.dart      (fix379)
 test/device_tag_test.dart
 test/export_zip_test.dart
-test/in_memory_sort_mode_test.dart      (fix375)
+test/in_memory_sort_mode_test.dart          (fix375)
+test/player_seek_probe_log_test.dart        (fix380)
 test/series_episodes_test.dart
 test/series_search_query_test.dart
-test/sql_favorites_sort_mode_test.dart  (fix377)
-test/visibility_clause_test.dart        (fix371)
+test/setup_form_test.dart                   (fix381)
+test/sql_favorites_sort_mode_test.dart      (fix377)
+test/sql_searchgroup_sort_mode_test.dart    (fix378)
+test/visibility_clause_test.dart            (fix371)
 test/wipe_source_test.dart
-test/xtream_first_add_counts_test.dart  (fix376)
+test/xtream_first_add_counts_test.dart      (fix376)
 test/xtream_refresh_logic_test.dart
 ```
 
