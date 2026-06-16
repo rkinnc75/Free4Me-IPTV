@@ -410,7 +410,18 @@ class ChannelSearchCache {
       // filter ran after the cache had already capped at `limit`, which let
       // dividers/disabled rows fill the page and hide real channels).
       if (e.isDivider && e.hideDividers) continue;
-      if (e.groupId != null && _disabledGroupIds.contains(e.groupId)) continue;
+      // fix382 (cold-eyes HIGH-1): mirror VisibilityClause — the disabled-
+      // category gate applies ONLY when NOT browsing INTO a specific category.
+      // Browsing into a disabled category (groupId set) must show its channels
+      // (fix302); the old unconditional check made in-memory search return 0
+      // results there, while the SQL FTS/LIKE/browse paths returned the full
+      // list (VisibilityClause appends `cat_enabled = 1` only when groupId is
+      // null). The `groupId == null` guard restores byte-equivalence.
+      if (groupId == null &&
+          e.groupId != null &&
+          _disabledGroupIds.contains(e.groupId)) {
+        continue;
+      }
       if (terms.isNotEmpty && !terms.every((t) => e.nameLower.contains(t))) {
         continue;
       }

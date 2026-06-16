@@ -169,9 +169,19 @@ class _HomeState extends State<Home> {
 
     // Now wait for the cache to finish (no-op if not needed or already done).
     if (cacheFuture != null && mounted && !_searchReady) {
-      await cacheFuture;
-      AppLog.info('Home: ChannelSearchCache warmup completed');
-      if (mounted) setState(() => _searchReady = true);
+      // fix382 (cold-eyes MED-1): a cache-build failure must NOT strand the
+      // search field disabled. _searchReady was re-enabled only on the success
+      // path, so a throw from ensureBuilt()/rebuild() left the TextField greyed
+      // out for the life of this Home with no recovery. Re-enable in finally;
+      // Sql.search already tolerates an unbuilt cache (falls back to SQL).
+      try {
+        await cacheFuture;
+        AppLog.info('Home: ChannelSearchCache warmup completed');
+      } catch (e) {
+        AppLog.warn('Home: ChannelSearchCache warmup failed — $e');
+      } finally {
+        if (mounted) setState(() => _searchReady = true);
+      }
     }
 
     if (!mounted || !widget.refresh) return;

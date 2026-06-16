@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.34.11': [
+    'Fixed search returning nothing when you open a disabled category and start typing — the channels are right there when you scroll, and now they show up in search too. (Browsing and the other search modes were already correct; only the default in-memory search was over-filtering.)',
+    'A rare search-cache startup hiccup can no longer leave the search box permanently greyed out.',
+  ],
   '1.34.10': [
     'Add Source screen is now a single page: pick the provider type and every field for it (URL, username/password for Xtream, M3U file picker, optional EPG URL) appears at once. The old 4–5 step wizard is gone, replaced by one form with an "Add Source" button.',
   ],
