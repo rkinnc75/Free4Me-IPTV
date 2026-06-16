@@ -378,6 +378,35 @@ Future<int?> fetchXtreamMaxConnections(Source source) async {
   return null;
 }
 
+/// fix388: probe the Xtream server to verify auth.
+/// Returns true if the server accepts the credentials (HTTP 200 +
+/// user_info.auth == 1). Distinguishes "login failed" from "login
+/// OK but provider doesn't report max_connections" — previously the
+/// dialog said "Login failed" for any user whose user_info was
+/// auth=1 but max_connections was missing or 0 (e.g. A3000/Media4u
+/// test users with limited permissions — their user_info reports
+/// auth=1 but max_connections=0, which the old
+/// fetchXtreamMaxConnections reported as null).
+Future<bool> checkXtreamAuth(Source source) async {
+  try {
+    final data = await getXtreamHttpData('', source);
+    return parseXtreamAuthResponse(data);
+  } catch (e) {
+    AppLog.warn('Xtream: test auth failed for "${source.name}" — $e');
+    return false;
+  }
+}
+
+/// fix388: pure parser for the Xtream test probe response. Exposed
+/// for unit testing; the dialog's [checkXtreamAuth] is the public
+/// entry point but tests can exercise this directly.
+bool parseXtreamAuthResponse(dynamic data) {
+  if (data is Map && data['user_info'] is Map) {
+    return (data['user_info'] as Map)['auth'] == 1;
+  }
+  return false;
+}
+
 // fix299: derive a clean category-name prefix from a stream name. Splits on the
 // first '|', then collapses a trailing feed-number tail like "(Peacock 016)" to
 // "(Peacock)" so numbered feeds of one category share a prefix instead of

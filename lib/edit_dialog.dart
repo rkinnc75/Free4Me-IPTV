@@ -156,8 +156,8 @@ class _EditDialogState extends State<EditDialog> {
             lastMovieCount: widget.source.lastMovieCount,
             lastSeriesCount: widget.source.lastSeriesCount,
           );
-          final maxConn = await fetchXtreamMaxConnections(probe);
-          if (maxConn == null) {
+          final authOk = await checkXtreamAuth(probe);
+          if (!authOk) {
             err = 'Xtream login failed — check URL, username, password.';
           }
           break;

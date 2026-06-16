@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.34.17': [
+    'Edit Source → Test connection now correctly reports "Connected" when the provider accepts your credentials, even if the provider does not report a max_connections value (or reports 0, which happens for permission-limited test users on A3000/Media4u and similar providers). Previously the dialog would say "Login failed" for these accounts even though the login actually succeeded.',
+  ],
   '1.34.16': [
     'Fixed: renaming a source in Edit Source now saves. The new name was being discarded on save (other fields like URL, color, and sort order were unaffected).',
   ],
