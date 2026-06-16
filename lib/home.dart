@@ -536,13 +536,11 @@ class _HomeState extends State<Home> {
   // fix278: Select All / Unselect All for categories. Updates every category
   // for the current sources + media types, then reloads the grid.
   Future<void> _setAllCategories(bool enabled) async {
-    final sourceIds = widget.home.filters.sourceIds
-            ?.whereType<int>()
-            .toList() ??
-        const <int>[];
-    final mediaTypes =
-        widget.home.filters.mediaTypes ?? const <MediaType>[];
-    await Sql.setAllGroupsEnabled(sourceIds, mediaTypes, enabled);
+    // fix389: route through setAllGroupsEnabledForSearch. When a search query is
+    // active it toggles exactly the matching categories across every page (the
+    // same set the grid shows); with no query it delegates internally to the
+    // unfiltered setAllGroupsEnabled. No dispatch branch lives here.
+    await Sql.setAllGroupsEnabledForSearch(widget.home.filters, enabled);
     await load(false);
   }
 

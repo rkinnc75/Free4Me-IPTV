@@ -846,6 +846,52 @@ class Sql {
     );
   }
 
+  // fix389: Select All / Unselect All in the Categories view when a search
+  // query is active. Mirrors setAllGroupsEnabled's structure (subquery UPDATEs
+  // + a re-query for the cache) but scopes to the search results via the shared
+  // groupSearchWhere builder — so the bulk action toggles exactly the
+  // categories the grid shows (all matches across every page, not just the ~36
+  // visible) and provably the same set, including the safe-mode name block.
+  // No id-list is ever bound, so there is no SQLITE_MAX_VARIABLE_NUMBER ceiling
+  // on the writes regardless of how many categories match. Empty query / no
+  // sources fall back to the unfiltered path.
+  static Future<void> setAllGroupsEnabledForSearch(
+    Filters filters,
+    bool enabled,
+  ) async {
+    if ((filters.query ?? '').trim().isEmpty) {
+      // No search query: defer to the unfiltered path (same effect, cheaper).
+      await setAllGroupsEnabled(
+        filters.sourceIds ?? const <int>[],
+        filters.mediaTypes ?? const <MediaType>[],
+        enabled,
+      );
+      return;
+    }
+    if (filters.sourceIds == null || filters.sourceIds!.isEmpty) return;
+    final db = await DbFactory.db;
+    final (where, params) = groupSearchWhere(filters);
+    final flag = enabled ? 1 : 0;
+    await db.execute(
+      'UPDATE groups SET enabled = ?'
+      ' WHERE id IN (SELECT id FROM groups WHERE $where)',
+      [flag, ...params],
+    );
+    await db.execute(
+      'UPDATE channels SET cat_enabled = ?'
+      ' WHERE group_id IN (SELECT id FROM groups WHERE $where)',
+      [flag, ...params],
+    );
+    // Re-query the affected ids (same WHERE) for the in-memory cache; binds only
+    // the small WHERE params, never an id-list.
+    final affected =
+        await db.getAll('SELECT id FROM groups WHERE $where', params);
+    ChannelSearchCache.setGroupsEnabledBulk(
+      [for (final r in affected) r.columnAt(0) as int],
+      enabled,
+    );
+  }
+
   /// fix373: warm the SQLite page cache for the browse path at startup so the
   /// first user-facing Home.load doesn't eat the cold-disk fault cost (a
   /// ~5.8s first paint on a large 2-source catalog). Runs ONE representative
@@ -883,6 +929,33 @@ class Sql {
     return rows.map((r) => r.columnAt(0) as int).toList();
   }
 
+  // fix389: THE single source of truth for the Categories-search WHERE clause
+  // and its bind params. Used by searchGroup (the grid the user sees) and by
+  // setAllGroupsEnabledForSearch (the Select/Unselect-All bulk toggle). Because
+  // both call this one builder, the bulk action provably selects the exact same
+  // groups the grid shows — including the safe-mode name block, which an earlier
+  // hand-built copy of this WHERE omitted. Returns (whereSql, params); callers
+  // append their own ORDER BY / LIMIT (and bind offset/limit) afterwards.
+  static (String, List<Object>) groupSearchWhere(Filters filters) {
+    final query = filters.query ?? "";
+    final keywords = filters.useKeywords
+        ? query.split(" ").map((f) => "%$f%").toList()
+        : ["%$query%"];
+    final mediaTypes =
+        (filters.mediaTypes ?? const <MediaType>[]).map((x) => x.index).toList();
+    final mediaClause = mediaTypes.isEmpty
+        ? ''
+        : ' AND (media_type IS NULL OR media_type IN'
+            ' (${generatePlaceholders(mediaTypes.length)}))';
+    final sourceIds = filters.sourceIds ?? const <int>[];
+    final (smClause, smParams) = safeModeGroupClause(filters.safeMode);
+    final where = '(${getKeywordsSql(keywords.length)})'
+        '$mediaClause'
+        ' AND source_id IN (${generatePlaceholders(sourceIds.length)})'
+        '$smClause';
+    return (where, <Object>[...keywords, ...mediaTypes, ...sourceIds, ...smParams]);
+  }
+
   static Future<List<Channel>> searchGroup(Filters filters) async {
     final rawGroupQuery = (filters.query ?? "").trim();
     if (rawGroupQuery.isNotEmpty) {
@@ -899,25 +972,12 @@ class Sql {
     }
     var db = await DbFactory.db;
     var offset = filters.page * pageSize - pageSize;
-    var query = filters.query ?? "";
-    var keywords = filters.useKeywords
-        ? query.split(" ").map((f) => "%$f%").toList()
-        : ["%$query%"];
-    var mediaTypes = filters.mediaTypes!.map((x) => x.index);
-    var sqlQuery = '''
-        SELECT * FROM groups
-        WHERE (${getKeywordsSql(keywords.length)})
-        AND (media_type IS NULL OR media_type IN (${generatePlaceholders(mediaTypes.length)}))
-        AND source_id IN (${generatePlaceholders(filters.sourceIds!.length)})
-    ''';
-    List<Object> params = [];
-    params.addAll(keywords);
-    params.addAll(mediaTypes);
-    params.addAll(filters.sourceIds!);
-
-    final (smGroupClause, smGroupParams) = safeModeGroupClause(filters.safeMode);
-    sqlQuery += smGroupClause;
-    params.addAll(smGroupParams);
+    // fix389: build the WHERE (keywords + media type + source + safe mode) from
+    // the shared groupSearchWhere so this grid and the Select/Unselect-All bulk
+    // action can never diverge.
+    final (groupWhere, groupParams) = groupSearchWhere(filters);
+    var sqlQuery = 'SELECT * FROM groups WHERE $groupWhere';
+    List<Object> params = [...groupParams];
 
     // fix308: favorited categories sort to the top.
     // fix356: alphabetical within each tier (was rowid order).
