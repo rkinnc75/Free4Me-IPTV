@@ -32,6 +32,16 @@ class Source {
   /// browse views. Null/0 = show them.
   int? hideDividers;
 
+  /// fix386: EPG auto-discovery state. One of:
+  ///   null    — no probe has run yet (or schema predates fix386)
+  ///   'auto'  — EpgDiscovery auto-detected an XMLTV endpoint
+  ///   'manual' — user set the URL via the EPG dialog
+  ///   'none'  — probed but no XMLTV endpoint was found
+  /// Sticky: once set, never re-probed automatically. The
+  /// "Re-detect EPG" button on the source row is the only re-probe
+  /// path.
+  String? epgDiscoveryState;
+
   Source({
     this.id,
     required this.name,
@@ -49,5 +59,6 @@ class Source {
     this.lastMovieCount,
     this.lastSeriesCount,
     this.hideDividers,
+    this.epgDiscoveryState,
   });
 }

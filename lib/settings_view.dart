@@ -2897,6 +2897,16 @@ class _SettingsState extends State<SettingsView> {
                             source.id!,
                             result.isEmpty ? null : result,
                           );
+                          // fix386: mark the EPG state as 'manual' so the
+                          // source-list pill shows "EPG: manual" and the
+                          // auto-discovery won't try to re-probe this
+                          // source on next add (it's already set, and
+                          // stickiness is per-source).
+                          await Sql.setSourceEpgDiscovery(
+                            source.id!,
+                            url: result.isEmpty ? null : result,
+                            state: 'manual',
+                          );
                           await initAsync();
                         }
                       },

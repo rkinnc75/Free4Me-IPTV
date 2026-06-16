@@ -1014,6 +1014,11 @@ class Sql {
     // Column order: id(0) name(1) source_type(2) url(3) username(4)
     //   password(5) enabled(6) epg_url(7) default_engine(8)
     //   max_connections(9)  ← fix184    color(10)  ← fix196
+    //   sort_mode(11) ← fix256 (migration 20)
+    //   last_live_count(12)/last_movie_count(13)/last_series_count(14)
+    //   ← fix268 (migration 21)
+    //   hide_dividers(15) ← fix272 (migration 22)
+    //   epg_discovery_state(16) ← fix386 (migration 31)
     return Source(
       id: row.columnAt(0),
       name: row.columnAt(1),
@@ -1031,6 +1036,7 @@ class Sql {
       lastMovieCount: row.columnAt(13) as int?,
       lastSeriesCount: row.columnAt(14) as int?,
       hideDividers: row.columnAt(15) as int?, // fix272 (migration 22)
+      epgDiscoveryState: row.columnAt(16) as String?, // fix386 (migration 31)
     );
   }
 
@@ -1504,6 +1510,38 @@ class Sql {
       'UPDATE sources SET epg_url = ? WHERE id = ?',
       [url, sourceId],
     );
+  }
+
+  /// fix386: persist the result of an EPG auto-discovery probe.
+  ///
+  /// [url] is the auto-detected XMLTV endpoint (null for a 'none'
+  /// result, in which case the existing [epg_url] is preserved —
+  /// the user might have set it manually and we don't want to clobber
+  /// their value just because a probe missed).
+  ///
+  /// [state] is one of 'auto' or 'none'. 'manual' is set by the
+  /// existing EPG dialog and should NOT be touched here.
+  static Future<void> setSourceEpgDiscovery(
+    int sourceId, {
+    String? url,
+    required String state,
+  }) async {
+    final db = await DbFactory.db;
+    if (url != null) {
+      // Auto-detected an endpoint — persist the URL + state.
+      await db.execute(
+        'UPDATE sources SET epg_url = ?, epg_discovery_state = ? WHERE id = ?',
+        [url, state, sourceId],
+      );
+    } else {
+      // No endpoint found — only touch the state; preserve any
+      // existing epg_url (user might have set it manually before
+      // the probe ran).
+      await db.execute(
+        'UPDATE sources SET epg_discovery_state = ? WHERE id = ?',
+        [state, sourceId],
+      );
+    }
   }
 
   /// Write matched/manual EPG channel IDs back to the channels table.

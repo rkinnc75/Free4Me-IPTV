@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.34.15': [
+    'When you add a new Xtream source, the app now automatically probes the provider for an XMLTV feed at one of three common endpoints and fills in the EPG URL for you. The probe is silent (no spinner), runs in the background, and is sticky: a successful auto-detect never re-probes; if the provider has no EPG, the source is marked as such and you can set one manually or use the global EPG.',
+  ],
   '1.34.14': [
     'Edit Source dialog: name and color are now editable, a Test connection button verifies the source still works before saving, and the connection counts (live TV / movies / series) appear at the top of the dialog for quick reference. Also fixed: opening the dialog no longer auto-fires Save on D-pad Center / Enter.',
   ],

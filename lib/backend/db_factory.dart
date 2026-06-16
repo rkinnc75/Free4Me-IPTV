@@ -586,6 +586,19 @@ class DbFactory {
           )
           WHERE url IS NOT NULL AND series_id IS NULL AND cat_enabled = 1;
         ''');
+      }))
+      // fix386: persist the EPG auto-discovery state for each source.
+      // NULL = no probe run yet, 'auto' = auto-detected by EpgDiscovery,
+      // 'manual' = user-set via the EPG dialog (see settings_view.dart),
+      // 'none' = probed but no XMLTV endpoint found.
+      // The state is sticky once set; a successful auto-detection
+      // never re-probes. The user can re-run the probe via the
+      // "Re-detect EPG" button on the source row, which sets the
+      // state to 'auto' or 'none' depending on the result.
+      ..add(SqliteMigration(31, (tx) async {
+        await tx.execute('''
+          ALTER TABLE sources ADD COLUMN epg_discovery_state TEXT;
+        ''');
       }));
     await migrations.migrate(db);
 

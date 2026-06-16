@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:open_tv/backend/app_logger.dart';
@@ -8,9 +9,10 @@ import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/backend/xtream.dart';
 import 'package:open_tv/memory.dart';
 import 'package:open_tv/models/source.dart';
-import 'package:open_tv/models/source_type.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:open_tv/backend/epg_discovery_runner.dart';
+import 'package:open_tv/models/source_type.dart';
 
 class Utils {
   static String? _appDir;
@@ -72,6 +74,20 @@ class Utils {
         case SourceType.xtream:
           await getXtream(source, wipe, onProgress, onRowProgress);
           break;
+      }
+      // fix386: brand-new Xtream add — fire EPG auto-discovery.
+      // The runner is sticky (skips if epgDiscoveryState is set) and
+      // is fire-and-forget; a probe failure must not roll back the
+      // add. Gated on `!namePreExisted` so refreshes of existing
+      // sources never re-probe.
+      if (!namePreExisted && source.sourceType == SourceType.xtream) {
+        // Detach: don't await. The Add Source dialog is already
+        // dismissing (setup.dart pops the route on success); the
+        // probe runs in the background and the user sees the
+        // source-list pill update when it finishes.
+        unawaited(
+          EpgDiscoveryRunner.runIfNewXtream(source),
+        );
       }
     } catch (e) {
       // The importer set source.id during its up-front commit; remove that row
