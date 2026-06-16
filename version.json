@@ -1,8 +1,8 @@
 {
-  "latest": "1.34.6",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.34.6",
+  "latest": "1.34.7",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.34.7",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Favorites view now follows the channel order you picked for each source (Provider order, By category, or Alphabetical) \u2014 it used to always sort favorites by source name then channel name, ignoring your channel order setting.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.34.6/Free4Me-IPTV-1.34.6-arm64.apk"
+  "releaseNotes": "\u2022 Categories screen now groups categories by source when your sources are set to \"Provider order\" \u2014 with multiple sources, your enabled categories interleave by source, matching how the rest of the app sorts in Provider mode. Alphabetical and By category modes are unchanged.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.34.7/Free4Me-IPTV-1.34.7-arm64.apk"
 }
