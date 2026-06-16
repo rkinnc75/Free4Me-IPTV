@@ -23,6 +23,15 @@ import 'package:open_tv/models/source_type.dart';
 import 'package:open_tv/models/steps.dart';
 import 'package:open_tv/models/view_type.dart';
 
+/// fix381: replaced the 4–5 screen Add Source wizard (name → url →
+/// username → password → epgUrl) with a single form page that
+/// conditionally shows the fields relevant to the selected source
+/// type, all on one screen. The user picks the source type, sees
+/// every required field at once, and taps "Add Source" once.
+///
+/// The welcome/finish pages and the import-backup / receive-via-QR
+/// flows are unchanged (they were the working parts of the wizard
+/// and were already single-screen).
 class Setup extends StatefulWidget {
   final bool showAppBar;
   const Setup({super.key, this.showAppBar = false});
@@ -37,26 +46,23 @@ class _SetupState extends State<Setup> {
   bool isForward = true;
   bool formValid = false;
   bool _isFinishing = false;
-  final Map<Steps, FocusNode> focusNodes = {
-    Steps.name: FocusNode(),
-    Steps.url: FocusNode(),
-    Steps.username: FocusNode(),
-    Steps.password: FocusNode(),
-  };
-  final formPages = {Steps.name, Steps.url, Steps.username, Steps.password};
-  final _formKeys = {
-    Steps.name: GlobalKey<FormBuilderState>(),
-    Steps.url: GlobalKey<FormBuilderState>(),
-    Steps.username: GlobalKey<FormBuilderState>(),
-    Steps.password: GlobalKey<FormBuilderState>(),
-  };
-  final formValues = {
-    Steps.name: "",
-    Steps.url: "",
-    Steps.username: "",
-    Steps.password: "",
-  };
+  String? _pickedM3uPath; // fix381: M3U file picker result.
+
+  // fix381: one FormBuilder for the whole form, plus one
+  // TextEditingController per visible field and one focus node per
+  // field for explicit D-pad order (see Steps.form page below).
+  final _formKey = GlobalKey<FormBuilderState>();
+  final _nameController = TextEditingController();
+  final _urlController = TextEditingController();
+  final _usernameController = TextEditingController();
+  final _passwordController = TextEditingController();
   final _epgUrlController = TextEditingController();
+  final _nameFocus = FocusNode();
+  final _urlFocus = FocusNode();
+  final _filePickerFocus = FocusNode();
+  final _usernameFocus = FocusNode();
+  final _passwordFocus = FocusNode();
+  final _epgUrlFocus = FocusNode();
   final nextButtonFocusNode = FocusNode();
   Set<String> existingSourceNames = {};
 
@@ -64,19 +70,32 @@ class _SetupState extends State<Setup> {
   void initState() {
     super.initState();
     nextButtonFocusNode.requestFocus();
+    _nameController.addListener(_recomputeFormValid);
+    _urlController.addListener(_recomputeFormValid);
+    _usernameController.addListener(_recomputeFormValid);
+    _passwordController.addListener(_recomputeFormValid);
+    _epgUrlController.addListener(_recomputeFormValid);
   }
 
   @override
   void dispose() {
-    for (var focus in focusNodes.values) {
-      focus.dispose();
-    }
-    nextButtonFocusNode.dispose();
+    _nameController.dispose();
+    _urlController.dispose();
+    _usernameController.dispose();
+    _passwordController.dispose();
     _epgUrlController.dispose();
+    _nameFocus.dispose();
+    _urlFocus.dispose();
+    _filePickerFocus.dispose();
+    _usernameFocus.dispose();
+    _passwordFocus.dispose();
+    _epgUrlFocus.dispose();
+    nextButtonFocusNode.dispose();
     super.dispose();
   }
 
-  /// Auto-fix a raw M3U URL: prepend http:// when no scheme is present.
+  /// fix381: auto-fix a raw M3U URL — prepend http:// when no scheme
+  /// is present. (Same as the pre-fix381 per-step helper.)
   String _autoFixM3uUrl(String url) {
     final trimmed = url.trim();
     if (trimmed.isEmpty) return trimmed;
@@ -86,11 +105,40 @@ class _SetupState extends State<Setup> {
     return trimmed;
   }
 
+  /// fix381: re-evaluate form validity from the current controllers
+  /// and the picked-file path. Called on every controller change. The
+  /// form's own validators run per-field on user interaction; this
+  /// is the cross-field "are all REQUIRED fields for this source
+  /// type populated and syntactically valid" check.
+  void _recomputeFormValid() {
+    if (!mounted) return;
+    setState(() {
+      final nameOk = _nameController.text.trim().isNotEmpty &&
+          !existingSourceNames.contains(_nameController.text.trim());
+      final urlOk = _urlController.text.trim().isNotEmpty;
+      final userOk = _usernameController.text.isNotEmpty;
+      final passOk = _passwordController.text.isNotEmpty;
+      final fileOk = _pickedM3uPath != null && _pickedM3uPath!.isNotEmpty;
+      switch (selectedSourceType) {
+        case SourceType.xtream:
+          formValid = nameOk && urlOk && userOk && passOk;
+          break;
+        case SourceType.m3uUrl:
+          formValid = nameOk && urlOk;
+          break;
+        case SourceType.m3u:
+          formValid = nameOk && fileOk;
+          break;
+      }
+    });
+  }
+
   Future<void> finish() async {
     if (_isFinishing) return;
     _isFinishing = true;
-    final sourceName = formValues[Steps.name]!;
+    final sourceName = _nameController.text.trim();
     final epgUrlValue = _epgUrlController.text.trim();
+    final urlValue = _urlController.text.trim();
 
     // Progress dialog state
     String progressStatus = 'Connecting…';
@@ -128,13 +176,13 @@ class _SetupState extends State<Setup> {
           name: sourceName,
           sourceType: selectedSourceType,
           url: selectedSourceType == SourceType.m3u
-              ? formValues[Steps.url]!
-              : await fixUrl(formValues[Steps.url]!),
+              ? _pickedM3uPath!
+              : await fixUrl(urlValue),
           username: selectedSourceType == SourceType.xtream
-              ? formValues[Steps.username]
+              ? _usernameController.text
               : null,
           password: selectedSourceType == SourceType.xtream
-              ? formValues[Steps.password]
+              ? _passwordController.text
               : null,
           epgUrl: epgUrlValue.isEmpty ? null : epgUrlValue,
         ),
@@ -194,32 +242,32 @@ class _SetupState extends State<Setup> {
     );
   }
 
+  /// fix381: M3U file picker. Stores the picked path in [_pickedM3uPath]
+  /// and recomputes form validity. The path is used by [finish] when
+  /// the source type is [SourceType.m3u].
   Future<bool> selectFile() async {
-    var path = (await FilePicker.platform.pickFiles())?.files.single.path;
+    final path = (await FilePicker.platform.pickFiles())?.files.single.path;
     if (path == null) return false;
-    formValues[Steps.url] = path;
+    setState(() {
+      _pickedM3uPath = path;
+    });
+    _recomputeFormValid();
     return true;
   }
 
   void prevStep() {
     isForward = false;
-    if (formPages.contains(step)) {
-      formValues[step] =
-          _formKeys[step]?.currentState?.fields[step.name]?.value;
-    }
-    // M3U URL skips username/password: going back from epgUrl returns to url.
-    Steps target;
-    if (step == Steps.epgUrl && selectedSourceType == SourceType.m3uUrl) {
-      target = Steps.url;
+    if (step == Steps.form) {
+      setState(() => step = Steps.sourceType);
+    } else if (step == Steps.sourceType) {
+      setState(() => step = Steps.welcome);
+    } else if (step == Steps.finish) {
+      setState(() => step = Steps.form);
     } else {
-      target = Steps.values[step.index - 1];
+      return; // Steps.welcome — no previous step
     }
-    setState(() => step = target);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      setState(() {
-        formValid = _formKeys[step]?.currentState?.isValid == true;
-      });
-      if (formPages.contains(step)) focusNodes[step]?.requestFocus();
+      if (!mounted) return;
       if (step == Steps.welcome) {
         nextButtonFocusNode.requestFocus();
       }
@@ -228,78 +276,52 @@ class _SetupState extends State<Setup> {
 
   Future<void> handleNext() async {
     isForward = true;
-    if (formPages.contains(step)) {
-      formValues[step] =
-          _formKeys[step]?.currentState?.fields[step.name]?.value;
-    }
-
-    // Duplicate name check
-    if (step == Steps.name) {
-      var sourceName = formValues[step]!;
-      if (await Sql.sourceNameExists(sourceName)) {
-        existingSourceNames.add(sourceName);
-        _formKeys[step]?.currentState?.validate();
+    if (step == Steps.welcome) {
+      setState(() => step = Steps.sourceType);
+    } else if (step == Steps.sourceType) {
+      // Reset URL when the user changes source type (matches the
+      // pre-fix381 behaviour: tapping a different source-type card
+      // cleared the URL field so an old URL from a different type
+      // doesn't leak into the new one).
+      if (selectedSourceType == SourceType.m3u) {
+        // m3u uses file picker, not URL — clear the URL controller
+        // and any previously-picked path so the form is fresh.
+        _urlController.clear();
+        setState(() => _pickedM3uPath = null);
+      } else {
+        _urlController.clear();
+      }
+      _recomputeFormValid();
+      setState(() => step = Steps.form);
+    } else if (step == Steps.form) {
+      // Duplicate name check.
+      final name = _nameController.text.trim();
+      if (await Sql.sourceNameExists(name)) {
+        existingSourceNames.add(name);
+        _formKey.currentState?.validate();
         return;
       }
-    }
-
-    // M3U file: pick file then finish immediately
-    if (step == Steps.name && selectedSourceType == SourceType.m3u) {
-      if (!await selectFile()) return;
-      await finish();
-      return;
-    }
-
-    // M3U URL: auto-fix the URL then go to the optional EPG URL step
-    if (step == Steps.url && selectedSourceType == SourceType.m3uUrl) {
-      final raw = formValues[Steps.url]!.trim();
-      final fixed = _autoFixM3uUrl(raw);
-      if (fixed != raw && fixed.isNotEmpty) {
-        formValues[Steps.url] = fixed;
-        _formKeys[Steps.url]?.currentState?.fields[Steps.url.name]
-            ?.didChange(fixed);
+      // M3U URL: auto-fix the URL.
+      if (selectedSourceType == SourceType.m3uUrl) {
+        final raw = _urlController.text.trim();
+        final fixed = _autoFixM3uUrl(raw);
+        if (fixed != raw && fixed.isNotEmpty) {
+          _urlController.text = fixed;
+        }
       }
-      _advanceToEpgUrl();
-      return;
-    }
-
-    // Xtream: after password, go to the optional EPG URL step
-    if (step == Steps.password) {
-      _advanceToEpgUrl();
-      return;
-    }
-
-    // EPG URL step (optional): proceed to finish
-    if (step == Steps.epgUrl) {
       await finish();
       return;
-    }
-
-    if (step == Steps.finish) {
+    } else if (step == Steps.finish) {
       navigateToHome();
       return;
     }
-
-    // Default: advance to the next step
-    setState(() {
-      step = Steps.values[step.index + 1];
-    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      setState(() {
-        if (formValues[step]?.isNotEmpty == true) {
-          _formKeys[step]?.currentState?.validate();
-        }
-        formValid = _formKeys[step]?.currentState?.isValid == true;
-      });
-      if (formPages.contains(step)) focusNodes[step]?.requestFocus();
-    });
-  }
-
-  void _advanceToEpgUrl() {
-    setState(() => step = Steps.epgUrl);
-    // epgUrl is optional — focus falls through to the Next button.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      nextButtonFocusNode.requestFocus();
+      if (!mounted) return;
+      if (step == Steps.welcome) {
+        nextButtonFocusNode.requestFocus();
+      } else if (step == Steps.form) {
+        _nameFocus.requestFocus();
+      }
     });
   }
 
@@ -357,11 +379,8 @@ class _SetupState extends State<Setup> {
 
     // Block on a full refresh of all enabled sources with a progress
     // dialog. The user lands on Home only after channels are actually
-    // loaded — no more "empty Home screen while the refresh runs in
-    // the background" experience.
-    //
-    // Channel-attribute restores (favorites / last-watched from the
-    // backup) are applied inside Utils.refreshSource via the
+    // loaded — no more "empty Home screen while the refresh runs in the
+    // background" experience.
     await showSourcesRefreshDialog(context);
 
     if (!mounted) return;
@@ -370,12 +389,7 @@ class _SetupState extends State<Setup> {
   }
 
   /// fix368: receive sources from another device via the LAN export portal
-  /// during first-run setup. Previously only a local backup FILE could be
-  /// imported here (_importBackup); a QR/Wi-Fi push (the same ExportServer the
-  /// running app exposes in Settings) was unavailable until after setup, so a
-  /// fresh install could not be provisioned from another device's QR. Starts a
-  /// receive-only portal (empty export items -> import form only), shows the
-  /// QR + URL, and proceeds to a refresh once sources are imported.
+  /// during first-run setup.
   Future<void> _receiveViaQr() async {
     AppLog.info('Setup: receive via QR — starting portal');
     var imported = 0;
@@ -383,7 +397,7 @@ class _SetupState extends State<Setup> {
     if (!mounted) return;
 
     final server = ExportServer(
-      const [], // receive-only: no export payloads, import form only
+      const [],
       deviceName: deviceName,
       onImportSources: (bytes) async {
         final n = await SettingsIo.importSourcesOnly(bytes);
@@ -416,8 +430,6 @@ class _SetupState extends State<Setup> {
     }
 
     final primaryUrl = urls.isNotEmpty ? urls.first : '';
-    // fix370/LOW-1: guarantee the receiver is stopped (port 9479 released) even
-    // if the dialog throws — previously a thrown showDialog leaked the server.
     try {
       if (mounted) {
         await showDialog<void>(
@@ -491,6 +503,7 @@ class _SetupState extends State<Setup> {
                 child: TweenAnimationBuilder<double>(
                   tween: Tween<double>(
                     begin: 0,
+                    // fix381: progress bar uses the new 4-step flow.
                     end: (step.index + 1) / Steps.values.length,
                   ),
                   duration: const Duration(milliseconds: 400),
@@ -539,7 +552,7 @@ class _SetupState extends State<Setup> {
                           ignoring:
                               step == Steps.welcome || step == Steps.finish,
                           child: FocusTraversalOrder(
-                            order: NumericFocusOrder(2.0),
+                            order: const NumericFocusOrder(2.0),
                             child: FilledButton.tonal(
                               onPressed: prevStep,
                               style: FilledButton.styleFrom(
@@ -557,14 +570,16 @@ class _SetupState extends State<Setup> {
                         ),
                       ),
                       FocusTraversalOrder(
-                        order: NumericFocusOrder(1.0),
+                        order: const NumericFocusOrder(1.0),
                         child: FilledButton(
                           focusNode: nextButtonFocusNode,
                           onPressed: _isFinishing
                               ? null
-                              : (!formPages.contains(step) || formValid
-                                  ? handleNext
-                                  : null),
+                              : (step == Steps.form
+                                  ? (formValid ? handleNext : null)
+                                  : (step == Steps.finish
+                                      ? handleNext
+                                      : handleNext)),
                           style: FilledButton.styleFrom(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 24,
@@ -572,14 +587,15 @@ class _SetupState extends State<Setup> {
                             ),
                           ),
                           child: Text(
-                            step == Steps.name &&
-                                    selectedSourceType == SourceType.m3u
-                                ? "Select file"
-                                : step == Steps.finish
-                                ? "Finish"
-                                : step == Steps.epgUrl
+                            // fix381: on the form, the single button is
+                            // "Add Source" (was "Next" → EPG → "Add Source"
+                            // on the old multi-step flow). On finish,
+                            // "Finish". On welcome/sourceType, "Next".
+                            step == Steps.form
                                 ? "Add Source"
-                                : "Next",
+                                : step == Steps.finish
+                                    ? "Finish"
+                                    : "Next",
                             style: const TextStyle(fontSize: 18),
                           ),
                         ),
@@ -601,10 +617,6 @@ class _SetupState extends State<Setup> {
         return getPage(
           "Welcome to Free4Me-IPTV",
           "Let's set up your ${widget.showAppBar ? "new" : "first"} source",
-          // Only show the import-backup affordance on first-run setup
-          // (showAppBar=false). When Setup is opened from Settings →
-          // Add Source, the user already has Settings → Backup &
-          // Restore available; offering it here would be redundant.
           widget.showAppBar
               ? null
               : [
@@ -632,8 +644,6 @@ class _SetupState extends State<Setup> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  // fix368: receive a backup pushed from another device over
-                  // the LAN (QR / Wi-Fi) during first-run setup.
                   FilledButton.tonalIcon(
                     onPressed: _isFinishing ? null : _receiveViaQr,
                     icon: const Icon(Icons.qr_code_2),
@@ -665,7 +675,6 @@ class _SetupState extends State<Setup> {
                 title: Text((SourceType.values[i]).label),
                 onTap: () {
                   setState(() {
-                    formValues[Steps.url] = "";
                     selectedSourceType = SourceType.values[i];
                   });
                 },
@@ -688,166 +697,56 @@ class _SetupState extends State<Setup> {
             return card;
           }),
         );
-      case Steps.name:
-        return getPage("What should we name this source?", null, [
-          FormBuilder(
-            onChanged: () {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                setState(() {
-                  formValid =
-                      _formKeys[Steps.name]!.currentState?.isValid == true;
-                });
-              });
-            },
-            initialValue: {Steps.name.name: formValues[Steps.name]},
-            key: _formKeys[Steps.name],
-            child: DpadFocusEscape(
-              child: FormBuilderTextField(
-              autocorrect: false,
-              focusNode: focusNodes[Steps.name],
-              decoration: const InputDecoration(
-                labelText: "Name",
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.label_outline),
-              ),
-              textInputAction: TextInputAction.next,
-              autovalidateMode: AutovalidateMode.onUserInteraction,
-              validator: FormBuilderValidators.compose([
-                FormBuilderValidators.required(),
-                (value) {
-                  var trimmed = value?.trim();
-                  if (trimmed == null || trimmed.isEmpty) {
-                    return null;
-                  }
-                  if (existingSourceNames.contains(trimmed)) {
-                    return "Name already exists";
-                  }
-                  return null;
-                },
-              ]),
-              name: 'name',
-            ),
-            ),
-          ),
-        ]);
-      case Steps.url:
-        return getPage("What is your provider's URL?", null, [
-          FormBuilder(
-            onChanged: () {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                setState(() {
-                  formValid =
-                      _formKeys[Steps.url]!.currentState?.isValid == true;
-                });
-              });
-            },
-            initialValue: {Steps.url.name: formValues[Steps.url]},
-            key: _formKeys[Steps.url],
-            child: DpadFocusEscape(
-              child: FormBuilderTextField(
-              autocorrect: false,
-              focusNode: focusNodes[Steps.url],
-              decoration: const InputDecoration(
-                labelText: "URL",
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.link),
-                helperText:
-                    "http:// will be added automatically if omitted",
-              ),
-              keyboardType: TextInputType.url,
-              textInputAction: TextInputAction.next,
-              autovalidateMode: AutovalidateMode.onUserInteraction,
-              validator: FormBuilderValidators.compose([
-                FormBuilderValidators.required(),
-                (value) {
-                  if (value == null || value.trim().isEmpty) return null;
-                  final uri = Uri.tryParse(value.trim());
-                  if (uri == null || uri.host.isEmpty && !value.contains('.')) {
-                    return 'Enter a valid URL (e.g. http://provider.com)';
-                  }
-                  return null;
-                },
-              ]),
-              name: 'url',
-            ),
-            ),
-          ),
-        ]);
-      case Steps.username:
-        return getPage("What is your username?", null, [
-          FormBuilder(
-            onChanged: () {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                setState(() {
-                  formValid =
-                      _formKeys[Steps.username]!.currentState?.isValid == true;
-                });
-              });
-            },
-            initialValue: {Steps.username.name: formValues[Steps.username]},
-            key: _formKeys[Steps.username],
-            child: DpadFocusEscape(
-              child: FormBuilderTextField(
-              autocorrect: false,
-              focusNode: focusNodes[Steps.username],
-              decoration: const InputDecoration(
-                labelText: "Username",
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.person),
-              ),
-              textInputAction: TextInputAction.next,
-              autovalidateMode: AutovalidateMode.onUserInteraction,
-              validator: FormBuilderValidators.required(),
-              name: 'username',
-            ),
-            ),
-          ),
-        ]);
-      case Steps.password:
-        return getPage("What is your password?", null, [
-          FormBuilder(
-            initialValue: {Steps.password.name: formValues[Steps.password]},
-            onChanged: () {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                setState(() {
-                  formValid =
-                      _formKeys[Steps.password]!.currentState?.isValid == true;
-                });
-              });
-            },
-            key: _formKeys[Steps.password],
-            child: DpadFocusEscape(
-              child: FormBuilderTextField(
-              autocorrect: false,
-              focusNode: focusNodes[Steps.password],
-              decoration: const InputDecoration(
-                labelText: "Password",
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.password),
-              ),
-              textInputAction: TextInputAction.next,
-              autovalidateMode: AutovalidateMode.onUserInteraction,
-              validator: FormBuilderValidators.required(),
-              name: 'password',
-            ),
-            ),
-          ),
-        ]);
-      case Steps.epgUrl:
+      case Steps.form:
+        // fix381: single FormBuilder for all fields. Required fields
+        // depend on the selected source type; conditional rendering
+        // means FormBuilder only sees the fields actually in the tree
+        // when computing isValid, so the per-source-type required
+        // set is implicit. D-pad order is explicit via
+        // FocusTraversalOrder on each field/widget — see the
+        // NumericFocusOrder values below.
         return getPage(
-          "EPG URL (optional)",
-          "Enter your Electronic Programme Guide URL to enable programme\nschedules. You can also add or change this later in Settings.",
+          "Source details",
+          "Fill in your provider's information. Leave optional fields blank.",
           [
-            DpadTextField(
-              controller: _epgUrlController,
-              decoration: const InputDecoration(
-                labelText: "EPG URL (optional)",
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.tv),
-                helperText: "Leave blank to skip",
+            FocusTraversalGroup(
+              policy: OrderedTraversalPolicy(),
+              child: FormBuilder(
+                key: _formKey,
+                autovalidateMode: AutovalidateMode.onUserInteraction,
+                child: Column(
+                  children: [
+                    FocusTraversalOrder(
+                      order: const NumericFocusOrder(1.0),
+                      child: _buildNameField(),
+                    ),
+                    if (selectedSourceType != SourceType.m3u)
+                      FocusTraversalOrder(
+                        order: const NumericFocusOrder(2.0),
+                        child: _buildUrlField(),
+                      ),
+                    if (selectedSourceType == SourceType.m3u)
+                      FocusTraversalOrder(
+                        order: const NumericFocusOrder(2.0),
+                        child: _buildFilePickerField(),
+                      ),
+                    if (selectedSourceType == SourceType.xtream) ...[
+                      FocusTraversalOrder(
+                        order: const NumericFocusOrder(3.0),
+                        child: _buildUsernameField(),
+                      ),
+                      FocusTraversalOrder(
+                        order: const NumericFocusOrder(4.0),
+                        child: _buildPasswordField(),
+                      ),
+                    ],
+                    FocusTraversalOrder(
+                      order: const NumericFocusOrder(5.0),
+                      child: _buildEpgUrlField(),
+                    ),
+                  ],
+                ),
               ),
-              keyboardType: TextInputType.url,
-              onSubmitted: (_) => handleNext(),
             ),
           ],
         );
@@ -855,6 +754,141 @@ class _SetupState extends State<Setup> {
         return getPage("Done!", "You're all set 🎉", null);
     }
   }
+
+  Widget _buildNameField() => DpadFocusEscape(
+        child: FormBuilderTextField(
+          key: const ValueKey('setup.name.field'),
+          name: 'name',
+          controller: _nameController,
+          focusNode: _nameFocus,
+          autocorrect: false,
+          textInputAction: TextInputAction.next,
+          decoration: const InputDecoration(
+            labelText: "Name",
+            border: OutlineInputBorder(),
+            prefixIcon: Icon(Icons.label_outline),
+          ),
+          validator: FormBuilderValidators.compose([
+            FormBuilderValidators.required(),
+            (value) {
+              final trimmed = value?.trim();
+              if (trimmed == null || trimmed.isEmpty) return null;
+              if (existingSourceNames.contains(trimmed)) {
+                return "Name already exists";
+              }
+              return null;
+            },
+          ]),
+        ),
+      );
+
+  Widget _buildUrlField() => DpadFocusEscape(
+        child: FormBuilderTextField(
+          key: const ValueKey('setup.url.field'),
+          name: 'url',
+          controller: _urlController,
+          focusNode: _urlFocus,
+          autocorrect: false,
+          textInputAction: TextInputAction.next,
+          keyboardType: TextInputType.url,
+          decoration: const InputDecoration(
+            labelText: "URL",
+            border: OutlineInputBorder(),
+            prefixIcon: Icon(Icons.link),
+            helperText: "http:// will be added automatically if omitted",
+          ),
+          validator: FormBuilderValidators.compose([
+            FormBuilderValidators.required(),
+            (value) {
+              if (value == null || value.trim().isEmpty) return null;
+              final uri = Uri.tryParse(value.trim());
+              if (uri == null || uri.host.isEmpty && !value.contains('.')) {
+                return 'Enter a valid URL (e.g. http://provider.com)';
+              }
+              return null;
+            },
+          ]),
+        ),
+      );
+
+  Widget _buildFilePickerField() => Focus(
+        focusNode: _filePickerFocus,
+        child: InkWell(
+          onTap: () => selectFile(),
+          child: InputDecorator(
+            decoration: InputDecoration(
+              labelText: "M3U file",
+              border: const OutlineInputBorder(),
+              prefixIcon: const Icon(Icons.folder_open),
+              helperText: _pickedM3uPath == null
+                  ? "Tap to choose a .m3u / .m3u8 file from device storage"
+                  : _pickedM3uPath!,
+            ),
+            child: Text(
+              _pickedM3uPath == null
+                  ? "(no file selected)"
+                  : _pickedM3uPath!.split('/').last,
+              style: TextStyle(
+                color: _pickedM3uPath == null
+                    ? Theme.of(context).hintColor
+                    : Theme.of(context).colorScheme.onSurface,
+                fontStyle:
+                    _pickedM3uPath == null ? FontStyle.italic : FontStyle.normal,
+              ),
+            ),
+          ),
+        ),
+      );
+
+  Widget _buildUsernameField() => DpadFocusEscape(
+        child: FormBuilderTextField(
+          key: const ValueKey('setup.username.field'),
+          name: 'username',
+          controller: _usernameController,
+          focusNode: _usernameFocus,
+          autocorrect: false,
+          textInputAction: TextInputAction.next,
+          decoration: const InputDecoration(
+            labelText: "Username",
+            border: OutlineInputBorder(),
+            prefixIcon: Icon(Icons.person),
+          ),
+          validator: FormBuilderValidators.required(),
+        ),
+      );
+
+  Widget _buildPasswordField() => DpadFocusEscape(
+        child: FormBuilderTextField(
+          key: const ValueKey('setup.password.field'),
+          name: 'password',
+          controller: _passwordController,
+          focusNode: _passwordFocus,
+          autocorrect: false,
+          textInputAction: TextInputAction.next,
+          obscureText: true,
+          decoration: const InputDecoration(
+            labelText: "Password",
+            border: OutlineInputBorder(),
+            prefixIcon: Icon(Icons.password),
+          ),
+          validator: FormBuilderValidators.required(),
+        ),
+      );
+
+  Widget _buildEpgUrlField() => DpadTextField(
+        controller: _epgUrlController,
+        focusNode: _epgUrlFocus,
+        keyboardType: TextInputType.url,
+        decoration: const InputDecoration(
+          labelText: "EPG URL (optional)",
+          border: OutlineInputBorder(),
+          prefixIcon: Icon(Icons.tv),
+          helperText: "Leave blank to skip",
+        ),
+        onSubmitted: (_) {
+          if (formValid) handleNext();
+        },
+      );
 
   Widget getPage(
     final String title,

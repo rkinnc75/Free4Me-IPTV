@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.34.10': [
+    'Add Source screen is now a single page: pick the provider type and every field for it (URL, username/password for Xtream, M3U file picker, optional EPG URL) appears at once. The old 4–5 step wizard is gone, replaced by one form with an "Add Source" button.',
+  ],
   '1.34.9': [
     'Toned down the log: the per-user-seek "suppressed seek probe" line is gone. The startup seek-probe (a one-time check at the start of each stream) still logs once, but rejected seeks during playback are silent — they were always benign, just not worth logging every time.',
   ],
