@@ -1,8 +1,8 @@
 {
-  "latest": "1.34.17",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.34.17",
+  "latest": "1.34.18",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.34.18",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Edit Source \u2192 Test connection now correctly reports \"Connected\" when the provider accepts your credentials, even if the provider does not report a max_connections value (or reports 0, which happens for permission-limited test users on A3000/Media4u and similar providers). Previously the dialog would say \"Login failed\" for these accounts even though the login actually succeeded.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.34.17/Free4Me-IPTV-1.34.17-arm64.apk"
+  "releaseNotes": "\u2022 Fixed: in Categories, Select All / Unselect All now applies to your current search \u2014 every matching category across all pages, not just the ones visible on screen. With no search active it still toggles everything for the source, as before.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.34.18/Free4Me-IPTV-1.34.18-arm64.apk"
 }
