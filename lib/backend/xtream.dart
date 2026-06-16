@@ -31,7 +31,20 @@ Future<void> getXtream(
   List<Future<void> Function(SqliteWriteContext, Map<String, String>)>
   statements = [];
   List<ChannelPreserve>? preserve;
-  statements.add(Sql.getOrCreateSourceByName(source));
+  // fix376: commit the source row up front (matching m3u.dart:43-44) so
+  // source.id is known before the bulk import. Without this, on a FIRST add
+  // source.id stayed null, the `if (source.id != null)` count-persistence block
+  // below was skipped, and last_live/movie/series_count were never written
+  // until a manual refresh. The shared `memory` map is threaded into the
+  // batched commit below so the channel inserts (which carry sourceId == -1)
+  // still resolve to this id — pulling getOrCreateSourceByName out of the batch
+  // means it no longer populates the batch's own map, so we supply it.
+  final memory = <String, String>{};
+  await Sql.commitWrite(
+    [Sql.getOrCreateSourceByName(source)],
+    memory: memory,
+  );
+  source.id = int.parse(memory['sourceId']!);
   if (wipe) {
     preserve = await Sql.getChannelsPreserve(source.id!);
     AppLog.info(
@@ -287,6 +300,7 @@ Future<void> getXtream(
   await Sql.withSuspendedFtsTriggers(() async {
     await Sql.commitWriteBatched(
       statements,
+      memory: memory,
       onBatchCommitted: onRowProgress == null
           ? null
           : (committedClosures) {

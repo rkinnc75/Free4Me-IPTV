@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.34.5': [
+    'When you add a new Xtream source, its Live TV / Movies / Series counts now appear right away in Settings → Sources → (edit), instead of showing a dash until the next refresh.',
+  ],
   '1.34.4': [
     'Search now uses the same ordering as browsing when a source is set to Provider or Category order — previously search always fell back to a fixed favorite/A–Z order, so results could appear in a different sequence than the channel list.',
     'Validated favorites (the ones with a confirmed working stream) now rise to the top of your favorites in Provider and Category order, both when browsing and searching.',
