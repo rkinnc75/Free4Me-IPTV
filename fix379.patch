@@ -1,0 +1,152 @@
+diff --git a/lib/models/device_detector.dart b/lib/models/device_detector.dart
+index 0df9b7b..6f47512 100644
+--- a/lib/models/device_detector.dart
++++ b/lib/models/device_detector.dart
+@@ -106,17 +106,33 @@ class DeviceDetector {
+     }
+   }
+ 
+-  /// fix361: a low-RAM Android TV box (e.g. onn 4K Plus, ~1.9 GB, Amlogic).
+-  /// Used to route multi-view preview tiles to software decode: 4 concurrent
+-  /// mediacodec-copy pipelines exhaust shared GPU texture memory on these
+-  /// devices (TEXTURE-ATTACH-FAILED). Threshold 2300 MB matches the existing
++  /// fix361: a low-RAM Android device (e.g. onn 4K Plus TV box ~1.9 GB
++  /// Amlogic, OPPO PGEM10 phone ~2.0 GB). Used to route multi-view preview
++  /// tiles to software decode: 4 concurrent mediacodec-copy pipelines
++  /// exhaust shared GPU texture memory on these devices
++  /// (TEXTURE-ATTACH-FAILED). Threshold 2300 MB matches the existing
+   /// ChannelSearchCache low-RAM cutoff.
+-  static Future<bool> isLowRamTv() async {
++  ///
++  /// fix379: was previously named `isLowRamTv` and gated on `isTV()`. That
++  /// excluded low-RAM phones (e.g. OPPO PGEM10) which hit the same
++  /// shared-GPU exhaustion. The gate was a TV-vs-phone proxy that
++  /// happened to correlate with low-RAM boxes; low-RAM *phones* are
++  /// affected identically. Renamed to [isLowRamDevice] and the `isTV()`
++  /// gate removed. On-device test REQUIRED — for some phone GPUs sw
++  /// decode is *slower* than mediacodec-copy; if OPPO playback regresses
++  /// the rollback is a one-line revert (re-add the `isTV()` check).
++  static Future<bool> isLowRamDevice() async {
+     if (!Platform.isAndroid) return false;
+-    if (!await isTV()) return false;
+-    return DeviceMemory.totalMb > 0 && DeviceMemory.totalMb < 2300;
++    return isLowRamDeviceThreshold(DeviceMemory.totalMb);
+   }
+ 
++  /// fix379: pure threshold check (testable without platform mocks). True
++  /// when total RAM is in the (0, 2300) MB range — the empirical cutoff
++  /// below which 4 concurrent mediacodec-copy pipelines exhaust shared
++  /// GPU texture memory on Amlogic + similar low-RAM SoCs.
++  static bool isLowRamDeviceThreshold(int totalMb) =>
++      totalMb > 0 && totalMb < 2300;
++
+   /// fix314: human-readable Android board/SoC info for the startup diagnostic,
+   /// so we can confirm Tegra detection on real hardware.
+   static Future<String> boardInfo() async {
+diff --git a/lib/player/mpv_engine.dart b/lib/player/mpv_engine.dart
+index 12be911..3b13380 100644
+--- a/lib/player/mpv_engine.dart
++++ b/lib/player/mpv_engine.dart
+@@ -538,7 +538,7 @@ class MpvEngine implements PlayerEngine {
+         MultiViewDecode.software => true,
+         MultiViewDecode.hardwareCopy => false,
+         MultiViewDecode.auto =>
+-          await DeviceDetector.isTegra() || await DeviceDetector.isLowRamTv(),
++          await DeviceDetector.isTegra() || await DeviceDetector.isLowRamDevice(),
+       };
+       if (wantSoftware) {
+         await np.setProperty('hwdec', 'no');
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 0849c3b..988b1f1 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.34.8': [
++    'Low-RAM phones (e.g. OPPO PGEM10, ~2 GB) now use software decoding for multi-view preview tiles, matching the existing behaviour for low-RAM TV boxes. Previously the low-RAM mitigation only kicked in on TVs, so phones hit shared-GPU texture exhaustion when running several previews at once.',
++  ],
+   '1.34.7': [
+     'Categories screen now groups categories by source when your sources are set to "Provider order" — with multiple sources, your enabled categories interleave by source, matching how the rest of the app sorts in Provider mode. Alphabetical and By category modes are unchanged.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 3a7f964..9d2cbc2 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.34.7+378
++version: 1.34.8+379
+ 
+ environment:
+   sdk: ^3.10.7
+diff --git a/test/device_lowram_threshold_test.dart b/test/device_lowram_threshold_test.dart
+new file mode 100644
+index 0000000..d8da24e
+--- /dev/null
++++ b/test/device_lowram_threshold_test.dart
+@@ -0,0 +1,61 @@
++// fix379: the low-RAM mitigation that was scoped to Android TV boxes
++// (formerly `isLowRamTv`) now also covers low-RAM phones (e.g. OPPO
++// PGEM10, ~2 GB). The threshold is 2300 MB (matches the existing
++// ChannelSearchCache low-RAM cutoff). This test pins the pure threshold
++// helper `isLowRamDeviceThreshold` so the cutoff can't drift.
++//
++// The async `isLowRamDevice()` wrapper depends on Platform.isAndroid and
++// `_deviceInfo.androidInfo` (platform channels), so it's not unit-testable
++// here — the on-device test (OPPO PGEM10) covers the wrapper behaviour.
++
++import 'package:flutter_test/flutter_test.dart';
++import 'package:open_tv/models/device_detector.dart';
++
++void main() {
++  group('DeviceDetector.isLowRamDeviceThreshold (fix379)', () {
++    test('below 1 MB is uninitialised → false', () {
++      // 0 means DeviceMemory.init() never ran or /proc/meminfo was
++      // unreadable. Must NOT trigger software decode on a device that
++      // we couldn't read.
++      expect(DeviceDetector.isLowRamDeviceThreshold(0), isFalse,
++          reason: 'totalMb=0 means uninitialised; not a low-RAM signal');
++    });
++
++    test('just under threshold is true', () {
++      // OPPO PGEM10 reports ~1999 MB; onn 4K Plus ~1925 MB.
++      // 1999 < 2300 → true.
++      expect(DeviceDetector.isLowRamDeviceThreshold(1999), isTrue,
++          reason: 'OPPO-class device totalMb must trigger the mitigation');
++      expect(DeviceDetector.isLowRamDeviceThreshold(1925), isTrue,
++          reason: 'onn 4K Plus class totalMb must trigger the mitigation');
++    });
++
++    test('at the threshold is false (exclusive upper bound)', () {
++      // The cutoff is strictly < 2300, so 2300 itself is "not low-RAM".
++      // 2300 MB devices have been observed to handle 4 mediacodec-copy
++      // pipelines without TEXTURE-ATTACH-FAILED; only below 2300 triggers
++      // the bug.
++      expect(DeviceDetector.isLowRamDeviceThreshold(2300), isFalse,
++          reason: '2300 is the documented cutoff; inclusive above');
++    });
++
++    test('just above threshold is false', () {
++      expect(DeviceDetector.isLowRamDeviceThreshold(2301), isFalse);
++      expect(DeviceDetector.isLowRamDeviceThreshold(4096), isFalse,
++          reason: 'S24-class device must not trigger low-RAM mitigation');
++    });
++
++    test('OPPO PGEM10 (1999 MB) is the canonical low-RAM phone', () {
++      // Regression guard for the fix379 design intent: the OPPO PGEM10
++      // (~1999 MB phone) is the device this fix was scoped for. If the
++      // threshold ever changes (e.g. someone bumps it to 2500 because
++      // "a 2400 MB phone exists"), this test forces a conversation.
++      const oppoPgEm10TotalMb = 1999;
++      expect(
++        DeviceDetector.isLowRamDeviceThreshold(oppoPgEm10TotalMb),
++        isTrue,
++        reason: 'fix379 was scoped for the OPPO PGEM10; this test pins that',
++      );
++    });
++  });
++}

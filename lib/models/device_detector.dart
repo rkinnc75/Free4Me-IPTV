@@ -106,16 +106,32 @@ class DeviceDetector {
     }
   }
 
-  /// fix361: a low-RAM Android TV box (e.g. onn 4K Plus, ~1.9 GB, Amlogic).
-  /// Used to route multi-view preview tiles to software decode: 4 concurrent
-  /// mediacodec-copy pipelines exhaust shared GPU texture memory on these
-  /// devices (TEXTURE-ATTACH-FAILED). Threshold 2300 MB matches the existing
+  /// fix361: a low-RAM Android device (e.g. onn 4K Plus TV box ~1.9 GB
+  /// Amlogic, OPPO PGEM10 phone ~2.0 GB). Used to route multi-view preview
+  /// tiles to software decode: 4 concurrent mediacodec-copy pipelines
+  /// exhaust shared GPU texture memory on these devices
+  /// (TEXTURE-ATTACH-FAILED). Threshold 2300 MB matches the existing
   /// ChannelSearchCache low-RAM cutoff.
-  static Future<bool> isLowRamTv() async {
+  ///
+  /// fix379: was previously named `isLowRamTv` and gated on `isTV()`. That
+  /// excluded low-RAM phones (e.g. OPPO PGEM10) which hit the same
+  /// shared-GPU exhaustion. The gate was a TV-vs-phone proxy that
+  /// happened to correlate with low-RAM boxes; low-RAM *phones* are
+  /// affected identically. Renamed to [isLowRamDevice] and the `isTV()`
+  /// gate removed. On-device test REQUIRED — for some phone GPUs sw
+  /// decode is *slower* than mediacodec-copy; if OPPO playback regresses
+  /// the rollback is a one-line revert (re-add the `isTV()` check).
+  static Future<bool> isLowRamDevice() async {
     if (!Platform.isAndroid) return false;
-    if (!await isTV()) return false;
-    return DeviceMemory.totalMb > 0 && DeviceMemory.totalMb < 2300;
+    return isLowRamDeviceThreshold(DeviceMemory.totalMb);
   }
+
+  /// fix379: pure threshold check (testable without platform mocks). True
+  /// when total RAM is in the (0, 2300) MB range — the empirical cutoff
+  /// below which 4 concurrent mediacodec-copy pipelines exhaust shared
+  /// GPU texture memory on Amlogic + similar low-RAM SoCs.
+  static bool isLowRamDeviceThreshold(int totalMb) =>
+      totalMb > 0 && totalMb < 2300;
 
   /// fix314: human-readable Android board/SoC info for the startup diagnostic,
   /// so we can confirm Tegra detection on real hardware.

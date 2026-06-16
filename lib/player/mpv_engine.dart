@@ -538,7 +538,7 @@ class MpvEngine implements PlayerEngine {
         MultiViewDecode.software => true,
         MultiViewDecode.hardwareCopy => false,
         MultiViewDecode.auto =>
-          await DeviceDetector.isTegra() || await DeviceDetector.isLowRamTv(),
+          await DeviceDetector.isTegra() || await DeviceDetector.isLowRamDevice(),
       };
       if (wantSoftware) {
         await np.setProperty('hwdec', 'no');

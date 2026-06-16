@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.34.8': [
+    'Low-RAM phones (e.g. OPPO PGEM10, ~2 GB) now use software decoding for multi-view preview tiles, matching the existing behaviour for low-RAM TV boxes. Previously the low-RAM mitigation only kicked in on TVs, so phones hit shared-GPU texture exhaustion when running several previews at once.',
+  ],
   '1.34.7': [
     'Categories screen now groups categories by source when your sources are set to "Provider order" — with multiple sources, your enabled categories interleave by source, matching how the rest of the app sorts in Provider mode. Alphabetical and By category modes are unchanged.',
   ],
