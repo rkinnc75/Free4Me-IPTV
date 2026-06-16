@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.34.7': [
+    'Categories screen now groups categories by source when your sources are set to "Provider order" — with multiple sources, your enabled categories interleave by source, matching how the rest of the app sorts in Provider mode. Alphabetical and By category modes are unchanged.',
+  ],
   '1.34.6': [
     'Favorites view now follows the channel order you picked for each source (Provider order, By category, or Alphabetical) — it used to always sort favorites by source name then channel name, ignoring your channel order setting.',
   ],

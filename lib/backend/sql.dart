@@ -927,9 +927,27 @@ class Sql {
     // an enabled category could sit below a wall of disabled ones. Tier order
     // is now: favorites first, then enabled-before-disabled, then A–Z. enabled
     // defaults to 1, so a brand-new source (nothing toggled) is unaffected.
-    sqlQuery += '\nORDER BY COALESCE(favorite, 0) DESC,'
-        ' COALESCE(enabled, 1) DESC,'
-        ' name COLLATE NOCASE ASC, id ASC';
+    // fix378: when the in-scope sources share a `provider` sort_mode, group
+    // categories by source name A–Z, then category A–Z within each source —
+    // so a user with multiple provider-ordered sources sees their categories
+    // interleaved by source, matching the source-name grouping they see in
+    // Favorites (fix377) and the rest of search. alpha and `category` modes
+    // (and null/mixed) keep the A–Z form: there's no natural "category" order
+    // for a list of categories, and the no-op for null/mixed avoids forcing
+    // a correlated subquery on a rare path.
+    final groupUniformMode =
+        await _uniformSortMode(filters.sourceIds!);
+    if (groupUniformMode == 'provider') {
+      sqlQuery += '\nORDER BY COALESCE(favorite, 0) DESC,'
+          ' COALESCE(enabled, 1) DESC,'
+          ' (SELECT s.name FROM sources s WHERE s.id = source_id)'
+          ' COLLATE NOCASE ASC,'
+          ' name COLLATE NOCASE ASC, id ASC';
+    } else {
+      sqlQuery += '\nORDER BY COALESCE(favorite, 0) DESC,'
+          ' COALESCE(enabled, 1) DESC,'
+          ' name COLLATE NOCASE ASC, id ASC';
+    }
 
     sqlQuery += '\nLIMIT ?, ?';
     params.add(offset);
