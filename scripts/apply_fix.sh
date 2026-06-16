@@ -214,9 +214,15 @@ fi
 # logic only grep'd for "error" lines and printed a misleading
 # "2 tolerated INFOs accepted" success message — replaced 2026-06-16
 # to make the gate actually check the success string.
-ANALYZE_OUTPUT=$(flutter analyze --no-fatal-infos 2>&1)
-ANALYZE_RC=$?
-if [[ $ANALYZE_RC -ne 0 ]] || ! grep -q "No issues found" <<<"$ANALYZE_OUTPUT"; then
+#
+# `|| true` is REQUIRED: under `set -e`, a non-zero exit from the
+# command substitution (which happens on any error or warning) aborts
+# the script at this assignment — before the diagnostic below can run,
+# leaving a silent `exit 1` with no analyzer output. The "No issues
+# found" check is the real gate and covers every failure mode (errors,
+# warnings, and INFOs alike), so the captured exit code is redundant.
+ANALYZE_OUTPUT=$(flutter analyze --no-fatal-infos 2>&1) || true
+if ! grep -q "No issues found" <<<"$ANALYZE_OUTPUT"; then
   log_error "flutter analyze gate failed (expected 'No issues found!' in output)"
   echo "$ANALYZE_OUTPUT" | head -30
   exit 1
