@@ -90,14 +90,28 @@ if [[ ! -f ".github-token" ]]; then
 fi
 log_ok ".github-token found"
 
-# Check fix files exist
+# Check fix spec exists
 if [[ ! -f "${FIX_NAME}.md" ]]; then
-  log_error "${FIX_NAME}.md not found"
+  log_error "${FIX_NAME}.md not found in repo root"
   exit 1
 fi
+
+# Auto-generate ${FIX_NAME}.patch from the embedded ```diff block in
+# ${FIX_NAME}.md if the .patch file is missing. Treats the .md as the
+# source of truth — prevents the "I forgot to extract the patch"
+# failure mode and recovers when `git clean -fd` (or any selective
+# rm) wipes only the .patch. If the .md has no embedded diff block,
+# fall through to a clear error.
 if [[ ! -f "${FIX_NAME}.patch" ]]; then
-  log_error "${FIX_NAME}.patch not found"
-  exit 1
+  log_warn "${FIX_NAME}.patch not found; extracting from ${FIX_NAME}.md"
+  awk '/^```diff$/{f=1;next}/^```$/{if(f)exit}f' "${FIX_NAME}.md" > "${FIX_NAME}.patch"
+  if [[ ! -s "${FIX_NAME}.patch" ]] \
+      || ! head -1 "${FIX_NAME}.patch" | grep -q "^diff --git "; then
+    log_error "${FIX_NAME}.md has no embedded \`\`\`diff block (or it is malformed); cannot extract patch"
+    rm -f "${FIX_NAME}.patch"
+    exit 1
+  fi
+  log_ok "Extracted $(wc -l <"${FIX_NAME}.patch") lines into ${FIX_NAME}.patch"
 fi
 log_ok "Fix specification and patch found"
 
@@ -195,13 +209,19 @@ else
   log_ok "No new dependencies detected"
 fi
 
-# Run flutter analyze
-if flutter analyze --no-fatal-infos 2>&1 | grep -E "^(lib/|android/|ios/)" | grep -i error; then
-  log_error "flutter analyze found errors"
-  flutter analyze --no-fatal-infos | head -20
+# Run flutter analyze. The actual gate since fix369 is 0 errors, 0
+# warnings, with output containing "No issues found!". Older script
+# logic only grep'd for "error" lines and printed a misleading
+# "2 tolerated INFOs accepted" success message — replaced 2026-06-16
+# to make the gate actually check the success string.
+ANALYZE_OUTPUT=$(flutter analyze --no-fatal-infos 2>&1)
+ANALYZE_RC=$?
+if [[ $ANALYZE_RC -ne 0 ]] || ! grep -q "No issues found" <<<"$ANALYZE_OUTPUT"; then
+  log_error "flutter analyze gate failed (expected 'No issues found!' in output)"
+  echo "$ANALYZE_OUTPUT" | head -30
   exit 1
 fi
-log_ok "flutter analyze passed (2 tolerated INFOs accepted)"
+log_ok "flutter analyze: No issues found!"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Step 6: Verify Version & Changelog
