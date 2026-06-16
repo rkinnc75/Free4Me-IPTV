@@ -1,8 +1,8 @@
 {
-  "latest": "1.34.7",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.34.7",
+  "latest": "1.34.8",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.34.8",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Categories screen now groups categories by source when your sources are set to \"Provider order\" \u2014 with multiple sources, your enabled categories interleave by source, matching how the rest of the app sorts in Provider mode. Alphabetical and By category modes are unchanged.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.34.7/Free4Me-IPTV-1.34.7-arm64.apk"
+  "releaseNotes": "\u2022 Low-RAM phones (e.g. OPPO PGEM10, ~2 GB) now use software decoding for multi-view preview tiles, matching the existing behaviour for low-RAM TV boxes. Previously the low-RAM mitigation only kicked in on TVs, so phones hit shared-GPU texture exhaustion when running several previews at once.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.34.8/Free4Me-IPTV-1.34.8-arm64.apk"
 }
