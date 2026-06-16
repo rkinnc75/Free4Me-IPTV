@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.34.12': [
+    'Adding a source that gets rejected (wrong URL, username, or password) no longer leaves a broken, empty source behind. Previously the failed source stuck around, so correcting it and trying again hit a "name already exists" error or created a duplicate. Now a failed add cleans up after itself, and re-adding with the same name just works.',
+  ],
   '1.34.11': [
     'Fixed search returning nothing when you open a disabled category and start typing — the channels are right there when you scroll, and now they show up in search too. (Browsing and the other search modes were already correct; only the default in-memory search was over-filtering.)',
     'A rare search-cache startup hiccup can no longer leave the search box permanently greyed out.',

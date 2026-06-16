@@ -51,16 +51,47 @@ class Utils {
     void Function(String)? onProgress,
     void Function(int done, int total)? onRowProgress,
   ]) async {
-    switch (source.sourceType) {
-      case SourceType.m3u:
-        await processM3U(source, wipe, null, onProgress);
-        break;
-      case SourceType.m3uUrl:
-        await processM3UUrl(source, wipe, onProgress);
-        break;
-      case SourceType.xtream:
-        await getXtream(source, wipe, onProgress, onRowProgress);
-        break;
+    // fix383: the importers commit the source row UP FRONT (fix376 for Xtream,
+    // m3u.dart for M3U) so source.id is known before the bulk channel insert.
+    // If the fetch/auth then fails and the import throws, that row would leak —
+    // leaving a broken empty source, and making the user's corrected retry hit
+    // a false "name already exists" (setup.dart pre-check) or end up with a
+    // duplicate. When this is a brand-new add (the name did not already exist),
+    // delete the just-created source on failure before rethrowing. A refresh /
+    // re-import of an existing source (name already present) is left untouched,
+    // so a transient refresh failure never deletes a working source.
+    final bool namePreExisted = await Sql.sourceNameExists(source.name);
+    try {
+      switch (source.sourceType) {
+        case SourceType.m3u:
+          await processM3U(source, wipe, null, onProgress);
+          break;
+        case SourceType.m3uUrl:
+          await processM3UUrl(source, wipe, onProgress);
+          break;
+        case SourceType.xtream:
+          await getXtream(source, wipe, onProgress, onRowProgress);
+          break;
+      }
+    } catch (e) {
+      // The importer set source.id during its up-front commit; remove that row
+      // (deleteSource cascades channels/groups/EPG). Guard the cleanup so a
+      // failure to delete never masks the original import error.
+      if (!namePreExisted && source.id != null) {
+        try {
+          await Sql.deleteSource(source.id!);
+          AppLog.warn(
+            'Utils.processSource: removed leaked source "${source.name}"'
+            ' (id=${source.id}) after failed add — $e',
+          );
+        } catch (cleanupErr) {
+          AppLog.error(
+            'Utils.processSource: cleanup of leaked source "${source.name}"'
+            ' failed — $cleanupErr (original error: $e)',
+          );
+        }
+      }
+      rethrow;
     }
   }
 

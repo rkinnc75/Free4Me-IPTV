@@ -1,0 +1,89 @@
+diff --git a/lib/backend/utils.dart b/lib/backend/utils.dart
+index 95790ab..bb62ddb 100644
+--- a/lib/backend/utils.dart
++++ b/lib/backend/utils.dart
+@@ -51,16 +51,47 @@ class Utils {
+     void Function(String)? onProgress,
+     void Function(int done, int total)? onRowProgress,
+   ]) async {
+-    switch (source.sourceType) {
+-      case SourceType.m3u:
+-        await processM3U(source, wipe, null, onProgress);
+-        break;
+-      case SourceType.m3uUrl:
+-        await processM3UUrl(source, wipe, onProgress);
+-        break;
+-      case SourceType.xtream:
+-        await getXtream(source, wipe, onProgress, onRowProgress);
+-        break;
++    // fix383: the importers commit the source row UP FRONT (fix376 for Xtream,
++    // m3u.dart for M3U) so source.id is known before the bulk channel insert.
++    // If the fetch/auth then fails and the import throws, that row would leak —
++    // leaving a broken empty source, and making the user's corrected retry hit
++    // a false "name already exists" (setup.dart pre-check) or end up with a
++    // duplicate. When this is a brand-new add (the name did not already exist),
++    // delete the just-created source on failure before rethrowing. A refresh /
++    // re-import of an existing source (name already present) is left untouched,
++    // so a transient refresh failure never deletes a working source.
++    final bool namePreExisted = await Sql.sourceNameExists(source.name);
++    try {
++      switch (source.sourceType) {
++        case SourceType.m3u:
++          await processM3U(source, wipe, null, onProgress);
++          break;
++        case SourceType.m3uUrl:
++          await processM3UUrl(source, wipe, onProgress);
++          break;
++        case SourceType.xtream:
++          await getXtream(source, wipe, onProgress, onRowProgress);
++          break;
++      }
++    } catch (e) {
++      // The importer set source.id during its up-front commit; remove that row
++      // (deleteSource cascades channels/groups/EPG). Guard the cleanup so a
++      // failure to delete never masks the original import error.
++      if (!namePreExisted && source.id != null) {
++        try {
++          await Sql.deleteSource(source.id!);
++          AppLog.warn(
++            'Utils.processSource: removed leaked source "${source.name}"'
++            ' (id=${source.id}) after failed add — $e',
++          );
++        } catch (cleanupErr) {
++          AppLog.error(
++            'Utils.processSource: cleanup of leaked source "${source.name}"'
++            ' failed — $cleanupErr (original error: $e)',
++          );
++        }
++      }
++      rethrow;
+     }
+   }
+ 
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index b2ad23b..9cc8d43 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.34.12': [
++    'Adding a source that gets rejected (wrong URL, username, or password) no longer leaves a broken, empty source behind. Previously the failed source stuck around, so correcting it and trying again hit a "name already exists" error or created a duplicate. Now a failed add cleans up after itself, and re-adding with the same name just works.',
++  ],
+   '1.34.11': [
+     'Fixed search returning nothing when you open a disabled category and start typing — the channels are right there when you scroll, and now they show up in search too. (Browsing and the other search modes were already correct; only the default in-memory search was over-filtering.)',
+     'A rare search-cache startup hiccup can no longer leave the search box permanently greyed out.',
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 10e739b..1aea5d6 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.34.11+382
++version: 1.34.12+383
+ 
+ environment:
+   sdk: ^3.10.7
