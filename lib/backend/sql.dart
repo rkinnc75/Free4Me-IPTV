@@ -605,13 +605,24 @@ class Sql {
     params.addAll(visParams);
 
     if (filters.viewType == ViewType.favorites && filters.seriesId == null) {
-      // fix356: Favorites view — group by source (A–Z), channels A–Z within.
-      // Correlated source-name subquery is fine here: favorites lists are
-      // tiny (tens of rows), unlike the full-catalogue browse paths.
-      sqlQuery += '\nORDER BY'
-          ' (SELECT s.name FROM sources s WHERE s.id = c.source_id)'
-          ' COLLATE NOCASE ASC,'
-          ' c.name COLLATE NOCASE ASC';
+      // fix377: Favorites view now honors the user-chosen sort mode the same
+      // way the rest of search does (via BrowseOrder), so a user who set
+      // "Provider order" or "By category" sees their favorites in that
+      // sequence instead of always being grouped by source A–Z. When sources
+      // mix modes (null) we keep the legacy A–Z subquery form — same shape
+      // as fix356, no new correlated subquery, tiny result set.
+      final uniformMode = await _uniformSortMode(filters.sourceIds!);
+      if (uniformMode != null) {
+        sqlQuery += BrowseOrder.orderBy(uniformMode);
+      } else {
+        // fix356: Favorites view — group by source (A–Z), channels A–Z within.
+        // Correlated source-name subquery is fine here: favorites lists are
+        // tiny (tens of rows), unlike the full-catalogue browse paths.
+        sqlQuery += '\nORDER BY'
+            ' (SELECT s.name FROM sources s WHERE s.id = c.source_id)'
+            ' COLLATE NOCASE ASC,'
+            ' c.name COLLATE NOCASE ASC';
+      }
     } else if (filters.viewType == ViewType.history) {
       sqlQuery += "\nORDER BY c.last_watched DESC";
     } else {
