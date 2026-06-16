@@ -22,6 +22,19 @@ import 'package:open_tv/player/mpv_engine.dart';
 import 'package:open_tv/player/player_engine.dart';
 import 'package:open_tv/select_dialog.dart';
 
+/// fix380: pure predicate extracted for unit testing. Mirrors
+/// `MultiViewCell._isSeekProbeError` (lib/multi_view_cell.dart:393).
+/// Returns true if [err] is the benign mpv seekability probe
+/// ("Cannot seek in this stream." / "force-seekable=yes") that mpv
+/// emits on non-seekable MPEG-TS livestreams. The probe is expected
+/// during startup grace; after grace, the same string comes from
+/// user-seek attempts and is also benign (just a user error) but
+/// should not be logged per occurrence.
+bool isSeekProbeError(String err) {
+  return err.contains('Cannot seek in this stream') ||
+      err.contains('force-seekable=yes');
+}
+
 class Player extends StatefulWidget {
   final Channel channel;
   final Settings settings;
@@ -126,6 +139,10 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   String? _bufferingState;
   // Suppresses false reconnect triggers during the first 3s after open().
   bool _startupGrace = false;
+  // fix380: latched once the startup seek probe has been logged. Stops the
+  // "suppressed seek probe error" log line from firing per user-seek (after
+  // grace, every "Cannot seek" rejection was being mislabelled as a probe).
+  bool _seekProbeLogged = false;
 
   // Cast state
   // True only when Play Services are present AND the stream format is
@@ -329,12 +346,20 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
       //   1. "Cannot seek in this stream."
       //   2. "You can force it with '--force-seekable=yes'."
       // Both arrive on errorStream — suppress both unconditionally.
-      if (err.contains('Cannot seek in this stream') ||
-          err.contains('force-seekable=yes')) {
-        AppLog.info(
-          'Player: suppressed seek probe error'
-          ' channel="${widget.channel.name}"',
-        );
+      // fix380: log at most once per open() — the *startup* probe is the
+      // one worth noting (it confirms the engine is probing seekability
+      // correctly). Subsequent rejections are user-seek failures and were
+      // being mislabelled as "suppressed seek probe error" — that label
+      // was the source of the per-user-seek log flood. User-seek
+      // failures are now silent (no log, no reconnect).
+      if (isSeekProbeError(err)) {
+        if (_startupGrace && !_seekProbeLogged) {
+          _seekProbeLogged = true;
+          AppLog.info(
+            'Player: startup seek probe suppressed'
+            ' channel="${widget.channel.name}"',
+          );
+        }
         return;
       }
 
@@ -597,6 +622,7 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     ChannelHttpHeaders? headers,
   }) async {
     _startupGrace = false; // Reset on every attempt (including retries)
+    _seekProbeLogged = false; // fix380: one log per open() for the startup probe
     final timeout = Duration(seconds: widget.settings.openTimeoutSecs);
     while (true) {
       if (!mounted || exiting) return;

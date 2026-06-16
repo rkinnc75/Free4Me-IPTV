@@ -1,0 +1,179 @@
+diff --git a/lib/player.dart b/lib/player.dart
+index feff37f..46de8b7 100644
+--- a/lib/player.dart
++++ b/lib/player.dart
+@@ -22,6 +22,19 @@ import 'package:open_tv/player/mpv_engine.dart';
+ import 'package:open_tv/player/player_engine.dart';
+ import 'package:open_tv/select_dialog.dart';
+ 
++/// fix380: pure predicate extracted for unit testing. Mirrors
++/// `MultiViewCell._isSeekProbeError` (lib/multi_view_cell.dart:393).
++/// Returns true if [err] is the benign mpv seekability probe
++/// ("Cannot seek in this stream." / "force-seekable=yes") that mpv
++/// emits on non-seekable MPEG-TS livestreams. The probe is expected
++/// during startup grace; after grace, the same string comes from
++/// user-seek attempts and is also benign (just a user error) but
++/// should not be logged per occurrence.
++bool isSeekProbeError(String err) {
++  return err.contains('Cannot seek in this stream') ||
++      err.contains('force-seekable=yes');
++}
++
+ class Player extends StatefulWidget {
+   final Channel channel;
+   final Settings settings;
+@@ -126,6 +139,10 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+   String? _bufferingState;
+   // Suppresses false reconnect triggers during the first 3s after open().
+   bool _startupGrace = false;
++  // fix380: latched once the startup seek probe has been logged. Stops the
++  // "suppressed seek probe error" log line from firing per user-seek (after
++  // grace, every "Cannot seek" rejection was being mislabelled as a probe).
++  bool _seekProbeLogged = false;
+ 
+   // Cast state
+   // True only when Play Services are present AND the stream format is
+@@ -329,12 +346,20 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+       //   1. "Cannot seek in this stream."
+       //   2. "You can force it with '--force-seekable=yes'."
+       // Both arrive on errorStream — suppress both unconditionally.
+-      if (err.contains('Cannot seek in this stream') ||
+-          err.contains('force-seekable=yes')) {
+-        AppLog.info(
+-          'Player: suppressed seek probe error'
+-          ' channel="${widget.channel.name}"',
+-        );
++      // fix380: log at most once per open() — the *startup* probe is the
++      // one worth noting (it confirms the engine is probing seekability
++      // correctly). Subsequent rejections are user-seek failures and were
++      // being mislabelled as "suppressed seek probe error" — that label
++      // was the source of the per-user-seek log flood. User-seek
++      // failures are now silent (no log, no reconnect).
++      if (isSeekProbeError(err)) {
++        if (_startupGrace && !_seekProbeLogged) {
++          _seekProbeLogged = true;
++          AppLog.info(
++            'Player: startup seek probe suppressed'
++            ' channel="${widget.channel.name}"',
++          );
++        }
+         return;
+       }
+ 
+@@ -597,6 +622,7 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+     ChannelHttpHeaders? headers,
+   }) async {
+     _startupGrace = false; // Reset on every attempt (including retries)
++    _seekProbeLogged = false; // fix380: one log per open() for the startup probe
+     final timeout = Duration(seconds: widget.settings.openTimeoutSecs);
+     while (true) {
+       if (!mounted || exiting) return;
+diff --git a/lib/player/mpv_engine.dart b/lib/player/mpv_engine.dart
+index 3b13380..4ac3b73 100644
+--- a/lib/player/mpv_engine.dart
++++ b/lib/player/mpv_engine.dart
+@@ -600,6 +600,12 @@ class MpvEngine implements PlayerEngine {
+         AppLog.info('MpvEngine: DVR enabled — window=${dvrBackMB ~/ 60}min'
+             ' (${dvrBackMB}MiB back buffer, dir=${_dvrDir!.path})');
+       } else {
++        // fix380: with force-seekable=no, the user's seek-bar interaction
++        // (if it ever reaches mpv despite the property) produces a
++        // "Cannot seek in this stream." error which the player side
++        // suppresses — see lib/player.dart errorStream handler, where
++        // the suppression log is now latched to fire once per open()
++        // (during startup grace) instead of per-seek.
+         await np.setProperty('force-seekable', 'no');
+       }
+ 
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 988b1f1..dcadcc7 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.34.9': [
++    'Toned down the log: the per-user-seek "suppressed seek probe" line is gone. The startup seek-probe (a one-time check at the start of each stream) still logs once, but rejected seeks during playback are silent — they were always benign, just not worth logging every time.',
++  ],
+   '1.34.8': [
+     'Low-RAM phones (e.g. OPPO PGEM10, ~2 GB) now use software decoding for multi-view preview tiles, matching the existing behaviour for low-RAM TV boxes. Previously the low-RAM mitigation only kicked in on TVs, so phones hit shared-GPU texture exhaustion when running several previews at once.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 9d2cbc2..1a5af99 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.34.8+379
++version: 1.34.9+380
+ 
+ environment:
+   sdk: ^3.10.7
+diff --git a/test/player_seek_probe_log_test.dart b/test/player_seek_probe_log_test.dart
+new file mode 100644
+index 0000000..22208b2
+--- /dev/null
++++ b/test/player_seek_probe_log_test.dart
+@@ -0,0 +1,59 @@
++// fix380: the seek-probe suppression log line was firing per user-seek
++// (after the startup grace window expired) because the suppression
++// handler always logged. The new behaviour: log at most once per
++// `open()` (during startup grace), then silent. User-seek failures
++// remain suppressed (no reconnect) but no longer spam the log.
++//
++// This test pins the pure top-level `isSeekProbeError` predicate so
++// the detection can't drift. The latch-once-per-open behaviour is a
++// state machine inside _PlayerState (not testable here without
++// platform mocks) and is verified on-device by observing the log
++// volume before/after.
++
++import 'package:flutter_test/flutter_test.dart';
++import 'package:open_tv/player.dart';
++
++void main() {
++  group('isSeekProbeError (fix380)', () {
++    test('mpv "Cannot seek" probe is detected', () {
++      expect(
++        isSeekProbeError('avformat: Cannot seek in this stream.'),
++        isTrue,
++        reason: 'the canonical mpv probe message must be detected');
++    });
++
++    test('mpv "force-seekable" hint is detected', () {
++      // mpv often emits this immediately after the "Cannot seek" line
++      // as a self-hint: "You can force it with '--force-seekable=yes'."
++      expect(
++        isSeekProbeError(
++            "You can force it with '--force-seekable=yes'."),
++        isTrue,
++        reason: 'the mpv self-hint must also be detected');
++    });
++
++    test('real engine errors are NOT detected as probe', () {
++      // These are the actual failure modes that should trigger a
++      // reconnect (or at minimum, get logged loudly). They must NOT
++      // be classified as benign seek probes.
++      expect(
++        isSeekProbeError('avformat: HTTP error 404 Not Found'),
++        isFalse,
++        reason: '404 must not be misclassified as a seek probe');
++      expect(
++        isSeekProbeError(
++            'Failed to open https://provider.example.com/live/123'),
++        isFalse,
++        reason: 'open failures must not be misclassified');
++      expect(
++        isSeekProbeError('avformat: Connection refused'),
++        isFalse,
++        reason: 'connection failures must not be misclassified');
++    });
++
++    test('empty / unrelated strings are NOT detected', () {
++      expect(isSeekProbeError(''), isFalse);
++      expect(isSeekProbeError('random unrelated error'), isFalse);
++    });
++  });
++}

@@ -600,6 +600,12 @@ class MpvEngine implements PlayerEngine {
         AppLog.info('MpvEngine: DVR enabled — window=${dvrBackMB ~/ 60}min'
             ' (${dvrBackMB}MiB back buffer, dir=${_dvrDir!.path})');
       } else {
+        // fix380: with force-seekable=no, the user's seek-bar interaction
+        // (if it ever reaches mpv despite the property) produces a
+        // "Cannot seek in this stream." error which the player side
+        // suppresses — see lib/player.dart errorStream handler, where
+        // the suppression log is now latched to fire once per open()
+        // (during startup grace) instead of per-seek.
         await np.setProperty('force-seekable', 'no');
       }
 

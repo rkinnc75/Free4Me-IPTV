@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.34.9': [
+    'Toned down the log: the per-user-seek "suppressed seek probe" line is gone. The startup seek-probe (a one-time check at the start of each stream) still logs once, but rejected seeks during playback are silent — they were always benign, just not worth logging every time.',
+  ],
   '1.34.8': [
     'Low-RAM phones (e.g. OPPO PGEM10, ~2 GB) now use software decoding for multi-view preview tiles, matching the existing behaviour for low-RAM TV boxes. Previously the low-RAM mitigation only kicked in on TVs, so phones hit shared-GPU texture exhaustion when running several previews at once.',
   ],
