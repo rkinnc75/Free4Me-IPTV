@@ -553,16 +553,26 @@ class _SettingsState extends State<SettingsView> {
                 offstage: source.sourceType == SourceType.m3u,
                 child: IconButton(
                   icon: const Icon(Icons.edit),
-                  onPressed: !source.enabled
-                      ? null
-                      : () async => await showEditDialog(context, source),
+                  // fix384: Edit is always available, even when the
+                  // source is disabled. The user may want to fix a
+                  // typo in the URL of a source they disabled because
+                  // it was broken. The Edit dialog is a thin
+                  // showDialog wrapper around `Sql.updateSource` (no
+                  // network) so it's safe to expose for disabled
+                  // sources.
+                  onPressed: () async => await showEditDialog(context, source),
                 ),
               ),
               IconButton(
                 icon: const Icon(Icons.delete),
-                onPressed: !source.enabled
-                    ? null
-                    : () async => await showConfirmDeleteDialog(source),
+                // fix384: Delete is always available too, regardless
+                // of the enable/disable toggle. The user disabled the
+                // source for a reason; allowing direct deletion is a
+                // cleaner UX than forcing a re-enable → delete cycle.
+                // `showConfirmDeleteDialog` shows a confirm dialog
+                // before the actual delete, so a stray tap is
+                // protected.
+                onPressed: () async => await showConfirmDeleteDialog(source),
               ),
             ],
           ),
