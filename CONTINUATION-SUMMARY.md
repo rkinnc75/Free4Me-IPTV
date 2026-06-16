@@ -1,6 +1,6 @@
 # Continuation Summary — free4me-iptv fix release process
 
-**Last updated: 2026-06-16 · covers fix369–fix381 · current version: 1.34.10+381**
+**Last updated: 2026-06-16 · covers fix369–fix382 · current version: 1.34.11+382**
 
 This document is ground zero. A fresh session with only this file should be able to release any `fixNNN.md` without asking the user a single question.
 
@@ -23,9 +23,9 @@ This document is ground zero. A fresh session with only this file should be able
 
 ## 2. Current state (as of this summary)
 
-- **Last released: fix381 → v1.34.10+381**
-- All fix files through fix381 are in `runbooks/`. No `fixNNN.md` in repo root.
-- Test suite: 17 files in `test/`. CI runs `flutter test` on every tag push.
+- **Last released: fix382 → v1.34.11+382**
+- All fix files through fix382 are in `runbooks/`. No `fixNNN.md` in repo root.
+- Test suite: 18 files in `test/`, 64 tests. CI runs `flutter test` on every tag push.
 - Analyze gate: **0 issues** — `No issues found!` is the expected analyzer output as of fix369.
 - SQLite migration ceiling: **migration 30** (`idx_channels_browse_mt`).
 
@@ -46,6 +46,12 @@ FIND/REPLACE fixes use numbered steps like:
 ```
 **Step 1** — In `lib/models/settings.dart`, find: ...
 ```
+
+**One more check — does the `## Release — EXECUTE` section run `git rm` (or any git command beyond add/commit)?**
+```bash
+awk '/^## Release — EXECUTE/{f=1} f' fixNNN.md | grep -n 'git rm\|git mv'
+```
+If it does (fix382 was the first), **do NOT use `apply_fix.sh`** — its step-2 `git reset --hard origin/main` wipes any pre-emptive `git rm`, and it has no hook to run the deletions between patch-apply and commit. Release manually (Section 5), inserting the `git rm` after the patch applies and before the commit. Verify the deletion targets match the doc's description first (they are not compiled — only `lib/` is — but confirm nothing in `lib/` imports them).
 
 ---
 
@@ -233,10 +239,11 @@ If a patch adds doc comments containing raw `<NAME>` tokens (HTML-like), `uninte
 - fix379: `isLowRamTv` renamed to `isLowRamDevice`; isTV gate dropped — low-RAM phones get same multi-view mitigation
 - fix380: Suppressed-seek-probe-error log latched to once-per-open during startup grace period
 - fix381: Add Source wizard collapsed to single form page (name + url/credentials/file + EPG, conditional per source type)
+- fix382: `ChannelSearchCache.search` gates the disabled-category exclusion on `groupId == null` (HIGH-1, mirrors `VisibilityClause`); `home.dart` re-enables `_searchReady` in a `finally` so a cache-build throw can't strand the search box (MED-1); removed 7 stale tracked root duplicates (LOW-1)
 
 ---
 
-## 10. Test suite (17 files as of fix381)
+## 10. Test suite (18 files as of fix382)
 
 ```
 test/browse_enabled_index_test.dart
@@ -245,6 +252,7 @@ test/browse_order_test.dart
 test/device_lowram_threshold_test.dart      (fix379)
 test/device_tag_test.dart
 test/export_zip_test.dart
+test/in_memory_disabled_category_test.dart  (fix382)
 test/in_memory_sort_mode_test.dart          (fix375)
 test/player_seek_probe_log_test.dart        (fix380)
 test/series_episodes_test.dart
