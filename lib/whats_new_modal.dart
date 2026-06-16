@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.34.14': [
+    'Edit Source dialog: name and color are now editable, a Test connection button verifies the source still works before saving, and the connection counts (live TV / movies / series) appear at the top of the dialog for quick reference. Also fixed: opening the dialog no longer auto-fires Save on D-pad Center / Enter.',
+  ],
   '1.34.13': [
     'Edit and Delete on a source are now always available in Settings → Sources, even when the source is disabled. Previously both were dimmed along with the rest of the source; you can now fix a broken URL or remove a source without re-enabling it first.',
   ],
