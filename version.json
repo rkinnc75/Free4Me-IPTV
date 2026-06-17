@@ -1,8 +1,8 @@
 {
-  "latest": "1.34.18",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.34.18",
+  "latest": "1.34.19",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.34.19",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fixed: in Categories, Select All / Unselect All now applies to your current search \u2014 every matching category across all pages, not just the ones visible on screen. With no search active it still toggles everything for the source, as before.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.34.18/Free4Me-IPTV-1.34.18-arm64.apk"
+  "releaseNotes": "\u2022 Low-RAM devices: search method is now auto-set to LIKE substring on first run (devices under 2300 MB, like the onn 4K Plus). The in-memory cache is never built on these devices, so the previous default of \"in-memory\" was misleading \u2014 the search silently fell through to FTS. The setting in the UI now matches the actual search path, with no extra cost on inserts (FTS triggers are dropped for LIKE).",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.34.19/Free4Me-IPTV-1.34.19-arm64.apk"
 }
