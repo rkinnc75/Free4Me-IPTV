@@ -599,6 +599,26 @@ class DbFactory {
         await tx.execute('''
           ALTER TABLE sources ADD COLUMN epg_discovery_state TEXT;
         ''');
+      }))
+      // fix392: the no-text browse (Live/Movies/Series tabs) filters
+      // `series_id IS NULL` via VisibilityClause — episodes are stored as
+      // media_type=movie WITH a series_id (see episodeToChannel), so that
+      // predicate is what separates standalone titles from episodes, not
+      // redundant. The unconditional index_channel_series_id MATCHED
+      // `series_id IS NULL`, so the planner chose it and then TEMP-B-TREE
+      // sorted the whole media-type set — silently defeating BOTH browse-tier
+      // indexes (migration 27 source-led, migration 30 media_type-led). EXPLAIN
+      // on a seeded 675k-row DB confirmed the index was unused and the sort ran
+      // (~4.3s first paint on an S24 with 3 sources). Making the index PARTIAL
+      // on `series_id IS NOT NULL` keeps it for the series drilldown
+      // (`series_id = ?`) but stops it matching the browse's `series_id IS
+      // NULL`; the planner then serves the global tier+name order straight from
+      // idx_channels_browse_mt with no sort, for any source count (~0.04ms in
+      // the same bench). Index-only change — query results are unchanged.
+      ..add(SqliteMigration(32, (tx) async {
+        await tx.execute('DROP INDEX IF EXISTS index_channel_series_id;');
+        await tx.execute('CREATE INDEX index_channel_series_id'
+            ' ON channels(series_id) WHERE series_id IS NOT NULL;');
       }));
     await migrations.migrate(db);
 
