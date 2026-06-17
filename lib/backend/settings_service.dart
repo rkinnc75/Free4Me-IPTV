@@ -93,6 +93,35 @@ class SettingsService {
     return _cached!;
   }
 
+  /// fix390: resolve the search method from the persisted string. On first
+  /// run (no persisted value) on a low-RAM device (< 2300 MB, matching
+  /// [ChannelSearchCache._minRamMbForCache]) the default is
+  /// [SearchMethod.likeSubstring] instead of [SearchMethod.inMemory].
+  ///
+  /// Why: with `inMemory` on a low-RAM device the in-memory cache is
+  /// skipped (see `ChannelSearchCache.cacheSkipped`) and the search
+  /// silently falls through to FTS. The user sees "in-memory" in
+  /// Settings but actually gets FTS, which is confusing. Auto-setting
+  /// `likeSubstring` makes the user-visible setting match the actual
+  /// search path (LIKE scan, no FTS triggers, no cache build).
+  ///
+  /// A persisted value always wins — the auto-set only fires on first
+  /// run. The threshold is exposed via the named arg so unit tests
+  /// don't depend on [DeviceMemory.totalMb].
+  static SearchMethod resolveSearchMethod(
+    String? persisted, {
+    int? totalMb,
+    int lowRamThresholdMb = 2300,
+  }) {
+    if (persisted != null) {
+      return SearchMethod.values.elementAtOrNull(int.tryParse(persisted) ?? 0) ??
+          SearchMethod.inMemory;
+    }
+    final ram = totalMb ?? DeviceMemory.totalMb;
+    if (ram > 0 && ram < lowRamThresholdMb) return SearchMethod.likeSubstring;
+    return SearchMethod.inMemory;
+  }
+
   static Future<Settings> _readFromDb() async {
     var settingsMap = await Sql.getSettings();
     var settings = Settings();
@@ -216,10 +245,16 @@ class SettingsService {
     }
 
     final sm = settingsMap[searchMethodProp];
-    if (sm != null) {
-      settings.searchMethod = SearchMethod.values
-              .elementAtOrNull(int.tryParse(sm) ?? 0) ??
-          SearchMethod.inMemory;
+    final resolvedSm = resolveSearchMethod(sm);
+    settings.searchMethod = resolvedSm;
+    if (sm == null && resolvedSm == SearchMethod.likeSubstring) {
+      // fix390: first-run auto-set on low-RAM device. Logged so support
+      // can confirm the cause when a user reports "search feels slow" on
+      // a 1.9 GB onn 4K Plus.
+      AppLog.info(
+        'Settings: searchMethod auto-set to likeSubstring (low-RAM'
+        ' device, totalMb=${DeviceMemory.totalMb})',
+      );
     }
 
     final sm70 = settingsMap[safeModeProp];

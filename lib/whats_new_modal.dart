@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.34.19': [
+    'Low-RAM devices: search method is now auto-set to LIKE substring on first run (devices under 2300 MB, like the onn 4K Plus). The in-memory cache is never built on these devices, so the previous default of "in-memory" was misleading — the search silently fell through to FTS. The setting in the UI now matches the actual search path, with no extra cost on inserts (FTS triggers are dropped for LIKE).',
+  ],
   '1.34.18': [
     'Fixed: in Categories, Select All / Unselect All now applies to your current search — every matching category across all pages, not just the ones visible on screen. With no search active it still toggles everything for the source, as before.',
   ],
