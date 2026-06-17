@@ -619,6 +619,42 @@ class DbFactory {
         await tx.execute('DROP INDEX IF EXISTS index_channel_series_id;');
         await tx.execute('CREATE INDEX index_channel_series_id'
             ' ON channels(series_id) WHERE series_id IS NOT NULL;');
+      }))
+      // fix393: per-mode browse indexes so the no-text browse is index-served
+      // for ALL sort modes, not just alpha (migration 30's idx_channels_browse_mt
+      // only covers alpha/tier ordering). Each leads with media_type (a single
+      // constant in a Live/Movies/Series tab) so it serves the GLOBAL order
+      // across all in-scope sources from the index — no temp B-tree. Partial on
+      // the same browse predicate as idx_channels_browse_mt. The fav-first /
+      // validated-float CASE prefixes mirror BrowseOrder.orderBy('provider'|
+      // 'category') exactly (fix258/fix272/fix375); if those change, these must
+      // change in lockstep (guarded by browse_order_test). Mixed-mode in-scope
+      // sources are handled in Sql.search via a per-source UNION ALL where each
+      // source sorts in its own (uniform, now-indexed) mode.
+      ..add(SqliteMigration(33, (tx) async {
+        await tx.execute('''
+          CREATE INDEX idx_browse_prov ON channels(
+            media_type,
+            (CASE WHEN COALESCE(favorite,0)=1 THEN 0 ELSE 1 END),
+            (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1
+              THEN 0 ELSE 1 END),
+            provider_order,
+            name COLLATE NOCASE
+          )
+          WHERE url IS NOT NULL AND series_id IS NULL AND cat_enabled = 1;
+        ''');
+        await tx.execute('''
+          CREATE INDEX idx_browse_cat ON channels(
+            media_type,
+            (CASE WHEN COALESCE(favorite,0)=1 THEN 0 ELSE 1 END),
+            (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1
+              THEN 0 ELSE 1 END),
+            group_name COLLATE NOCASE,
+            provider_order,
+            name COLLATE NOCASE
+          )
+          WHERE url IS NOT NULL AND series_id IS NULL AND cat_enabled = 1;
+        ''');
       }));
     await migrations.migrate(db);
 

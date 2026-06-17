@@ -566,6 +566,25 @@ class Sql {
       params.addAll(mediaTypes);
       params.addAll(filters.sourceIds!);
     } else {
+      // fix393: when the in-scope sources MIX sort modes, the single-query
+      // browse ORDER BY is the per-row correlated form (BrowseOrder.orderBy
+      // (null)) that no index can serve — a full temp-B-tree sort of the whole
+      // media-type set (~seconds cold on a multi-source S24). Split it into a
+      // per-source UNION ALL where each source sorts in its OWN uniform,
+      // index-served mode (alpha→idx_channels_browse_mt, provider→
+      // idx_browse_prov, category→idx_browse_cat) and re-apply the global order
+      // over the tiny union. Only the normal browse with ≥2 sources and no
+      // series drilldown; favorites/history have their own ORDER BY and a
+      // single source is already uniform.
+      if (filters.viewType != ViewType.favorites &&
+          filters.viewType != ViewType.history &&
+          filters.seriesId == null &&
+          (filters.sourceIds?.length ?? 0) >= 2) {
+        final modes = await _sourceModes(filters.sourceIds!);
+        if (modes.values.toSet().length > 1) {
+          return _browseMixedUnion(filters, mediaTypes, offset, invocation, modes);
+        }
+      }
       // No query — simple filter on indexed columns.
       sqlQuery = '''
         SELECT * FROM channels c
@@ -2076,6 +2095,83 @@ class Sql {
         .map((r) => BrowseOrder.normalise(r['sort_mode'] as String?))
         .toSet();
     return modes.length == 1 ? modes.first : null;
+  }
+
+  /// fix393: normalised sort mode per in-scope source (id → 'alpha' |
+  /// 'provider' | 'category'). Used to build the mixed-mode per-source UNION.
+  static Future<Map<int, String>> _sourceModes(List<int> sourceIds) async {
+    final db = await DbFactory.db;
+    final rows = await db.getAll(
+      'SELECT id, sort_mode FROM sources WHERE id IN '
+      '(${generatePlaceholders(sourceIds.length)})',
+      sourceIds,
+    );
+    return {
+      for (final r in rows)
+        r['id'] as int: BrowseOrder.normalise(r['sort_mode'] as String?),
+    };
+  }
+
+  /// fix393: no-text browse across sources that MIX sort modes. Each source is
+  /// queried in its OWN uniform mode (so the per-mode index serves it with no
+  /// sort), `LIMIT offset+pageSize` each; the outer query re-applies the global
+  /// (mixed) order over the union — at most sources×(offset+pageSize) rows, a
+  /// trivially small temp sort — and pages it. Top-K-per-source is the correct
+  /// candidate set for the global top-K because, within a source, the global
+  /// order reduces to that source's own (constant) mode order. Verified to
+  /// return identical rows to the single-query mixed form, including deep pages.
+  static Future<List<Channel>> _browseMixedUnion(
+    Filters filters,
+    Iterable<int> mediaTypes,
+    int offset,
+    int invocation,
+    Map<int, String> modes,
+  ) async {
+    final db = await DbFactory.db;
+    final mt = mediaTypes.toList();
+    final (smClause, smParams) = safeModeClause(filters.safeMode);
+    final (visSql, visParams) = VisibilityClause.build(
+      alias: 'c.',
+      seriesId: filters.seriesId,
+      groupId: filters.groupId,
+    );
+    final innerLimit = offset + pageSize;
+    final parts = <String>[];
+    final params = <Object>[];
+    for (final s in filters.sourceIds!) {
+      parts.add('SELECT * FROM ('
+          'SELECT c.* FROM channels c'
+          ' WHERE media_type IN (${generatePlaceholders(mt.length)})'
+          ' AND source_id = ? AND url IS NOT NULL'
+          '$smClause$visSql${BrowseOrder.orderBy(modes[s] ?? 'alpha')}'
+          ' LIMIT ?)');
+      params
+        ..addAll(mt)
+        ..add(s)
+        ..addAll(smParams)
+        ..addAll(visParams)
+        ..add(innerLimit);
+    }
+    // Outer: re-apply the global (mixed) order over the small union, then page.
+    final sqlQuery = 'SELECT * FROM (${parts.join(' UNION ALL ')}) c'
+        '${BrowseOrder.orderBy(null)}'
+        '\nLIMIT ?, ?';
+    params
+      ..add(offset)
+      ..add(pageSize);
+
+    final sqlStart = DateTime.now();
+    final results = await db.getAll(sqlQuery, params);
+    final sqlElapsed = DateTime.now().difference(sqlStart).inMilliseconds;
+    final mapped = results.map(rowToChannel).toList();
+    if (AppLog.enabled) {
+      AppLog.info(
+        'Sql.search[$invocation]: branch=no-query-mixed-union'
+        ' sources=${filters.sourceIds!.length} rows=${results.length}'
+        ' sql=${sqlElapsed}ms',
+      );
+    }
+    return mapped;
   }
 
   static Future<List<Channel>> _searchLike(

@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.34.21': [
+    'Faster first load of the Live, Movies, and Series lists for setups whose sources use different sort orders (for example some A–Z and some by category). Each list now opens from an index instead of sorting the whole catalog. Ordering is unchanged.',
+  ],
   '1.34.20': [
     'Much faster first load of the Live, Movies, and Series lists when you have multiple sources — the channel grid now opens from an index instead of sorting the whole catalog each time (several seconds → instant on large setups). No change to what you see or its order.',
   ],
