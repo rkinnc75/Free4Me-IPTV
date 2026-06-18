@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.34.28': [
+    'Channel search now waits until you\'ve typed at least 2 characters before searching, skipping a slow full-catalogue scan on the first keystroke. Typing a single character leaves the current list as-is; clearing the box still shows everything.',
+  ],
   '1.34.27': [
     'Live DVR now uses the current libmpv on-disk cache setting, replacing a deprecated one that newer libmpv versions warn about and may remove. No change to DVR behavior.',
   ],

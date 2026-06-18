@@ -6,6 +6,7 @@ import 'package:open_tv/backend/background_task_service.dart';
 import 'package:open_tv/backend/channel_search_cache.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
+import 'package:open_tv/backend/search_query_gate.dart';
 import 'package:open_tv/backend/stream_scanner.dart';
 import 'package:open_tv/models/multi_view_layout.dart';
 import 'package:open_tv/multi_view_screen.dart';
@@ -679,6 +680,12 @@ class _HomeState extends State<Home> {
                                   // Reset burst tracking now that we're firing.
                                   _firstKeystrokeAt = null;
                                   _keystrokeCountInBurst = 0;
+                                  // fix400: a single typed character triggers a
+                                  // full-catalogue substring scan that's always
+                                  // superseded by the next keystroke — skip it.
+                                  // ≥2 chars search; 1 char leaves the current
+                                  // list; empty restores the full browse.
+                                  if (!searchQueryShouldLoad(query)) return;
                                   widget.home.filters.query = query;
                                   load(false);
                                 },

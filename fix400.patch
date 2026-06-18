@@ -1,0 +1,102 @@
+diff --git a/lib/backend/search_query_gate.dart b/lib/backend/search_query_gate.dart
+new file mode 100644
+index 0000000..efed2bd
+--- /dev/null
++++ b/lib/backend/search_query_gate.dart
+@@ -0,0 +1,10 @@
++/// fix400: whether a typed search query should trigger a (re)load.
++///
++/// A single typed character is skipped: a 1-char substring matches almost
++/// everything and scans the whole catalogue (~2s on a large multi-source
++/// library, per device logs) only to be immediately superseded by the next
++/// keystroke. So:
++///   • ≥2 non-whitespace characters → load (run the search)
++///   • exactly 1 → skip, leaving the current list untouched
++///   • empty / whitespace-only → load (restores the full browse)
++bool searchQueryShouldLoad(String query) => query.trim().length != 1;
+diff --git a/lib/home.dart b/lib/home.dart
+index 3f28d49..7b60755 100644
+--- a/lib/home.dart
++++ b/lib/home.dart
+@@ -6,6 +6,7 @@ import 'package:open_tv/backend/background_task_service.dart';
+ import 'package:open_tv/backend/channel_search_cache.dart';
+ import 'package:open_tv/backend/settings_service.dart';
+ import 'package:open_tv/backend/sql.dart';
++import 'package:open_tv/backend/search_query_gate.dart';
+ import 'package:open_tv/backend/stream_scanner.dart';
+ import 'package:open_tv/models/multi_view_layout.dart';
+ import 'package:open_tv/multi_view_screen.dart';
+@@ -679,6 +680,12 @@ class _HomeState extends State<Home> {
+                                   // Reset burst tracking now that we're firing.
+                                   _firstKeystrokeAt = null;
+                                   _keystrokeCountInBurst = 0;
++                                  // fix400: a single typed character triggers a
++                                  // full-catalogue substring scan that's always
++                                  // superseded by the next keystroke — skip it.
++                                  // ≥2 chars search; 1 char leaves the current
++                                  // list; empty restores the full browse.
++                                  if (!searchQueryShouldLoad(query)) return;
+                                   widget.home.filters.query = query;
+                                   load(false);
+                                 },
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 9b5decd..8aab90a 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.34.28': [
++    'Channel search now waits until you\'ve typed at least 2 characters before searching, skipping a slow full-catalogue scan on the first keystroke. Typing a single character leaves the current list as-is; clearing the box still shows everything.',
++  ],
+   '1.34.27': [
+     'Live DVR now uses the current libmpv on-disk cache setting, replacing a deprecated one that newer libmpv versions warn about and may remove. No change to DVR behavior.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 40a3b79..d488080 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.34.27+399
++version: 1.34.28+400
+ 
+ environment:
+   sdk: ^3.10.7
+diff --git a/test/search_query_gate_test.dart b/test/search_query_gate_test.dart
+new file mode 100644
+index 0000000..739e830
+--- /dev/null
++++ b/test/search_query_gate_test.dart
+@@ -0,0 +1,28 @@
++// fix400: the channel search skips a single typed character — a 1-char
++// substring scans the whole catalogue (~2s on a large library) only to be
++// superseded by the next keystroke. ≥2 chars search; exactly 1 leaves the
++// current list untouched; empty/whitespace restores the full browse.
++import 'package:flutter_test/flutter_test.dart';
++import 'package:open_tv/backend/search_query_gate.dart';
++
++void main() {
++  group('fix400 search min-length gate', () {
++    test('empty and whitespace-only load (restore full browse)', () {
++      expect(searchQueryShouldLoad(''), isTrue);
++      expect(searchQueryShouldLoad('   '), isTrue);
++      expect(searchQueryShouldLoad('\t'), isTrue);
++    });
++
++    test('exactly one non-whitespace character is skipped', () {
++      expect(searchQueryShouldLoad('y'), isFalse);
++      expect(searchQueryShouldLoad(' y '), isFalse);
++      expect(searchQueryShouldLoad('7'), isFalse);
++    });
++
++    test('two or more characters load (run the search)', () {
++      expect(searchQueryShouldLoad('ye'), isTrue);
++      expect(searchQueryShouldLoad('yes network'), isTrue);
++      expect(searchQueryShouldLoad('  ab  '), isTrue);
++    });
++  });
++}
