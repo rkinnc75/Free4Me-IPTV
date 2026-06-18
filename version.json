@@ -1,8 +1,8 @@
 {
-  "latest": "1.34.22",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.34.22",
+  "latest": "1.34.23",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.34.23",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 New Developer section at the bottom of Settings: advanced libmpv tunables across 4 sub-headers (Refined buffering moved from Buffering, plus Demuxer/cache, Sync/image quality, Audio/network). Defaults match libmpv upstream exactly, so the section is a no-op until you opt in. Use it for the rare case where a specific provider or device needs a non-default libmpv setting.\n\u2022 Live DVR is now its own folded menu between Buffering and Multi-view (was previously inside Buffering). Buffering now shows only the everyday knobs (live cache, VOD cache, pre-buffer, downmix, open timeout, buffering watchdog, max reconnect attempts).",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.34.22/Free4Me-IPTV-1.34.22-arm64.apk"
+  "releaseNotes": "\u2022 Fixed a black screen (audio playing, no picture) on NVIDIA Shield and other capable Android TV boxes during full-screen playback. The app was forcing software decoding on every Android TV; it now uses the device's hardware video decoder on Shield/Tegra and other capable boxes (low-RAM boxes like the onn 4K Plus keep software decoding, which is correct for them).",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.34.23/Free4Me-IPTV-1.34.23-arm64.apk"
 }
