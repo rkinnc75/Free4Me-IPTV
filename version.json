@@ -1,8 +1,8 @@
 {
-  "latest": "1.34.25",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.34.25",
+  "latest": "1.34.26",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.34.26",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Channel +/- while watching: open a channel from a list (search results, a category, favorites\u2026) and you can now change channels without leaving the player. Tap the screen for the controls and use the new \u25b2/\u25bc buttons \u2014 or your remote's CH+/CH\u2212 keys \u2014 to move up and down through the same list the stream started on. Holding the button surfs quickly and only switches when you stop.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.34.25/Free4Me-IPTV-1.34.25-arm64.apk"
+  "releaseNotes": "\u2022 TLS certificate verification for HTTPS streams now defaults to OFF, since many IPTV providers use self-signed certificates. You can re-enable it under Settings \u2192 Developer \u2192 TLS Verify. Existing saved preferences are unchanged.\n\u2022 Removed a non-functional \u201cMin resample FPS\u201d developer tile. It mapped to a libmpv property that does not exist, so it never had any effect; existing settings are unaffected.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.34.26/Free4Me-IPTV-1.34.26-arm64.apk"
 }
