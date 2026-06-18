@@ -1,8 +1,8 @@
 {
-  "latest": "1.34.28",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.34.28",
+  "latest": "1.35.0",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.35.0",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Channel search now waits until you've typed at least 2 characters before searching, skipping a slow full-catalogue scan on the first keystroke. Typing a single character leaves the current list as-is; clearing the box still shows everything.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.34.28/Free4Me-IPTV-1.34.28-arm64.apk"
+  "releaseNotes": "\u2022 Searching the Categories list now works from 2 characters, matching the channel search. Previously a 2-character category search returned nothing until you typed a third character.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.35.0/Free4Me-IPTV-1.35.0-arm64.apk"
 }
