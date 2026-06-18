@@ -229,6 +229,21 @@ if ! grep -q "No issues found" <<<"$ANALYZE_OUTPUT"; then
 fi
 log_ok "flutter analyze: No issues found!"
 
+# Pipeline hardening (2026-06): gate on the test suite too, not just analyze.
+# A patch can be analyze-clean yet break a test (or break a guard a test
+# enforces — the EXPLAIN/tested==emitted tests exist for exactly this). The
+# suite uses markTestSkipped when libsqlite3 is absent, so it still prints
+# "All tests passed!" in a minimal environment — the gate stays portable
+# across providers/sandboxes.
+log_step "5b" "Verifying test suite (flutter test)"
+TEST_OUTPUT=$(flutter test 2>&1) || true
+if ! grep -q "All tests passed!" <<<"$TEST_OUTPUT"; then
+  log_error "flutter test gate failed (expected 'All tests passed!' in output)"
+  echo "$TEST_OUTPUT" | tail -30
+  exit 1
+fi
+log_ok "flutter test: All tests passed!"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Step 6: Verify Version & Changelog
 # ─────────────────────────────────────────────────────────────────────────────
@@ -246,6 +261,25 @@ log_ok "Version: $VERSION"
 # Extract build number
 BUILD=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f2)
 log_ok "Build number: $BUILD"
+
+# Pipeline hardening (2026-06): build numbers must increase monotonically.
+# origin/main has NOT been pushed to yet, so it still holds the pre-fix
+# version. If the patched build number is <= origin's, a parallel agent
+# shipped first or the runbook is stale — abort rather than commit a
+# duplicate/regressing build. (Replaces the implicit assumption that the
+# author's target is always exactly origin+1; here we only require strictly
+# greater, which is all Android/monotonic tagging needs.)
+ORIGIN_BUILD=$(git show origin/main:pubspec.yaml 2>/dev/null | grep '^version:' | awk '{print $2}' | cut -d+ -f2)
+if [[ "$BUILD" =~ ^[0-9]+$ && "$ORIGIN_BUILD" =~ ^[0-9]+$ ]]; then
+  if [[ "$BUILD" -le "$ORIGIN_BUILD" ]]; then
+    log_error "Build $BUILD is not greater than origin/main build $ORIGIN_BUILD"
+    echo "A parallel ship occurred or the runbook is stale. Re-fetch origin/main, rebase the runbook's version, and retry." >&2
+    exit 1
+  fi
+  log_ok "Build monotonic: $BUILD > origin/main ($ORIGIN_BUILD)"
+else
+  log_warn "Skipping build-monotonicity check (unparseable: new='$BUILD' origin='$ORIGIN_BUILD')"
+fi
 
 # Check changelog entry
 if grep -q "'${VERSION}':" lib/whats_new_modal.dart; then
@@ -293,8 +327,8 @@ if [[ $DRY_RUN -eq 1 ]]; then
   echo ""
   echo "To complete the release, run:"
   echo "  git push origin main"
-  echo "  git tag -f v${VERSION} HEAD"
-  echo "  git push -f origin refs/tags/v${VERSION}"
+  echo "  git tag -a v${VERSION} -m 'Release v${VERSION}' HEAD   # only if the tag does not already exist on origin"
+  echo "  git push origin refs/tags/v${VERSION}"
   exit 0
 fi
 
@@ -314,9 +348,29 @@ fi
 log_step "9" "Creating and pushing tag"
 
 TAG="v${VERSION}"
-git tag -f "$TAG" HEAD
-git push -f origin "refs/tags/$TAG"
-log_ok "Tagged v${VERSION} and pushed to GitHub"
+# Pipeline hardening (2026-06): tags are immutable. The previous version
+# force-pushed (`git tag -f` / `push -f`), which would silently CLOBBER another
+# agent's release tag at the same version. Instead: if the tag already exists
+# on origin at a DIFFERENT commit, abort (a parallel agent shipped this
+# version); if it already points at our HEAD, no-op (idempotent re-run); only
+# create+push when it is absent. No force anywhere.
+REMOTE_TAG_LINE=$(git ls-remote --tags origin "refs/tags/${TAG}" 2>/dev/null || true)
+if [[ -n "$REMOTE_TAG_LINE" ]]; then
+  LOCAL_SHA=$(git rev-parse HEAD)
+  # Dereference an annotated tag to the commit it wraps for a fair compare.
+  REMOTE_COMMIT=$(git ls-remote origin "refs/tags/${TAG}^{}" 2>/dev/null | awk '{print $1}')
+  [[ -z "$REMOTE_COMMIT" ]] && REMOTE_COMMIT=$(awk '{print $1}' <<<"$REMOTE_TAG_LINE")
+  if [[ "$REMOTE_COMMIT" != "$LOCAL_SHA" ]]; then
+    log_error "Tag ${TAG} already exists on origin at ${REMOTE_COMMIT} (≠ local HEAD ${LOCAL_SHA})"
+    echo "Another agent already shipped this version. Aborting to preserve tag immutability." >&2
+    exit 1
+  fi
+  log_warn "Tag ${TAG} already on origin at this commit; skipping tag push (idempotent)"
+else
+  git tag -a "$TAG" -m "Release ${TAG}" HEAD
+  git push origin "refs/tags/$TAG"
+  log_ok "Tagged v${VERSION} and pushed to GitHub"
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Step 10: Organize Fix Files
