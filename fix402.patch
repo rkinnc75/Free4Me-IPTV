@@ -1,0 +1,106 @@
+diff --git a/lib/player/hwdec_routing.dart b/lib/player/hwdec_routing.dart
+index 9db7a23..7d8bb59 100644
+--- a/lib/player/hwdec_routing.dart
++++ b/lib/player/hwdec_routing.dart
+@@ -30,8 +30,14 @@ library;
+ ///    software decode keeps the clocks in sync (fix164 / fix361).
+ ///  - **Other TV → `mediacodec-copy`** (Fire TV, capable boxes): hardware
+ ///    decode with a CPU copy — the safe universal Android-TV path.
+-///  - **Phone → `mediacodec`**: surface mode (hardware, zero-copy) — most
+-///    efficient, and phones don't hit the Tegra SurfaceTexture failure.
++///  - **Phone → `mediacodec-copy`** (fix402): the old phone path used surface
++///    mode (`mediacodec`) on the assumption that only Tegra hit the
++///    SurfaceTexture failure. It doesn't: media_kit renders through the libmpv
++///    render API into a Flutter texture (vo=null), so there is NO native
++///    Surface for surface-mode mediacodec to bind to — it silently falls back
++///    to software on phones too (the S24 logged hwdec-current="no" while
++///    requesting "mediacodec"). mediacodec-copy is real hardware decode with a
++///    cheap CPU copy and engages reliably on the render-API path.
+ String androidFullscreenHwdec({
+   required bool isTegra,
+   required bool isLowRam,
+@@ -40,5 +46,10 @@ String androidFullscreenHwdec({
+   if (isTegra) return 'mediacodec-copy';
+   if (isLowRam) return 'no';
+   if (isTV) return 'mediacodec-copy';
+-  return 'mediacodec';
++  // fix402: phone was 'mediacodec' (surface mode), but that silently falls back
++  // to software with media_kit's libmpv render API — there is no native Surface
++  // for surface-mode mediacodec to bind to, so the S24 logged hwdec-current="no"
++  // (software) despite requesting hardware. mediacodec-copy = real hardware
++  // decode + a cheap CPU copy, the proven path on every other device class.
++  return 'mediacodec-copy';
+ }
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 8f15d4d..b27107c 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.35.1': [
++    'Hardware video decoding now engages on phones. Previously the phone path requested a surface decode mode that silently fell back to software (using more CPU and battery); it now uses hardware decode with a copy step, the same proven path as Android TV devices.',
++  ],
+   '1.35.0': [
+     'Searching the Categories list now works from 2 characters, matching the channel search. Previously a 2-character category search returned nothing until you typed a third character.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index fa10ae8..7363563 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.35.0+401
++version: 1.35.1+402
+ 
+ environment:
+   sdk: ^3.10.7
+diff --git a/test/shield_hwdec_routing_test.dart b/test/shield_hwdec_routing_test.dart
+index 2656a5f..fa2c9f2 100644
+--- a/test/shield_hwdec_routing_test.dart
++++ b/test/shield_hwdec_routing_test.dart
+@@ -44,10 +44,13 @@ void main() {
+       );
+     });
+ 
+-    test('phone → mediacodec surface mode (zero-copy)', () {
++    test('phone → mediacodec-copy (fix402: surface mode falls to software)', () {
++      // fix402: surface-mode `mediacodec` has no native Surface to bind under
++      // media_kit's libmpv render API, so it silently drops to software on
++      // phones (S24: hwdec-current="no"). Hardware decode requires copy mode.
+       expect(
+         androidFullscreenHwdec(isTegra: false, isLowRam: false, isTV: false),
+-        'mediacodec',
++        'mediacodec-copy',
+       );
+     });
+ 
+@@ -58,15 +61,18 @@ void main() {
+       );
+     });
+ 
+-    test('no Android TV path ever returns surface-mode mediacodec (fix108)', () {
+-      // Surface-mode `mediacodec` binds a SurfaceTexture and fails silently on
+-      // Tegra; TVs must only ever get `mediacodec-copy` or `no`.
++    test('NO path ever returns surface-mode mediacodec (fix108 + fix402)', () {
++      // Surface-mode `mediacodec` binds a SurfaceTexture and fails silently
++      // under media_kit's render API — on TV (fix108) AND phone (fix402). No
++      // device class may return it; only `mediacodec-copy` or `no`.
+       for (final tegra in [true, false]) {
+         for (final lowRam in [true, false]) {
+-          final mode = androidFullscreenHwdec(
+-              isTegra: tegra, isLowRam: lowRam, isTV: true);
+-          expect(mode, isNot('mediacodec'),
+-              reason: 'TV must not use surface-mode mediacodec');
++          for (final tv in [true, false]) {
++            final mode = androidFullscreenHwdec(
++                isTegra: tegra, isLowRam: lowRam, isTV: tv);
++            expect(mode, isNot('mediacodec'),
++                reason: 'surface-mode mediacodec never works with the render API');
++          }
+         }
+       }
+     });

@@ -44,10 +44,13 @@ void main() {
       );
     });
 
-    test('phone → mediacodec surface mode (zero-copy)', () {
+    test('phone → mediacodec-copy (fix402: surface mode falls to software)', () {
+      // fix402: surface-mode `mediacodec` has no native Surface to bind under
+      // media_kit's libmpv render API, so it silently drops to software on
+      // phones (S24: hwdec-current="no"). Hardware decode requires copy mode.
       expect(
         androidFullscreenHwdec(isTegra: false, isLowRam: false, isTV: false),
-        'mediacodec',
+        'mediacodec-copy',
       );
     });
 
@@ -58,15 +61,18 @@ void main() {
       );
     });
 
-    test('no Android TV path ever returns surface-mode mediacodec (fix108)', () {
-      // Surface-mode `mediacodec` binds a SurfaceTexture and fails silently on
-      // Tegra; TVs must only ever get `mediacodec-copy` or `no`.
+    test('NO path ever returns surface-mode mediacodec (fix108 + fix402)', () {
+      // Surface-mode `mediacodec` binds a SurfaceTexture and fails silently
+      // under media_kit's render API — on TV (fix108) AND phone (fix402). No
+      // device class may return it; only `mediacodec-copy` or `no`.
       for (final tegra in [true, false]) {
         for (final lowRam in [true, false]) {
-          final mode = androidFullscreenHwdec(
-              isTegra: tegra, isLowRam: lowRam, isTV: true);
-          expect(mode, isNot('mediacodec'),
-              reason: 'TV must not use surface-mode mediacodec');
+          for (final tv in [true, false]) {
+            final mode = androidFullscreenHwdec(
+                isTegra: tegra, isLowRam: lowRam, isTV: tv);
+            expect(mode, isNot('mediacodec'),
+                reason: 'surface-mode mediacodec never works with the render API');
+          }
         }
       }
     });

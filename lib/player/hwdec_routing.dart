@@ -30,8 +30,14 @@ library;
 ///    software decode keeps the clocks in sync (fix164 / fix361).
 ///  - **Other TV → `mediacodec-copy`** (Fire TV, capable boxes): hardware
 ///    decode with a CPU copy — the safe universal Android-TV path.
-///  - **Phone → `mediacodec`**: surface mode (hardware, zero-copy) — most
-///    efficient, and phones don't hit the Tegra SurfaceTexture failure.
+///  - **Phone → `mediacodec-copy`** (fix402): the old phone path used surface
+///    mode (`mediacodec`) on the assumption that only Tegra hit the
+///    SurfaceTexture failure. It doesn't: media_kit renders through the libmpv
+///    render API into a Flutter texture (vo=null), so there is NO native
+///    Surface for surface-mode mediacodec to bind to — it silently falls back
+///    to software on phones too (the S24 logged hwdec-current="no" while
+///    requesting "mediacodec"). mediacodec-copy is real hardware decode with a
+///    cheap CPU copy and engages reliably on the render-API path.
 String androidFullscreenHwdec({
   required bool isTegra,
   required bool isLowRam,
@@ -40,5 +46,10 @@ String androidFullscreenHwdec({
   if (isTegra) return 'mediacodec-copy';
   if (isLowRam) return 'no';
   if (isTV) return 'mediacodec-copy';
-  return 'mediacodec';
+  // fix402: phone was 'mediacodec' (surface mode), but that silently falls back
+  // to software with media_kit's libmpv render API — there is no native Surface
+  // for surface-mode mediacodec to bind to, so the S24 logged hwdec-current="no"
+  // (software) despite requesting hardware. mediacodec-copy = real hardware
+  // decode + a cheap CPU copy, the proven path on every other device class.
+  return 'mediacodec-copy';
 }

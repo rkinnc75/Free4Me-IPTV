@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.35.1': [
+    'Hardware video decoding now engages on phones. Previously the phone path requested a surface decode mode that silently fell back to software (using more CPU and battery); it now uses hardware decode with a copy step, the same proven path as Android TV devices.',
+  ],
   '1.35.0': [
     'Searching the Categories list now works from 2 characters, matching the channel search. Previously a 2-character category search returned nothing until you typed a third character.',
   ],
