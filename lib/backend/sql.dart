@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/browse_order.dart';
 import 'package:open_tv/backend/visibility_clause.dart';
+import 'package:open_tv/backend/group_search_gate.dart';
 import 'package:open_tv/backend/playback_analyzer.dart';
 import 'package:open_tv/backend/channel_search_cache.dart';
 import 'package:open_tv/backend/db_factory.dart';
@@ -977,17 +978,18 @@ class Sql {
 
   static Future<List<Channel>> searchGroup(Filters filters) async {
     final rawGroupQuery = (filters.query ?? "").trim();
-    if (rawGroupQuery.isNotEmpty) {
-      final groupTerms = filters.useKeywords
-          ? rawGroupQuery.split(RegExp(r'\s+')).where((t) => t.isNotEmpty)
-          : [rawGroupQuery];
-      if (groupTerms.every((t) => t.length < 3)) {
-        AppLog.info(
-          'Sql.searchGroup: branch=short-skip'
-          ' query="$rawGroupQuery" — all terms < 3 chars, skipping scan',
-        );
-        return [];
-      }
+    // fix401: align the Categories minimum with fix400's >=2-char UI gate (the
+    // old < 3 made Categories silently require 3 chars even on likeSubstring,
+    // where a 2-char query matches fine). Groups are small and LIKE-searched,
+    // so a 2-char scan is cheap. The channel-search FTS path keeps its own < 3
+    // handling (trigram needs 3; a bare 2-char LIKE over 90k channels is slow).
+    if (groupSearchAllTermsTooShort(rawGroupQuery,
+        useKeywords: filters.useKeywords)) {
+      AppLog.info(
+        'Sql.searchGroup: branch=short-skip'
+        ' query="$rawGroupQuery" — all terms < 2 chars, skipping scan',
+      );
+      return [];
     }
     var db = await DbFactory.db;
     var offset = filters.page * pageSize - pageSize;
