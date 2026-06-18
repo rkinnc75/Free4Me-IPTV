@@ -143,7 +143,15 @@ git config --global credential.helper store 2>/dev/null || true
 CRED_FILE="$HOME/.git-credentials"
 echo "https://rkinnc75:${TOKEN}@github.com" > "$CRED_FILE"
 chmod 600 "$CRED_FILE"
-log_ok "Git credentials configured"
+
+# Pipeline hardening (2026-06): a sandbox reset between turns can wipe the
+# global git identity. Without it, Step 7's commit and Step 9's annotated tag
+# fail mid-run — leaving a staged-but-uncommitted tree that breaks the re-run.
+# Set it explicitly every run (the rkinnc75 mirror) so a reset can't break the
+# commit.
+git config --global user.name "rkinnc75"
+git config --global user.email "45132022+rkinnc75@users.noreply.github.com"
+log_ok "Git credentials and identity configured"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Step 2: Prepare Environment
@@ -151,10 +159,25 @@ log_ok "Git credentials configured"
 
 log_step "2" "Preparing environment"
 
-git checkout main
+# Pipeline hardening (2026-06): a prior aborted run (e.g. a mid-run failure
+# after `git add -A`) can leave ${FIX_NAME}.md, its patch, and applied new
+# files STAGED in the index. `git reset --hard origin/main` then DELETES the
+# staged runbook (it is "new" relative to origin), so the re-run fails at Step 3
+# trying to read it; leftover applied files also make Step 4's `git apply` fail
+# with "already exists". Preserve the runbook across the reset and clean the
+# tree so a re-run always starts from a pristine origin/main with the runbook
+# intact. (.github-token is gitignored, so `git clean -fd` does NOT remove it.)
+_RUNBOOK_STASH=$(mktemp -d)
+cp -f "${FIX_NAME}.md" "$_RUNBOOK_STASH/" 2>/dev/null || true
+cp -f "${FIX_NAME}.patch" "$_RUNBOOK_STASH/" 2>/dev/null || true
+git checkout main 2>/dev/null || git checkout -B main origin/main
 git fetch origin
 git reset --hard origin/main
-log_ok "Environment reset to origin/main"
+git clean -fd
+cp -f "$_RUNBOOK_STASH/${FIX_NAME}.md" . 2>/dev/null || true
+cp -f "$_RUNBOOK_STASH/${FIX_NAME}.patch" . 2>/dev/null || true
+rm -rf "$_RUNBOOK_STASH"
+log_ok "Environment reset to origin/main (runbook preserved, tree cleaned)"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Step 3: Read Fix Specification
