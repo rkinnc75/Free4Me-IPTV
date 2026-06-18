@@ -1,8 +1,8 @@
 {
-  "latest": "1.34.27",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.34.27",
+  "latest": "1.34.28",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.34.28",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Live DVR now uses the current libmpv on-disk cache setting, replacing a deprecated one that newer libmpv versions warn about and may remove. No change to DVR behavior.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.34.27/Free4Me-IPTV-1.34.27-arm64.apk"
+  "releaseNotes": "\u2022 Channel search now waits until you've typed at least 2 characters before searching, skipping a slow full-catalogue scan on the first keystroke. Typing a single character leaves the current list as-is; clearing the box still shows everything.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.34.28/Free4Me-IPTV-1.34.28-arm64.apk"
 }
