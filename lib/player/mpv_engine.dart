@@ -41,6 +41,14 @@ class MpvEngine implements PlayerEngine {
   int _dvrLastDirBytes = 0;
   bool _dvrActive = false;
 
+  /// fix396: periodic decode heartbeat (full-screen + debug logging only).
+  /// The Shield black-screen log had "12 s of silence" — no position lines —
+  /// which is the smoking gun for a stalled playhead. This logs cheap CACHED
+  /// state (no native round-trip) every few seconds so the export shows
+  /// whether position advances and whether a frame size is present.
+  Timer? _diagHeartbeat;
+  Duration _lastHeartbeatPos = Duration.zero;
+
   @override
   bool get dvrActive => _dvrActive; // fix364: was missing — UI read the
   // interface default (false), so the DVR transport bar never showed even
@@ -52,7 +60,14 @@ class MpvEngine implements PlayerEngine {
       bufferSize: previewMode
           ? (settings.bufferSizeMB ~/ 2) * 1024 * 1024
           : settings.bufferSizeMB * 1024 * 1024,
-      logLevel: mk.MPVLogLevel.warn,
+      // fix396: surface libmpv's own decode/vo/demuxer messages. The
+      // full-screen engine goes verbose when debug logging is on (the
+      // black-screen investigation needs hwdec/vo/decoder init messages,
+      // which mpv emits at `v`); preview cells and non-debug stay at warn so
+      // multi-view sessions aren't flooded. Routed to AppLog via stream.log.
+      logLevel: (!previewMode && settings.debugLogging)
+          ? mk.MPVLogLevel.v
+          : mk.MPVLogLevel.warn,
     ),
   );
   late final mkvideo.VideoController _controller =
@@ -125,7 +140,12 @@ class MpvEngine implements PlayerEngine {
       if (!v && !_midPlaybackProbed && !_disposed) {
         _midPlaybackProbed = true;
         Future.delayed(const Duration(seconds: 2), () {
-          if (!_disposed) logSurface('mid-playback+2s');
+          if (!_disposed) {
+            logSurface('mid-playback+2s');
+            // fix396: pair the surface probe with libmpv's decode state so a
+            // black-frame session shows both halves (texture + decode) at once.
+            if (!previewMode) unawaited(logDecodeState('mid-playback+2s'));
+          }
         });
       }
     }));
@@ -148,6 +168,21 @@ class MpvEngine implements PlayerEngine {
     }));
     _subs.add(_player.stream.error.listen(_emitError));
     _subs.add(_player.stream.position.listen((p) => _positionCtrl.add(p)));
+
+    // fix396: route libmpv's own log messages into AppLog so a black-screen
+    // session carries native decode/vo/demuxer diagnostics in the export.
+    // Volume is governed by the configured logLevel above (warn unless this is
+    // the full-screen engine with debug logging on). warn/fatal → warn; the
+    // rest → info. Prefix `[mpv:<level>] <component>:` so it's greppable.
+    _subs.add(_player.stream.log.listen((l) {
+      if (_disposed) return;
+      final line = '[mpv:${l.level}] ${l.prefix}: ${l.text.trim()}';
+      if (l.level == 'warn' || l.level == 'fatal' || l.level == 'error') {
+        AppLog.warn(line);
+      } else {
+        AppLog.info(line);
+      }
+    }));
 
     // fix116.5g: engine-identity tag so every engine can be followed
     // end-to-end through create → detach → adopt → dispose in logs.
@@ -222,6 +257,19 @@ class MpvEngine implements PlayerEngine {
       ),
     );
     AppLog.info('MpvEngine: open() command sent channel="${channel.name}"');
+    // fix396: capture libmpv's actual decode/display state for the
+    // black-screen investigation. Once right after the open command (initial
+    // negotiation) and once at +3s (frames should be flowing by then — if
+    // decoded=WxH is non-zero but the screen is black, the failure is the
+    // render/texture path, not decode). Full-screen engine only; best-effort.
+    if (!previewMode) {
+      unawaited(logDecodeState('post-open'));
+      _observeFirstFrame();
+      Future.delayed(const Duration(seconds: 3), () {
+        if (!_disposed) unawaited(logDecodeState('+3s'));
+      });
+      if (settings.debugLogging) _startDiagHeartbeat();
+    }
     // fix130: do NOT call media_kit enterFullscreen() — it pushes a hidden
     // second route onto the root navigator (a full Video on this controller)
     // that the app swap pop+push does not account for, causing a route desync
@@ -325,6 +373,7 @@ class MpvEngine implements PlayerEngine {
     }
     _disposed = true;
     _dvrGuard?.cancel(); // fix357
+    _diagHeartbeat?.cancel(); // fix396
     if (_dvrActive) unawaited(_cleanupDvrDir()); // fix357
     AppLog.info(
       'MpvEngine: dispose() eid=${identityHashCode(this)}'
@@ -456,6 +505,112 @@ class MpvEngine implements PlayerEngine {
     } catch (e) {
       AppLog.warn('MpvEngine: SURFACE[$where] log failed — $e');
     }
+  }
+
+  /// fix396: read libmpv's ACTUAL decode/display state and log one line. This
+  /// is the key signal for the Shield black-screen: it shows what hardware
+  /// decoder libmpv really selected (`hwdec-current` — vs what we *requested*
+  /// via `hwdec`), whether frames are actually being decoded (`width/height`)
+  /// and sized for display (`dwidth/dheight`), the active video output
+  /// (`current-vo`), and frame/drop rates. Interpretation:
+  ///   - hwdec-current empty/"no" while we set mediacodec-copy → HW decode did
+  ///     NOT engage (decode path issue).
+  ///   - decoded=0x0 → nothing is decoding at all (demuxer/codec/network).
+  ///   - decoded=1920x1080 but the screen is black → decode is FINE; the
+  ///     failure is the render/texture/VO path (media_kit ↔ Flutter texture).
+  /// All reads are best-effort (getProperty throws if disposed/uninitialised).
+  Future<void> logDecodeState(String tag) async {
+    if (_disposed || _player.platform is! mk.NativePlayer) return;
+    final np = _player.platform as mk.NativePlayer;
+    Future<String> g(String p) async {
+      try {
+        return await np.getProperty(p);
+      } catch (_) {
+        return '?';
+      }
+    }
+    try {
+      final results = await Future.wait([
+        g('hwdec-current'), // 0 what HW decoder actually engaged
+        g('video-codec'), //   1 e.g. "h264 (High)"
+        g('video-format'), //  2 e.g. "h264"
+        g('width'), //         3 decoded frame width
+        g('height'), //        4 decoded frame height
+        g('dwidth'), //        5 display width
+        g('dheight'), //       6 display height
+        g('current-vo'), //    7 active video output
+        g('estimated-vf-fps'),// 8 rendered fps
+        g('frame-drop-count'), // 9 VO drops
+        g('decoder-frame-drop-count'), // 10 decoder drops
+        g('hwdec'), //         11 what we requested
+      ]);
+      AppLog.info('MpvEngine: DECODE[$tag] eid=${identityHashCode(this)}'
+          ' hwdec-req="${results[11]}" hwdec-current="${results[0]}"'
+          ' codec="${results[1]}" fmt="${results[2]}"'
+          ' decoded=${results[3]}x${results[4]} display=${results[5]}x${results[6]}'
+          ' vo="${results[7]}" vfFps="${results[8]}"'
+          ' voDrop="${results[9]}" decDrop="${results[10]}"'
+          ' channel="${channel.name}" previewMode=$previewMode');
+    } catch (e) {
+      AppLog.warn('MpvEngine: DECODE[$tag] read failed — $e');
+    }
+  }
+
+  /// fix396: start the decode heartbeat. Cheap (cached `_player.state`), every
+  /// 4 s, full-screen + debug only. Flags a stalled playhead (position not
+  /// advancing) and missing frame size — the exact pattern the Shield log
+  /// showed as 12 s of silence. Self-cancels on dispose.
+  void _startDiagHeartbeat() {
+    _diagHeartbeat?.cancel();
+    _lastHeartbeatPos = Duration.zero;
+    _diagHeartbeat = Timer.periodic(const Duration(seconds: 4), (t) {
+      if (_disposed) {
+        t.cancel();
+        return;
+      }
+      try {
+        final st = _player.state;
+        final advanced = st.position != _lastHeartbeatPos;
+        _lastHeartbeatPos = st.position;
+        final stalled = !advanced && st.playing && !st.buffering;
+        final line = 'MpvEngine: HEARTBEAT pos=${st.position.inMilliseconds}ms'
+            ' advanced=$advanced frame=${st.width}x${st.height}'
+            ' playing=${st.playing} buffering=${st.buffering}'
+            ' dvrActive=$_dvrActive channel="${channel.name}"';
+        // A playing, non-buffering stream whose position is frozen is the
+        // black-screen-with-audio stall — surface it as a warning.
+        if (stalled) {
+          AppLog.warn('$line STALLED(pos frozen while playing)');
+        } else {
+          AppLog.info(line);
+        }
+      } catch (_) {
+        // state read should never throw, but never let the timer crash.
+      }
+    });
+  }
+
+  /// fix396: one-shot — observe libmpv's `dwidth` so the log records the exact
+  /// moment the first decoded frame is sized (0 → WxH). If audio plays but this
+  /// never fires, decode is stalled; if it fires with a real size yet the
+  /// screen stays black, the render/texture path is at fault. Best-effort.
+  bool _observedFirstFrame = false;
+  void _observeFirstFrame() {
+    if (_observedFirstFrame || _disposed) return;
+    if (_player.platform is! mk.NativePlayer) return;
+    _observedFirstFrame = true;
+    final np = _player.platform as mk.NativePlayer;
+    final sw = Stopwatch()..start();
+    np.observeProperty('dwidth', (value) async {
+      if (_disposed) return;
+      AppLog.info('MpvEngine: FIRST-FRAME dwidth=$value'
+          ' at=${sw.elapsedMilliseconds}ms channel="${channel.name}"');
+      // Pair it with a full decode-state snapshot the first time a real size
+      // lands, so we capture hwdec-current + vo at the moment video appears.
+      if (value != '0' && value.isNotEmpty && value != '?') {
+        unawaited(logDecodeState('first-frame'));
+      }
+    }).catchError((Object _) {});
   }
 
   // fix130: false — app drives fullscreen via _enterSystemFullscreen() (immersive
