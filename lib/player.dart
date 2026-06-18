@@ -10,6 +10,7 @@ import 'package:open_tv/channel_tile.dart';
 import 'package:open_tv/error.dart';
 import 'package:open_tv/models/channel.dart';
 import 'package:open_tv/models/channel_http_headers.dart';
+import 'package:open_tv/models/playback_playlist.dart';
 import 'package:open_tv/models/id_data.dart';
 import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/multi_view_layout.dart';
@@ -48,6 +49,12 @@ class Player extends StatefulWidget {
   /// streams). When non-null, initState adopts it and initAsync skips the
   /// open/_startPlayback step.
   final PlayerEngine? adoptEngine;
+  /// fix397: the ordered list this stream was launched from (search results,
+  /// a category, favorites, browse…) plus the playing index. When non-null and
+  /// it has another playable channel, the player offers channel +/- (on-screen
+  /// ▲/▼ and the remote CH+/CH− keys) to surf the list. Null = no surfing
+  /// (e.g. launched from a context without a list, like a catchup URL).
+  final PlaybackPlaylist? playlist;
   const Player({
     super.key,
     required this.channel,
@@ -55,6 +62,7 @@ class Player extends StatefulWidget {
     this.source,
     this.overrideUrl,
     this.adoptEngine,
+    this.playlist,
   });
 
   /// Channels that recently hit max reconnects. Maps channel ID → DateTime
@@ -106,6 +114,18 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   Orientation? _lastOrientation; // fix136: rotation logging
   bool fill = false;
   List<StreamSubscription<dynamic>> subscriptions = [];
+
+  // fix397: channel +/- ("surf"). To avoid touching the playback state machine
+  // (the channel is referenced ~55 places), a channel change re-launches a
+  // fresh Player via pushReplacement rather than mutating in place. Rapid
+  // presses are coalesced: each press advances [_surfTargetIndex] and shows the
+  // target name in [_surfBanner]; the actual switch fires [_surfDebounce] after
+  // the last press, so holding CH+ doesn't open every intermediate stream.
+  int? _surfTargetIndex;
+  String? _surfBanner;
+  Timer? _surfTimer;
+  final FocusNode _surfKeyFocus = FocusNode(debugLabel: 'playerChannelKeys');
+  static const Duration _surfDebounce = Duration(milliseconds: 650);
 
   /// Subscriptions specifically tied to [_engine]'s streams (errorStream,
   /// bufferingStream, completedStream). Tracked separately from
@@ -749,6 +769,8 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     _bufferingWatchdog?.cancel();
     _startupWatchdog?.cancel(); // fix94
     _stableTimer?.cancel();
+    _surfTimer?.cancel(); // fix397
+    _surfKeyFocus.dispose(); // fix397
     for (final s in subscriptions) {
       s.cancel();
     }
@@ -927,6 +949,81 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
         tooltip: tip,
         onPressed: onTap,
       );
+
+  // ─── fix397: channel +/- (surf) ──────────────────────────────────────────
+
+  /// True when the launching list has another playable channel to surf to.
+  bool get _canSurf => (widget.playlist?.hasSurfableNeighbor ?? false);
+
+  /// Advance the surf target by [direction] (+1 = down the list, -1 = up),
+  /// show the target channel name, and (re)arm the debounce so the switch only
+  /// fires once the user stops pressing. No-op if there's no list / neighbour.
+  void _surf(int direction) {
+    final pl = widget.playlist;
+    if (pl == null || exiting || _exitInvoked) return;
+    final base = _surfTargetIndex ?? pl.index;
+    final next = pl.withIndex(base).neighborIndex(direction);
+    if (next == null) return;
+    setState(() {
+      _surfTargetIndex = next;
+      _surfBanner = pl.channels[next].name;
+    });
+    _surfTimer?.cancel();
+    _surfTimer = Timer(_surfDebounce, _commitSurf);
+  }
+
+  /// Fire the pending channel switch: re-launch a fresh Player for the target
+  /// channel via pushReplacement, carrying the same list with the new index so
+  /// surfing continues. Reusing the launch path keeps the (heavily fixed)
+  /// playback state machine untouched.
+  Future<void> _commitSurf() async {
+    final pl = widget.playlist;
+    final target = _surfTargetIndex;
+    if (!mounted || pl == null || target == null || exiting || _exitInvoked) {
+      return;
+    }
+    final next = pl.channels[target];
+    final nextId = next.id;
+    AppLog.info('Player: channel surf -> "${next.name}" '
+        '(index $target/${pl.channels.length}) channel="${widget.channel.name}"');
+    // The active stream proves nothing about the next one; clear any stale
+    // give-up cooldown so the fresh Player isn't blocked (mirrors swap).
+    Player.clearCooldown(nextId);
+    Source? src;
+    try {
+      src = await Sql.getSourceById(next.sourceId);
+    } catch (e) {
+      AppLog.warn('Player: surf getSourceById failed — $e');
+    }
+    if (!mounted || exiting || _exitInvoked) return;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => Player(
+          channel: next,
+          settings: widget.settings,
+          source: src,
+          playlist: pl.withIndex(target),
+        ),
+      ),
+    );
+  }
+
+  /// Remote channel keys (Android TV CH+/CH−). Up = up the list, down = down.
+  KeyEventResult _onChannelKey(FocusNode _, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (!_canSurf) return KeyEventResult.ignored;
+    if (event.logicalKey == LogicalKeyboardKey.channelUp) {
+      _surf(-1);
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.channelDown) {
+      _surf(1);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
 
   void toggleZoom() {
     final engine = _engine;
@@ -1159,17 +1256,67 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) => onExit(),
-      child: Scaffold(
-        backgroundColor: Colors.black,
-        body: Stack(
-          children: [
-            _buildVideoArea(),
-            if (_bufferingState != null) _buildBufferingOverlay(),
-          ],
+      // fix397: ancestor Focus to catch the remote CH+/CH− keys (the video
+      // controls take focus; unhandled channel keys bubble up to here). Only
+      // channel keys are consumed — everything else is ignored so existing
+      // d-pad / back handling is untouched.
+      child: Focus(
+        focusNode: _surfKeyFocus,
+        // Never take focus itself — it only observes CH+/− keys that bubble up
+        // from the focused video controls, so d-pad navigation is untouched.
+        canRequestFocus: false,
+        onKeyEvent: _onChannelKey,
+        child: Scaffold(
+          backgroundColor: Colors.black,
+          body: Stack(
+            children: [
+              _buildVideoArea(),
+              if (_bufferingState != null) _buildBufferingOverlay(),
+              if (_surfBanner != null) _buildSurfBanner(),
+            ],
+          ),
         ),
       ),
     );
   }
+
+  /// fix397: transient overlay showing the channel being surfed to while the
+  /// debounce settles, so rapid CH+/− presses give immediate feedback before
+  /// the stream actually switches.
+  Widget _buildSurfBanner() => Positioned(
+        top: 24,
+        left: 0,
+        right: 0,
+        child: IgnorePointer(
+          child: Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.75),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.swap_vert, color: Colors.white, size: 22),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      _surfBanner!,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
 
   Widget _buildVideoArea() {
     if (_videoDetached) {
@@ -1274,8 +1421,13 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
       primaryButtonBar: widget.channel.mediaType == MediaType.livestream
           ? (_engine.dvrActive
               // fix360 (re-applied fix364): DVR active -> full transport row.
+              // fix397: + channel ▲/▼ at the edges when a launching list exists.
               ? [
                   const Spacer(flex: 2),
+                  if (_canSurf)
+                    _dvrButton(Icons.keyboard_arrow_up, 'Channel up',
+                        () => _surf(-1)),
+                  const Spacer(),
                   _dvrButton(Icons.replay_10, 'Rewind 10s',
                       () => _dvrSeekBy(const Duration(seconds: -10))),
                   const Spacer(),
@@ -1285,14 +1437,26 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
                       () => _dvrSeekBy(const Duration(seconds: 10))),
                   const Spacer(),
                   _dvrButton(Icons.live_tv, 'Back to live', _dvrGoLive),
+                  if (_canSurf) ...[
+                    const Spacer(),
+                    _dvrButton(Icons.keyboard_arrow_down, 'Channel down',
+                        () => _surf(1)),
+                  ],
                   const Spacer(flex: 2),
                 ]
-              : const [
-                  Spacer(flex: 2),
-                  Spacer(),
-                  MaterialPlayOrPauseButton(iconSize: 48.0),
-                  Spacer(),
-                  Spacer(flex: 2),
+              // fix397: live without DVR -> channel ▲/▼ around play/pause.
+              : [
+                  const Spacer(flex: 2),
+                  if (_canSurf)
+                    _dvrButton(Icons.keyboard_arrow_up, 'Channel up',
+                        () => _surf(-1)),
+                  const Spacer(),
+                  const MaterialPlayOrPauseButton(iconSize: 48.0),
+                  const Spacer(),
+                  if (_canSurf)
+                    _dvrButton(Icons.keyboard_arrow_down, 'Channel down',
+                        () => _surf(1)),
+                  const Spacer(flex: 2),
                 ])
           : const [
               Spacer(flex: 2),

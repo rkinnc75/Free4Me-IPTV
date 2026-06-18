@@ -848,6 +848,11 @@ class _HomeState extends State<Home> {
                                     setNode: setNode,
                                     isHistory: isHistory,
                                     autofocus: index == 0,
+                                    // fix397: hand the tile the full result list
+                                    // + its position so full-screen playback can
+                                    // surf channel +/- through this same list.
+                                    playlist: channels,
+                                    playlistIndex: index,
                                     onRemoveHistory:
                                         isHistory ? () => load(false) : null,
                                     // fix278: category tiles get an enable checkbox.

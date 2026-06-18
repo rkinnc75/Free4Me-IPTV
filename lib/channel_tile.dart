@@ -12,6 +12,7 @@ import 'package:open_tv/backend/stream_scanner.dart';
 import 'package:open_tv/backend/xtream.dart';
 import 'package:open_tv/memory.dart';
 import 'package:open_tv/models/channel.dart';
+import 'package:open_tv/models/playback_playlist.dart';
 import 'package:open_tv/error.dart';
 import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/node.dart';
@@ -58,6 +59,12 @@ class ChannelTile extends StatefulWidget {
   /// Categories list filtered to that category name. Null disables the tap.
   final void Function(String categoryName)? onOpenCategory;
 
+  /// fix397: the full ordered list this tile belongs to + this tile's index,
+  /// so full-screen playback can surf channel +/- through the same list. Null
+  /// list = no surf context (single-channel launch).
+  final List<Channel>? playlist;
+  final int playlistIndex;
+
   const ChannelTile({
     super.key,
     required this.channel,
@@ -71,6 +78,8 @@ class ChannelTile extends StatefulWidget {
     this.onToggleEnabled, // fix278: category tiles only
     this.onFavoriteGroup, // fix308: category tiles only
     this.onOpenCategory, // fix308: channel long-press category link
+    this.playlist, // fix397
+    this.playlistIndex = 0, // fix397
   });
 
   @override
@@ -380,6 +389,13 @@ class _ChannelTileState extends State<ChannelTile> {
             channel: widget.channel,
             settings: settings,
             source: source,
+            // fix397: carry the launching list so the player can surf CH +/-.
+            playlist: widget.playlist == null
+                ? null
+                : PlaybackPlaylist(
+                    channels: widget.playlist!,
+                    index: widget.playlistIndex,
+                  ),
           ),
         ),
       );

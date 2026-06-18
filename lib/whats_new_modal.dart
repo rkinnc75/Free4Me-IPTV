@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.34.25': [
+    'Channel +/- while watching: open a channel from a list (search results, a category, favorites…) and you can now change channels without leaving the player. Tap the screen for the controls and use the new ▲/▼ buttons — or your remote\'s CH+/CH− keys — to move up and down through the same list the stream started on. Holding the button surfs quickly and only switches when you stop.',
+  ],
   '1.34.24': [
     'Added deep native player diagnostics to track down the Shield/Android TV black-screen issue (no change to playback). When Debug Logging is on, the log now captures libmpv\'s own decode/video-output messages, what hardware decoder actually engaged, whether video frames are being produced, and a playback heartbeat that flags a frozen picture. To help: turn on Debug Logging, reproduce the black screen, then export the log.',
   ],
