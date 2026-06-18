@@ -11,6 +11,7 @@ import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/multi_view_decode.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_tv/models/settings.dart';
+import 'package:open_tv/player/hwdec_routing.dart';
 import 'package:open_tv/player/player_engine.dart';
 
 /// libmpv-backed engine via media_kit.
@@ -568,16 +569,27 @@ class MpvEngine implements PlayerEngine {
       await np.setProperty('hwdec', 'no');
       AppLog.info('Player: hwdec=no (preview fallback) channel="${channel.name}"');
     } else if (s.hwDecode && Platform.isAndroid) {
-      // Phone: mediacodec surface mode (hardware, zero-copy).
-      // TV: software decode. fix164 — on low-RAM TV boxes (onn 4K Plus,
-      // 2GB / Mali-G310) the mediacodec-copy GPU→CPU readback falls behind
-      // the audio clock causing A/V desync. Software decode (hwdec=no)
-      // keeps A/V in sync and cannot hit the surface-mode black-screen
-      // failure (fix108). Preview/multi-view cells keep mediacodec-copy.
+      // fix395: full-screen Android decode routing. See androidFullscreenHwdec
+      // (lib/player/hwdec_routing.dart) for the per-device rationale.
+      //
+      // fix164 had `isTV ? 'no' : 'mediacodec'` — it forced SOFTWARE decode on
+      // EVERY Android TV, but the intent (and the fix164 comment) was only the
+      // low-RAM onn 4K Plus. On capable TVs (Shield/Tegra X1) software decode
+      // starves the video pipeline: audio plays, no frames render, black screen
+      // (free4me_log-shieldandroidtv-20260617). The working reference app uses
+      // ExoPlayer = hardware MediaCodec, which is exactly mediacodec-copy here.
+      // Tegra is matched first so RAM misdetection can't force it to software.
       final isTV = await DeviceDetector.isTV();
-      final hwdecMode = isTV ? 'no' : 'mediacodec';
+      final isTegra = await DeviceDetector.isTegra();
+      final isLowRam = await DeviceDetector.isLowRamDevice();
+      final hwdecMode = androidFullscreenHwdec(
+        isTegra: isTegra,
+        isLowRam: isLowRam,
+        isTV: isTV,
+      );
       await np.setProperty('hwdec', hwdecMode);
-      AppLog.info('Player: hwdec=$hwdecMode isTV=$isTV (fix164)');
+      AppLog.info('Player: hwdec=$hwdecMode isTV=$isTV isTegra=$isTegra '
+          'isLowRam=$isLowRam (fix395)');
     } else if (s.hwDecode && Platform.isIOS) {
       await np.setProperty('hwdec', 'videotoolbox');
     } else {
