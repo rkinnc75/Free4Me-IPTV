@@ -581,7 +581,6 @@ class SettingsIo {
         'devTlsVerify': s.devTlsVerify,
         'devVideoSync': s.devVideoSync.toJson(),
         'devVideoSyncMaxVideoChange': s.devVideoSyncMaxVideoChange,
-        'devVideoSyncMinFps': s.devVideoSyncMinFps,
         'devTscale': s.devTscale.toJson(),
         'devFramedrop': s.devFramedrop.toJson(),
         'devInterpolation': s.devInterpolation,
@@ -689,9 +688,6 @@ class SettingsIo {
     if (m['devVideoSyncMaxVideoChange'] is num) {
       s.devVideoSyncMaxVideoChange =
           (m['devVideoSyncMaxVideoChange'] as num).toDouble();
-    }
-    if (m['devVideoSyncMinFps'] is num) {
-      s.devVideoSyncMinFps = (m['devVideoSyncMinFps'] as num).toInt();
     }
     if (m['devTscale'] is String) {
       s.devTscale = TscaleMode.fromJson(m['devTscale'] as String);

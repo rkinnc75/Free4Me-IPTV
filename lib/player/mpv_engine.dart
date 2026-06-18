@@ -666,10 +666,10 @@ class MpvEngine implements PlayerEngine {
       await np.setProperty('ad-lavc-downmix', 'yes');
     }
 
-    // fix394: tls-verify honours Settings.devTlsVerify (default ON, matching
-    // libmpv upstream). Per-source `ignoreSsl` (set when the source was
-    // added with a self-signed cert) STILL wins and forces tls-verify=no
-    // unconditionally — do not invert this.
+    // fix398: tls-verify honours Settings.devTlsVerify, which now defaults
+    // to false (off) — IPTV providers commonly serve HTTPS with self-signed
+    // certs. The per-channel `ignoreSsl` (from import headers) STILL wins and
+    // forces tls-verify=no unconditionally — do not invert this.
     if (ignoreSsl) {
       await np.setProperty('tls-verify', 'no');
     } else {
@@ -846,8 +846,6 @@ class MpvEngine implements PlayerEngine {
     await np.setProperty('video-sync', s.devVideoSync.value);
     await np.setProperty('video-sync-max-video-change',
         s.devVideoSyncMaxVideoChange.toString());
-    await np.setProperty('video-sync-min-fps',
-        s.devVideoSyncMinFps.toString());
     await np.setProperty('tscale', s.devTscale.value);
     await np.setProperty('framedrop', s.devFramedrop.value);
     await np.setProperty('interpolation', s.devInterpolation ? 'yes' : 'no');

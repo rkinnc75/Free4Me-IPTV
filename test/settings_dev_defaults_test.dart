@@ -24,12 +24,11 @@ void main() {
 
     // Network.
     expect(s.devNetworkTimeoutSecs, 30);
-    expect(s.devTlsVerify, true);
+    expect(s.devTlsVerify, false);
 
     // Sync.
     expect(s.devVideoSync, VideoSyncMode.audio);
     expect(s.devVideoSyncMaxVideoChange, 1.0);
-    expect(s.devVideoSyncMinFps, 30);
 
     // Image quality.
     expect(s.devTscale, TscaleMode.nearest);
@@ -59,13 +58,11 @@ void main() {
 
     for (final s in [sPhone, sTV]) {
       expect(s.devDemuxerReadaheadSecs, 1.5);
-      expect(s.devVideoSyncMinFps, 30);
       expect(s.devFramedrop, FrameDropMode.vo);
       expect(s.devAudioBufferSecs, 0.2);
       expect(s.devAudioSpdif, AudioSpdifMode.no);
     }
     // Sanity: the two branches agree on the relevant fields.
-    expect(sPhone.devVideoSyncMinFps, sTV.devVideoSyncMinFps);
   });
 
   test('Enum sentinels — HwdecImageFormat.defaultFmt and AudioSpdifMode.no '

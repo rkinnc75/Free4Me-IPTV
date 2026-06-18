@@ -80,7 +80,6 @@ const devNetworkTimeoutSecsProp = "devNetworkTimeoutSecs";
 const devTlsVerifyProp = "devTlsVerify";
 const devVideoSyncProp = "devVideoSync";
 const devVideoSyncMaxVideoChangeProp = "devVideoSyncMaxVideoChange";
-const devVideoSyncMinFpsProp = "devVideoSyncMinFps";
 const devTscaleProp = "devTscale";
 const devFramedropProp = "devFramedrop";
 const devInterpolationProp = "devInterpolation";
@@ -301,10 +300,6 @@ class SettingsService {
     if (dvsmvc != null) {
       settings.devVideoSyncMaxVideoChange = double.tryParse(dvsmvc) ?? 1.0;
     }
-    final dvsmf = settingsMap[devVideoSyncMinFpsProp];
-    if (dvsmf != null) {
-      settings.devVideoSyncMinFps = int.tryParse(dvsmf) ?? 30;
-    }
     final dts = settingsMap[devTscaleProp];
     if (dts != null) {
       settings.devTscale = TscaleMode.fromJson(dts);
@@ -436,8 +431,6 @@ class SettingsService {
     settingsMap[devVideoSyncProp] = settings.devVideoSync.toJson();
     settingsMap[devVideoSyncMaxVideoChangeProp] =
         settings.devVideoSyncMaxVideoChange.toString();
-    settingsMap[devVideoSyncMinFpsProp] =
-        settings.devVideoSyncMinFps.toString();
     settingsMap[devTscaleProp] = settings.devTscale.toJson();
     settingsMap[devFramedropProp] = settings.devFramedrop.toJson();
     settingsMap[devInterpolationProp] =

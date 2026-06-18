@@ -201,9 +201,10 @@ class Settings {
   /// libmpv `network-timeout` (seconds). Default 30.
   int devNetworkTimeoutSecs;
 
-  /// libmpv `tls-verify` default. Default true. Per-source `ignoreSsl`
-  /// (when the source is added with self-signed certs) still wins and
-  /// forces tls-verify=no unconditionally.
+  /// libmpv `tls-verify`. Defaults to false (off): certificate verification
+  /// is disabled by default because many IPTV providers serve HTTPS with
+  /// self-signed certs. The per-channel `ignoreSsl` (read from import
+  /// headers) still forces tls-verify=no regardless of this toggle.
   bool devTlsVerify;
 
   /// libmpv `video-sync` mode. Default [VideoSyncMode.audio].
@@ -211,11 +212,6 @@ class Settings {
 
   /// libmpv `video-sync-max-video-change` (ratio). Default 1.0.
   double devVideoSyncMaxVideoChange;
-
-  /// libmpv `video-sync-min-fps` (Hz). Default 30. Both TV and phone
-  /// default to 30 — PAL/50Hz-specific tuning is a future fix once a
-  /// PAL device is reported with an A/V issue.
-  int devVideoSyncMinFps;
 
   /// libmpv `tscale` (temporal scaler). Default [TscaleMode.nearest].
   TscaleMode devTscale;
@@ -299,10 +295,9 @@ class Settings {
     // upstream exactly. See lib/models/dev_mpv_options.dart.
     this.devDemuxerReadaheadSecs = 1.5,
     this.devNetworkTimeoutSecs = 30,
-    this.devTlsVerify = true,
+    this.devTlsVerify = false,
     this.devVideoSync = VideoSyncMode.audio,
     this.devVideoSyncMaxVideoChange = 1.0,
-    this.devVideoSyncMinFps = 30,
     this.devTscale = TscaleMode.nearest,
     this.devFramedrop = FrameDropMode.vo,
     this.devInterpolation = false,
@@ -443,10 +438,9 @@ class Settings {
     // reported with an A/V issue).
     s.devDemuxerReadaheadSecs = 1.5;
     s.devNetworkTimeoutSecs = 30;
-    s.devTlsVerify = true;
+    s.devTlsVerify = false;
     s.devVideoSync = VideoSyncMode.audio;
     s.devVideoSyncMaxVideoChange = 1.0;
-    s.devVideoSyncMinFps = 30;
     s.devTscale = TscaleMode.nearest;
     s.devFramedrop = FrameDropMode.vo;
     s.devInterpolation = false;

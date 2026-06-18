@@ -401,12 +401,13 @@ const _helpDevTlsVerify = (
   title: 'TLS Verify',
   body:
       'Whether libmpv verifies TLS certificates when fetching HTTPS '
-      'playlist/segment URLs. Default ON matches libmpv upstream.\n\n'
+      'playlist/segment URLs. Defaults to OFF in this app, as many IPTV '
+      'providers serve HTTPS with self-signed certificates.\n\n'
       'Turn OFF only for sources that use self-signed certificates you '
       'trust. Sources added with `ignore SSL` already force this OFF '
       'unconditionally per-source and override this toggle.\n\n'
       'Range: ON / OFF.\n\n'
-      '↑ ON — secure default; rejects invalid certs.\n\n'
+      '↑ ON — more secure; rejects invalid certs.\n\n'
       '↓ OFF — accepts any cert; vulnerable to MITM on hostile networks.',
 );
 
@@ -437,19 +438,6 @@ const _helpDevVideoSyncMaxVideoChange = (
       'Default: 1.0. Range: 0–5.\n\n'
       '↑ Increasing — faster sync convergence; visible judder on motion.\n\n'
       '↓ Decreasing — smoother motion; slower to converge on big drift.',
-);
-
-const _helpDevVideoSyncMinFps = (
-  title: 'Min Resample FPS',
-  body:
-      'When `video-sync=display*` would need to resample below this rate, '
-      'libmpv drops or duplicates frames instead.\n\n'
-      'Default: 30. Both TV and phone default to 30. PAL/50Hz-specific '
-      'tuning is a future fix once a PAL device is reported with an A/V '
-      'issue.\n\n'
-      'Range: 24–120.\n\n'
-      '↑ Increasing — fewer dropped frames; higher CPU.\n\n'
-      '↓ Decreasing — more drop/duplicate; smoother resampling.',
 );
 
 const _helpDevTscale = (
@@ -514,7 +502,7 @@ const _helpDevHwdecImageFormat = (
       'i420 — chroma-subsampled; older devices.\n\n'
       'Range: default / nv12 / rgba / i420.\n\n'
       'Interacts with hwdec mode (Settings → Playback → Hardware '
-      'decoding) and target-colorspace above.',
+      'decoding).',
 );
 
 const _helpDevAudioBufferSecs = (
@@ -3872,20 +3860,6 @@ class _SettingsState extends State<SettingsView> {
                         onChanged: (v) {
                           setState(
                             () => settings.devVideoSyncMaxVideoChange = v,
-                          );
-                          updateSettings();
-                        },
-                      ),
-                      _bufferSlider(
-                        label: "Min resample FPS",
-                        value: settings.devVideoSyncMinFps.toDouble(),
-                        min: 24,
-                        max: 120,
-                        divisions: 96,
-                        help: _helpDevVideoSyncMinFps,
-                        onChanged: (v) {
-                          setState(
-                            () => settings.devVideoSyncMinFps = v.round(),
                           );
                           updateSettings();
                         },

@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.34.26': [
+    'TLS certificate verification for HTTPS streams now defaults to OFF, since many IPTV providers use self-signed certificates. You can re-enable it under Settings → Developer → TLS Verify. Existing saved preferences are unchanged.',
+    'Removed a non-functional “Min resample FPS” developer tile. It mapped to a libmpv property that does not exist, so it never had any effect; existing settings are unaffected.',
+  ],
   '1.34.25': [
     'Channel +/- while watching: open a channel from a list (search results, a category, favorites…) and you can now change channels without leaving the player. Tap the screen for the controls and use the new ▲/▼ buttons — or your remote\'s CH+/CH− keys — to move up and down through the same list the stream started on. Holding the button surfs quickly and only switches when you stop.',
   ],
