@@ -491,7 +491,11 @@ class MpvEngine implements PlayerEngine {
     final s = settings;
 
     await np.setProperty('cache', 'yes');
-    await np.setProperty('network-timeout', '30');
+    // fix394: network-timeout now honours Settings.devNetworkTimeoutSecs
+    // (default 30, matching libmpv upstream). Per-source ignoreSsl still
+    // wins for tls-verify (see the block below).
+    await np.setProperty(
+        'network-timeout', s.devNetworkTimeoutSecs.toString());
 
     // fix361: downmix multichannel audio to stereo when enabled (default).
     // Repeated 'Error decoding audio' on E-AC3 5.1 feeds (onn 4K / YES
@@ -506,8 +510,14 @@ class MpvEngine implements PlayerEngine {
       await np.setProperty('ad-lavc-downmix', 'yes');
     }
 
+    // fix394: tls-verify honours Settings.devTlsVerify (default ON, matching
+    // libmpv upstream). Per-source `ignoreSsl` (set when the source was
+    // added with a self-signed cert) STILL wins and forces tls-verify=no
+    // unconditionally — do not invert this.
     if (ignoreSsl) {
       await np.setProperty('tls-verify', 'no');
+    } else {
+      await np.setProperty('tls-verify', s.devTlsVerify ? 'yes' : 'no');
     }
 
     if (url.contains('.m3u8')) {
@@ -655,6 +665,37 @@ class MpvEngine implements PlayerEngine {
       }
     }
 
+    // fix394: Developer / libmpv advanced tunables. Every field defaults
+    // to libmpv's upstream value, so when the user hasn't touched the
+    // Developer section this block is effectively a no-op. The sentinel
+    // enums (`hwdec-image-format` defaultFmt, `audio-spdif` no) skip the
+    // setProperty call entirely so libmpv keeps its own default.
+    // (fix394 review: removed setProperty calls for demuxer-cache-wait,
+    // demuxer-max-wait-keepalive, demuxer-backward-buffer-secs,
+    // demuxer-dont-buffer-secs and target-colorspace — those property
+    // names are either the wrong type or do not exist in libmpv.)
+    await np.setProperty('demuxer-readahead-secs',
+        s.devDemuxerReadaheadSecs.toString());
+    await np.setProperty('video-sync', s.devVideoSync.value);
+    await np.setProperty('video-sync-max-video-change',
+        s.devVideoSyncMaxVideoChange.toString());
+    await np.setProperty('video-sync-min-fps',
+        s.devVideoSyncMinFps.toString());
+    await np.setProperty('tscale', s.devTscale.value);
+    await np.setProperty('framedrop', s.devFramedrop.value);
+    await np.setProperty('interpolation', s.devInterpolation ? 'yes' : 'no');
+    await np.setProperty('deband', s.devDeband ? 'yes' : 'no');
+    if (s.devHwdecImageFormat.value != null) {
+      await np.setProperty(
+          'hwdec-image-format', s.devHwdecImageFormat.value!);
+    }
+    await np.setProperty(
+        'audio-buffer', s.devAudioBufferSecs.toString());
+    final spdif = s.devAudioSpdif.value;
+    if (spdif != null) {
+      await np.setProperty('audio-spdif', spdif);
+    }
+
     final demuxerMB = channel.mediaType == MediaType.livestream
         ? (previewMode ? s.miniDemuxerMaxMB : s.liveDemuxerMaxMB)
         : (previewMode ? s.miniDemuxerMaxMB * 2 : s.vodDemuxerMaxMB);
@@ -664,7 +705,13 @@ class MpvEngine implements PlayerEngine {
       ' previewMode=$previewMode'
       ' demuxerMB=$demuxerMB'
       ' bufferSizeMB=${previewMode ? s.bufferSizeMB ~/ 2 : s.bufferSizeMB}'
-      ' lowLatency=${s.lowLatency}',
+      ' lowLatency=${s.lowLatency}'
+      ' netTimeoutSecs=${s.devNetworkTimeoutSecs}'
+      ' tlsVerify=${ignoreSsl ? "no(source)" : (s.devTlsVerify ? "yes" : "no")}'
+      ' videoSync=${s.devVideoSync.value}'
+      ' tscale=${s.devTscale.value}'
+      ' framedrop=${s.devFramedrop.value}'
+      ' audioSpdif=${s.devAudioSpdif.value ?? "off"}',
     );
   }
 

@@ -3,6 +3,9 @@ import 'dart:collection';
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/device_memory.dart';
 import 'package:open_tv/backend/sql.dart';
+import 'package:open_tv/models/dev_mpv_options.dart' show
+    VideoSyncMode, TscaleMode, FrameDropMode,
+    HwdecImageFormat, AudioSpdifMode;
 import 'package:open_tv/models/multi_view_layout.dart';
 import 'package:open_tv/models/multi_view_decode.dart';
 import 'package:open_tv/models/settings.dart';
@@ -70,6 +73,21 @@ const contentTypeFilterProp = "contentTypeFilter";
 const searchMethodProp = "searchMethod";
 
 const safeModeProp = "safeMode";
+
+// fix394: Developer / libmpv advanced tunables.
+const devDemuxerReadaheadSecsProp = "devDemuxerReadaheadSecs";
+const devNetworkTimeoutSecsProp = "devNetworkTimeoutSecs";
+const devTlsVerifyProp = "devTlsVerify";
+const devVideoSyncProp = "devVideoSync";
+const devVideoSyncMaxVideoChangeProp = "devVideoSyncMaxVideoChange";
+const devVideoSyncMinFpsProp = "devVideoSyncMinFps";
+const devTscaleProp = "devTscale";
+const devFramedropProp = "devFramedrop";
+const devInterpolationProp = "devInterpolation";
+const devDebandProp = "devDeband";
+const devHwdecImageFormatProp = "devHwdecImageFormat";
+const devAudioBufferSecsProp = "devAudioBufferSecs";
+const devAudioSpdifProp = "devAudioSpdif";
 
 class SettingsService {
   /// Module-level cache. Loaded on first call; updated in-place on writes.
@@ -260,6 +278,62 @@ class SettingsService {
     final sm70 = settingsMap[safeModeProp];
     if (sm70 != null) settings.safeMode = int.parse(sm70) == 1;
 
+    // fix394: Developer / libmpv advanced tunables. Each gate is
+    // `prop != null` so a missing persisted value (older backup, or never
+    // set) leaves the constructor default in place.
+    final dvrSecs = settingsMap[devDemuxerReadaheadSecsProp];
+    if (dvrSecs != null) {
+      settings.devDemuxerReadaheadSecs = double.tryParse(dvrSecs) ?? 1.5;
+    }
+    final dnt = settingsMap[devNetworkTimeoutSecsProp];
+    if (dnt != null) {
+      settings.devNetworkTimeoutSecs = int.tryParse(dnt) ?? 30;
+    }
+    final dtv = settingsMap[devTlsVerifyProp];
+    if (dtv != null) {
+      settings.devTlsVerify = int.parse(dtv) == 1;
+    }
+    final dvs = settingsMap[devVideoSyncProp];
+    if (dvs != null) {
+      settings.devVideoSync = VideoSyncMode.fromJson(dvs);
+    }
+    final dvsmvc = settingsMap[devVideoSyncMaxVideoChangeProp];
+    if (dvsmvc != null) {
+      settings.devVideoSyncMaxVideoChange = double.tryParse(dvsmvc) ?? 1.0;
+    }
+    final dvsmf = settingsMap[devVideoSyncMinFpsProp];
+    if (dvsmf != null) {
+      settings.devVideoSyncMinFps = int.tryParse(dvsmf) ?? 30;
+    }
+    final dts = settingsMap[devTscaleProp];
+    if (dts != null) {
+      settings.devTscale = TscaleMode.fromJson(dts);
+    }
+    final dfd = settingsMap[devFramedropProp];
+    if (dfd != null) {
+      settings.devFramedrop = FrameDropMode.fromJson(dfd);
+    }
+    final di = settingsMap[devInterpolationProp];
+    if (di != null) {
+      settings.devInterpolation = int.parse(di) == 1;
+    }
+    final ddb = settingsMap[devDebandProp];
+    if (ddb != null) {
+      settings.devDeband = int.parse(ddb) == 1;
+    }
+    final dhif = settingsMap[devHwdecImageFormatProp];
+    if (dhif != null) {
+      settings.devHwdecImageFormat = HwdecImageFormat.fromJson(dhif);
+    }
+    final dabs = settingsMap[devAudioBufferSecsProp];
+    if (dabs != null) {
+      settings.devAudioBufferSecs = double.tryParse(dabs) ?? 0.0;
+    }
+    final dasp = settingsMap[devAudioSpdifProp];
+    if (dasp != null) {
+      settings.devAudioSpdif = AudioSpdifMode.fromJson(dasp);
+    }
+
     final ctfRaw = settingsMap[contentTypeFilterProp];
     if (ctfRaw != null) {
       final idx = int.tryParse(ctfRaw) ?? 0;
@@ -348,6 +422,33 @@ class SettingsService {
         settings.contentTypeFilter.index.toString();
     settingsMap[searchMethodProp] = settings.searchMethod.index.toString();
     settingsMap[safeModeProp] = (settings.safeMode ? 1 : 0).toString();
+
+    // fix394: Developer / libmpv advanced tunables. Bools are stored as
+    // 0/1 (matching the existing convention for `forceTVMode`,
+    // `logUserPass`, etc.); doubles are stored as raw double strings;
+    // enums as their `name` (so a re-read uses fromJson).
+    settingsMap[devDemuxerReadaheadSecsProp] =
+        settings.devDemuxerReadaheadSecs.toString();
+    settingsMap[devNetworkTimeoutSecsProp] =
+        settings.devNetworkTimeoutSecs.toString();
+    settingsMap[devTlsVerifyProp] =
+        (settings.devTlsVerify ? 1 : 0).toString();
+    settingsMap[devVideoSyncProp] = settings.devVideoSync.toJson();
+    settingsMap[devVideoSyncMaxVideoChangeProp] =
+        settings.devVideoSyncMaxVideoChange.toString();
+    settingsMap[devVideoSyncMinFpsProp] =
+        settings.devVideoSyncMinFps.toString();
+    settingsMap[devTscaleProp] = settings.devTscale.toJson();
+    settingsMap[devFramedropProp] = settings.devFramedrop.toJson();
+    settingsMap[devInterpolationProp] =
+        (settings.devInterpolation ? 1 : 0).toString();
+    settingsMap[devDebandProp] =
+        (settings.devDeband ? 1 : 0).toString();
+    settingsMap[devHwdecImageFormatProp] =
+        settings.devHwdecImageFormat.toJson();
+    settingsMap[devAudioBufferSecsProp] =
+        settings.devAudioBufferSecs.toString();
+    settingsMap[devAudioSpdifProp] = settings.devAudioSpdif.toJson();
 
     await Sql.updateSettings(settingsMap);
     // fix212: keep FTS triggers in sync with the chosen search method.

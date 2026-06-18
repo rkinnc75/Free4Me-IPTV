@@ -12,6 +12,9 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:open_tv/backend/playback_analyzer.dart';
 import 'package:open_tv/backend/device_memory.dart';
 import 'package:open_tv/models/device_detector.dart';
+import 'package:open_tv/models/dev_mpv_options.dart' show
+    VideoSyncMode, TscaleMode, FrameDropMode,
+    HwdecImageFormat, AudioSpdifMode;
 import 'package:open_tv/models/multi_view_layout.dart';
 import 'package:open_tv/models/multi_view_decode.dart';
 import 'package:open_tv/multi_view_picker_dialog.dart';
@@ -362,7 +365,186 @@ const _helpWatchdog = (
       '• It also covers the "opened but never produced a frame" case '
       '(a dead stream that returns success then sends nothing).\n\n'
       'In mini-player or multi-view, each active stream has its own '
-      'watchdog.',
+    'watchdog running independently.',
+);
+
+// fix394: Developer / libmpv advanced tunables. Defaults match libmpv
+// upstream exactly; the Developer section is a no-op until the user opts
+// in. Help bodies follow the _helpWatchdog convention (Default / Range /
+// ↑ / ↓ / Interacts with).
+
+const _helpDevDemuxerReadaheadSecs = (
+  title: 'Demuxer Read-Ahead (seconds)',
+  body:
+      'How far ahead of the current playback point the demuxer pre-fetches '
+      'data. Larger values give the player more cushion against network '
+      'jitter; smaller values reduce RAM and disk usage.\n\n'
+      'Default: 1.5 s. Range: 0.5–10 s.\n\n'
+      '↑ Increasing — smoother playback on shaky networks; more RAM/disk.\n\n'
+      '↓ Decreasing — less RAM; more visible rebuffering on slow links.',
+);
+
+const _helpDevNetworkTimeoutSecs = (
+  title: 'Network Timeout (seconds)',
+  body:
+      'libmpv aborts an open() or read if no bytes arrive within this many '
+      'seconds. Surfaces as a network error and triggers the reconnect '
+      'logic.\n\n'
+      'Default: 30 s. Range: 5–120 s.\n\n'
+      '↑ Increasing — more tolerant of slow providers; can mask a dead '
+      'stream for longer.\n\n'
+      '↓ Decreasing — faster failure on dead streams; may falsely fail '
+      'on very slow first-segment delivery.',
+);
+
+const _helpDevTlsVerify = (
+  title: 'TLS Verify',
+  body:
+      'Whether libmpv verifies TLS certificates when fetching HTTPS '
+      'playlist/segment URLs. Default ON matches libmpv upstream.\n\n'
+      'Turn OFF only for sources that use self-signed certificates you '
+      'trust. Sources added with `ignore SSL` already force this OFF '
+      'unconditionally per-source and override this toggle.\n\n'
+      'Range: ON / OFF.\n\n'
+      '↑ ON — secure default; rejects invalid certs.\n\n'
+      '↓ OFF — accepts any cert; vulnerable to MITM on hostile networks.',
+);
+
+const _helpDevVideoSync = (
+  title: 'A/V Sync Mode (video-sync)',
+  body:
+      'How libmpv keeps video and audio in sync.\n\n'
+      'Default: audio (resample audio to match video).\n\n'
+      'audio — resample audio. Best for live TV; audio quality may dip '
+      'on extreme resamples.\n\n'
+      'display — resample video to display refresh. Crisp video; needs '
+      'the device to be at the right refresh rate.\n\n'
+      'display-resample — resample video AND drop/duplicate frames. '
+      'Smoothest on displays that don\'t match the source rate.\n\n'
+      'display-vdrop — like display, but drops frames instead of '
+      'duplicating. Avoids the soap-opera effect on film sources.\n\n'
+      'audio-desync — try to fix A/V desync by resampling audio. Use '
+      'only if you see drift on a specific provider.\n\n'
+      'Restart required for some devices.',
+);
+
+const _helpDevVideoSyncMaxVideoChange = (
+  title: 'Max Video-Rate Change',
+  body:
+      'Upper bound on the per-frame video-rate change libmpv will apply '
+      'for sync (with `video-sync=display*` modes). Higher = more '
+      'aggressive resampling.\n\n'
+      'Default: 1.0. Range: 0–5.\n\n'
+      '↑ Increasing — faster sync convergence; visible judder on motion.\n\n'
+      '↓ Decreasing — smoother motion; slower to converge on big drift.',
+);
+
+const _helpDevVideoSyncMinFps = (
+  title: 'Min Resample FPS',
+  body:
+      'When `video-sync=display*` would need to resample below this rate, '
+      'libmpv drops or duplicates frames instead.\n\n'
+      'Default: 30. Both TV and phone default to 30. PAL/50Hz-specific '
+      'tuning is a future fix once a PAL device is reported with an A/V '
+      'issue.\n\n'
+      'Range: 24–120.\n\n'
+      '↑ Increasing — fewer dropped frames; higher CPU.\n\n'
+      '↓ Decreasing — more drop/duplicate; smoother resampling.',
+);
+
+const _helpDevTscale = (
+  title: 'Temporal Scaler (tscale)',
+  body:
+      'Algorithm used to upscale video frames to display resolution on '
+      'slow hardware. Affects sharpness vs. performance.\n\n'
+      'Default: nearest (fastest, sharpest, may show aliasing on diagonals).\n\n'
+      'bilinear — smoother diagonals; softens detail slightly.\n\n'
+      'oversample — three-tap filter; good sharpness/perf trade-off.\n\n'
+      'spline36 — high quality; noticeably slower on low-end CPUs.\n\n'
+      'lanczos — highest quality; slowest; only useful on fast hardware.\n\n'
+      'Use bilinear or oversample if you see aliasing artifacts with '
+      'nearest on a 4K display.',
+);
+
+const _helpDevFramedrop = (
+  title: 'Frame Drop Mode',
+  body:
+      'When and how libmpv is allowed to skip frames to maintain sync.\n\n'
+      'Default: no (never drop decoded frames).\n\n'
+      'no — never drop; full quality, may stutter on slow hardware.\n\n'
+      'yes — drop late frames aggressively; smoother on weak devices.\n\n'
+      'decoder — let the decoder skip frames; faster but lower quality.\n\n'
+      'Range: no / yes / decoder.',
+);
+
+const _helpDevInterpolation = (
+  title: 'Frame Interpolation',
+  body:
+      'Motion-compensated frame interpolation (the "soap opera" effect). '
+      'Smooths 24/30 fps content to higher rates by synthesising '
+      'in-between frames. Requires decent CPU.\n\n'
+      'Default: OFF.\n\n'
+      'Range: ON / OFF.\n\n'
+      '↑ ON — smoother motion; can introduce artifacts on fast pans.\n\n'
+      '↓ OFF — natural cadence; less CPU.',
+);
+
+const _helpDevDeband = (
+  title: 'Debanding Filter',
+  body:
+      'Removes colour banding (visible steps in gradients) from low-bitrate '
+      'content. Adds a small amount of dithering noise. Most useful for '
+      'animated content.\n\n'
+      'Default: OFF.\n\n'
+      'Range: ON / OFF.\n\n'
+      '↑ ON — fewer visible bands; may soften edges slightly.\n\n'
+      '↓ OFF — no processing; cleanest for high-bitrate sources.',
+);
+
+const _helpDevHwdecImageFormat = (
+  title: 'HW Decoder Image Format',
+  body:
+      'Image format libmpv requests from the hardware decoder. `default` '
+      '(default) lets libmpv pick the optimal format for the active hwdec '
+      'mode. Override only if you see chroma/colour issues on a specific '
+      'SoC.\n\n'
+      'Default: default (do not force).\n\n'
+      'nv12 — most hardware decoders; lowest overhead.\n\n'
+      'rgba — universal; higher overhead, no chroma subsampling.\n\n'
+      'i420 — chroma-subsampled; older devices.\n\n'
+      'Range: default / nv12 / rgba / i420.\n\n'
+      'Interacts with hwdec mode (Settings → Playback → Hardware '
+      'decoding) and target-colorspace above.',
+);
+
+const _helpDevAudioBufferSecs = (
+  title: 'Audio Buffer (seconds)',
+  body:
+      'Extra audio buffer in seconds. 0 (default) means "use the codec\'s '
+      'natural buffer" — libmpv\'s upstream default. Positive values add '
+      'extra cushion against A/V desync on shaky providers.\n\n'
+      'Default: 0.00 s. Range: 0–2 s.\n\n'
+      '↑ Increasing — smoother A/V on weak networks; higher audio latency.\n\n'
+      '↓ Decreasing — lower audio latency; more audio dropouts on slow '
+      'links.\n\n'
+      'Interacts with audio-spdif (below) and demuxer-readahead-secs.',
+);
+
+const _helpDevAudioSpdif = (
+  title: 'Audio S/PDIF Passthrough',
+  body:
+      'Sends compressed audio bitstreams over HDMI/Optical S/PDIF to a '
+      'downstream receiver. Default OFF (audio is decoded in software and '
+      'routed as PCM).\n\n'
+      'Default: no (passthrough disabled).\n\n'
+      'ac3 — Dolby Digital 5.1.\n\n'
+      'eac3 — Dolby Digital Plus (Atmos metadata passthrough).\n\n'
+      'dts — DTS.\n\n'
+      'all — accept all three formats; receiver picks what it can decode.\n\n'
+      'WARNING: enabling passthrough on a plain box→TV HDMI path will '
+      'SILENCE audio unless the downstream device is an AV receiver or '
+      'soundbar that can decode the passthrough codec. Keep OFF unless '
+      'your output chain ends in a real receiver.',
 );
 
 
@@ -1825,7 +2007,15 @@ class _SettingsState extends State<SettingsView> {
     required int divisions,
     required ValueChanged<double> onChanged,
     required ({String title, String body}) help,
+    int decimals = 0, // fix394: 0 = integer display (legacy); 1 or 2
+        // for fractional libmpv tunables (e.g. demuxer-readahead-secs 1.5,
+        // audio-buffer 0.20).
   }) {
+    final String valueText = switch (decimals) {
+      1 => value.toStringAsFixed(1),
+      2 => value.toStringAsFixed(2),
+      _ => value.round().toString(),
+    };
     return ListTile(
       // fix156/160: plain text title so the row body is the D-pad target.
       title: Text(label),
@@ -1834,7 +2024,7 @@ class _SettingsState extends State<SettingsView> {
         min: min,
         max: max,
         divisions: divisions,
-        label: value.round().toString(),
+        label: valueText,
         onChanged: onChanged,
       ),
       trailing: Row(
@@ -1843,7 +2033,7 @@ class _SettingsState extends State<SettingsView> {
           SizedBox(
             width: 56,
             child: Text(
-              value.round().toString(),
+              valueText,
               textAlign: TextAlign.right,
               style: const TextStyle(fontWeight: FontWeight.w600),
             ),
@@ -2118,6 +2308,78 @@ class _SettingsState extends State<SettingsView> {
     );
   }
 
+  /// fix394: generic enum-tile for the Developer / libmpv section. Mirrors
+  /// the `_searchMethodTile` / `SelectDialog` pattern but is parameterised
+  /// over any enum T (positional record options, as the handoff flagged —
+  /// named records would fail to type-check here).
+  ///
+  /// options is a List of (T, String label) positional records. The dialog
+  /// returns the chosen T via [onChanged].
+  Widget _devEnumTile<T>({
+    required String label,
+    required T value,
+    required List<(T, String)> options,
+    required ValueChanged<T> onChanged,
+    required ({String title, String body}) help,
+  }) {
+    return ListTile(
+      title: Row(
+        children: [
+          Text(label),
+          const SizedBox(width: 4),
+          _helpIcon(title: help.title, body: help.body),
+        ],
+      ),
+      trailing: TextButton(
+        onPressed: () => _showDevEnumDialog<T>(
+          context: context,
+          title: help.title,
+          value: value,
+          options: options,
+          onChanged: onChanged,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              options.firstWhere((o) => o.$1 == value, orElse: () => options.first).$2,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(width: 4),
+            const Icon(Icons.arrow_drop_down),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showDevEnumDialog<T>({
+    required BuildContext context,
+    required String title,
+    required T value,
+    required List<(T, String)> options,
+    required ValueChanged<T> onChanged,
+  }) async {
+    await showDialog(
+      barrierDismissible: true,
+      context: context,
+      builder: (_) => SelectDialog(
+        title: title,
+        data: options
+            .asMap()
+            .entries
+            .map((e) => IdData(id: e.key, data: e.value.$2))
+            .toList(),
+        action: (idx) {
+          onChanged(options[idx].$1);
+          setState(() {});
+          updateSettings();
+          Navigator.of(context).pop();
+        },
+      ),
+    );
+  }
+
   void _showMultiViewPickerDialog(Settings settings) {
     showDialog(
       context: context,
@@ -2375,39 +2637,6 @@ class _SettingsState extends State<SettingsView> {
                       updateSettings();
                     },
                   ),
-                  _switchTile(
-                    label: "Live DVR buffer (single view)",
-                    value: settings.dvrEnabled,
-                    help: _helpDvr,
-                    onChanged: (v) {
-                      setState(() => settings.dvrEnabled = v);
-                      updateSettings();
-                    },
-                  ),
-                  _bufferSlider(
-                    label: "DVR length (minutes)",
-                    value: settings.dvrMinutes.toDouble(),
-                    min: 5,
-                    max: 90,
-                    divisions: 17,
-                    help: _helpDvr,
-                    onChanged: (v) {
-                      setState(() => settings.dvrMinutes = v.round());
-                      updateSettings();
-                    },
-                  ),
-                  _bufferSlider(
-                    label: "VOD/Movie demuxer max (MB)",
-                    value: settings.vodDemuxerMaxMB.toDouble(),
-                    min: 64,
-                    max: 1024,
-                    divisions: 60,
-                    help: _helpVodDemuxerMB,
-                    onChanged: (v) {
-                      setState(() => settings.vodDemuxerMaxMB = v.round());
-                      updateSettings();
-                    },
-                  ),
                   _bufferSlider(
                     label: "Stream open timeout (seconds)",
                     value: settings.openTimeoutSecs.toDouble(),
@@ -2435,96 +2664,6 @@ class _SettingsState extends State<SettingsView> {
                     },
                   ),
                   _bufferSlider(
-                    label: "Stable playback threshold (seconds)",
-                    value: settings.stableThresholdSecs.toDouble(),
-                    min: 5,
-                    max: 60,
-                    divisions: 55,
-                    help: (
-                      title: 'Stable Playback Threshold (seconds)',
-                      body:
-                          'Controls how long playback must stay healthy '
-                          'before the reconnect retry counter resets.\n\n'
-                          'Default: 30 s. Range: 5–60 s.\n\n'
-                          'Increasing: Requires a longer stable period before '
-                          'the app trusts the stream again. This is stricter '
-                          'for unreliable streams and can make the app give up '
-                          'sooner after repeated problems.\n\n'
-                          'Decreasing: Resets the retry counter sooner after '
-                          'a brief recovery. More forgiving for streams that '
-                          'have small hiccups but usually recover.\n\n'
-                          'If good streams are reaching the maximum retry '
-                          'limit too easily, lower this value.',
-                    ),
-                    onChanged: (v) {
-                      setState(
-                        () => settings.stableThresholdSecs = v.round(),
-                      );
-                      updateSettings();
-                    },
-                  ),
-                  _bufferSlider(
-                    label: "Startup grace window (ms)",
-                    value: settings.startupGraceMs.toDouble(),
-                    min: 100,
-                    max: 3000,
-                    divisions: 29,
-                    help: (
-                      title: 'Startup Grace Window (ms)',
-                      body:
-                          'Gives a newly opened stream a short grace period '
-                          'before certain startup errors are allowed to '
-                          'trigger reconnect behavior.\n\n'
-                          'Default: 500 ms. Range: 100–3000 ms.\n\n'
-                          'Increasing: Helps slower TV hardware and slow '
-                          'providers that emit harmless startup errors shortly '
-                          'after playback begins. Try 1000–1500 ms if streams '
-                          'double-start or reconnect immediately after '
-                          'opening.\n\n'
-                          'Decreasing: Lets real startup failures surface '
-                          'sooner. Use lower values if bad streams take too '
-                          'long to fail.\n\n'
-                          'Seek-related startup errors are already suppressed '
-                          'separately, so this setting mainly covers other '
-                          'startup noise.',
-                    ),
-                    onChanged: (v) {
-                      setState(
-                        () => settings.startupGraceMs = v.round(),
-                      );
-                      updateSettings();
-                    },
-                  ),
-                  _bufferSlider(
-                    label: "Stream-ended reconnect delay (ms)",
-                    value: settings.streamCompletedDelayMs.toDouble(),
-                    min: 0,
-                    max: 10000,
-                    divisions: 20,
-                    help: (
-                      title: 'Stream-Ended Reconnect Delay (ms)',
-                      body:
-                          'Controls how long the app waits before '
-                          'reconnecting after a live stream reports that it '
-                          'ended or the provider closes the connection.\n\n'
-                          'Default: 2000 ms. Range: 0–10 000 ms.\n\n'
-                          'Increasing: Gives providers more time to rotate '
-                          'servers or reconnect at a segment boundary without '
-                          'an immediate full reconnect. Can reduce connection '
-                          'churn, but values above about 5000 ms may create '
-                          'a visible freeze.\n\n'
-                          'Decreasing: Reconnects faster when the stream '
-                          'really ended. Set to 0 for immediate reconnect '
-                          'behavior.',
-                    ),
-                      onChanged: (v) {
-                        setState(
-                          () => settings.streamCompletedDelayMs = v.round(),
-                        );
-                        updateSettings();
-                      },
-                    ),
-                  _bufferSlider(
                     label: "Max reconnect attempts",
                     value: settings.maxReconnectAttempts.toDouble(),
                     min: 1,
@@ -2538,6 +2677,46 @@ class _SettingsState extends State<SettingsView> {
                       updateSettings();
                     },
                   ),
+                    ],
+                  ),
+
+                  // fix394: Live DVR — its own section. Moved out of
+                  // Buffering per user decision #1.
+                  ExpansionTile(
+                    key: const PageStorageKey('dvr'),
+                    leading: const Icon(Icons.fiber_manual_record),
+                    title: Text(
+                      'Live DVR',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+                    childrenPadding: EdgeInsets.zero,
+                    initiallyExpanded: _groupOpen['dvr'] ?? false,
+                    onExpansionChanged: (v) => _groupOpen['dvr'] = v,
+                    children: [
+                      _switchTile(
+                        label: "Enable Live DVR",
+                        value: settings.dvrEnabled,
+                        help: _helpDvr,
+                        onChanged: (v) {
+                          setState(() => settings.dvrEnabled = v);
+                          updateSettings();
+                        },
+                      ),
+                      _bufferSlider(
+                        label: "DVR length (minutes)",
+                        value: settings.dvrMinutes.toDouble(),
+                        min: 5,
+                        max: 90,
+                        divisions: 17,
+                        help: _helpDvr,
+                        onChanged: (v) {
+                          setState(() => settings.dvrMinutes = v.round());
+                          updateSettings();
+                        },
+                      ),
                     ],
                   ),
 
@@ -3497,6 +3676,311 @@ class _SettingsState extends State<SettingsView> {
                         : null,
                   ),
 
+                    ],
+                  ),
+
+                  // fix394: Developer / libmpv advanced tunables. Hidden
+                  // behind a folded ExpansionTile at the very bottom of the
+                  // menu — advanced users opt in; the defaults match
+                  // libmpv upstream so the section is a no-op until then.
+                  ExpansionTile(
+                    key: const PageStorageKey('developer'),
+                    leading: const Icon(Icons.developer_mode),
+                    title: Text(
+                      'Developer',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    subtitle: const Text(
+                      'Advanced libmpv options. Defaults match libmpv '
+                      'upstream; adjust only if a specific provider or '
+                      'device needs it.',
+                    ),
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+                    childrenPadding: EdgeInsets.zero,
+                    initiallyExpanded: _groupOpen['developer'] ?? false,
+                    onExpansionChanged: (v) => _groupOpen['developer'] = v,
+                    children: [
+                      // ── Refined buffering (moved from Buffering) ──
+                      _bufferSlider(
+                        label: "VOD/Movie demuxer max (MB)",
+                        value: settings.vodDemuxerMaxMB.toDouble(),
+                        min: 64,
+                        max: 1024,
+                        divisions: 60,
+                        help: _helpVodDemuxerMB,
+                        onChanged: (v) {
+                          setState(() => settings.vodDemuxerMaxMB = v.round());
+                          updateSettings();
+                        },
+                      ),
+                      _bufferSlider(
+                        label: "Stable playback threshold (seconds)",
+                        value: settings.stableThresholdSecs.toDouble(),
+                        min: 5,
+                        max: 60,
+                        divisions: 55,
+                        help: (
+                          title: 'Stable Playback Threshold (seconds)',
+                          body:
+                              'Controls how long playback must stay healthy '
+                              'before the reconnect retry counter resets.\n\n'
+                              'Default: 30 s. Range: 5–60 s.\n\n'
+                              'Increasing: Requires a longer stable period '
+                              'before the app trusts the stream again. This '
+                              'is stricter for unreliable streams and can '
+                              'make the app give up sooner after repeated '
+                              'problems.\n\n'
+                              'Decreasing: Resets the retry counter sooner '
+                              'after a brief recovery. More forgiving for '
+                              'streams that have small hiccups but usually '
+                              'recover.\n\n'
+                              'If good streams are reaching the maximum '
+                              'retry limit too easily, lower this value.',
+                        ),
+                        onChanged: (v) {
+                          setState(
+                            () => settings.stableThresholdSecs = v.round(),
+                          );
+                          updateSettings();
+                        },
+                      ),
+                      _bufferSlider(
+                        label: "Startup grace window (ms)",
+                        value: settings.startupGraceMs.toDouble(),
+                        min: 100,
+                        max: 3000,
+                        divisions: 29,
+                        help: (
+                          title: 'Startup Grace Window (ms)',
+                          body:
+                              'Gives a newly opened stream a short grace '
+                              'period before certain startup errors are '
+                              'allowed to trigger reconnect behavior.\n\n'
+                              'Default: 500 ms. Range: 100–3000 ms.\n\n'
+                              'Increasing: Helps slower TV hardware and '
+                              'slow providers that emit harmless startup '
+                              'errors shortly after playback begins. Try '
+                              '1000–1500 ms if streams double-start or '
+                              'reconnect immediately after opening.\n\n'
+                              'Decreasing: Lets real startup failures '
+                              'surface sooner. Use lower values if bad '
+                              'streams take too long to fail.',
+                        ),
+                        onChanged: (v) {
+                          setState(
+                            () => settings.startupGraceMs = v.round(),
+                          );
+                          updateSettings();
+                        },
+                      ),
+                      _bufferSlider(
+                        label: "Stream-ended reconnect delay (ms)",
+                        value: settings.streamCompletedDelayMs.toDouble(),
+                        min: 0,
+                        max: 10000,
+                        divisions: 20,
+                        help: (
+                          title: 'Stream-Ended Reconnect Delay (ms)',
+                          body:
+                              'Controls how long the app waits before '
+                              'reconnecting after a live stream reports '
+                              'that it ended or the provider closes the '
+                              'connection.\n\n'
+                              'Default: 2000 ms. Range: 0–10 000 ms.\n\n'
+                              'Increasing: Gives providers more time to '
+                              'rotate servers or reconnect at a segment '
+                              'boundary without an immediate full '
+                              'reconnect.\n\n'
+                              'Decreasing: Reconnects faster when the '
+                              'stream really ended. Set to 0 for '
+                              'immediate reconnect behavior.',
+                        ),
+                        onChanged: (v) {
+                          setState(
+                            () => settings.streamCompletedDelayMs = v.round(),
+                          );
+                          updateSettings();
+                        },
+                      ),
+                      // ── Demuxer / cache ──
+                      _bufferSlider(
+                        label: "Demuxer read-ahead (seconds)",
+                        value: settings.devDemuxerReadaheadSecs,
+                        min: 0.5,
+                        max: 10,
+                        divisions: 95, // 0.1 s steps
+                        decimals: 1,
+                        help: _helpDevDemuxerReadaheadSecs,
+                        onChanged: (v) {
+                          setState(
+                            () => settings.devDemuxerReadaheadSecs = v,
+                          );
+                          updateSettings();
+                        },
+                      ),
+                      _bufferSlider(
+                        label: "Network timeout (seconds)",
+                        value: settings.devNetworkTimeoutSecs.toDouble(),
+                        min: 5,
+                        max: 120,
+                        divisions: 115,
+                        help: _helpDevNetworkTimeoutSecs,
+                        onChanged: (v) {
+                          setState(
+                            () => settings.devNetworkTimeoutSecs = v.round(),
+                          );
+                          updateSettings();
+                        },
+                      ),
+                      _switchTile(
+                        label: "TLS verify",
+                        value: settings.devTlsVerify,
+                        help: _helpDevTlsVerify,
+                        onChanged: (v) {
+                          setState(() => settings.devTlsVerify = v);
+                          updateSettings();
+                        },
+                      ),
+                      // ── Sync / image quality ──
+                      _devEnumTile<VideoSyncMode>(
+                        label: "A/V sync mode",
+                        value: settings.devVideoSync,
+                        options: const [
+                          (VideoSyncMode.audio, "Audio (default)"),
+                          (VideoSyncMode.displayResample,
+                              "Display (resample)"),
+                          (VideoSyncMode.displayResampleVdrop,
+                              "Display (resample + drop)"),
+                          (VideoSyncMode.displayVdrop, "Display (drop)"),
+                          (VideoSyncMode.desync, "Display (desync)"),
+                        ],
+                        onChanged: (v) {
+                          setState(() => settings.devVideoSync = v);
+                        },
+                        help: _helpDevVideoSync,
+                      ),
+                      _bufferSlider(
+                        label: "Max video-rate change",
+                        value: settings.devVideoSyncMaxVideoChange,
+                        min: 0,
+                        max: 5,
+                        divisions: 50, // 0.1 steps
+                        decimals: 1,
+                        help: _helpDevVideoSyncMaxVideoChange,
+                        onChanged: (v) {
+                          setState(
+                            () => settings.devVideoSyncMaxVideoChange = v,
+                          );
+                          updateSettings();
+                        },
+                      ),
+                      _bufferSlider(
+                        label: "Min resample FPS",
+                        value: settings.devVideoSyncMinFps.toDouble(),
+                        min: 24,
+                        max: 120,
+                        divisions: 96,
+                        help: _helpDevVideoSyncMinFps,
+                        onChanged: (v) {
+                          setState(
+                            () => settings.devVideoSyncMinFps = v.round(),
+                          );
+                          updateSettings();
+                        },
+                      ),
+                      _devEnumTile<TscaleMode>(
+                        label: "Temporal scaler",
+                        value: settings.devTscale,
+                        options: const [
+                          (TscaleMode.nearest, "Nearest (default)"),
+                          (TscaleMode.bilinear, "Bilinear"),
+                          (TscaleMode.oversample, "Oversample"),
+                          (TscaleMode.spline36, "Spline36"),
+                          (TscaleMode.lanczos, "Lanczos"),
+                        ],
+                        onChanged: (v) {
+                          setState(() => settings.devTscale = v);
+                        },
+                        help: _helpDevTscale,
+                      ),
+                      _devEnumTile<FrameDropMode>(
+                        label: "Frame drop mode",
+                        value: settings.devFramedrop,
+                        options: const [
+                          (FrameDropMode.no, "No (never drop)"),
+                          (FrameDropMode.vo, "Video output (default)"),
+                          (FrameDropMode.decoder, "Decoder"),
+                        ],
+                        onChanged: (v) {
+                          setState(() => settings.devFramedrop = v);
+                        },
+                        help: _helpDevFramedrop,
+                      ),
+                      _switchTile(
+                        label: "Frame interpolation",
+                        value: settings.devInterpolation,
+                        help: _helpDevInterpolation,
+                        onChanged: (v) {
+                          setState(() => settings.devInterpolation = v);
+                          updateSettings();
+                        },
+                      ),
+                      _switchTile(
+                        label: "Debanding filter",
+                        value: settings.devDeband,
+                        help: _helpDevDeband,
+                        onChanged: (v) {
+                          setState(() => settings.devDeband = v);
+                          updateSettings();
+                        },
+                      ),
+                      _devEnumTile<HwdecImageFormat>(
+                        label: "HW decoder image format",
+                        value: settings.devHwdecImageFormat,
+                        options: const [
+                          (HwdecImageFormat.defaultFmt, "Auto (default)"),
+                          (HwdecImageFormat.nv12, "NV12"),
+                          (HwdecImageFormat.rgba, "RGBA"),
+                          (HwdecImageFormat.i420, "I420"),
+                        ],
+                        onChanged: (v) {
+                          setState(() => settings.devHwdecImageFormat = v);
+                        },
+                        help: _helpDevHwdecImageFormat,
+                      ),
+                      // ── Audio / network ──
+                      _bufferSlider(
+                        label: "Audio buffer (seconds)",
+                        value: settings.devAudioBufferSecs,
+                        min: 0,
+                        max: 2,
+                        divisions: 200, // 0.01 s steps
+                        decimals: 2,
+                        help: _helpDevAudioBufferSecs,
+                        onChanged: (v) {
+                          setState(
+                            () => settings.devAudioBufferSecs = v,
+                          );
+                          updateSettings();
+                        },
+                      ),
+                      _devEnumTile<AudioSpdifMode>(
+                        label: "Audio S/PDIF passthrough",
+                        value: settings.devAudioSpdif,
+                        options: const [
+                          (AudioSpdifMode.no, "Off (default)"),
+                          (AudioSpdifMode.ac3, "AC3"),
+                          (AudioSpdifMode.eac3, "E-AC3"),
+                          (AudioSpdifMode.dts, "DTS"),
+                          (AudioSpdifMode.all, "All (AC3+E-AC3+DTS)"),
+                        ],
+                        onChanged: (v) {
+                          setState(() => settings.devAudioSpdif = v);
+                        },
+                        help: _helpDevAudioSpdif,
+                      ),
                     ],
                   ),
 

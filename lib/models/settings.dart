@@ -1,4 +1,5 @@
 import 'package:open_tv/backend/device_memory.dart';
+import 'package:open_tv/models/dev_mpv_options.dart';
 import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/multi_view_layout.dart';
 import 'package:open_tv/models/multi_view_decode.dart';
@@ -183,6 +184,71 @@ class Settings {
   /// any term from [safeModeBlocklist] are excluded from all views.
   bool safeMode;
 
+  // ─── fix394: Developer / libmpv advanced tunables ────────────────────────
+  // Defaults match libmpv upstream exactly so the Developer section is a
+  // no-op until the user opts in. See lib/models/dev_mpv_options.dart for
+  // the enum definitions and value-string mappings.
+
+  /// libmpv `demuxer-readahead-secs` (seconds). Default 1.5.
+  double devDemuxerReadaheadSecs;
+
+  // fix394 review: removed devDemuxerCacheWaitSecs, devDemuxerMaxWaitKeepaliveSecs,
+  // devDemuxerBackwardBufferSecs, devDemuxerDontBufferSecs. `demuxer-cache-wait`
+  // is a yes/no flag (not a seconds value), and `demuxer-max-wait-keepalive`,
+  // `demuxer-backward-buffer-secs` and `demuxer-dont-buffer-secs` are not real
+  // libmpv properties — setting them errored on every stream open.
+
+  /// libmpv `network-timeout` (seconds). Default 30.
+  int devNetworkTimeoutSecs;
+
+  /// libmpv `tls-verify` default. Default true. Per-source `ignoreSsl`
+  /// (when the source is added with self-signed certs) still wins and
+  /// forces tls-verify=no unconditionally.
+  bool devTlsVerify;
+
+  /// libmpv `video-sync` mode. Default [VideoSyncMode.audio].
+  VideoSyncMode devVideoSync;
+
+  /// libmpv `video-sync-max-video-change` (ratio). Default 1.0.
+  double devVideoSyncMaxVideoChange;
+
+  /// libmpv `video-sync-min-fps` (Hz). Default 30. Both TV and phone
+  /// default to 30 — PAL/50Hz-specific tuning is a future fix once a
+  /// PAL device is reported with an A/V issue.
+  int devVideoSyncMinFps;
+
+  /// libmpv `tscale` (temporal scaler). Default [TscaleMode.nearest].
+  TscaleMode devTscale;
+
+  /// libmpv `framedrop` mode. Default [FrameDropMode.vo] (libmpv upstream).
+  FrameDropMode devFramedrop;
+
+  /// libmpv `interpolation` (motion-compensated frame interpolation).
+  /// Default false.
+  bool devInterpolation;
+
+  /// libmpv `deband` (debanding filter). Default false.
+  bool devDeband;
+
+  // fix394 review: removed devTargetColorspace — no `target-colorspace`
+  // libmpv property exists (the real option is the `target-colorspace-hint`
+  // yes/no flag plus `target-prim`/`target-trc`).
+
+  /// libmpv `hwdec-image-format`. Default [HwdecImageFormat.defaultFmt] —
+  /// the engine does NOT call setProperty for `defaultFmt`, letting
+  /// libmpv pick the format for the active hwdec mode.
+  HwdecImageFormat devHwdecImageFormat;
+
+  /// libmpv `audio-buffer` (seconds). Default 0.2 (libmpv upstream = 200 ms).
+  double devAudioBufferSecs;
+
+  /// libmpv `audio-spdif` (S/PDIF passthrough). Default [AudioSpdifMode.no].
+  /// Enabling passthrough on a box→TV HDMI path will SILENCE audio
+  /// unless the downstream device is an AV receiver that can decode
+  /// the passthrough codec.
+  AudioSpdifMode devAudioSpdif;
+  // ─── end fix394 Developer block ──────────────────────────────────────────
+
   Settings({
     this.defaultView = ViewType.all,
     this.refreshOnStart = false,
@@ -228,6 +294,22 @@ class Settings {
     this.contentTypeFilter = ContentTypeFilter.all,
     this.searchMethod = SearchMethod.inMemory,
     this.safeMode = false,
+
+    // fix394: Developer / libmpv advanced tunables — defaults match libmpv
+    // upstream exactly. See lib/models/dev_mpv_options.dart.
+    this.devDemuxerReadaheadSecs = 1.5,
+    this.devNetworkTimeoutSecs = 30,
+    this.devTlsVerify = true,
+    this.devVideoSync = VideoSyncMode.audio,
+    this.devVideoSyncMaxVideoChange = 1.0,
+    this.devVideoSyncMinFps = 30,
+    this.devTscale = TscaleMode.nearest,
+    this.devFramedrop = FrameDropMode.vo,
+    this.devInterpolation = false,
+    this.devDeband = false,
+    this.devHwdecImageFormat = HwdecImageFormat.defaultFmt,
+    this.devAudioBufferSecs = 0.2,
+    this.devAudioSpdif = AudioSpdifMode.no,
   });
 
   /// Returns the [MediaType] list for the current content-type filter.
@@ -354,6 +436,24 @@ class Settings {
     // Low-latency mode disables back-buffer and tightens cache; on shaky
     // providers it produces more disconnects than it prevents.
     s.lowLatency = false;
+
+    // fix394: Developer / libmpv advanced tunables — defaults match libmpv
+    // upstream exactly. The 18 new fields are identical for TV and phone
+    // (no isTV branching; PAL/50Hz is a future fix once a PAL device is
+    // reported with an A/V issue).
+    s.devDemuxerReadaheadSecs = 1.5;
+    s.devNetworkTimeoutSecs = 30;
+    s.devTlsVerify = true;
+    s.devVideoSync = VideoSyncMode.audio;
+    s.devVideoSyncMaxVideoChange = 1.0;
+    s.devVideoSyncMinFps = 30;
+    s.devTscale = TscaleMode.nearest;
+    s.devFramedrop = FrameDropMode.vo;
+    s.devInterpolation = false;
+    s.devDeband = false;
+    s.devHwdecImageFormat = HwdecImageFormat.defaultFmt;
+    s.devAudioBufferSecs = 0.2;
+    s.devAudioSpdif = AudioSpdifMode.no;
 
     return s;
   }

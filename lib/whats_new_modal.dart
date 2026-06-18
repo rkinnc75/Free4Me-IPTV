@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.34.22': [
+    'New Developer section at the bottom of Settings: advanced libmpv tunables across 4 sub-headers (Refined buffering moved from Buffering, plus Demuxer/cache, Sync/image quality, Audio/network). Defaults match libmpv upstream exactly, so the section is a no-op until you opt in. Use it for the rare case where a specific provider or device needs a non-default libmpv setting.',
+    'Live DVR is now its own folded menu between Buffering and Multi-view (was previously inside Buffering). Buffering now shows only the everyday knobs (live cache, VOD cache, pre-buffer, downmix, open timeout, buffering watchdog, max reconnect attempts).',
+  ],
   '1.34.21': [
     'Faster first load of the Live, Movies, and Series lists for setups whose sources use different sort orders (for example some A–Z and some by category). Each list now opens from an index instead of sorting the whole catalog. Ordering is unchanged.',
   ],

@@ -8,6 +8,9 @@ import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/models/channel_preserve.dart';
+import 'package:open_tv/models/dev_mpv_options.dart' show
+    VideoSyncMode, TscaleMode, FrameDropMode,
+    HwdecImageFormat, AudioSpdifMode;
 import 'package:open_tv/models/device_detector.dart';
 import 'package:open_tv/models/multi_view_layout.dart';
 import 'package:open_tv/models/settings.dart';
@@ -571,6 +574,21 @@ class SettingsIo {
         'contentTypeFilter': s.contentTypeFilter.index,
         'searchMethod': s.searchMethod.index,
         'safeMode': s.safeMode,
+
+        // fix394: Developer / libmpv advanced tunables (schema v4).
+        'devDemuxerReadaheadSecs': s.devDemuxerReadaheadSecs,
+        'devNetworkTimeoutSecs': s.devNetworkTimeoutSecs,
+        'devTlsVerify': s.devTlsVerify,
+        'devVideoSync': s.devVideoSync.toJson(),
+        'devVideoSyncMaxVideoChange': s.devVideoSyncMaxVideoChange,
+        'devVideoSyncMinFps': s.devVideoSyncMinFps,
+        'devTscale': s.devTscale.toJson(),
+        'devFramedrop': s.devFramedrop.toJson(),
+        'devInterpolation': s.devInterpolation,
+        'devDeband': s.devDeband,
+        'devHwdecImageFormat': s.devHwdecImageFormat.toJson(),
+        'devAudioBufferSecs': s.devAudioBufferSecs,
+        'devAudioSpdif': s.devAudioSpdif.toJson(),
       };
 
   static Settings _settingsFromMap(Map<String, dynamic> m) {
@@ -652,6 +670,49 @@ class SettingsIo {
           SearchMethod.inMemory;
     }
     if (m['safeMode'] is bool) s.safeMode = m['safeMode'];
+
+    // fix394: Developer / libmpv advanced tunables. Each guard is `is num`
+    // / `is bool` / `is String` — when the field is missing (older backup,
+    // schema v3) the constructor default stays in place.
+    if (m['devDemuxerReadaheadSecs'] is num) {
+      s.devDemuxerReadaheadSecs =
+          (m['devDemuxerReadaheadSecs'] as num).toDouble();
+    }
+    if (m['devNetworkTimeoutSecs'] is num) {
+      s.devNetworkTimeoutSecs =
+          (m['devNetworkTimeoutSecs'] as num).toInt();
+    }
+    if (m['devTlsVerify'] is bool) s.devTlsVerify = m['devTlsVerify'];
+    if (m['devVideoSync'] is String) {
+      s.devVideoSync = VideoSyncMode.fromJson(m['devVideoSync'] as String);
+    }
+    if (m['devVideoSyncMaxVideoChange'] is num) {
+      s.devVideoSyncMaxVideoChange =
+          (m['devVideoSyncMaxVideoChange'] as num).toDouble();
+    }
+    if (m['devVideoSyncMinFps'] is num) {
+      s.devVideoSyncMinFps = (m['devVideoSyncMinFps'] as num).toInt();
+    }
+    if (m['devTscale'] is String) {
+      s.devTscale = TscaleMode.fromJson(m['devTscale'] as String);
+    }
+    if (m['devFramedrop'] is String) {
+      s.devFramedrop = FrameDropMode.fromJson(m['devFramedrop'] as String);
+    }
+    if (m['devInterpolation'] is bool) {
+      s.devInterpolation = m['devInterpolation'];
+    }
+    if (m['devDeband'] is bool) s.devDeband = m['devDeband'];
+    if (m['devHwdecImageFormat'] is String) {
+      s.devHwdecImageFormat =
+          HwdecImageFormat.fromJson(m['devHwdecImageFormat'] as String);
+    }
+    if (m['devAudioBufferSecs'] is num) {
+      s.devAudioBufferSecs = (m['devAudioBufferSecs'] as num).toDouble();
+    }
+    if (m['devAudioSpdif'] is String) {
+      s.devAudioSpdif = AudioSpdifMode.fromJson(m['devAudioSpdif'] as String);
+    }
 
     return s;
   }
