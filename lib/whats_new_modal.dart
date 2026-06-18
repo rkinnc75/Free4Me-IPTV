@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.34.27': [
+    'Live DVR now uses the current libmpv on-disk cache setting, replacing a deprecated one that newer libmpv versions warn about and may remove. No change to DVR behavior.',
+  ],
   '1.34.26': [
     'TLS certificate verification for HTTPS streams now defaults to OFF, since many IPTV providers use self-signed certificates. You can re-enable it under Settings → Developer → TLS Verify. Existing saved preferences are unchanged.',
     'Removed a non-functional “Min resample FPS” developer tile. It mapped to a libmpv property that does not exist, so it never had any effect; existing settings are unaffected.',

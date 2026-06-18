@@ -773,7 +773,9 @@ class MpvEngine implements PlayerEngine {
         _dvrActive = true;
         await np.setProperty('force-seekable', 'yes');
         await np.setProperty('cache-on-disk', 'yes');
-        await np.setProperty('cache-dir', _dvrDir!.path);
+        // fix399: mpv renamed `cache-dir` to `demuxer-cache-dir` (the old
+        // name logs a deprecation warning and is slated for removal).
+        await np.setProperty('demuxer-cache-dir', _dvrDir!.path);
         AppLog.info('MpvEngine: DVR enabled — window=${dvrBackMB ~/ 60}min'
             ' (${dvrBackMB}MiB back buffer, dir=${_dvrDir!.path})');
       } else {
@@ -901,7 +903,7 @@ class MpvEngine implements PlayerEngine {
       final tmp = await getTemporaryDirectory();
       // fix363/MED-1: per-engine subdir so a previous engine's async
       // _cleanupDvrDir can never unlink THIS engine's in-use cache file
-      // (rapid full-screen A->Back->B both pointed cache-dir at one shared
+      // (rapid full-screen A->Back->B both pointed demuxer-cache-dir at one shared
       // free4me_dvr; A's teardown wiped B's live window). identityHashCode is
       // unique per live engine instance.
       final dir = Directory(
