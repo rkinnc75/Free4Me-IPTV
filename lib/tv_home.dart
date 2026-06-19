@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/home.dart';
+import 'package:open_tv/version_startup_tasks.dart';
 import 'package:open_tv/menu_tile.dart';
 import 'package:open_tv/models/filters.dart';
 import 'package:open_tv/models/home_manager.dart';
@@ -18,6 +19,22 @@ class TvHome extends StatefulWidget {
 }
 
 class _TvHomeState extends State<TvHome> {
+  @override
+  void initState() {
+    super.initState();
+    // fix403: the version-startup tasks (log/metrics rotation + What's New)
+    // live in Home(firstLaunch:true) — the phone entry. The TV entry is TvHome
+    // (it pushes Home with firstLaunch:false), so on a TV the log never cleared
+    // on a version change and release notes never showed. Run them here for the
+    // TV root (not nested sub-screens) once the first frame has a Navigator.
+    // Idempotent — a no-op once done for the current version.
+    if (!widget.nested) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) runVersionStartupTasks(context);
+      });
+    }
+  }
+
   void _navigateAllMediaTypes() {
     final types = SettingsService.cached?.getMediaTypes() ??
         [

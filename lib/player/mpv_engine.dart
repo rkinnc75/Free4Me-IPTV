@@ -12,6 +12,7 @@ import 'package:open_tv/models/multi_view_decode.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/player/hwdec_routing.dart';
+import 'package:open_tv/player/hwdec_decode_state.dart';
 import 'package:open_tv/player/player_engine.dart';
 
 /// libmpv-backed engine via media_kit.
@@ -544,8 +545,14 @@ class MpvEngine implements PlayerEngine {
         g('decoder-frame-drop-count'), // 10 decoder drops
         g('hwdec'), //         11 what we requested
       ]);
+      // fix403: annotate the raw hwdec-current with a settled/transient label
+      // so a first-frame "no" (mpv decodes the first frame in software while
+      // mediacodec spins up) cannot be misread as a permanent software fallback.
+      final decodeState = hwdecDecodeState(
+          tag: tag, req: results[11], current: results[0]);
       AppLog.info('MpvEngine: DECODE[$tag] eid=${identityHashCode(this)}'
           ' hwdec-req="${results[11]}" hwdec-current="${results[0]}"'
+          ' decodeState="$decodeState"'
           ' codec="${results[1]}" fmt="${results[2]}"'
           ' decoded=${results[3]}x${results[4]} display=${results[5]}x${results[6]}'
           ' vo="${results[7]}" vfFps="${results[8]}"'

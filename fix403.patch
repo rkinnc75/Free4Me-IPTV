@@ -1,0 +1,234 @@
+diff --git a/lib/player/hwdec_decode_state.dart b/lib/player/hwdec_decode_state.dart
+new file mode 100644
+index 0000000..b2b2dd5
+--- /dev/null
++++ b/lib/player/hwdec_decode_state.dart
+@@ -0,0 +1,36 @@
++/// fix403: a human-readable decode-state label for the `DECODE[...]` probe.
++///
++/// The probe samples `hwdec-current` directly. At the first decoded frame the
++/// hardware decoder may still be initializing — mpv decodes the first frame(s)
++/// in software while mediacodec spins up, so `hwdec-current` reads "no" (or "")
++/// *transiently* even when hardware decode is about to (and does) engage. Only
++/// the settled `[+3s]` sample is authoritative.
++///
++/// This labels the sample so a first-frame "no" cannot be misread as a
++/// permanent software fallback (which is exactly what happened during the
++/// fix402 investigation). Returns one of:
++///   • "hardware"    — a mediacodec decoder is active
++///   • "software"    — settled on software (a "no" at/after the [+3s] sample,
++///                     or a "no" when software was actually requested)
++///   • "initializing(transient; trust [+3s])" — a "no" at an early probe while
++///                     a hardware decoder was requested (do not trust yet)
++///   • "initializing" — no value yet
++///   • "unknown"     — the property read failed
++String hwdecDecodeState({
++  required String tag,
++  required String req,
++  required String current,
++}) {
++  const hw = {'mediacodec', 'mediacodec-copy', 'mediacodec-ndk'};
++  if (current == '?') return 'unknown';
++  if (current.isEmpty) return 'initializing';
++  if (hw.contains(current)) return 'hardware';
++  if (current == 'no') {
++    final settled = tag.contains('+3s');
++    if (hw.contains(req) && !settled) {
++      return 'initializing(transient; trust [+3s])';
++    }
++    return 'software';
++  }
++  return current; // some other hwdec (vaapi, vdpau, …)
++}
+diff --git a/lib/player/mpv_engine.dart b/lib/player/mpv_engine.dart
+index ef747ba..8c516d7 100644
+--- a/lib/player/mpv_engine.dart
++++ b/lib/player/mpv_engine.dart
+@@ -12,6 +12,7 @@ import 'package:open_tv/models/multi_view_decode.dart';
+ import 'package:path_provider/path_provider.dart';
+ import 'package:open_tv/models/settings.dart';
+ import 'package:open_tv/player/hwdec_routing.dart';
++import 'package:open_tv/player/hwdec_decode_state.dart';
+ import 'package:open_tv/player/player_engine.dart';
+ 
+ /// libmpv-backed engine via media_kit.
+@@ -544,8 +545,14 @@ class MpvEngine implements PlayerEngine {
+         g('decoder-frame-drop-count'), // 10 decoder drops
+         g('hwdec'), //         11 what we requested
+       ]);
++      // fix403: annotate the raw hwdec-current with a settled/transient label
++      // so a first-frame "no" (mpv decodes the first frame in software while
++      // mediacodec spins up) cannot be misread as a permanent software fallback.
++      final decodeState = hwdecDecodeState(
++          tag: tag, req: results[11], current: results[0]);
+       AppLog.info('MpvEngine: DECODE[$tag] eid=${identityHashCode(this)}'
+           ' hwdec-req="${results[11]}" hwdec-current="${results[0]}"'
++          ' decodeState="$decodeState"'
+           ' codec="${results[1]}" fmt="${results[2]}"'
+           ' decoded=${results[3]}x${results[4]} display=${results[5]}x${results[6]}'
+           ' vo="${results[7]}" vfFps="${results[8]}"'
+diff --git a/lib/tv_home.dart b/lib/tv_home.dart
+index c4ceabe..d94d04a 100644
+--- a/lib/tv_home.dart
++++ b/lib/tv_home.dart
+@@ -1,6 +1,7 @@
+ import 'package:flutter/material.dart';
+ import 'package:open_tv/backend/settings_service.dart';
+ import 'package:open_tv/home.dart';
++import 'package:open_tv/version_startup_tasks.dart';
+ import 'package:open_tv/menu_tile.dart';
+ import 'package:open_tv/models/filters.dart';
+ import 'package:open_tv/models/home_manager.dart';
+@@ -18,6 +19,22 @@ class TvHome extends StatefulWidget {
+ }
+ 
+ class _TvHomeState extends State<TvHome> {
++  @override
++  void initState() {
++    super.initState();
++    // fix403: the version-startup tasks (log/metrics rotation + What's New)
++    // live in Home(firstLaunch:true) — the phone entry. The TV entry is TvHome
++    // (it pushes Home with firstLaunch:false), so on a TV the log never cleared
++    // on a version change and release notes never showed. Run them here for the
++    // TV root (not nested sub-screens) once the first frame has a Navigator.
++    // Idempotent — a no-op once done for the current version.
++    if (!widget.nested) {
++      WidgetsBinding.instance.addPostFrameCallback((_) {
++        if (mounted) runVersionStartupTasks(context);
++      });
++    }
++  }
++
+   void _navigateAllMediaTypes() {
+     final types = SettingsService.cached?.getMediaTypes() ??
+         [
+diff --git a/lib/version_startup_tasks.dart b/lib/version_startup_tasks.dart
+new file mode 100644
+index 0000000..79c22f1
+--- /dev/null
++++ b/lib/version_startup_tasks.dart
+@@ -0,0 +1,29 @@
++import 'package:flutter/material.dart';
++import 'package:open_tv/backend/settings_service.dart';
++import 'package:open_tv/whats_new_modal.dart';
++
++/// fix403: the once-per-version startup tasks — rotate (clear) the debug log and
++/// playback metrics on a version change, then show the What's New dialog.
++///
++/// These previously lived ONLY inside `Home(firstLaunch: true)` (the phone
++/// entry constructed in main.dart). The TV entry routes through `TvHome`, which
++/// pushes `Home(firstLaunch: false)`, so on a TV NEITHER task ever ran: the
++/// debug log never cleared across versions (it just accumulated every build's
++/// sessions) and release notes never appeared after an update. This shared
++/// helper lets both entry points run the same tasks.
++///
++/// Both steps are idempotent — gated on `lastLogClearedVersion` /
++/// `lastSeenVersion` inside [SettingsService] — so calling this on every entry
++/// is a cheap no-op once it has run for the current version. The What's New
++/// modal marks `lastSeenVersion` itself when it closes (see whats_new_modal),
++/// so this helper does not need to.
++Future<void> runVersionStartupTasks(BuildContext context) async {
++  await SettingsService.maybeRotateLogOnVersionChange();
++  final version = await SettingsService.shouldShowWhatsNew();
++  if (version == null) return;
++  if (!context.mounted) return;
++  await showDialog(
++    context: context,
++    builder: (context) => WhatsNewModal(version: version),
++  );
++}
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index b27107c..543afa4 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.35.2': [
++    'Android TV fix: the debug log now clears on a version change and the What\'s New screen now appears after an update on TV devices. Previously both only happened on phones, so TV logs accumulated every version and release notes never showed.',
++    'Diagnostics: playback logs now label the decoder state (hardware / software / initializing) so a normal first-frame software step while hardware decode spins up is no longer mistaken for a hardware-decode failure.',
++  ],
+   '1.35.1': [
+     'Hardware video decoding now engages on phones. Previously the phone path requested a surface decode mode that silently fell back to software (using more CPU and battery); it now uses hardware decode with a copy step, the same proven path as Android TV devices.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 7363563..10fae79 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.35.1+402
++version: 1.35.2+403
+ 
+ environment:
+   sdk: ^3.10.7
+diff --git a/test/hwdec_decode_state_test.dart b/test/hwdec_decode_state_test.dart
+new file mode 100644
+index 0000000..f6c2bad
+--- /dev/null
++++ b/test/hwdec_decode_state_test.dart
+@@ -0,0 +1,61 @@
++// fix403: the DECODE probe labels hwdec-current so a transient first-frame "no"
++// (mpv decodes the first frame in software while mediacodec spins up) can't be
++// misread as a permanent software fallback — the error made during fix402.
++import 'package:flutter_test/flutter_test.dart';
++import 'package:open_tv/player/hwdec_decode_state.dart';
++
++void main() {
++  group('fix403 hwdecDecodeState', () {
++    test('active hardware decoder → hardware', () {
++      expect(
++        hwdecDecodeState(tag: '+3s', req: 'mediacodec', current: 'mediacodec'),
++        'hardware',
++      );
++      expect(
++        hwdecDecodeState(
++            tag: 'first-frame',
++            req: 'mediacodec-copy',
++            current: 'mediacodec-copy'),
++        'hardware',
++      );
++    });
++
++    test('first-frame "no" with HW requested → transient, not software', () {
++      expect(
++        hwdecDecodeState(
++            tag: 'first-frame', req: 'mediacodec', current: 'no'),
++        'initializing(transient; trust [+3s])',
++      );
++      expect(
++        hwdecDecodeState(
++            tag: 'post-open', req: 'mediacodec-copy', current: 'no'),
++        'initializing(transient; trust [+3s])',
++      );
++    });
++
++    test('settled "no" at [+3s] with HW requested → real software fallback', () {
++      expect(
++        hwdecDecodeState(tag: '+3s', req: 'mediacodec', current: 'no'),
++        'software',
++      );
++    });
++
++    test('"no" when software was requested → software at any probe', () {
++      expect(
++        hwdecDecodeState(tag: 'first-frame', req: 'no', current: 'no'),
++        'software',
++      );
++    });
++
++    test('empty/unknown samples are labelled, not mistaken for software', () {
++      expect(
++        hwdecDecodeState(tag: 'post-open', req: 'mediacodec', current: ''),
++        'initializing',
++      );
++      expect(
++        hwdecDecodeState(tag: 'first-frame', req: 'mediacodec', current: '?'),
++        'unknown',
++      );
++    });
++  });
++}

@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.35.2': [
+    'Android TV fix: the debug log now clears on a version change and the What\'s New screen now appears after an update on TV devices. Previously both only happened on phones, so TV logs accumulated every version and release notes never showed.',
+    'Diagnostics: playback logs now label the decoder state (hardware / software / initializing) so a normal first-frame software step while hardware decode spins up is no longer mistaken for a hardware-decode failure.',
+  ],
   '1.35.1': [
     'Hardware video decoding now engages on phones. Previously the phone path requested a surface decode mode that silently fell back to software (using more CPU and battery); it now uses hardware decode with a copy step, the same proven path as Android TV devices.',
   ],
