@@ -1,8 +1,8 @@
 {
-  "latest": "1.35.3",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.35.3",
+  "latest": "1.35.4",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.35.4",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Player: the aspect-ratio icon is now a 3-way toggle \u2014 Fit (letterbox, default), Stretch to fill, and Fill with crop. Tap to cycle. Each mode has a distinct icon and tooltip so you can tell which one is active at a glance. The setting resets to Fit when the app restarts.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.35.3/Free4Me-IPTV-1.35.3-arm64.apk"
+  "releaseNotes": "\u2022 Player: the aspect-ratio button still cycles Fit / Stretch / Crop on each tap, but the icon stays the same \u2014 the 1.35.3 attempt to swap icons and tooltips per mode was defeated by media_kit's controls theme caching the button bar at mount. The 3-state cycle still works (the video frame changes immediately on tap); only the per-mode icon and tooltip were reverted. You can tell which mode is active by looking at the video frame.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.35.4/Free4Me-IPTV-1.35.4-arm64.apk"
 }
