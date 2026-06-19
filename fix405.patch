@@ -1,0 +1,63 @@
+diff --git a/lib/player.dart b/lib/player.dart
+index 5d37d54..480f8c8 100644
+--- a/lib/player.dart
++++ b/lib/player.dart
+@@ -1515,15 +1515,25 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+           const SizedBox(width: 20),
+         ],
+         IconButton(
+-          // fix404: icon + tooltip swap with the current ZoomMode so the
+-          // user can tell which of fit/stretch/crop is active without
+-          // reading text. Tap cycles fit → stretch → crop → fit.
+-          icon: Icon(
+-            _zoomMode.icon,
++          // fix405: revert to a static icon + generic tooltip. fix404
++          // tried to swap icon + tooltip with the current ZoomMode so
++          // the user could tell which of fit/stretch/crop was active,
++          // but media_kit's MaterialVideoControlsTheme reads the
++          // bottomButtonBar ONCE at mount and does not re-read it on
++          // parent rebuilds (same class of bug fix367 hit on
++          // primaryButtonBar for DVR). The icon was frozen on whatever
++          // was captured at first mount, regardless of subsequent
++          // _zoomMode changes. The 3-state cycle itself works — the
++          // engine's setZoomMode call updates the video frame; only
++          // the button affordance was lying. Revert to a const icon
++          // and a generic "Aspect ratio" tooltip; the user discovers
++          // the active mode by the visible frame change on tap.
++          icon: const Icon(
++            Icons.aspect_ratio_outlined,
+             color: Colors.white,
+             size: 32,
+           ),
+-          tooltip: _zoomMode.tooltip,
++          tooltip: 'Aspect ratio',
+           onPressed: toggleZoom,
+         ),
+         // Mini-player button — hidden when multi-view is active.
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 15c499b..29cd807 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.35.4': [
++    'Player: the aspect-ratio button still cycles Fit / Stretch / Crop on each tap, but the icon stays the same — the 1.35.3 attempt to swap icons and tooltips per mode was defeated by media_kit\'s controls theme caching the button bar at mount. The 3-state cycle still works (the video frame changes immediately on tap); only the per-mode icon and tooltip were reverted. You can tell which mode is active by looking at the video frame.',
++  ],
+   '1.35.3': [
+     'Player: the aspect-ratio icon is now a 3-way toggle — Fit (letterbox, default), Stretch to fill, and Fill with crop. Tap to cycle. Each mode has a distinct icon and tooltip so you can tell which one is active at a glance. The setting resets to Fit when the app restarts.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index fa8bb3b..7687873 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.35.3+404
++version: 1.35.4+405
+ 
+ environment:
+   sdk: ^3.10.7

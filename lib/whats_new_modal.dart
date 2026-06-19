@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.35.4': [
+    'Player: the aspect-ratio button still cycles Fit / Stretch / Crop on each tap, but the icon stays the same — the 1.35.3 attempt to swap icons and tooltips per mode was defeated by media_kit\'s controls theme caching the button bar at mount. The 3-state cycle still works (the video frame changes immediately on tap); only the per-mode icon and tooltip were reverted. You can tell which mode is active by looking at the video frame.',
+  ],
   '1.35.3': [
     'Player: the aspect-ratio icon is now a 3-way toggle — Fit (letterbox, default), Stretch to fill, and Fill with crop. Tap to cycle. Each mode has a distinct icon and tooltip so you can tell which one is active at a glance. The setting resets to Fit when the app restarts.',
   ],

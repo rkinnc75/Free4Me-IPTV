@@ -1515,15 +1515,25 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
           const SizedBox(width: 20),
         ],
         IconButton(
-          // fix404: icon + tooltip swap with the current ZoomMode so the
-          // user can tell which of fit/stretch/crop is active without
-          // reading text. Tap cycles fit → stretch → crop → fit.
-          icon: Icon(
-            _zoomMode.icon,
+          // fix405: revert to a static icon + generic tooltip. fix404
+          // tried to swap icon + tooltip with the current ZoomMode so
+          // the user could tell which of fit/stretch/crop was active,
+          // but media_kit's MaterialVideoControlsTheme reads the
+          // bottomButtonBar ONCE at mount and does not re-read it on
+          // parent rebuilds (same class of bug fix367 hit on
+          // primaryButtonBar for DVR). The icon was frozen on whatever
+          // was captured at first mount, regardless of subsequent
+          // _zoomMode changes. The 3-state cycle itself works — the
+          // engine's setZoomMode call updates the video frame; only
+          // the button affordance was lying. Revert to a const icon
+          // and a generic "Aspect ratio" tooltip; the user discovers
+          // the active mode by the visible frame change on tap.
+          icon: const Icon(
+            Icons.aspect_ratio_outlined,
             color: Colors.white,
             size: 32,
           ),
-          tooltip: _zoomMode.tooltip,
+          tooltip: 'Aspect ratio',
           onPressed: toggleZoom,
         ),
         // Mini-player button — hidden when multi-view is active.
