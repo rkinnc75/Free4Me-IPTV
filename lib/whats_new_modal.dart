@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.35.5': [
+    'The on-screen playback controls now sit lower on the screen instead of dead-centre, so they cover less of the picture.',
+    'When EPG data is available, the channel\'s current programme now shows in the top bar next to the channel name.',
+  ],
   '1.35.4': [
     'Player: the aspect-ratio button still cycles Fit / Stretch / Crop on each tap, but the icon stays the same — the 1.35.3 attempt to swap icons and tooltips per mode was defeated by media_kit\'s controls theme caching the button bar at mount. The 3-state cycle still works (the video frame changes immediately on tap); only the per-mode icon and tooltip were reverted. You can tell which mode is active by looking at the video frame.',
   ],
