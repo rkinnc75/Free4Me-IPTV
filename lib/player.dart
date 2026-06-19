@@ -15,6 +15,7 @@ import 'package:open_tv/models/id_data.dart';
 import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/multi_view_layout.dart';
 import 'package:open_tv/models/settings.dart';
+import 'package:open_tv/models/zoom_mode.dart';
 import 'package:open_tv/models/source.dart';
 import 'package:open_tv/player/cast_controller.dart';
 import 'package:open_tv/player/overlay_player_controller.dart';
@@ -112,7 +113,11 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   // during exit teardown.
   bool _videoDetached = false;
   Orientation? _lastOrientation; // fix136: rotation logging
-  bool fill = false;
+  // fix404: video-fit mode for the player surface (replaces the pre-fix404
+  // `bool fill` two-state toggle). Cycles fit → stretch → crop on each tap
+  // of the aspect-ratio icon. Session-only — resets to fit on app restart.
+  // Multi-view cells inherit this mode via the engine (no per-cell override).
+  ZoomMode _zoomMode = ZoomMode.fit;
   List<StreamSubscription<dynamic>> subscriptions = [];
 
   // fix397: channel +/- ("surf"). To avoid touching the playback state machine
@@ -1025,17 +1030,18 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     return KeyEventResult.ignored;
   }
 
+  /// fix404: cycle through fit → stretch → crop → fit on each tap. The
+  /// pre-fix404 implementation toggled between native-aspect and
+  /// device-aspect via [MpvEngine.updateAspectRatio]; fix404 moves the
+  /// decision to [MpvEngine.setZoomMode] (BoxFit on the Video widget),
+  /// which gives us a true third state ("fill with crop" via
+  /// BoxFit.cover) without the limits of an aspect-ratio override.
   void toggleZoom() {
     final engine = _engine;
     if (engine is! MpvEngine) return;
-    final mpv = engine;
-    final w = mpv.videoWidth;
-    final h = mpv.videoHeight;
-    if (w == null || h == null || w == 0 || h == 0) return;
-    final videoAspectRatio = w / h;
-    final deviceAspectRatio = MediaQuery.of(context).size.aspectRatio;
-    mpv.updateAspectRatio(fill ? videoAspectRatio : deviceAspectRatio);
-    setState(() => fill = !fill);
+    final next = _zoomMode.next();
+    setState(() => _zoomMode = next);
+    engine.setZoomMode(next.boxFit);
   }
 
 
@@ -1509,11 +1515,15 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
           const SizedBox(width: 20),
         ],
         IconButton(
-          icon: const Icon(
-            Icons.aspect_ratio_outlined,
+          // fix404: icon + tooltip swap with the current ZoomMode so the
+          // user can tell which of fit/stretch/crop is active without
+          // reading text. Tap cycles fit → stretch → crop → fit.
+          icon: Icon(
+            _zoomMode.icon,
             color: Colors.white,
             size: 32,
           ),
+          tooltip: _zoomMode.tooltip,
           onPressed: toggleZoom,
         ),
         // Mini-player button — hidden when multi-view is active.

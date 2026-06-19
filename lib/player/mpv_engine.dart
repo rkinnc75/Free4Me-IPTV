@@ -210,6 +210,10 @@ class MpvEngine implements PlayerEngine {
     return mkvideo.Video(
       key: _videoKey,
       controller: _controller,
+      // fix404: BoxFit routes the texture through media_kit's FittedBox.
+      // contain = letterbox (fit), fill = stretch (stretch), cover = crop.
+      // The Player toggles this via [setZoomMode].
+      fit: _zoomFit,
     );
   }
 
@@ -640,8 +644,27 @@ class MpvEngine implements PlayerEngine {
   int? get videoWidth => _player.state.width;
   int? get videoHeight => _player.state.height;
 
+  // fix404: current BoxFit for the Video widget. Default BoxFit.contain
+  // (the media_kit default) preserves the pre-fix404 two-state toggle
+  // (where `fill=false` → letterbox). The Player state drives this via
+  // [setZoomMode]; [buildVideoView] reads it on each rebuild.
+  BoxFit _zoomFit = BoxFit.contain;
+  BoxFit get zoomFit => _zoomFit;
+
   void updateAspectRatio(double ratio) {
+    // fix404: kept for backwards compatibility (Player previously called
+    // this to flip between videoAspect / deviceAspect). The fix404 toggle
+    // uses [setZoomMode] directly; aspect-ratio override is no longer
+    // needed because BoxFit on the Video widget fully controls render.
     _videoKey.currentState?.update(aspectRatio: ratio);
+  }
+
+  /// fix404: set the render fit for the Video widget. Rebuilds the
+  /// surface so the new BoxFit takes effect on the next frame.
+  void setZoomMode(BoxFit fit) {
+    if (_zoomFit == fit) return;
+    _zoomFit = fit;
+    _videoKey.currentState?.update(fit: fit);
   }
 
 
