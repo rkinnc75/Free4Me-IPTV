@@ -1,8 +1,8 @@
 {
-  "latest": "1.35.8",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.35.8",
+  "latest": "1.35.9",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.35.9",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Added a developer setting to control how long the on-screen controls stay visible before they auto-hide (0\u201330s; 0 keeps them up until you tap to dismiss).",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.35.8/Free4Me-IPTV-1.35.8-arm64.apk"
+  "releaseNotes": "\u2022 Diagnostic build: changes how the video picture is drawn on screen, to fix a black screen seen on NVIDIA Shield. If you see any display problems on your device after this update, please report them.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.35.9/Free4Me-IPTV-1.35.9-arm64.apk"
 }
