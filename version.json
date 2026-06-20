@@ -1,8 +1,8 @@
 {
-  "latest": "1.35.6",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.35.6",
+  "latest": "1.35.7",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.35.7",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fixed the playback controls not responding to taps after the previous update. The on-screen controls return to the centre of the screen, where they work reliably. (The current EPG programme still shows in the top bar.)",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.35.6/Free4Me-IPTV-1.35.6-arm64.apk"
+  "releaseNotes": "\u2022 The on-screen playback controls are now a single row along the bottom of the screen instead of across the middle, so they cover much less of the picture. Rewind, forward and 'back to live' appear there only while DVR is active.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.35.7/Free4Me-IPTV-1.35.7-arm64.apk"
 }
