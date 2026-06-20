@@ -1459,6 +1459,11 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   MaterialVideoControlsThemeData _mpvThemeData(BuildContext context) {
     return MaterialVideoControlsThemeData(
       speedUpOnLongPress: false,
+      // fix409: control-bar auto-hide timeout (dev setting). 0 = keep until
+      // dismissed (a far-future duration so media_kit never auto-hides).
+      controlsHoverDuration: widget.settings.devControlsHideSecs <= 0
+          ? const Duration(days: 1)
+          : Duration(seconds: widget.settings.devControlsHideSecs),
       seekOnDoubleTap: widget.channel.mediaType != MediaType.livestream,
       displaySeekBar: widget.channel.mediaType != MediaType.livestream,
       seekBarMargin: const EdgeInsets.only(bottom: 60),

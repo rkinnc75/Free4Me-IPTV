@@ -15,6 +15,10 @@ class SettingBounds {
   static const int liveCacheMin = 5;
   static const int liveCacheMax = 60;
 
+  // devControlsHideSecs — slider min 0 (0 = keep until dismissed), max 30.
+  static const int controlsHideMin = 0;
+  static const int controlsHideMax = 30;
+
   // startupGraceMs — slider min 100, max 3000.
   static const int startupGraceMin = 100;
   static const int startupGraceMax = 3000;

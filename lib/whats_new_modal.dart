@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.35.8': [
+    'Added a developer setting to control how long the on-screen controls stay visible before they auto-hide (0–30s; 0 keeps them up until you tap to dismiss).',
+  ],
   '1.35.7': [
     'The on-screen playback controls are now a single row along the bottom of the screen instead of across the middle, so they cover much less of the picture. Rewind, forward and \'back to live\' appear there only while DVR is active.',
   ],

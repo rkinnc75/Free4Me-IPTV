@@ -182,6 +182,15 @@ const _helpPreWarm = (
       'Playback may take slightly longer to begin.',
 );
 
+const _helpDevControlsHideSecs = (
+  title: 'Controls auto-hide (seconds)',
+  body:
+      'How long the on-screen controls (top bar + bottom control row) stay '
+      'visible after you tap, before they fade away.\n\n'
+      'Default: 3 s. Range: 0–30 s.\n\n'
+      'Set to 0 to keep the controls up until you tap to dismiss them.',
+);
+
 const _helpLiveCacheSecs = (
   title: 'Livestream Cache (seconds)',
   body:
@@ -3818,6 +3827,20 @@ class _SettingsState extends State<SettingsView> {
                         onChanged: (v) {
                           setState(
                             () => settings.devNetworkTimeoutSecs = v.round(),
+                          );
+                          updateSettings();
+                        },
+                      ),
+                      _bufferSlider(
+                        label: "Controls auto-hide (seconds, 0 = stay)",
+                        value: settings.devControlsHideSecs.toDouble(),
+                        min: 0,
+                        max: 30,
+                        divisions: 30,
+                        help: _helpDevControlsHideSecs,
+                        onChanged: (v) {
+                          setState(
+                            () => settings.devControlsHideSecs = v.round(),
                           );
                           updateSettings();
                         },

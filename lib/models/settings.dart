@@ -238,6 +238,11 @@ class Settings {
   /// libmpv `audio-buffer` (seconds). Default 0.2 (libmpv upstream = 200 ms).
   double devAudioBufferSecs;
 
+  /// fix409: seconds the player's top + bottom control bars stay visible after
+  /// a tap before auto-hiding (media_kit controlsHoverDuration). 0 = keep until
+  /// dismissed. Default 3 (media_kit's stock value).
+  int devControlsHideSecs;
+
   /// libmpv `audio-spdif` (S/PDIF passthrough). Default [AudioSpdifMode.no].
   /// Enabling passthrough on a box→TV HDMI path will SILENCE audio
   /// unless the downstream device is an AV receiver that can decode
@@ -304,6 +309,7 @@ class Settings {
     this.devDeband = false,
     this.devHwdecImageFormat = HwdecImageFormat.defaultFmt,
     this.devAudioBufferSecs = 0.2,
+    this.devControlsHideSecs = 3,
     this.devAudioSpdif = AudioSpdifMode.no,
   });
 
@@ -447,6 +453,7 @@ class Settings {
     s.devDeband = false;
     s.devHwdecImageFormat = HwdecImageFormat.defaultFmt;
     s.devAudioBufferSecs = 0.2;
+    s.devControlsHideSecs = 3;
     s.devAudioSpdif = AudioSpdifMode.no;
 
     return s;

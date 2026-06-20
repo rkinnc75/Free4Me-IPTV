@@ -86,6 +86,7 @@ const devInterpolationProp = "devInterpolation";
 const devDebandProp = "devDeband";
 const devHwdecImageFormatProp = "devHwdecImageFormat";
 const devAudioBufferSecsProp = "devAudioBufferSecs";
+const devControlsHideSecsProp = "devControlsHideSecs";
 const devAudioSpdifProp = "devAudioSpdif";
 
 class SettingsService {
@@ -324,6 +325,10 @@ class SettingsService {
     if (dabs != null) {
       settings.devAudioBufferSecs = double.tryParse(dabs) ?? 0.0;
     }
+    final dchs = settingsMap[devControlsHideSecsProp];
+    if (dchs != null) {
+      settings.devControlsHideSecs = int.tryParse(dchs) ?? 3;
+    }
     final dasp = settingsMap[devAudioSpdifProp];
     if (dasp != null) {
       settings.devAudioSpdif = AudioSpdifMode.fromJson(dasp);
@@ -441,6 +446,8 @@ class SettingsService {
         settings.devHwdecImageFormat.toJson();
     settingsMap[devAudioBufferSecsProp] =
         settings.devAudioBufferSecs.toString();
+    settingsMap[devControlsHideSecsProp] =
+        settings.devControlsHideSecs.toString();
     settingsMap[devAudioSpdifProp] = settings.devAudioSpdif.toJson();
 
     await Sql.updateSettings(settingsMap);
