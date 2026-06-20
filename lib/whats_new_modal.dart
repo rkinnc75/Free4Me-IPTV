@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.35.6': [
+    'Fixed the playback controls not responding to taps after the previous update. The on-screen controls return to the centre of the screen, where they work reliably. (The current EPG programme still shows in the top bar.)',
+  ],
   '1.35.5': [
     'The on-screen playback controls now sit lower on the screen instead of dead-centre, so they cover less of the picture.',
     'When EPG data is available, the channel\'s current programme now shows in the top bar next to the channel name.',

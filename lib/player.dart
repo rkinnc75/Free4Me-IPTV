@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:open_tv/backend/app_logger.dart';
-import 'package:open_tv/player/controls_offset.dart';
 import 'package:open_tv/widgets/player_epg_now_label.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/channel_tile.dart';
@@ -1414,19 +1413,6 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   /// the bottom icon row. media_kit hard-centres it with no theme knob, so each
   /// button is nudged with a Transform.translate; Spacers are left untouched so
   /// the horizontal flex layout is preserved.
-  List<Widget> _loweredBar(List<Widget> bar, BuildContext context) {
-    final dy = loweredPrimaryBarOffset(
-      height: MediaQuery.of(context).size.height,
-      isLive: widget.channel.mediaType == MediaType.livestream,
-    );
-    if (dy <= 0) return bar;
-    return bar
-        .map((w) => w is Spacer
-            ? w
-            : Transform.translate(offset: Offset(0, dy), child: w))
-        .toList();
-  }
-
   MaterialVideoControlsThemeData _mpvThemeData(BuildContext context) {
     return MaterialVideoControlsThemeData(
       speedUpOnLongPress: false,
@@ -1443,8 +1429,7 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
       // they are playlist controls and do nothing on a single live stream.
       // VOD keeps the package default. A 300s DVR-to-disk buffer (which would
       // make live seeking real) is deferred as a future feature.
-      primaryButtonBar: _loweredBar(
-          widget.channel.mediaType == MediaType.livestream
+      primaryButtonBar: widget.channel.mediaType == MediaType.livestream
           ? (_engine.dvrActive
               // fix360 (re-applied fix364): DVR active -> full transport row.
               // fix397: + channel ▲/▼ at the edges when a launching list exists.
@@ -1493,8 +1478,6 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
               MaterialSkipNextButton(),
               Spacer(flex: 2),
             ],
-          context,
-        ),
         topButtonBar: [
         IconButton(
           onPressed: onExit,

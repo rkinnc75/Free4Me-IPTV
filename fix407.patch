@@ -1,0 +1,151 @@
+diff --git a/lib/player.dart b/lib/player.dart
+index cd0c15e..5416a5c 100644
+--- a/lib/player.dart
++++ b/lib/player.dart
+@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
+ import 'package:flutter/services.dart';
+ import 'package:media_kit_video/media_kit_video.dart';
+ import 'package:open_tv/backend/app_logger.dart';
+-import 'package:open_tv/player/controls_offset.dart';
+ import 'package:open_tv/widgets/player_epg_now_label.dart';
+ import 'package:open_tv/backend/sql.dart';
+ import 'package:open_tv/channel_tile.dart';
+@@ -1414,19 +1413,6 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+   /// the bottom icon row. media_kit hard-centres it with no theme knob, so each
+   /// button is nudged with a Transform.translate; Spacers are left untouched so
+   /// the horizontal flex layout is preserved.
+-  List<Widget> _loweredBar(List<Widget> bar, BuildContext context) {
+-    final dy = loweredPrimaryBarOffset(
+-      height: MediaQuery.of(context).size.height,
+-      isLive: widget.channel.mediaType == MediaType.livestream,
+-    );
+-    if (dy <= 0) return bar;
+-    return bar
+-        .map((w) => w is Spacer
+-            ? w
+-            : Transform.translate(offset: Offset(0, dy), child: w))
+-        .toList();
+-  }
+-
+   MaterialVideoControlsThemeData _mpvThemeData(BuildContext context) {
+     return MaterialVideoControlsThemeData(
+       speedUpOnLongPress: false,
+@@ -1443,8 +1429,7 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+       // they are playlist controls and do nothing on a single live stream.
+       // VOD keeps the package default. A 300s DVR-to-disk buffer (which would
+       // make live seeking real) is deferred as a future feature.
+-      primaryButtonBar: _loweredBar(
+-          widget.channel.mediaType == MediaType.livestream
++      primaryButtonBar: widget.channel.mediaType == MediaType.livestream
+           ? (_engine.dvrActive
+               // fix360 (re-applied fix364): DVR active -> full transport row.
+               // fix397: + channel ▲/▼ at the edges when a launching list exists.
+@@ -1493,8 +1478,6 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+               MaterialSkipNextButton(),
+               Spacer(flex: 2),
+             ],
+-          context,
+-        ),
+         topButtonBar: [
+         IconButton(
+           onPressed: onExit,
+diff --git a/lib/player/controls_offset.dart b/lib/player/controls_offset.dart
+deleted file mode 100644
+index 462eaf6..0000000
+--- a/lib/player/controls_offset.dart
++++ /dev/null
+@@ -1,28 +0,0 @@
+-/// fix406: how far DOWN to translate the single-cell centre control row
+-/// (media_kit's `primaryButtonBar`) from its hard-coded vertical centre, so it
+-/// sits just above the bottom icon row without colliding.
+-///
+-/// media_kit centres `primaryButtonBar` in the gap between the top bar and the
+-/// bottom bar (`Expanded` → `Center`) and exposes no knob for it, so the row is
+-/// shifted with a `Transform.translate`. This computes that shift:
+-///   • a formula that lands the row just above the bottom controls on phones
+-///     (the common case), plus
+-///   • a safe cap (≈⅓ of the height) so it can never overshoot into the bottom
+-///     row on tall screens (TVs), and a `>= 0` floor so it never moves up.
+-///
+-/// `isLive` widens the bottom reserve on VOD to also clear the seek bar.
+-double loweredPrimaryBarOffset({
+-  required double height,
+-  required bool isLive,
+-}) {
+-  const topRegion = 56.0; // top button bar + margin
+-  final bottomRegion = isLive
+-      ? 72.0 // bottom icon row + margin (no seek bar on live)
+-      : 150.0; // + seek bar on VOD
+-  const clearance = 24.0; // gap left above the bottom row
+-  const halfRow = 24.0; // half the 48px play/pause button
+-  final byFormula =
+-      (height / 2) - (topRegion + bottomRegion) / 2 - clearance - halfRow;
+-  final safeCap = height * 0.32;
+-  return byFormula.clamp(0.0, safeCap);
+-}
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 3f6e3e9..84d473f 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.35.6': [
++    'Fixed the playback controls not responding to taps after the previous update. The on-screen controls return to the centre of the screen, where they work reliably. (The current EPG programme still shows in the top bar.)',
++  ],
+   '1.35.5': [
+     'The on-screen playback controls now sit lower on the screen instead of dead-centre, so they cover less of the picture.',
+     'When EPG data is available, the channel\'s current programme now shows in the top bar next to the channel name.',
+diff --git a/pubspec.yaml b/pubspec.yaml
+index ec73372..0e00cb3 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.35.5+406
++version: 1.35.6+407
+ 
+ environment:
+   sdk: ^3.10.7
+diff --git a/test/controls_offset_test.dart b/test/controls_offset_test.dart
+deleted file mode 100644
+index 4b62a60..0000000
+--- a/test/controls_offset_test.dart
++++ /dev/null
+@@ -1,33 +0,0 @@
+-// fix406: the single-cell centre control row is shifted down toward the bottom
+-// icon row. The offset is computed to land just above the bottom controls on a
+-// phone, capped so it never overshoots into them on a tall screen (TV), and
+-// floored at 0 so it never moves up.
+-import 'package:flutter_test/flutter_test.dart';
+-import 'package:open_tv/player/controls_offset.dart';
+-
+-void main() {
+-  group('fix406 loweredPrimaryBarOffset', () {
+-    test('moves the row down on a typical landscape phone', () {
+-      final dy = loweredPrimaryBarOffset(height: 412, isLive: true);
+-      expect(dy, greaterThan(40));
+-      // Stays in the upper-ish portion of the lower half (no collision).
+-      expect(dy, lessThan(412 * 0.32 + 0.001));
+-    });
+-
+-    test('VOD reserves more (seek bar) so it sits a bit higher than live', () {
+-      final live = loweredPrimaryBarOffset(height: 412, isLive: true);
+-      final vod = loweredPrimaryBarOffset(height: 412, isLive: false);
+-      expect(vod, lessThan(live));
+-    });
+-
+-    test('tall screens (TV) are capped at ~a third, never into the bottom row',
+-        () {
+-      final dy = loweredPrimaryBarOffset(height: 1080, isLive: true);
+-      expect(dy, lessThanOrEqualTo(1080 * 0.32 + 0.001));
+-    });
+-
+-    test('tiny heights never push up (floored at 0)', () {
+-      expect(loweredPrimaryBarOffset(height: 200, isLive: false), 0.0);
+-    });
+-  });
+-}
