@@ -1,0 +1,48 @@
+diff --git a/android/app/src/main/AndroidManifest.xml b/android/app/src/main/AndroidManifest.xml
+index c0932b7..b42c000 100644
+--- a/android/app/src/main/AndroidManifest.xml
++++ b/android/app/src/main/AndroidManifest.xml
+@@ -53,6 +53,16 @@
+         <meta-data
+             android:name="flutterEmbedding"
+             android:value="2" />
++        <!-- fix410 (DIAGNOSTIC): disable Impeller so Flutter composites via Skia/GL
++             instead of Vulkan. The NVIDIA Shield (Tegra X1 / driver 495.00) renders a
++             black screen while mpv's GLES output (vo=gpu) feeds a SurfaceProducer surface
++             that Impeller/Vulkan consumes; the S24 (Adreno) plays the identical path.
++             Skia/GL keeps producer AND consumer on GL, removing the GL->Vulkan interop.
++             App-global (Impeller is chosen at engine init, cannot be per-device at
++             runtime). Revert this block if any device regresses. -->
++        <meta-data
++            android:name="io.flutter.embedding.android.EnableImpeller"
++            android:value="false" />
+         <!-- Free4Me-IPTV: Google Cast SDK options provider (v1.4) -->
+         <meta-data
+             android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 5c12083..2595100 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.35.9': [
++    'Diagnostic build: changes how the video picture is drawn on screen, to fix a black screen seen on NVIDIA Shield. If you see any display problems on your device after this update, please report them.',
++  ],
+   '1.35.8': [
+     'Added a developer setting to control how long the on-screen controls stay visible before they auto-hide (0–30s; 0 keeps them up until you tap to dismiss).',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 64ed239..dbd191f 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.35.8+409
++version: 1.35.9+410
+ 
+ environment:
+   sdk: ^3.10.7

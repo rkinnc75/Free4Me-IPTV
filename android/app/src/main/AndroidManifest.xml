@@ -53,6 +53,16 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- fix410 (DIAGNOSTIC): disable Impeller so Flutter composites via Skia/GL
+             instead of Vulkan. The NVIDIA Shield (Tegra X1 / driver 495.00) renders a
+             black screen while mpv's GLES output (vo=gpu) feeds a SurfaceProducer surface
+             that Impeller/Vulkan consumes; the S24 (Adreno) plays the identical path.
+             Skia/GL keeps producer AND consumer on GL, removing the GL->Vulkan interop.
+             App-global (Impeller is chosen at engine init, cannot be per-device at
+             runtime). Revert this block if any device regresses. -->
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableImpeller"
+            android:value="false" />
         <!-- Free4Me-IPTV: Google Cast SDK options provider (v1.4) -->
         <meta-data
             android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"

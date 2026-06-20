@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.35.9': [
+    'Diagnostic build: changes how the video picture is drawn on screen, to fix a black screen seen on NVIDIA Shield. If you see any display problems on your device after this update, please report them.',
+  ],
   '1.35.8': [
     'Added a developer setting to control how long the on-screen controls stay visible before they auto-hide (0–30s; 0 keeps them up until you tap to dismiss).',
   ],
