@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.35.7': [
+    'The on-screen playback controls are now a single row along the bottom of the screen instead of across the middle, so they cover much less of the picture. Rewind, forward and \'back to live\' appear there only while DVR is active.',
+  ],
   '1.35.6': [
     'Fixed the playback controls not responding to taps after the previous update. The on-screen controls return to the centre of the screen, where they work reliably. (The current EPG programme still shows in the top bar.)',
   ],

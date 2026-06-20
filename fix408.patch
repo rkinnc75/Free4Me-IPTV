@@ -1,0 +1,185 @@
+diff --git a/lib/player.dart b/lib/player.dart
+index 5416a5c..ad27fb2 100644
+--- a/lib/player.dart
++++ b/lib/player.dart
+@@ -956,6 +956,49 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+         onPressed: onTap,
+       );
+ 
++  /// fix408: the transport controls, tiered for the bottom bar. Always shows the
++  /// core (channel ▲/▼ when surfable, play/pause); adds rewind/forward/live only
++  /// when DVR is active. VOD uses prev/play/next. The dvrActive branch re-reads
++  /// correctly because the controls theme is keyed on dvrActive (fix367).
++  List<Widget> _transportButtons() {
++    if (widget.channel.mediaType != MediaType.livestream) {
++      return const [
++        MaterialSkipPreviousButton(),
++        MaterialPlayOrPauseButton(iconSize: 40.0),
++        MaterialSkipNextButton(),
++      ];
++    }
++    final dvr = _engine.dvrActive;
++    return [
++      if (_canSurf)
++        _dvrButton(Icons.keyboard_arrow_up, 'Channel up', () => _surf(-1)),
++      if (dvr)
++        _dvrButton(Icons.replay_10, 'Rewind 10s',
++            () => _dvrSeekBy(const Duration(seconds: -10))),
++      const MaterialPlayOrPauseButton(iconSize: 40.0),
++      if (dvr) ...[
++        _dvrButton(Icons.forward_10, 'Forward 10s',
++            () => _dvrSeekBy(const Duration(seconds: 10))),
++        _dvrButton(Icons.live_tv, 'Back to live', _dvrGoLive),
++      ],
++      if (_canSurf)
++        _dvrButton(Icons.keyboard_arrow_down, 'Channel down', () => _surf(1)),
++    ];
++  }
++
++  /// fix408: distribute bottom-bar items evenly across the row (equal gaps,
++  /// first item hard-left, last hard-right — like spaceBetween). media_kit owns
++  /// the Row, so even spacing is produced by inserting a Spacer between items.
++  List<Widget> _spreadEvenly(List<Widget> items) {
++    if (items.length <= 1) return items;
++    final out = <Widget>[];
++    for (var i = 0; i < items.length; i++) {
++      if (i > 0) out.add(const Spacer());
++      out.add(items[i]);
++    }
++    return out;
++  }
++
+   // ─── fix397: channel +/- (surf) ──────────────────────────────────────────
+ 
+   /// True when the launching list has another playable channel to surf to.
+@@ -1429,55 +1472,8 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+       // they are playlist controls and do nothing on a single live stream.
+       // VOD keeps the package default. A 300s DVR-to-disk buffer (which would
+       // make live seeking real) is deferred as a future feature.
+-      primaryButtonBar: widget.channel.mediaType == MediaType.livestream
+-          ? (_engine.dvrActive
+-              // fix360 (re-applied fix364): DVR active -> full transport row.
+-              // fix397: + channel ▲/▼ at the edges when a launching list exists.
+-              ? [
+-                  const Spacer(flex: 2),
+-                  if (_canSurf)
+-                    _dvrButton(Icons.keyboard_arrow_up, 'Channel up',
+-                        () => _surf(-1)),
+-                  const Spacer(),
+-                  _dvrButton(Icons.replay_10, 'Rewind 10s',
+-                      () => _dvrSeekBy(const Duration(seconds: -10))),
+-                  const Spacer(),
+-                  const MaterialPlayOrPauseButton(iconSize: 48.0),
+-                  const Spacer(),
+-                  _dvrButton(Icons.forward_10, 'Forward 10s',
+-                      () => _dvrSeekBy(const Duration(seconds: 10))),
+-                  const Spacer(),
+-                  _dvrButton(Icons.live_tv, 'Back to live', _dvrGoLive),
+-                  if (_canSurf) ...[
+-                    const Spacer(),
+-                    _dvrButton(Icons.keyboard_arrow_down, 'Channel down',
+-                        () => _surf(1)),
+-                  ],
+-                  const Spacer(flex: 2),
+-                ]
+-              // fix397: live without DVR -> channel ▲/▼ around play/pause.
+-              : [
+-                  const Spacer(flex: 2),
+-                  if (_canSurf)
+-                    _dvrButton(Icons.keyboard_arrow_up, 'Channel up',
+-                        () => _surf(-1)),
+-                  const Spacer(),
+-                  const MaterialPlayOrPauseButton(iconSize: 48.0),
+-                  const Spacer(),
+-                  if (_canSurf)
+-                    _dvrButton(Icons.keyboard_arrow_down, 'Channel down',
+-                        () => _surf(1)),
+-                  const Spacer(flex: 2),
+-                ])
+-          : const [
+-              Spacer(flex: 2),
+-              MaterialSkipPreviousButton(),
+-              Spacer(),
+-              MaterialPlayOrPauseButton(iconSize: 48.0),
+-              Spacer(),
+-              MaterialSkipNextButton(),
+-              Spacer(flex: 2),
+-            ],
++      // fix408: centre bar cleared — transport moved to the bottom bar.
++      primaryButtonBar: const [],
+         topButtonBar: [
+         IconButton(
+           onPressed: onExit,
+@@ -1518,20 +1514,18 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+             tooltip: 'Picture-in-picture',
+           ),
+       ],
+-      bottomButtonBar: [
++      bottomButtonBar: _spreadEvenly([
+         if (_engine.supportsTrackSelection) ...[
+           IconButton(
+             onPressed: openSubtitlesModal,
+             icon:
+                 const Icon(Icons.subtitles, color: Colors.white, size: 32),
+           ),
+-          const SizedBox(width: 20),
+           IconButton(
+             onPressed: openAudioModal,
+             icon:
+                 const Icon(Icons.music_note, color: Colors.white, size: 32),
+           ),
+-          const SizedBox(width: 20),
+         ],
+         IconButton(
+           // fix405: revert to a static icon + generic tooltip. fix404
+@@ -1555,10 +1549,13 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+           tooltip: 'Aspect ratio',
+           onPressed: toggleZoom,
+         ),
++        // fix408: transport controls merged into the bottom bar, distributed
++        // evenly across the row by _spreadEvenly. Tiered via _transportButtons
++        // (±10s / live only when DVR is active).
++        ..._transportButtons(),
+         // Mini-player button — hidden when multi-view is active.
+         if (widget.channel.mediaType == MediaType.livestream &&
+             widget.settings.multiViewLayout == MultiViewLayout.none) ...[
+-          const Spacer(),
+           IconButton(
+             onPressed: _minimizeToOverlay,
+             icon: const Icon(
+@@ -1569,7 +1566,7 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+             tooltip: 'Watch in mini-player',
+           ),
+         ],
+-      ],
++      ]),
+     );
+   }
+ }
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 84d473f..9bec11f 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.35.7': [
++    'The on-screen playback controls are now a single row along the bottom of the screen instead of across the middle, so they cover much less of the picture. Rewind, forward and \'back to live\' appear there only while DVR is active.',
++  ],
+   '1.35.6': [
+     'Fixed the playback controls not responding to taps after the previous update. The on-screen controls return to the centre of the screen, where they work reliably. (The current EPG programme still shows in the top bar.)',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 0e00cb3..b1da2e2 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.35.6+407
++version: 1.35.7+408
+ 
+ environment:
+   sdk: ^3.10.7
