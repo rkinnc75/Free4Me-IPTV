@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.35.10': [
+    'New app icon.',
+  ],
   '1.35.9': [
     'Diagnostic build: changes how the video picture is drawn on screen, to fix a black screen seen on NVIDIA Shield. If you see any display problems on your device after this update, please report them.',
   ],
