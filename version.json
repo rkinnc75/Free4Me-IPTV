@@ -1,8 +1,8 @@
 {
-  "latest": "1.35.11",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.35.11",
+  "latest": "1.35.12",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.35.12",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Updated app icon.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.35.11/Free4Me-IPTV-1.35.11-arm64.apk"
+  "releaseNotes": "\u2022 New app icon.\n\u2022 App renamed to Free4Me.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.35.12/Free4Me-IPTV-1.35.12-arm64.apk"
 }
