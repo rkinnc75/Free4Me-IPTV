@@ -280,6 +280,11 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
             if (!mounted) return;
             setState(() => _inPipMode = inPip);
             if (!inPip) {
+              // fix414: returning from PiP — give the stream a fresh set of
+              // hardware-decode attempts in full-screen. While minimized we
+              // never gave up and were on forced software decode; reset the
+              // counter so the normal give-up/exit logic applies from scratch.
+              _totalReconnectAttempts = 0;
               // Returned from PiP — re-enter fullscreen if not engine-managed.
               if (!_engine.handlesOwnFullscreen) _enterSystemFullscreen();
             }
@@ -554,7 +559,13 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
       ' reason="$reason" channel="${widget.channel.name}"',
     );
 
-    if (_totalReconnectAttempts >= widget.settings.maxReconnectAttempts) {
+    // fix414: never give up / pop to the menu while minimized to PiP — the
+    // user is in another app and a transient drop should recover quietly.
+    // Part 1 forces software decode so the re-open works in PiP; the give-up
+    // and route-pop are deferred until the app returns to full-screen, where
+    // the attempt counter is reset (see the PiP listener in initAsync).
+    if (_totalReconnectAttempts >= widget.settings.maxReconnectAttempts &&
+        !_inPipMode) {
       AppLog.warn(
         'Player: max reconnects reached — giving up on "${widget.channel.name}"',
       );
@@ -611,16 +622,24 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
 
     AppLog.info('Player: reconnect — $reason');
     if (mounted) {
-      setState(() => _bufferingState =
-          'Retrying $_totalReconnectAttempts'
-          '/${widget.settings.maxReconnectAttempts}…');
+      // fix414: in PiP the attempt counter intentionally exceeds maxAttempts
+      // (we never give up while minimized), so show a plain "Reconnecting…"
+      // rather than a confusing "Retrying 7/3…".
+      setState(() => _bufferingState = _inPipMode
+          ? 'Reconnecting…'
+          : 'Retrying $_totalReconnectAttempts'
+              '/${widget.settings.maxReconnectAttempts}…');
     }
     // fix112: back off longer after an instant "Failed to open" (likely a
     // connection-limit rejection) so the previous connection has time to
     // release before we retry. Ordinary transient drops keep the fast 1s.
-    final backoff = _lastFailureWasInstant
-        ? const Duration(seconds: 3)
-        : const Duration(seconds: 1);
+    // fix414: in PiP we retry indefinitely (never give up), so use a calmer 5s
+    // cadence to avoid hammering the network/battery on a genuinely dead feed.
+    final backoff = _inPipMode
+        ? const Duration(seconds: 5)
+        : _lastFailureWasInstant
+            ? const Duration(seconds: 3)
+            : const Duration(seconds: 1);
     if (_lastFailureWasInstant) {
       AppLog.info(
         'Player: backing off ${backoff.inSeconds}s before retry'
@@ -667,6 +686,10 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
           await mpv.reapplyOptions(
             url: playbackUrl,
             ignoreSsl: _isIgnoreSsl(headers),
+            // fix414: while minimized to PiP, MediaCodec can't re-init, so the
+            // re-open would hang — force software decode for the reconnect so
+            // it recovers in PiP. No-op for the initial open (never in PiP).
+            forceSoftwareDecode: _inPipMode,
           );
         }
 

@@ -671,6 +671,7 @@ class MpvEngine implements PlayerEngine {
   Future<void> _applyMpvOptions({
     required String url,
     bool ignoreSsl = false,
+    bool forceSoftwareDecode = false, // fix414: reconnect while minimized/PiP
   }) async {
     if (_player.platform is! mk.NativePlayer) return;
     final np = _player.platform as mk.NativePlayer;
@@ -718,7 +719,19 @@ class MpvEngine implements PlayerEngine {
     // bypassing the SurfaceTexture binding that causes contention when
     // multiple players share the decoder pool. This is the same mode used for
     // Android TV (line below) and is safe for concurrent preview windows.
-    if (previewMode && Platform.isAndroid && s.hwDecode) {
+    if (forceSoftwareDecode) {
+      // fix414: a reconnect firing while the app is minimized to PiP cannot
+      // re-configure the MediaCodec hardware decoder — Android denies codec
+      // re-init without a foreground surface, so the re-open hangs in
+      // "initializing" (pos=0, frame=null) and the watchdog eventually gives up
+      // and pops to the menu (sms938u 2026-06-21 log; the same stream
+      // reconnected fine full-screen seconds earlier). Software decode
+      // (libavcodec) needs no MediaCodec/foreground and re-inits fine in PiP.
+      // The caller passes forceSoftwareDecode=_inPipMode on reconnect.
+      await np.setProperty('hwdec', 'no');
+      AppLog.info('Player: hwdec=no (fix414: forced — reconnect while minimized)'
+          ' channel="${channel.name}"');
+    } else if (previewMode && Platform.isAndroid && s.hwDecode) {
       // fix314: Tegra/Shield corrupts colour with concurrent mediacodec-copy
       // (2×2 grid → rainbow planes). The multiViewDecode setting controls this:
       //   auto         → software on Tegra/Shield, mediacodec-copy elsewhere
@@ -913,10 +926,15 @@ class MpvEngine implements PlayerEngine {
   }
 
   /// Re-apply options (e.g. after a reconnect that fetches fresh headers).
-  Future<void> reapplyOptions({String? url, bool ignoreSsl = false}) async {
+  Future<void> reapplyOptions({
+    String? url,
+    bool ignoreSsl = false,
+    bool forceSoftwareDecode = false, // fix414
+  }) async {
     await _applyMpvOptions(
       url: url ?? channel.url ?? '',
       ignoreSsl: ignoreSsl,
+      forceSoftwareDecode: forceSoftwareDecode,
     );
   }
 
