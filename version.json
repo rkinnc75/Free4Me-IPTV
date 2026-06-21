@@ -1,8 +1,8 @@
 {
-  "latest": "1.35.12",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.35.12",
+  "latest": "1.35.13",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.35.13",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 New app icon.\n\u2022 App renamed to Free4Me.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.35.12/Free4Me-IPTV-1.35.12-arm64.apk"
+  "releaseNotes": "\u2022 Live streams that hiccup while the app is minimized (picture-in-picture) now recover automatically instead of dropping back to the menu.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.35.13/Free4Me-IPTV-1.35.13-arm64.apk"
 }
