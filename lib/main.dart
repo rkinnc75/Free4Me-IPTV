@@ -214,7 +214,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Free4Me-IPTV',
+      title: 'Free4Me',
       navigatorKey: navigatorKey,
       navigatorObservers: [playerRouteObserver], // fix98
       builder: (context, child) {

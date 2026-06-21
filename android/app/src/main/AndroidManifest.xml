@@ -17,7 +17,7 @@
     <!-- Free4Me-IPTV: declare PIP support so Google TV exposes it. -->
     <uses-feature android:name="android.software.picture_in_picture" android:required="false" />
     <application
-        android:label="Free4Me-IPTV"
+        android:label="Free4Me"
         android:name=".Free4MeApplication"
         android:usesCleartextTraffic="true"
         android:largeHeap="true"
