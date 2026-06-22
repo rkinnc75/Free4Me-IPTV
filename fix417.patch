@@ -1,0 +1,109 @@
+diff --git a/lib/settings_view.dart b/lib/settings_view.dart
+index d7aa9ea..95db238 100644
+--- a/lib/settings_view.dart
++++ b/lib/settings_view.dart
+@@ -1849,6 +1849,59 @@ class _SettingsState extends State<SettingsView> {
+     );
+   }
+ 
++  /// fix417: confirmation gate for enabling raw-credential logging. The Enable
++  /// button stays disabled until the user types "INSECURE" exactly; Cancel or
++  /// any other text returns false (the toggle stays OFF).
++  Future<bool> _confirmInsecureLogging() async {
++    final ctl = TextEditingController();
++    final ok = await showDialog<bool>(
++      context: context,
++      builder: (ctx) => StatefulBuilder(
++        builder: (ctx, setLocal) {
++          final match = ctl.text == 'INSECURE';
++          return AlertDialog(
++            title: const Text('Log raw credentials?'),
++            content: SingleChildScrollView(
++              child: Column(
++                mainAxisSize: MainAxisSize.min,
++                children: [
++                  const Text(
++                    'This writes your provider usernames and passwords into the '
++                    'debug log in plain text. Anyone you share the log with will '
++                    'see them, and the in-app issue reporter is disabled while '
++                    'this is on.\n\n'
++                    'Enable only for your own local testing. To confirm, type '
++                    'INSECURE below.',
++                  ),
++                  const SizedBox(height: 12),
++                  TextField(
++                    controller: ctl,
++                    autofocus: true,
++                    textCapitalization: TextCapitalization.characters,
++                    onChanged: (_) => setLocal(() {}),
++                    decoration: const InputDecoration(hintText: 'INSECURE'),
++                  ),
++                ],
++              ),
++            ),
++            actions: [
++              TextButton(
++                onPressed: () => Navigator.pop(ctx, false),
++                child: const Text('Cancel'),
++              ),
++              FilledButton(
++                onPressed: match ? () => Navigator.pop(ctx, true) : null,
++                child: const Text('Enable'),
++              ),
++            ],
++          );
++        },
++      ),
++    );
++    ctl.dispose();
++    return ok ?? false;
++  }
++
+   Future<void> _exportEverythingViaServer(
+       {required bool includeCredentials}) async {
+     // fix327: build + serve behind a progress dialog (device-tagged stamp).
+@@ -3762,6 +3815,17 @@ class _SettingsState extends State<SettingsView> {
+                           'verbatim. Default: OFF.',
+                     ),
+                     onChanged: (v) async {
++                      // fix417: turning raw-credential logging ON requires the
++                      // user to type "INSECURE" to confirm. Turning OFF is
++                      // one-tap. On cancel the toggle stays OFF.
++                      if (v) {
++                        final confirmed = await _confirmInsecureLogging();
++                        if (!mounted) return;
++                        if (!confirmed) {
++                          setState(() {}); // snap the switch back to OFF
++                          return;
++                        }
++                      }
+                       setState(() => settings.logUserPass = v);
+                       AppLog.logUserPass = v;
+                       AppLog.info(
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 04a120c..f069a3c 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.35.16': [
++    'Enabling "Log User/Pass" now requires typing INSECURE to confirm, since it writes your provider credentials to the log in plain text.',
++  ],
+   '1.35.15': [
+     'New "Report an issue" button under Diagnostics: send a description and your debug log (with host, username and password removed) straight to the developer.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index fc92890..f6bcc8b 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.35.15+416
++version: 1.35.16+417
+ 
+ environment:
+   sdk: ^3.10.7

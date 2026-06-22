@@ -1849,6 +1849,59 @@ class _SettingsState extends State<SettingsView> {
     );
   }
 
+  /// fix417: confirmation gate for enabling raw-credential logging. The Enable
+  /// button stays disabled until the user types "INSECURE" exactly; Cancel or
+  /// any other text returns false (the toggle stays OFF).
+  Future<bool> _confirmInsecureLogging() async {
+    final ctl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          final match = ctl.text == 'INSECURE';
+          return AlertDialog(
+            title: const Text('Log raw credentials?'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'This writes your provider usernames and passwords into the '
+                    'debug log in plain text. Anyone you share the log with will '
+                    'see them, and the in-app issue reporter is disabled while '
+                    'this is on.\n\n'
+                    'Enable only for your own local testing. To confirm, type '
+                    'INSECURE below.',
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: ctl,
+                    autofocus: true,
+                    textCapitalization: TextCapitalization.characters,
+                    onChanged: (_) => setLocal(() {}),
+                    decoration: const InputDecoration(hintText: 'INSECURE'),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: match ? () => Navigator.pop(ctx, true) : null,
+                child: const Text('Enable'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    ctl.dispose();
+    return ok ?? false;
+  }
+
   Future<void> _exportEverythingViaServer(
       {required bool includeCredentials}) async {
     // fix327: build + serve behind a progress dialog (device-tagged stamp).
@@ -3762,6 +3815,17 @@ class _SettingsState extends State<SettingsView> {
                           'verbatim. Default: OFF.',
                     ),
                     onChanged: (v) async {
+                      // fix417: turning raw-credential logging ON requires the
+                      // user to type "INSECURE" to confirm. Turning OFF is
+                      // one-tap. On cancel the toggle stays OFF.
+                      if (v) {
+                        final confirmed = await _confirmInsecureLogging();
+                        if (!mounted) return;
+                        if (!confirmed) {
+                          setState(() {}); // snap the switch back to OFF
+                          return;
+                        }
+                      }
                       setState(() => settings.logUserPass = v);
                       AppLog.logUserPass = v;
                       AppLog.info(
