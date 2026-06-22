@@ -1,8 +1,8 @@
 {
-  "latest": "1.35.15",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.35.15",
+  "latest": "1.35.16",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.35.16",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 New \"Report an issue\" button under Diagnostics: send a description and your debug log (with host, username and password removed) straight to the developer.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.35.15/Free4Me-IPTV-1.35.15-arm64.apk"
+  "releaseNotes": "\u2022 Enabling \"Log User/Pass\" now requires typing INSECURE to confirm, since it writes your provider credentials to the log in plain text.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.35.16/Free4Me-IPTV-1.35.16-arm64.apk"
 }
