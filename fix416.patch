@@ -1,0 +1,296 @@
+diff --git a/lib/models/device_detector.dart b/lib/models/device_detector.dart
+index 6f47512..8c6a15c 100644
+--- a/lib/models/device_detector.dart
++++ b/lib/models/device_detector.dart
+@@ -1,7 +1,9 @@
+ import 'dart:io';
++import 'dart:math';
+ 
+ import 'package:open_tv/backend/device_memory.dart';
+ import 'package:device_info_plus/device_info_plus.dart';
++import 'package:path_provider/path_provider.dart';
+ 
+ class DeviceDetector {
+   static final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
+@@ -84,6 +86,52 @@ class DeviceDetector {
+     }
+     return _deviceTag!;
+   }
++
++  /// fix416: a stable, per-install random ID, generated once and persisted to a
++  /// small file in the app support dir. Combined with [deviceTag] it gives each
++  /// physical device a distinct identity for issue-report rate-limiting and log
++  /// filenames — three identical "Pixel" devices share the same model tag, so a
++  /// random per-install suffix keeps them independent.
++  static String? _installId;
++  static Future<String> installId() async {
++    if (_installId != null) return _installId!;
++    try {
++      final dir = (await getApplicationSupportDirectory()).path;
++      final f = File('$dir/install_id');
++      if (await f.exists()) {
++        final v = (await f.readAsString()).trim();
++        if (v.isNotEmpty) {
++          _installId = v;
++          return v;
++        }
++      }
++      final v = _randomId();
++      await f.writeAsString(v);
++      _installId = v;
++      return v;
++    } catch (_) {
++      // Persistence failed — fall back to a session-only id so reporting still
++      // works (the rate-limit just resets on next launch).
++      return _installId ??= _randomId();
++    }
++  }
++
++  static String _randomId() {
++    final r = Random.secure();
++    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
++    return List.generate(8, (_) => chars[r.nextInt(chars.length)]).join();
++  }
++
++  /// fix416: identity sent with an issue report — `<deviceTag>-<installId>`
++  /// (e.g. "pixel-3f9a2b1c"), or just the install id when no model tag is
++  /// available. Distinguishes reports/logs from different physical devices of
++  /// the same model.
++  static Future<String> reportClientId() async {
++    final tag = await deviceTag();
++    final id = await installId();
++    return tag.isEmpty ? id : '$tag-$id';
++  }
++
+   /// decode sessions (2×2 multi-view) corrupt colour output. Matches on
+   /// manufacturer/brand/board/hardware/model so it covers Shield TV variants.
+   static Future<bool> isTegra() async {
+diff --git a/lib/settings_view.dart b/lib/settings_view.dart
+index 875ead1..d7aa9ea 100644
+--- a/lib/settings_view.dart
++++ b/lib/settings_view.dart
+@@ -5,6 +5,8 @@ import 'package:path_provider/path_provider.dart';
+ import 'package:flutter/material.dart';
+ import 'package:flutter/services.dart';
+ import 'dart:io';
++import 'dart:convert';
++import 'package:http/http.dart' as http;
+ import 'package:open_tv/backend/app_logger.dart';
+ import 'package:open_tv/backend/background_task_service.dart';
+ import 'package:open_tv/backend/export_server.dart';
+@@ -1690,6 +1692,163 @@ class _SettingsState extends State<SettingsView> {
+ 
+   // fix158: build backup + log payloads and serve via LAN (TV only).
+   // fix311: now exports the full bundle (source dump + log + settings + zip).
++  // fix416: in-app issue reporter. Reports go through a Cloudflare Worker
++  // (the "middleman") that holds the GitHub token server-side and files an
++  // issue + commits the log to the PRIVATE repo. The app only knows the Worker
++  // URL and a low-stakes shared key (worst case if extracted: rate-limited
++  // spam issues to the private repo — no GitHub access, no token exposure).
++  static const String _issueWorkerUrl =
++      'https://free4me-issue-reporter.rkinnc75.workers.dev';
++  static const String _issueAppSecret =
++      '1rb-1eE4WchkBDjMD6qjb_-PKVCiFKFq3JqbMIS3CIw';
++
++  /// fix416: collect a subject + details, then submit. Gated by the caller on
++  /// debugLogging && !logUserPass (so a log with raw credentials is never sent).
++  Future<void> _showReportIssueDialog() async {
++    final subjectCtl = TextEditingController();
++    final detailsCtl = TextEditingController();
++    final ok = await showDialog<bool>(
++      context: context,
++      builder: (ctx) => AlertDialog(
++        title: const Text('Report an issue'),
++        content: SingleChildScrollView(
++          child: Column(
++            mainAxisSize: MainAxisSize.min,
++            children: [
++              TextField(
++                controller: subjectCtl,
++                maxLength: 100,
++                textInputAction: TextInputAction.next,
++                decoration: const InputDecoration(
++                  labelText: 'Subject',
++                  hintText: 'Short summary',
++                ),
++              ),
++              TextField(
++                controller: detailsCtl,
++                maxLines: 5,
++                decoration: const InputDecoration(
++                  labelText: 'Details',
++                  hintText: 'What happened? Steps to reproduce?',
++                ),
++              ),
++              const SizedBox(height: 8),
++              const Text(
++                'Your current debug log will be attached, with the provider '
++                'host, username and password removed.',
++                style: TextStyle(fontSize: 12),
++              ),
++            ],
++          ),
++        ),
++        actions: [
++          TextButton(
++            onPressed: () => Navigator.pop(ctx, false),
++            child: const Text('Cancel'),
++          ),
++          FilledButton(
++            onPressed: () => Navigator.pop(ctx, true),
++            child: const Text('Submit'),
++          ),
++        ],
++      ),
++    );
++    final subject = subjectCtl.text.trim();
++    final details = detailsCtl.text.trim();
++    subjectCtl.dispose();
++    detailsCtl.dispose();
++    if (ok != true) return;
++    if (subject.isEmpty) {
++      if (!mounted) return;
++      ScaffoldMessenger.of(context).showSnackBar(
++        const SnackBar(content: Text('Please enter a subject.')),
++      );
++      return;
++    }
++    await _submitIssueReport(subject, details);
++  }
++
++  Future<void> _submitIssueReport(String subject, String details) async {
++    if (mounted) {
++      showDialog(
++        context: context,
++        barrierDismissible: false,
++        builder: (_) => const AlertDialog(
++          content: Row(
++            children: [
++              CircularProgressIndicator(),
++              SizedBox(width: 16),
++              Expanded(child: Text('Submitting report…')),
++            ],
++          ),
++        ),
++      );
++    }
++    String? errorMsg;
++    bool success = false;
++    try {
++      // Re-scrub the whole log at send time (belt-and-suspenders on top of the
++      // write-time redaction), then base64 for JSON transport.
++      final scrubbed = AppLog.scrubSecrets(await AppLog.readLog());
++      final logB64 = base64Encode(utf8.encode(scrubbed));
++      final clientId = await DeviceDetector.reportClientId();
++      final device = await DeviceDetector.deviceLabel();
++      final info = await PackageInfo.fromPlatform();
++      final resp = await http
++          .post(
++            Uri.parse(_issueWorkerUrl),
++            headers: {'Content-Type': 'application/json'},
++            body: jsonEncode({
++              'secret': _issueAppSecret,
++              'subject': subject,
++              'details': details,
++              'log': logB64,
++              'device': device,
++              'version': '${info.version}+${info.buildNumber}',
++              'clientId': clientId,
++            }),
++          )
++          .timeout(const Duration(seconds: 30));
++      if (resp.statusCode == 200) {
++        success = true;
++      } else if (resp.statusCode == 429) {
++        errorMsg =
++            'You\'ve sent several reports recently. Please try again later.';
++      } else {
++        String detail = '';
++        try {
++          detail = (jsonDecode(resp.body)['error'] ?? '').toString();
++        } catch (_) {}
++        errorMsg = 'Submit failed (${resp.statusCode})'
++            '${detail.isNotEmpty ? ': $detail' : ''}.';
++      }
++    } catch (_) {
++      errorMsg =
++          'Could not reach the reporting service. Check your connection and '
++          'try again.';
++    }
++    if (!mounted) return;
++    Navigator.of(context).pop(); // dismiss progress
++    if (!mounted) return;
++    showDialog(
++      context: context,
++      builder: (ctx) => AlertDialog(
++        title: Text(success ? 'Report submitted' : 'Report not sent'),
++        content: Text(
++          success
++              ? 'Thanks — your report and log were submitted to the developer.'
++              : (errorMsg ?? 'Unknown error.'),
++        ),
++        actions: [
++          TextButton(
++            onPressed: () => Navigator.pop(ctx),
++            child: const Text('OK'),
++          ),
++        ],
++      ),
++    );
++  }
++
+   Future<void> _exportEverythingViaServer(
+       {required bool includeCredentials}) async {
+     // fix327: build + serve behind a progress dialog (device-tagged stamp).
+@@ -3655,6 +3814,24 @@ class _SettingsState extends State<SettingsView> {
+                           }
+                         : null,
+                   ),
++                  ListTile(
++                    enabled:
++                        settings.debugLogging && !settings.logUserPass,
++                    leading: const Icon(Icons.bug_report_outlined),
++                    title: const Text("Report an issue"),
++                    subtitle: Text(
++                      settings.logUserPass
++                          ? "Turn off \"Log User/Pass\" first — reports can't be "
++                              "sent while raw credentials are being logged."
++                          : "Send a description and your debug log to the "
++                              "developer (host, username and password removed).",
++                    ),
++                    onTap: (settings.debugLogging && !settings.logUserPass)
++                        ? () async {
++                            await _showReportIssueDialog();
++                          }
++                        : null,
++                  ),
+                   ListTile(
+                     enabled: settings.debugLogging,
+                     leading: const Icon(Icons.delete_outline),
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index fe54ac9..04a120c 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.35.15': [
++    'New "Report an issue" button under Diagnostics: send a description and your debug log (with host, username and password removed) straight to the developer.',
++  ],
+   '1.35.14': [
+     'Diagnostic logs now also strip your provider\'s server address (host), in addition to username and password, before they can be shared.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 5c7f7fa..fc92890 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.35.14+415
++version: 1.35.15+416
+ 
+ environment:
+   sdk: ^3.10.7

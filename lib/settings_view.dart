@@ -5,6 +5,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:io';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/background_task_service.dart';
 import 'package:open_tv/backend/export_server.dart';
@@ -1690,6 +1692,163 @@ class _SettingsState extends State<SettingsView> {
 
   // fix158: build backup + log payloads and serve via LAN (TV only).
   // fix311: now exports the full bundle (source dump + log + settings + zip).
+  // fix416: in-app issue reporter. Reports go through a Cloudflare Worker
+  // (the "middleman") that holds the GitHub token server-side and files an
+  // issue + commits the log to the PRIVATE repo. The app only knows the Worker
+  // URL and a low-stakes shared key (worst case if extracted: rate-limited
+  // spam issues to the private repo — no GitHub access, no token exposure).
+  static const String _issueWorkerUrl =
+      'https://free4me-issue-reporter.rkinnc75.workers.dev';
+  static const String _issueAppSecret =
+      '1rb-1eE4WchkBDjMD6qjb_-PKVCiFKFq3JqbMIS3CIw';
+
+  /// fix416: collect a subject + details, then submit. Gated by the caller on
+  /// debugLogging && !logUserPass (so a log with raw credentials is never sent).
+  Future<void> _showReportIssueDialog() async {
+    final subjectCtl = TextEditingController();
+    final detailsCtl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Report an issue'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: subjectCtl,
+                maxLength: 100,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(
+                  labelText: 'Subject',
+                  hintText: 'Short summary',
+                ),
+              ),
+              TextField(
+                controller: detailsCtl,
+                maxLines: 5,
+                decoration: const InputDecoration(
+                  labelText: 'Details',
+                  hintText: 'What happened? Steps to reproduce?',
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Your current debug log will be attached, with the provider '
+                'host, username and password removed.',
+                style: TextStyle(fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Submit'),
+          ),
+        ],
+      ),
+    );
+    final subject = subjectCtl.text.trim();
+    final details = detailsCtl.text.trim();
+    subjectCtl.dispose();
+    detailsCtl.dispose();
+    if (ok != true) return;
+    if (subject.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a subject.')),
+      );
+      return;
+    }
+    await _submitIssueReport(subject, details);
+  }
+
+  Future<void> _submitIssueReport(String subject, String details) async {
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const AlertDialog(
+          content: Row(
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(width: 16),
+              Expanded(child: Text('Submitting report…')),
+            ],
+          ),
+        ),
+      );
+    }
+    String? errorMsg;
+    bool success = false;
+    try {
+      // Re-scrub the whole log at send time (belt-and-suspenders on top of the
+      // write-time redaction), then base64 for JSON transport.
+      final scrubbed = AppLog.scrubSecrets(await AppLog.readLog());
+      final logB64 = base64Encode(utf8.encode(scrubbed));
+      final clientId = await DeviceDetector.reportClientId();
+      final device = await DeviceDetector.deviceLabel();
+      final info = await PackageInfo.fromPlatform();
+      final resp = await http
+          .post(
+            Uri.parse(_issueWorkerUrl),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'secret': _issueAppSecret,
+              'subject': subject,
+              'details': details,
+              'log': logB64,
+              'device': device,
+              'version': '${info.version}+${info.buildNumber}',
+              'clientId': clientId,
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
+      if (resp.statusCode == 200) {
+        success = true;
+      } else if (resp.statusCode == 429) {
+        errorMsg =
+            'You\'ve sent several reports recently. Please try again later.';
+      } else {
+        String detail = '';
+        try {
+          detail = (jsonDecode(resp.body)['error'] ?? '').toString();
+        } catch (_) {}
+        errorMsg = 'Submit failed (${resp.statusCode})'
+            '${detail.isNotEmpty ? ': $detail' : ''}.';
+      }
+    } catch (_) {
+      errorMsg =
+          'Could not reach the reporting service. Check your connection and '
+          'try again.';
+    }
+    if (!mounted) return;
+    Navigator.of(context).pop(); // dismiss progress
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(success ? 'Report submitted' : 'Report not sent'),
+        content: Text(
+          success
+              ? 'Thanks — your report and log were submitted to the developer.'
+              : (errorMsg ?? 'Unknown error.'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _exportEverythingViaServer(
       {required bool includeCredentials}) async {
     // fix327: build + serve behind a progress dialog (device-tagged stamp).
@@ -3652,6 +3811,24 @@ class _SettingsState extends State<SettingsView> {
                     onLongPress: settings.debugLogging
                         ? () async {
                             await _exportSourceDumps();
+                          }
+                        : null,
+                  ),
+                  ListTile(
+                    enabled:
+                        settings.debugLogging && !settings.logUserPass,
+                    leading: const Icon(Icons.bug_report_outlined),
+                    title: const Text("Report an issue"),
+                    subtitle: Text(
+                      settings.logUserPass
+                          ? "Turn off \"Log User/Pass\" first — reports can't be "
+                              "sent while raw credentials are being logged."
+                          : "Send a description and your debug log to the "
+                              "developer (host, username and password removed).",
+                    ),
+                    onTap: (settings.debugLogging && !settings.logUserPass)
+                        ? () async {
+                            await _showReportIssueDialog();
                           }
                         : null,
                   ),

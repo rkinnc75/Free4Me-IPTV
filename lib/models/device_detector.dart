@@ -1,7 +1,9 @@
 import 'dart:io';
+import 'dart:math';
 
 import 'package:open_tv/backend/device_memory.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
 
 class DeviceDetector {
   static final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
@@ -84,6 +86,52 @@ class DeviceDetector {
     }
     return _deviceTag!;
   }
+
+  /// fix416: a stable, per-install random ID, generated once and persisted to a
+  /// small file in the app support dir. Combined with [deviceTag] it gives each
+  /// physical device a distinct identity for issue-report rate-limiting and log
+  /// filenames — three identical "Pixel" devices share the same model tag, so a
+  /// random per-install suffix keeps them independent.
+  static String? _installId;
+  static Future<String> installId() async {
+    if (_installId != null) return _installId!;
+    try {
+      final dir = (await getApplicationSupportDirectory()).path;
+      final f = File('$dir/install_id');
+      if (await f.exists()) {
+        final v = (await f.readAsString()).trim();
+        if (v.isNotEmpty) {
+          _installId = v;
+          return v;
+        }
+      }
+      final v = _randomId();
+      await f.writeAsString(v);
+      _installId = v;
+      return v;
+    } catch (_) {
+      // Persistence failed — fall back to a session-only id so reporting still
+      // works (the rate-limit just resets on next launch).
+      return _installId ??= _randomId();
+    }
+  }
+
+  static String _randomId() {
+    final r = Random.secure();
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    return List.generate(8, (_) => chars[r.nextInt(chars.length)]).join();
+  }
+
+  /// fix416: identity sent with an issue report — `<deviceTag>-<installId>`
+  /// (e.g. "pixel-3f9a2b1c"), or just the install id when no model tag is
+  /// available. Distinguishes reports/logs from different physical devices of
+  /// the same model.
+  static Future<String> reportClientId() async {
+    final tag = await deviceTag();
+    final id = await installId();
+    return tag.isEmpty ? id : '$tag-$id';
+  }
+
   /// decode sessions (2×2 multi-view) corrupt colour output. Matches on
   /// manufacturer/brand/board/hardware/model so it covers Shield TV variants.
   static Future<bool> isTegra() async {

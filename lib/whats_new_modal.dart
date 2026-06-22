@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.35.15': [
+    'New "Report an issue" button under Diagnostics: send a description and your debug log (with host, username and password removed) straight to the developer.',
+  ],
   '1.35.14': [
     'Diagnostic logs now also strip your provider\'s server address (host), in addition to username and password, before they can be shared.',
   ],
