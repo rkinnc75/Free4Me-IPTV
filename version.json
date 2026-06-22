@@ -1,8 +1,8 @@
 {
-  "latest": "1.35.17",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.35.17",
+  "latest": "1.35.18",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.35.18",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Diagnostics: slow database queries now also record their query plan and a one-time data-size summary in the debug log, to help track down slow category loading on large playlists.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.35.17/Free4Me-IPTV-1.35.17-arm64.apk"
+  "releaseNotes": "\u2022 Much faster category and movie/series browsing on large playlists \u2014 opening a category or VOD list no longer hangs for a few seconds while it scans the whole catalog.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.35.18/Free4Me-IPTV-1.35.18-arm64.apk"
 }
