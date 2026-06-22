@@ -1,8 +1,8 @@
 {
-  "latest": "1.35.13",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.35.13",
+  "latest": "1.35.14",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.35.14",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Live streams that hiccup while the app is minimized (picture-in-picture) now recover automatically instead of dropping back to the menu.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.35.13/Free4Me-IPTV-1.35.13-arm64.apk"
+  "releaseNotes": "\u2022 Diagnostic logs now also strip your provider's server address (host), in addition to username and password, before they can be shared.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.35.14/Free4Me-IPTV-1.35.14-arm64.apk"
 }
