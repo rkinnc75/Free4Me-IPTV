@@ -1,0 +1,170 @@
+diff --git a/lib/backend/app_logger.dart b/lib/backend/app_logger.dart
+index abb9055..0b5b8c3 100644
+--- a/lib/backend/app_logger.dart
++++ b/lib/backend/app_logger.dart
+@@ -111,10 +111,18 @@ class AppLogger {
+   void warn(String message) => log(message, level: LogLevel.warning);
+   void error(String message) => log(message, level: LogLevel.error);
+ 
+-  /// fix374: rebuild the redaction table from [sources]. Checks EVERY source
+-  /// regardless of enabled state. Empty/whitespace credentials are skipped (an
++  /// fix374/fix415: rebuild the redaction table from [sources]. Checks EVERY
++  /// source regardless of enabled state. Empty/whitespace values are skipped (an
+   /// empty secret would otherwise match everywhere). The source name has spaces
+-  /// stripped to form the token tag, e.g. "A 3000" -> `<A3000_USER>`.
++  /// stripped to form the token tag, e.g. "A 3000" -> `<A3000_USER>`,
++  /// `<A3000_PASS>`, `<A3000_HOST>`.
++  ///
++  /// fix415: the source HOST is now redacted too — provider URLs in the log
++  /// (`http://host:port/.../user/pass/...`) would otherwise leak the server even
++  /// after credentials were stripped. The bare host (hostname or IP) from both
++  /// `url` and `urlOrigin` is replaced with `<NAME_HOST>`. Entries are sorted
++  /// longest-first so a host that contains another as a substring (e.g.
++  /// `tv.example.com` vs `example.com`) still redacts cleanly.
+   void setSourceSecrets(List<Source> sources) {
+     final out = <MapEntry<String, String>>[];
+     for (final s in sources) {
+@@ -123,11 +131,30 @@ class AppLogger {
+       final p = s.password ?? '';
+       if (u.trim().isNotEmpty) out.add(MapEntry(u, '<${tag}_USER>'));
+       if (p.trim().isNotEmpty) out.add(MapEntry(p, '<${tag}_PASS>'));
++      for (final raw in [s.url, s.urlOrigin]) {
++        final h = _hostOf(raw);
++        if (h != null) out.add(MapEntry(h, '<${tag}_HOST>'));
++      }
+     }
+     out.sort((a, b) => b.key.length.compareTo(a.key.length));
+     _secrets = out;
+   }
+ 
++  /// fix415: extract the bare host (hostname or IP, no scheme/port/path) from a
++  /// source URL so it can be redacted. A scheme is prepended when missing so a
++  /// bare `host:port` still parses. Returns null for empty/unparseable input.
++  String? _hostOf(String? url) {
++    if (url == null || url.trim().isEmpty) return null;
++    var u = url.trim();
++    if (!u.contains('://')) u = 'http://$u';
++    try {
++      final h = Uri.parse(u).host;
++      return h.isEmpty ? null : h;
++    } catch (_) {
++      return null;
++    }
++  }
++
+   /// fix374: replace every known credential literal in [s] with its token.
+   /// String.replaceAll uses literal (non-regex) matching for a String pattern,
+   /// so credential values containing regex metacharacters are handled safely.
+@@ -139,6 +166,12 @@ class AppLogger {
+     return s;
+   }
+ 
++  /// fix415: public entry point so the issue-reporter can re-scrub the entire
++  /// log text at transmit time (belt-and-suspenders), and so redaction is unit
++  /// testable. Always strips host/username/password using the current table,
++  /// independent of the [logUserPass] flag.
++  String scrubSecrets(String text) => _redactSecrets(text);
++
+   /// Returns the path of the log file (whether or not logging is enabled).
+   Future<String> get logPath async {
+     final dir = await Utils.appDir;
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 426f6d2..fe54ac9 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.35.14': [
++    'Diagnostic logs now also strip your provider\'s server address (host), in addition to username and password, before they can be shared.',
++  ],
+   '1.35.13': [
+     'Live streams that hiccup while the app is minimized (picture-in-picture) now recover automatically instead of dropping back to the menu.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 81ff220..5c7f7fa 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.35.13+414
++version: 1.35.14+415
+ 
+ environment:
+   sdk: ^3.10.7
+diff --git a/test/log_redaction_test.dart b/test/log_redaction_test.dart
+new file mode 100644
+index 0000000..8771538
+--- /dev/null
++++ b/test/log_redaction_test.dart
+@@ -0,0 +1,67 @@
++// fix415: the issue-reporter transmits the log file, so the source HOST,
++// username, and password must all be stripped before a log leaves the device.
++// Verifies setSourceSecrets/scrubSecrets replaces all three with labelled
++// tokens, and that the "Log User/Pass" setting defaults to false.
++import 'package:flutter_test/flutter_test.dart';
++import 'package:open_tv/backend/app_logger.dart';
++import 'package:open_tv/models/settings.dart';
++import 'package:open_tv/models/source.dart';
++import 'package:open_tv/models/source_type.dart';
++
++void main() {
++  test('host, username and password are all redacted from a log line', () {
++    AppLog.setSourceSecrets([
++      Source(
++        name: 'A 3000',
++        url: 'http://stream.example.com:8080/get.php',
++        username: 'joe',
++        password: 'secret123',
++        sourceType: SourceType.xtream,
++      ),
++    ]);
++
++    const line =
++        'MpvEngine: open url=http://stream.example.com:8080/live/joe/secret123/1.ts';
++    final red = AppLog.scrubSecrets(line);
++
++    // tokens present
++    expect(red, contains('<A3000_HOST>'));
++    expect(red, contains('<A3000_USER>'));
++    expect(red, contains('<A3000_PASS>'));
++    // raw values gone
++    expect(red.contains('stream.example.com'), isFalse);
++    expect(red.contains('joe'), isFalse);
++    expect(red.contains('secret123'), isFalse);
++  });
++
++  test('host from urlOrigin is also redacted', () {
++    AppLog.setSourceSecrets([
++      Source(
++        name: 'Trex',
++        urlOrigin: 'http://my-portal.net:2095',
++        username: 'u',
++        password: 'p',
++        sourceType: SourceType.xtream,
++      ),
++    ]);
++    final red = AppLog.scrubSecrets('connect http://my-portal.net:2095/player_api.php');
++    expect(red, contains('<Trex_HOST>'));
++    expect(red.contains('my-portal.net'), isFalse);
++  });
++
++  test('overlapping hosts redact longest-first (no partial leak)', () {
++    AppLog.setSourceSecrets([
++      Source(name: 'A', url: 'http://example.com', sourceType: SourceType.xtream),
++      Source(name: 'B', url: 'http://tv.example.com', sourceType: SourceType.xtream),
++    ]);
++    final red = AppLog.scrubSecrets('a=http://tv.example.com b=http://example.com');
++    expect(red.contains('tv.example.com'), isFalse);
++    expect(red.contains('example.com'), isFalse);
++    expect(red, contains('<B_HOST>'));
++    expect(red, contains('<A_HOST>'));
++  });
++
++  test('logUserPass setting defaults to false', () {
++    expect(Settings().logUserPass, isFalse);
++  });
++}

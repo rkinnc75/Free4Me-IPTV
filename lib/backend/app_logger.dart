@@ -111,10 +111,18 @@ class AppLogger {
   void warn(String message) => log(message, level: LogLevel.warning);
   void error(String message) => log(message, level: LogLevel.error);
 
-  /// fix374: rebuild the redaction table from [sources]. Checks EVERY source
-  /// regardless of enabled state. Empty/whitespace credentials are skipped (an
+  /// fix374/fix415: rebuild the redaction table from [sources]. Checks EVERY
+  /// source regardless of enabled state. Empty/whitespace values are skipped (an
   /// empty secret would otherwise match everywhere). The source name has spaces
-  /// stripped to form the token tag, e.g. "A 3000" -> `<A3000_USER>`.
+  /// stripped to form the token tag, e.g. "A 3000" -> `<A3000_USER>`,
+  /// `<A3000_PASS>`, `<A3000_HOST>`.
+  ///
+  /// fix415: the source HOST is now redacted too — provider URLs in the log
+  /// (`http://host:port/.../user/pass/...`) would otherwise leak the server even
+  /// after credentials were stripped. The bare host (hostname or IP) from both
+  /// `url` and `urlOrigin` is replaced with `<NAME_HOST>`. Entries are sorted
+  /// longest-first so a host that contains another as a substring (e.g.
+  /// `tv.example.com` vs `example.com`) still redacts cleanly.
   void setSourceSecrets(List<Source> sources) {
     final out = <MapEntry<String, String>>[];
     for (final s in sources) {
@@ -123,9 +131,28 @@ class AppLogger {
       final p = s.password ?? '';
       if (u.trim().isNotEmpty) out.add(MapEntry(u, '<${tag}_USER>'));
       if (p.trim().isNotEmpty) out.add(MapEntry(p, '<${tag}_PASS>'));
+      for (final raw in [s.url, s.urlOrigin]) {
+        final h = _hostOf(raw);
+        if (h != null) out.add(MapEntry(h, '<${tag}_HOST>'));
+      }
     }
     out.sort((a, b) => b.key.length.compareTo(a.key.length));
     _secrets = out;
+  }
+
+  /// fix415: extract the bare host (hostname or IP, no scheme/port/path) from a
+  /// source URL so it can be redacted. A scheme is prepended when missing so a
+  /// bare `host:port` still parses. Returns null for empty/unparseable input.
+  String? _hostOf(String? url) {
+    if (url == null || url.trim().isEmpty) return null;
+    var u = url.trim();
+    if (!u.contains('://')) u = 'http://$u';
+    try {
+      final h = Uri.parse(u).host;
+      return h.isEmpty ? null : h;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// fix374: replace every known credential literal in [s] with its token.
@@ -138,6 +165,12 @@ class AppLogger {
     }
     return s;
   }
+
+  /// fix415: public entry point so the issue-reporter can re-scrub the entire
+  /// log text at transmit time (belt-and-suspenders), and so redaction is unit
+  /// testable. Always strips host/username/password using the current table,
+  /// independent of the [logUserPass] flag.
+  String scrubSecrets(String text) => _redactSecrets(text);
 
   /// Returns the path of the log file (whether or not logging is enabled).
   Future<String> get logPath async {

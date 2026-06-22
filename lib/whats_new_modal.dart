@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.35.14': [
+    'Diagnostic logs now also strip your provider\'s server address (host), in addition to username and password, before they can be shared.',
+  ],
   '1.35.13': [
     'Live streams that hiccup while the app is minimized (picture-in-picture) now recover automatically instead of dropping back to the menu.',
   ],
