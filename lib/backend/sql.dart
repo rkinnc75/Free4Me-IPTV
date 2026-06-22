@@ -586,9 +586,24 @@ class Sql {
           return _browseMixedUnion(filters, mediaTypes, offset, invocation, modes);
         }
       }
+      // fix419: hint the (source_id, media_type) composite for the single-source,
+      // single-media-type, ungrouped alpha browse. The planner won't pick it over
+      // idx_channels_browse_mt on its own (LIMIT 36 defeats its selectivity
+      // estimate), so it residual-scans every source's rows. Gated so the partial
+      // index's conditions (series_id IS NULL, cat_enabled = 1 — both emitted by
+      // VisibilityClause when seriesId/groupId are null) and its tier sort are
+      // guaranteed present; otherwise no hint and behaviour is unchanged.
+      final browseMode = await _uniformSortMode(filters.sourceIds!);
+      final useSrcMtHint = filters.viewType != ViewType.favorites &&
+          filters.viewType != ViewType.history &&
+          filters.seriesId == null &&
+          filters.groupId == null &&
+          filters.sourceIds!.length == 1 &&
+          mediaTypes.length == 1 &&
+          browseMode == 'alpha';
       // No query — simple filter on indexed columns.
       sqlQuery = '''
-        SELECT * FROM channels c
+        SELECT * FROM channels c${useSrcMtHint ? ' INDEXED BY idx_browse_src_mt' : ''}
         WHERE media_type IN (${generatePlaceholders(mediaTypes.length)})
           AND source_id IN (${generatePlaceholders(filters.sourceIds!.length)})
           AND url IS NOT NULL

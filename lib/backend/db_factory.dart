@@ -655,8 +655,61 @@ class DbFactory {
           )
           WHERE url IS NOT NULL AND series_id IS NULL AND cat_enabled = 1;
         ''');
+      }))
+      // fix419: composite browse indexes that pin BOTH selective dimensions, so
+      // a single-source browse stops at LIMIT instead of residual-scanning every
+      // other source's rows (issue #2/#3: 2.6s VOD / 1.7s category on a 1.15M-row
+      // catalog with one source enabled — disabled sources' rows stay in the
+      // table/indexes). idx_browse_src_grp removes the category temp-B-tree (the
+      // planner adopts it on its own); idx_browse_src_mt is hinted explicitly in
+      // sql.dart for the single-media-type browse (LIMIT defeats the planner's
+      // selectivity estimate so it won't pick it unaided). Tier expression is
+      // byte-identical to BrowseOrder.orderBy('alpha') / idx_channels_browse_mt so
+      // it serves the sort. cat_enabled is omitted from the grp index because the
+      // category view shows rows regardless of the enabled checkbox.
+      ..add(SqliteMigration(34, (tx) async {
+        await tx.execute('''
+          CREATE INDEX IF NOT EXISTS idx_browse_src_mt
+          ON channels(
+            source_id,
+            media_type,
+            (CASE
+              WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0
+              WHEN COALESCE(favorite,0)=1 THEN 1
+              WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2
+              WHEN last_watched IS NOT NULL THEN 3
+              WHEN COALESCE(stream_validated,0)=1 THEN 4
+              ELSE 5 END),
+            name COLLATE NOCASE
+          )
+          WHERE url IS NOT NULL AND series_id IS NULL AND cat_enabled = 1;
+        ''');
+        await tx.execute('''
+          CREATE INDEX IF NOT EXISTS idx_browse_src_grp
+          ON channels(
+            source_id,
+            group_id,
+            (CASE
+              WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0
+              WHEN COALESCE(favorite,0)=1 THEN 1
+              WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2
+              WHEN last_watched IS NOT NULL THEN 3
+              WHEN COALESCE(stream_validated,0)=1 THEN 4
+              ELSE 5 END),
+            name COLLATE NOCASE
+          )
+          WHERE url IS NOT NULL AND series_id IS NULL;
+        ''');
       }));
     await migrations.migrate(db);
+    // fix419: give the planner real statistics. The app never ran ANALYZE, so
+    // SQLite planned blind — part of why the device chose the slow VOD index.
+    // PRAGMA optimize is cheap on repeat runs (re-analyzes only changed tables).
+    try {
+      await db.execute('PRAGMA optimize;');
+    } catch (e) {
+      AppLog.warn('PRAGMA optimize failed: $e');
+    }
 
     // future "syntax error" or feature-gating bug report comes with
     // the version attached. Cheap one-shot at first DB open.

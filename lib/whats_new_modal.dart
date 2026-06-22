@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.35.18': [
+    'Much faster category and movie/series browsing on large playlists — opening a category or VOD list no longer hangs for a few seconds while it scans the whole catalog.',
+  ],
   '1.35.17': [
     'Diagnostics: slow database queries now also record their query plan and a one-time data-size summary in the debug log, to help track down slow category loading on large playlists.',
   ],

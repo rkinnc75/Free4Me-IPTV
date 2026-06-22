@@ -1,0 +1,123 @@
+diff --git a/lib/backend/db_factory.dart b/lib/backend/db_factory.dart
+index 578b4b9..ba08d32 100644
+--- a/lib/backend/db_factory.dart
++++ b/lib/backend/db_factory.dart
+@@ -655,8 +655,61 @@ class DbFactory {
+           )
+           WHERE url IS NOT NULL AND series_id IS NULL AND cat_enabled = 1;
+         ''');
++      }))
++      // fix419: composite browse indexes that pin BOTH selective dimensions, so
++      // a single-source browse stops at LIMIT instead of residual-scanning every
++      // other source's rows (issue #2/#3: 2.6s VOD / 1.7s category on a 1.15M-row
++      // catalog with one source enabled — disabled sources' rows stay in the
++      // table/indexes). idx_browse_src_grp removes the category temp-B-tree (the
++      // planner adopts it on its own); idx_browse_src_mt is hinted explicitly in
++      // sql.dart for the single-media-type browse (LIMIT defeats the planner's
++      // selectivity estimate so it won't pick it unaided). Tier expression is
++      // byte-identical to BrowseOrder.orderBy('alpha') / idx_channels_browse_mt so
++      // it serves the sort. cat_enabled is omitted from the grp index because the
++      // category view shows rows regardless of the enabled checkbox.
++      ..add(SqliteMigration(34, (tx) async {
++        await tx.execute('''
++          CREATE INDEX IF NOT EXISTS idx_browse_src_mt
++          ON channels(
++            source_id,
++            media_type,
++            (CASE
++              WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0
++              WHEN COALESCE(favorite,0)=1 THEN 1
++              WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2
++              WHEN last_watched IS NOT NULL THEN 3
++              WHEN COALESCE(stream_validated,0)=1 THEN 4
++              ELSE 5 END),
++            name COLLATE NOCASE
++          )
++          WHERE url IS NOT NULL AND series_id IS NULL AND cat_enabled = 1;
++        ''');
++        await tx.execute('''
++          CREATE INDEX IF NOT EXISTS idx_browse_src_grp
++          ON channels(
++            source_id,
++            group_id,
++            (CASE
++              WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0
++              WHEN COALESCE(favorite,0)=1 THEN 1
++              WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2
++              WHEN last_watched IS NOT NULL THEN 3
++              WHEN COALESCE(stream_validated,0)=1 THEN 4
++              ELSE 5 END),
++            name COLLATE NOCASE
++          )
++          WHERE url IS NOT NULL AND series_id IS NULL;
++        ''');
+       }));
+     await migrations.migrate(db);
++    // fix419: give the planner real statistics. The app never ran ANALYZE, so
++    // SQLite planned blind — part of why the device chose the slow VOD index.
++    // PRAGMA optimize is cheap on repeat runs (re-analyzes only changed tables).
++    try {
++      await db.execute('PRAGMA optimize;');
++    } catch (e) {
++      AppLog.warn('PRAGMA optimize failed: $e');
++    }
+ 
+     // future "syntax error" or feature-gating bug report comes with
+     // the version attached. Cheap one-shot at first DB open.
+diff --git a/lib/backend/sql.dart b/lib/backend/sql.dart
+index 0782bdd..9e5dc31 100644
+--- a/lib/backend/sql.dart
++++ b/lib/backend/sql.dart
+@@ -586,9 +586,24 @@ class Sql {
+           return _browseMixedUnion(filters, mediaTypes, offset, invocation, modes);
+         }
+       }
++      // fix419: hint the (source_id, media_type) composite for the single-source,
++      // single-media-type, ungrouped alpha browse. The planner won't pick it over
++      // idx_channels_browse_mt on its own (LIMIT 36 defeats its selectivity
++      // estimate), so it residual-scans every source's rows. Gated so the partial
++      // index's conditions (series_id IS NULL, cat_enabled = 1 — both emitted by
++      // VisibilityClause when seriesId/groupId are null) and its tier sort are
++      // guaranteed present; otherwise no hint and behaviour is unchanged.
++      final browseMode = await _uniformSortMode(filters.sourceIds!);
++      final useSrcMtHint = filters.viewType != ViewType.favorites &&
++          filters.viewType != ViewType.history &&
++          filters.seriesId == null &&
++          filters.groupId == null &&
++          filters.sourceIds!.length == 1 &&
++          mediaTypes.length == 1 &&
++          browseMode == 'alpha';
+       // No query — simple filter on indexed columns.
+       sqlQuery = '''
+-        SELECT * FROM channels c
++        SELECT * FROM channels c${useSrcMtHint ? ' INDEXED BY idx_browse_src_mt' : ''}
+         WHERE media_type IN (${generatePlaceholders(mediaTypes.length)})
+           AND source_id IN (${generatePlaceholders(filters.sourceIds!.length)})
+           AND url IS NOT NULL
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 1dc7e4c..fffdd95 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.35.18': [
++    'Much faster category and movie/series browsing on large playlists — opening a category or VOD list no longer hangs for a few seconds while it scans the whole catalog.',
++  ],
+   '1.35.17': [
+     'Diagnostics: slow database queries now also record their query plan and a one-time data-size summary in the debug log, to help track down slow category loading on large playlists.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 45625ff..a852cb3 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.35.17+418
++version: 1.35.18+419
+ 
+ environment:
+   sdk: ^3.10.7
