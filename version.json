@@ -1,8 +1,8 @@
 {
-  "latest": "1.35.16",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.35.16",
+  "latest": "1.35.17",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.35.17",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Enabling \"Log User/Pass\" now requires typing INSECURE to confirm, since it writes your provider credentials to the log in plain text.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.35.16/Free4Me-IPTV-1.35.16-arm64.apk"
+  "releaseNotes": "\u2022 Diagnostics: slow database queries now also record their query plan and a one-time data-size summary in the debug log, to help track down slow category loading on large playlists.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.35.17/Free4Me-IPTV-1.35.17-arm64.apk"
 }
