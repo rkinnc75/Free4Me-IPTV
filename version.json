@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.7",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.7",
+  "latest": "2.0.8",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.8",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Android TV: Movies and Series now have a native browse screen \u2014 a side rail of your providers' real categories, with a focusable grid of titles for the category you pick (no more reused phone layout). Use the D-pad to move between the category rail and the grid; open a series to see its episodes. (Phone view is unchanged.)",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.7/Free4Me-IPTV-2.0.7-arm64.apk"
+  "releaseNotes": "\u2022 Android TV: Movies and Series now show as a wall of portrait posters (cover art + title) instead of list rows \u2014 the look you'd expect on a TV. Selecting a poster plays the movie or opens the series' episodes, exactly as before. (Phone view is unchanged.)",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.8/Free4Me-IPTV-2.0.8-arm64.apk"
 }
