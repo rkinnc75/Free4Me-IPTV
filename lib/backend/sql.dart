@@ -347,6 +347,61 @@ class Sql {
   static const int _ftsTargetedMaxRows = 50000;
   static const double _ftsTargetedMaxFraction = 0.2;
 
+  /// fix518: drop the non-unique secondary indexes on `channels` for the
+  /// duration of a bulk refresh, then recreate them ONCE from their stored DDL.
+  /// Maintaining ~a dozen indexes per row across a multi-hundred-thousand-row
+  /// wipe+reinsert was the dominant refresh cost (a measured 101s DELETE +
+  /// ~165s of inserts on a 273K-row source on the onn 4K box); rebuilding the
+  /// indexes once at the end is far cheaper. UNIQUE indexes
+  /// (channels_unique_stream / channels_unique_series) are KEPT — the reinsert
+  /// relies on them. Reads sqlite_master so a newly-added index can never be
+  /// missed, and recreates verbatim in `finally` so a failed refresh still
+  /// restores them. RE-ENTRANT: when a multi-source refresh has already dropped
+  /// the indexes around the whole loop, a nested per-source call is a no-op, so
+  /// the catalog is reindexed once for the batch, not once per source.
+  static bool _browseIndexesDropped = false;
+  static Future<void> withDroppedBrowseIndexes(
+      Future<void> Function() body) async {
+    if (_browseIndexesDropped) {
+      // An outer (multi-source) drop already owns drop+recreate; just run.
+      await body();
+      return;
+    }
+    final db = await DbFactory.db;
+    final rows = await db.getAll(
+      "SELECT name, sql FROM sqlite_master "
+      "WHERE type = 'index' AND tbl_name = 'channels' "
+      "AND sql IS NOT NULL AND UPPER(sql) NOT LIKE 'CREATE UNIQUE%'",
+    );
+    for (final r in rows) {
+      await db.execute('DROP INDEX IF EXISTS "${r['name']}";');
+    }
+    _browseIndexesDropped = true;
+    AppLog.info('Sql.withDroppedBrowseIndexes: dropped ${rows.length} channels'
+        ' index(es) for bulk refresh'
+        ' (${rows.map((r) => r['name']).join(", ")})');
+    try {
+      await body();
+    } finally {
+      var restored = 0;
+      for (final r in rows) {
+        try {
+          await db.execute(r['sql'] as String);
+          restored++;
+        } catch (e) {
+          AppLog.error('Sql.withDroppedBrowseIndexes: FAILED to recreate index'
+              ' "${r['name']}" — $e');
+        }
+      }
+      try {
+        await db.execute('PRAGMA optimize;');
+      } catch (_) {}
+      _browseIndexesDropped = false;
+      AppLog.info('Sql.withDroppedBrowseIndexes: recreated $restored/'
+          '${rows.length} channels index(es) + PRAGMA optimize');
+    }
+  }
+
   /// fix514: [skipRebuild] lets a caller that has ALREADY resynced the FTS
   /// index itself (a targeted per-source re-index) skip the redundant global
   /// rebuild this function would otherwise do when triggers were absent.

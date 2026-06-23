@@ -64,17 +64,23 @@ class Utils {
     // so a transient refresh failure never deletes a working source.
     final bool namePreExisted = await Sql.sourceNameExists(source.name);
     try {
-      switch (source.sourceType) {
-        case SourceType.m3u:
-          await processM3U(source, wipe, null, onProgress);
-          break;
-        case SourceType.m3uUrl:
-          await processM3UUrl(source, wipe, onProgress);
-          break;
-        case SourceType.xtream:
-          await getXtream(source, wipe, onProgress, onRowProgress);
-          break;
-      }
+      // fix518: drop the channels browse indexes around the bulk wipe+reinsert
+      // and rebuild once after, instead of maintaining ~a dozen indexes per
+      // row. Re-entrant — a no-op when refreshAllSources already dropped them
+      // around the whole multi-source loop.
+      await Sql.withDroppedBrowseIndexes(() async {
+        switch (source.sourceType) {
+          case SourceType.m3u:
+            await processM3U(source, wipe, null, onProgress);
+            break;
+          case SourceType.m3uUrl:
+            await processM3UUrl(source, wipe, onProgress);
+            break;
+          case SourceType.xtream:
+            await getXtream(source, wipe, onProgress, onRowProgress);
+            break;
+        }
+      });
       // fix386: brand-new Xtream add — fire EPG auto-discovery.
       // The runner is sticky (skips if epgDiscoveryState is set) and
       // is fire-and-forget; a probe failure must not roll back the
@@ -145,30 +151,29 @@ class Utils {
       ' (${enabled.map((s) => s.name).join(", ")})',
     );
 
-    if (onSourceStart != null) {
+    if (enabled.isEmpty) return;
+
+    // fix518: drop the channels browse indexes ONCE around the whole loop and
+    // rebuild them once at the end (not per source) — the per-row index
+    // maintenance across every source's wipe+reinsert was the dominant cost.
+    // The loop is now always SEQUENTIAL: the previous 2-at-a-time path raced
+    // both the shared FTS-trigger suspend and this index drop/recreate, and
+    // SQLite serializes writes anyway, so concurrency bought nothing on the
+    // DB-write-bound refresh.
+    await Sql.withDroppedBrowseIndexes(() async {
       for (var i = 0; i < enabled.length; i++) {
         final s = enabled[i];
-        onSourceStart(i + 1, enabled.length, s);
+        onSourceStart?.call(i + 1, enabled.length, s);
         await refreshSource(
           s,
-          onProgress: onSourceStatus == null
-              ? null
-              : (msg) => onSourceStatus(s, msg),
+          onProgress:
+              onSourceStatus == null ? null : (msg) => onSourceStatus(s, msg),
           onRowProgress: onSourceRowProgress == null
               ? null
               : (done, total) => onSourceRowProgress(s, done, total),
         );
       }
-    } else {
-      const maxConcurrent = 2;
-      for (var i = 0; i < enabled.length; i += maxConcurrent) {
-        final end = i + maxConcurrent > enabled.length
-            ? enabled.length
-            : i + maxConcurrent;
-        final chunk = enabled.sublist(i, end);
-        await Future.wait(chunk.map(refreshSource));
-      }
-    }
+    });
   }
 
   static Future<bool> hasTouchScreen() async {

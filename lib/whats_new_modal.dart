@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.18': [
+    'Faster source refresh (part 2): during a refresh the app now drops the channel-list search/browse indexes, loads all your sources, then rebuilds the indexes once at the end — instead of updating a dozen indexes on every single row as it goes. On large playlists this removes the biggest chunk of refresh time. Refresh also now runs sources one at a time for reliability. (Phone and TV both benefit.)',
+  ],
   '2.0.17': [
     'Faster source refresh (part 1 of several): the step that links each channel to its category no longer runs a per-row database lookup — it is now a single set-based update. On large playlists this alone cuts ~30–60 seconds per source. (More refresh-speed work is coming.)',
   ],
