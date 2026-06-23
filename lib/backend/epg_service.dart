@@ -146,6 +146,10 @@ class EpgService {
       // next UI read. Order: insert → delete stale → show progress → checkpoint.
       await Sql.deleteStalePrograms(source.id!, windowStart);
 
+      // fix502: rebuild the programme-title FTS index once after the batch
+      // refresh (trigger-free design — no per-row cost on the bulk insert).
+      await Sql.rebuildProgrammesFts();
+
       onProgress?.call(XmltvProgress(
         programsInserted: inserted,
         statusMessage: 'Optimising database…',

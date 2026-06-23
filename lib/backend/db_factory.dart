@@ -816,6 +816,26 @@ class EpgDbFactory {
             last_error         TEXT
           );
         ''');
+      }))
+      // fix502: FTS5 over programme titles for fast "what's on" search on a
+      // ~1M-row table (no leading-wildcard scans). Trigram + external content,
+      // mirroring channels_fts. NO sync triggers — programmes change only
+      // during a batch EPG refresh, so the index is rebuilt once afterward
+      // (Sql.rebuildProgrammesFts) instead of paying per-row trigger cost on
+      // the bulk insert.
+      ..add(SqliteMigration(2, (tx) async {
+        await tx.execute('''
+          CREATE VIRTUAL TABLE programmes_fts USING fts5(
+            title,
+            content='programmes',
+            content_rowid='id',
+            tokenize='trigram'
+          );
+        ''');
+        await tx.execute('''
+          INSERT INTO programmes_fts(rowid, title)
+          SELECT id, title FROM programmes;
+        ''');
       }));
     await migrations.migrate(db);
 

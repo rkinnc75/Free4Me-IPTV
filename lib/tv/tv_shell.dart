@@ -6,6 +6,7 @@ import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/view_type.dart';
 import 'package:open_tv/settings_view.dart';
+import 'package:open_tv/tv/tv_search_view.dart';
 import 'package:open_tv/tv/tv_top_tab_bar.dart';
 
 /// fix500: the persistent TV top-tab shell that replaces the old two-level
@@ -60,9 +61,8 @@ class _TvShellState extends State<TvShell> {
       mediaTypes: [MediaType.livestream, MediaType.movie, MediaType.serie],
       viewType: ViewType.history,
     ),
-    // Interim Search tab: hosts a Home with its built-in search box over all
-    // media types. fix502 replaces this with the dedicated grouped EPG+channel
-    // search screen.
+    // Search tab: the dedicated grouped EPG + channel "what's on" search
+    // (fix502). mediaTypes/viewType are unused for this tab.
     TvTab(
       label: 'Search',
       color: Color(0xFFB0BEC5),
@@ -102,16 +102,20 @@ class _TvShellState extends State<TvShell> {
   void _ensureBuilt(int i) {
     if (_built[i] != null) return;
     final TvTab t = _tabs[i];
-    _built[i] = Home(
-      key: ValueKey<String>('tv-tab-${t.label}'),
-      hasTouchScreen: false,
-      home: HomeManager(
-        filters: Filters(
-          viewType: t.viewType,
-          mediaTypes: List<MediaType>.of(t.mediaTypes),
-        ),
-      ),
-    );
+    // fix502: the Search tab hosts the grouped "what's on" search; the content
+    // tabs host the existing Home browse body.
+    _built[i] = t.isSearch
+        ? TvSearchView(settings: widget.settings)
+        : Home(
+            key: ValueKey<String>('tv-tab-${t.label}'),
+            hasTouchScreen: false,
+            home: HomeManager(
+              filters: Filters(
+                viewType: t.viewType,
+                mediaTypes: List<MediaType>.of(t.mediaTypes),
+              ),
+            ),
+          );
   }
 
   void _select(int i) {

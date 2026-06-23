@@ -2134,7 +2134,8 @@ class _SettingsState extends State<SettingsView> {
         ..epgRefreshHours = settings.epgRefreshHours
         ..epgRefreshHour = settings.epgRefreshHour
         ..epgPastDays = settings.epgPastDays
-        ..epgForecastDays = settings.epgForecastDays;
+        ..epgForecastDays = settings.epgForecastDays
+        ..epgSearchHours = settings.epgSearchHours;
     }
 
     // Only `bufferSizeMB` is baked into `PlayerConfiguration` at MpvEngine
@@ -3414,6 +3415,30 @@ class _SettingsState extends State<SettingsView> {
                     ),
                     onChanged: (v) {
                       setState(() => settings.epgForecastDays = v.round());
+                      updateSettings();
+                    },
+                  ),
+                  // fix502: forward-only look-ahead for "what's on" search.
+                  // Max tracks the forecast window (you can't search past the
+                  // guide data you have).
+                  _bufferSlider(
+                    label: "Search window (hours)",
+                    value: settings.epgSearchHours.toDouble(),
+                    min: 1,
+                    max: (settings.epgForecastDays * 24).toDouble(),
+                    divisions: settings.epgForecastDays * 24 - 1,
+                    help: (
+                      title: 'EPG Search Window (hours)',
+                      body:
+                          'How far ahead the "what\'s on" search looks for '
+                          'matching programs.\n\n'
+                          'Search is forward-only (now → +window) and can '
+                          'never exceed the Forecast days above (the guide data '
+                          'you have downloaded). '
+                          'Default: 3 h.',
+                    ),
+                    onChanged: (v) {
+                      setState(() => settings.epgSearchHours = v.round());
                       updateSettings();
                     },
                   ),

@@ -559,6 +559,7 @@ class SettingsIo {
         'epgRefreshHour': s.epgRefreshHour,
         'epgPastDays': s.epgPastDays,
         'epgForecastDays': s.epgForecastDays,
+        'epgSearchHours': s.epgSearchHours,
         // Schema v3 additions:
         'startupGraceMs': s.startupGraceMs,
         'miniDemuxerMaxMB': s.miniDemuxerMaxMB,
@@ -625,6 +626,7 @@ class SettingsIo {
       epgRefreshHour: m['epgRefreshHour'] as int? ?? 3,
       epgPastDays: m['epgPastDays'] as int? ?? 1,
       epgForecastDays: m['epgForecastDays'] as int? ?? 7,
+      epgSearchHours: m['epgSearchHours'] as int? ?? 3,
     );
 
     if (m['startupGraceMs'] is int) s.startupGraceMs = m['startupGraceMs'];

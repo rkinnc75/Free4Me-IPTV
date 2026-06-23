@@ -34,4 +34,9 @@ class SettingBounds {
   // bufferSizeMB — slider min 16, max is device-dependent.
   static const int bufferSizeMin = 16;
   static int get bufferSizeMax => DeviceMemory.maxBufferSizeMb;
+
+  // fix502: epgSearchHours — min 1h; max = the EPG forecast window in hours
+  // (you can never search further ahead than the guide data extends).
+  static const int epgSearchHoursMin = 1;
+  static int epgSearchHoursMax(int epgForecastDays) => epgForecastDays * 24;
 }

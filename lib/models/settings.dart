@@ -106,6 +106,9 @@ class Settings {
   int epgRefreshHour;
   int epgPastDays;
   int epgForecastDays;
+  /// fix502: forward-only look-ahead window (hours) for "what's on" EPG search.
+  /// Clamped to [SettingBounds.epgSearchHoursMin, epgForecastDays*24] at use.
+  int epgSearchHours;
 
   /// Maximum number of streams the radar scanner probes per run.
   /// Default 20, range 1–100. Higher counts take longer.
@@ -285,6 +288,7 @@ class Settings {
     this.epgRefreshHour = 3,
     this.epgPastDays = 1,
     this.epgForecastDays = 7,
+    this.epgSearchHours = 3,
     this.streamScanMaxCount = 20,
     this.streamScanTimeoutSecs = 8,
     this.miniDemuxerMaxMB = 32,

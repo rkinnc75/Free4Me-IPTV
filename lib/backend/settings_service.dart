@@ -50,6 +50,7 @@ const epgRefreshHoursProp = "epgRefreshHours";
 const epgRefreshHourProp = "epgRefreshHour";
 const epgPastDaysProp = "epgPastDays";
 const epgForecastDaysProp = "epgForecastDays";
+const epgSearchHoursProp = "epgSearchHours";
 
 // Stream scanner (v1.13.2)
 const streamScanMaxCountProp = "streamScanMaxCount";
@@ -173,6 +174,7 @@ class SettingsService {
     var epgHour = settingsMap[epgRefreshHourProp];
     var epgPast = settingsMap[epgPastDaysProp];
     var epgForecast = settingsMap[epgForecastDaysProp];
+    var epgSearchHrs = settingsMap[epgSearchHoursProp];
     var stableThreshold = settingsMap[stableThresholdSecsProp];
     var startupGrace = settingsMap[startupGraceMsProp];
     var scanMaxCount = settingsMap[streamScanMaxCountProp];
@@ -217,6 +219,7 @@ class SettingsService {
     if (epgHour != null) settings.epgRefreshHour = int.parse(epgHour);
     if (epgPast != null) settings.epgPastDays = int.parse(epgPast);
     if (epgForecast != null) settings.epgForecastDays = int.parse(epgForecast);
+    if (epgSearchHrs != null) settings.epgSearchHours = int.parse(epgSearchHrs);
     if (stableThreshold != null) {
       settings.stableThresholdSecs = int.parse(stableThreshold);
     }
@@ -405,6 +408,7 @@ class SettingsService {
     settingsMap[epgRefreshHourProp] = settings.epgRefreshHour.toString();
     settingsMap[epgPastDaysProp] = settings.epgPastDays.toString();
     settingsMap[epgForecastDaysProp] = settings.epgForecastDays.toString();
+    settingsMap[epgSearchHoursProp] = settings.epgSearchHours.toString();
     settingsMap[stableThresholdSecsProp] =
         settings.stableThresholdSecs.toString();
     settingsMap[startupGraceMsProp] = settings.startupGraceMs.toString();

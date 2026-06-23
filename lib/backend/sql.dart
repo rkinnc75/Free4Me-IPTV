@@ -1900,6 +1900,79 @@ class Sql {
     );
   }
 
+  /// fix502: rebuild the programmes_fts index from the programmes table.
+  /// Called once after each EPG refresh — programmes change only in batch, so
+  /// no per-row sync triggers are needed (which would slow the bulk insert).
+  static Future<void> rebuildProgrammesFts() async {
+    final db = await EpgDbFactory.db;
+    await db
+        .execute("INSERT INTO programmes_fts(programmes_fts) VALUES('rebuild');");
+  }
+
+  /// fix502: forward-only "what's on" search over EPG programme titles.
+  /// Returns programmes whose title matches [query] (FTS5 trigram) and that are
+  /// airing now or start within [nowEpoch, windowEndEpoch] — never backwards.
+  /// FTS keeps it index-served on a ~1M-row table; the time/source filters are
+  /// cheap residuals on the small matched set. Terms < 3 chars are skipped
+  /// (trigram needs ≥3), matching Sql.search.
+  static Future<List<Program>> searchPrograms({
+    required String query,
+    required List<int> sourceIds,
+    required int nowEpoch,
+    required int windowEndEpoch,
+    int limit = 200,
+  }) async {
+    final terms = query
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((t) => t.length >= 3)
+        .toList();
+    if (terms.isEmpty || sourceIds.isEmpty) return [];
+    final matchExpr =
+        terms.map((t) => '"${t.replaceAll('"', '""')}"').join(' AND ');
+    final db = await EpgDbFactory.db;
+    final rows = await db.getAll('''
+      SELECT p.id, p.epg_channel_id, p.source_id, p.title, p.description,
+             p.category, p.start_utc, p.stop_utc, p.episode_num
+      FROM programmes_fts f
+      INNER JOIN programmes p ON p.id = f.rowid
+      WHERE programmes_fts MATCH ?
+        AND p.source_id IN (${generatePlaceholders(sourceIds.length)})
+        AND p.stop_utc > ?
+        AND p.start_utc < ?
+      ORDER BY p.start_utc ASC
+      LIMIT ?
+    ''', [matchExpr, ...sourceIds, nowEpoch, windowEndEpoch, limit]);
+    return rows.map(_rowToProgram).toList();
+  }
+
+  /// fix502: resolve the live channels backing EPG (sourceId, epgChannelId)
+  /// pairs from a "what's on" programme search, so a result can show + play the
+  /// channel. Keyed "sourceId|epgChannelId". One batch query — the input set is
+  /// bounded by the searchPrograms LIMIT.
+  static Future<Map<String, Channel>> getLiveChannelsByEpg(
+    List<int> sourceIds,
+    List<String> epgChannelIds,
+  ) async {
+    if (sourceIds.isEmpty || epgChannelIds.isEmpty) return {};
+    final db = await DbFactory.db;
+    final rows = await db.getAll(
+      'SELECT * FROM channels'
+      ' WHERE media_type = ${MediaType.livestream.index}'
+      ' AND url IS NOT NULL'
+      ' AND source_id IN (${generatePlaceholders(sourceIds.length)})'
+      ' AND epg_channel_id IN (${generatePlaceholders(epgChannelIds.length)})',
+      [...sourceIds, ...epgChannelIds],
+    );
+    final map = <String, Channel>{};
+    for (final r in rows) {
+      final ch = rowToChannel(r);
+      final epg = ch.epgChannelId;
+      if (epg != null) map['${ch.sourceId}|$epg'] = ch;
+    }
+    return map;
+  }
+
   /// Upsert a refresh log entry for a source.
   static Future<void> upsertEpgRefreshLog(
     int sourceId,
