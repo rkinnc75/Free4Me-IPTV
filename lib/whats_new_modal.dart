@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.3': [
+    'Android TV: the Live tab is now an EPG guide — a category rail on the left scopes a channel × time grid showing what\'s on across the next few hours, with a "now" line. Pick any program or channel to start watching. (Phone view is unchanged.)',
+  ],
   '2.0.2': [
     'Android TV: the Search tab now finds channels by name AND by what\'s on — type a show like "Family Feud" and it surfaces the live channels airing it now or soon. New "Search window (hours)" setting under EPG controls how far ahead it looks (forward-only, capped at your forecast days). (Phone view is unchanged.)',
   ],

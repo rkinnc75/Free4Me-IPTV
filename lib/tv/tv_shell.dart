@@ -6,6 +6,7 @@ import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/view_type.dart';
 import 'package:open_tv/settings_view.dart';
+import 'package:open_tv/tv/tv_guide_view.dart';
 import 'package:open_tv/tv/tv_search_view.dart';
 import 'package:open_tv/tv/tv_top_tab_bar.dart';
 
@@ -102,20 +103,25 @@ class _TvShellState extends State<TvShell> {
   void _ensureBuilt(int i) {
     if (_built[i] != null) return;
     final TvTab t = _tabs[i];
-    // fix502: the Search tab hosts the grouped "what's on" search; the content
-    // tabs host the existing Home browse body.
-    _built[i] = t.isSearch
-        ? TvSearchView(settings: widget.settings)
-        : Home(
-            key: ValueKey<String>('tv-tab-${t.label}'),
-            hasTouchScreen: false,
-            home: HomeManager(
-              filters: Filters(
-                viewType: t.viewType,
-                mediaTypes: List<MediaType>.of(t.mediaTypes),
-              ),
-            ),
-          );
+    // fix503: Live TV (tab 0) hosts the EPG guide (category rail + channel×time
+    // grid). fix502: the Search tab hosts the grouped "what's on" search. The
+    // other content tabs host the existing Home browse body.
+    if (t.isSearch) {
+      _built[i] = TvSearchView(settings: widget.settings);
+    } else if (i == 0) {
+      _built[i] = TvGuideView(settings: widget.settings);
+    } else {
+      _built[i] = Home(
+        key: ValueKey<String>('tv-tab-${t.label}'),
+        hasTouchScreen: false,
+        home: HomeManager(
+          filters: Filters(
+            viewType: t.viewType,
+            mediaTypes: List<MediaType>.of(t.mediaTypes),
+          ),
+        ),
+      );
+    }
   }
 
   void _select(int i) {

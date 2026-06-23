@@ -1973,6 +1973,42 @@ class Sql {
     return map;
   }
 
+  /// fix503: fetch programmes for the rail-scoped guide grid — only the
+  /// channels currently realized (visible + overscan) in the vertical list.
+  ///
+  /// Driven by a bounded `epg_channel_id IN`-list PER source (never `source_id`
+  /// alone, which would window-scan all of a source's channels), chunked under
+  /// SQLite's 999-variable limit. Served by `idx_programs_channel_time`
+  /// (epg_channel_id, source_id, start_utc). Two-phase by design: the channel
+  /// set comes from db.sqlite (Sql.search); programmes live in epg.sqlite.
+  static Future<List<Program>> getGridPrograms({
+    required Map<int, List<String>> epgIdsBySource,
+    required int windowStartEpoch,
+    required int windowEndEpoch,
+  }) async {
+    final db = await EpgDbFactory.db;
+    final out = <Program>[];
+    for (final entry in epgIdsBySource.entries) {
+      final sourceId = entry.key;
+      final ids = entry.value.where((e) => e.isNotEmpty).toList();
+      for (var i = 0; i < ids.length; i += 900) {
+        final end = i + 900 > ids.length ? ids.length : i + 900;
+        final chunk = ids.sublist(i, end);
+        final rows = await db.getAll('''
+          SELECT id, epg_channel_id, source_id, title, description, category,
+                 start_utc, stop_utc, episode_num
+          FROM programmes
+          WHERE source_id = ?
+            AND epg_channel_id IN (${generatePlaceholders(chunk.length)})
+            AND start_utc < ?
+            AND stop_utc > ?
+        ''', [sourceId, ...chunk, windowEndEpoch, windowStartEpoch]);
+        out.addAll(rows.map(_rowToProgram));
+      }
+    }
+    return out;
+  }
+
   /// Upsert a refresh log entry for a source.
   static Future<void> upsertEpgRefreshLog(
     int sourceId,
