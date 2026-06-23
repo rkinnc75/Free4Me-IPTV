@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/conn_timing.dart';
+import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/widgets/player_epg_now_label.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/channel_tile.dart';
@@ -209,6 +210,12 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
         'Player: CREATED engine eid=${identityHashCode(_engine)}'
         ' channel="${widget.channel.name}"',
       );
+    }
+    // fix422: restore the user's last-chosen single-cell full-screen video
+    // fit (fit/stretch/crop) so it opens in their preference, not always fit.
+    _zoomMode = widget.settings.playerZoomMode;
+    if (_engine is MpvEngine) {
+      (_engine as MpvEngine).setZoomMode(_zoomMode.boxFit);
     }
     // Register so the overlay swap can pop this route and take over.
     OverlayPlayerController.instance.registerMain(
@@ -1121,6 +1128,9 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     final next = _zoomMode.next();
     setState(() => _zoomMode = next);
     engine.setZoomMode(next.boxFit);
+    // fix422: persist so the next single-cell full-screen open restores it.
+    widget.settings.playerZoomMode = next;
+    unawaited(SettingsService.updateSettings(widget.settings));
   }
 
 

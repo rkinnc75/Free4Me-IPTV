@@ -1,4 +1,5 @@
 import 'dart:collection';
+import 'package:open_tv/models/zoom_mode.dart';
 
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/device_memory.dart';
@@ -87,6 +88,7 @@ const devDebandProp = "devDeband";
 const devHwdecImageFormatProp = "devHwdecImageFormat";
 const devAudioBufferSecsProp = "devAudioBufferSecs";
 const devControlsHideSecsProp = "devControlsHideSecs";
+const playerZoomModeProp = "playerZoomMode";
 const devAudioSpdifProp = "devAudioSpdif";
 
 class SettingsService {
@@ -329,6 +331,12 @@ class SettingsService {
     if (dchs != null) {
       settings.devControlsHideSecs = int.tryParse(dchs) ?? 3;
     }
+    final pzm = settingsMap[playerZoomModeProp];
+    if (pzm != null) {
+      settings.playerZoomMode = ZoomMode.values.firstWhere(
+          (m) => m.name == pzm,
+          orElse: () => ZoomMode.fit);
+    }
     final dasp = settingsMap[devAudioSpdifProp];
     if (dasp != null) {
       settings.devAudioSpdif = AudioSpdifMode.fromJson(dasp);
@@ -448,6 +456,7 @@ class SettingsService {
         settings.devAudioBufferSecs.toString();
     settingsMap[devControlsHideSecsProp] =
         settings.devControlsHideSecs.toString();
+    settingsMap[playerZoomModeProp] = settings.playerZoomMode.name;
     settingsMap[devAudioSpdifProp] = settings.devAudioSpdif.toJson();
 
     await Sql.updateSettings(settingsMap);

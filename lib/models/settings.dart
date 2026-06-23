@@ -4,6 +4,7 @@ import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/multi_view_layout.dart';
 import 'package:open_tv/models/multi_view_decode.dart';
 import 'package:open_tv/models/view_type.dart';
+import 'package:open_tv/models/zoom_mode.dart';
 
 /// Content-type filter for the All tab in the bottom navigation bar.
 /// Cycles through states so the user can quickly limit searches to a
@@ -243,6 +244,10 @@ class Settings {
   /// dismissed. Default 3 (media_kit's stock value).
   int devControlsHideSecs;
 
+  /// fix422: the user's last-chosen single-cell full-screen video fit
+  /// (fit / stretch / crop). Restored on the next full-screen open.
+  ZoomMode playerZoomMode;
+
   /// libmpv `audio-spdif` (S/PDIF passthrough). Default [AudioSpdifMode.no].
   /// Enabling passthrough on a box→TV HDMI path will SILENCE audio
   /// unless the downstream device is an AV receiver that can decode
@@ -310,6 +315,7 @@ class Settings {
     this.devHwdecImageFormat = HwdecImageFormat.defaultFmt,
     this.devAudioBufferSecs = 0.2,
     this.devControlsHideSecs = 3,
+    this.playerZoomMode = ZoomMode.fit,
     this.devAudioSpdif = AudioSpdifMode.no,
   });
 

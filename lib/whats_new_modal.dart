@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.35.21': [
+    'The full-screen video fit you pick (fit, stretch, or crop) is now remembered, so the next time you open a channel full-screen it uses your last choice.',
+  ],
   '1.35.20': [
     'Diagnostics: when debug logging is on, the app now records the DNS, TCP and TLS connection-setup time for each channel you start, to help investigate cold start-up speed.',
   ],
