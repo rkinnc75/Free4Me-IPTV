@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.14': [
+    'Refreshing a single small source no longer pauses the whole app while search re-indexes the entire catalog — only that source\'s entries are updated when it\'s safe to do so.',
+  ],
   '2.0.13': [
     'Fixed the full-screen control bar sitting too high and being hard to bring back with a tap; restored it to the bottom edge.',
   ],

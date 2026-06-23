@@ -213,39 +213,147 @@ class Sql {
   /// FTS trigram maintenance. Dropping the triggers around the bulk DELETE +
   /// reinsert and rebuilding once collapses that to a single index build.
   ///
+  /// fix514: [refreshedSourceId], when provided, additionally lets the
+  /// resync use a TARGETED re-index (this source's rows only) instead of a
+  /// full-catalog 'rebuild' — see runbook for the measured ~110s case this
+  /// fixes (a single 39.5K-row source refresh paying to re-tokenize a 1M+
+  /// row combined catalog). A global rebuild's cost scales with TOTAL
+  /// catalog size, not refreshed-source size, so targeted wins when the
+  /// source is both small in absolute terms AND a small slice of the
+  /// catalog (see [_ftsTargetedMaxRows] / [_ftsTargetedMaxFraction]).
+  ///
+  /// DELIBERATELY CONSERVATIVE THRESHOLD: a fraction-only threshold isn't
+  /// sufficient — measured against a real 5-source-load log (4 sources,
+  /// 149K-452K rows each, combined catalog up to ~1.17M), a source at 38.6%
+  /// of the catalog (451,728 absolute rows) still lost to global rebuild
+  /// despite being comfortably under a 50% fraction cap, because targeted's
+  /// cost is dominated by two full passes over the source's OWN absolute
+  /// row count, not just its share of the total. Sandbox timing past ~100K
+  /// rows was too noisy to derive a precise combined formula, so this uses
+  /// BOTH an absolute cap and a fraction cap (source must be small on BOTH
+  /// axes) rather than risk picking the slower path on an unvalidated case.
+  /// Everything outside the validated small-source zone falls back to the
+  /// known-safe global rebuild.
+  ///
+  /// CORRECTNESS-CRITICAL ORDERING: external-content FTS5 can only remove an
+  /// index entry while the content table (`channels`) still holds that row —
+  /// once the row is gone, `DELETE FROM channels_fts WHERE rowid=?` is a
+  /// silent no-op (confirmed empirically; this is NOT documented intuitively
+  /// and bit the first draft of this fix). So the targeted delete MUST run
+  /// BEFORE [body] (the wipe+reinsert) starts, while the old rows are still
+  /// readable; the targeted insert of the NEW rows runs AFTER [body]
+  /// completes. The delete also MUST use a materialized id list, not a live
+  /// correlated subquery against the content table in the same statement
+  /// (`WHERE rowid IN (SELECT id FROM channels WHERE...)`) — that form was
+  /// separately measured to silently delete nothing despite reporting a
+  /// non-zero affected-row count. Chunked at 900 ids/statement (SQLite's 999
+  /// bind-parameter limit, same convention used elsewhere in this file).
+  ///
   /// No-op for non-FTS users: their triggers are already absent (fix212), so
   /// [hadTriggers] is false and we neither drop nor rebuild — body runs as-is.
   /// Safe if [body] throws: the finally clause restores triggers + rebuild so
-  /// search is never left stale.
+  /// search is never left stale (falls back to global rebuild on the error
+  /// path regardless of [refreshedSourceId] — the targeted insert assumes
+  /// [body] completed and `channels` reflects the new state, which may not
+  /// hold if it threw partway through).
   static Future<void> withSuspendedFtsTriggers(
-      Future<void> Function() body) async {
+      Future<void> Function() body, {int? refreshedSourceId}) async {
     final db = await DbFactory.db;
     final existing = await db.getAll(
       "SELECT name FROM sqlite_master WHERE type = 'trigger' "
       "AND name IN ('channels_ai', 'channels_au', 'channels_ad')",
     );
     final hadTriggers = existing.length == 3;
+    var useTargeted = false;
     if (hadTriggers) {
       await db.execute('DROP TRIGGER IF EXISTS channels_ai;');
       await db.execute('DROP TRIGGER IF EXISTS channels_au;');
       await db.execute('DROP TRIGGER IF EXISTS channels_ad;');
+      if (refreshedSourceId != null) {
+        final counts = await db.getAll(
+          'SELECT '
+          '(SELECT COUNT(*) FROM channels WHERE source_id = ?) AS src, '
+          '(SELECT COUNT(*) FROM channels) AS total',
+          [refreshedSourceId],
+        );
+        final src = counts.first['src'] as int;
+        final total = counts.first['total'] as int;
+        if (total > 0 &&
+            src <= _ftsTargetedMaxRows &&
+            src / total <= _ftsTargetedMaxFraction) {
+          // Delete this source's FTS entries NOW, while `channels` still
+          // holds them — see the correctness note above. Materialize the id
+          // list first; chunk at 900 (SQLite's 999 bind-parameter limit).
+          final idRows = await db.getAll(
+            'SELECT id FROM channels WHERE source_id = ?',
+            [refreshedSourceId],
+          );
+          final ids = idRows.map((r) => r['id'] as int).toList();
+          for (var i = 0; i < ids.length; i += 900) {
+            final end = i + 900 > ids.length ? ids.length : i + 900;
+            final chunk = ids.sublist(i, end);
+            await db.execute(
+              'DELETE FROM channels_fts WHERE rowid IN '
+              '(${generatePlaceholders(chunk.length)})',
+              chunk,
+            );
+          }
+          useTargeted = true;
+        }
+      }
       AppLog.info('Sql.withSuspendedFtsTriggers: FTS triggers dropped'
-          ' for bulk refresh');
+          ' for bulk refresh${useTargeted ? " (targeted source=$refreshedSourceId)" : ""}');
     }
+    var bodySucceeded = false;
     try {
       await body();
+      bodySucceeded = true;
     } finally {
       if (hadTriggers) {
-        // reconcileFtsTriggers(true) recreates the triggers AND, because they
-        // were absent, rebuilds the FTS index once from the content table.
-        await reconcileFtsTriggers(true);
-        AppLog.info('Sql.withSuspendedFtsTriggers: FTS triggers restored'
-            ' + index rebuilt');
+        if (useTargeted && bodySucceeded) {
+          // [body] has now wiped+reinserted this source's rows in `channels`;
+          // insert their current state into the FTS index.
+          await db.execute(
+            'INSERT INTO channels_fts(rowid, name) '
+            'SELECT id, name FROM channels WHERE source_id = ?',
+            [refreshedSourceId],
+          );
+          await reconcileFtsTriggers(true, skipRebuild: true);
+          AppLog.info('Sql.withSuspendedFtsTriggers: FTS triggers restored'
+              ' + targeted re-index (source=$refreshedSourceId)');
+        } else {
+          // Either targeted wasn't applicable (large source / large
+          // fraction / no sourceId given), or body() threw before finishing
+          // its wipe+reinsert — in the latter case a targeted delete may
+          // have already removed this source's OLD entries with nothing
+          // reinserted yet, so a global rebuild is the only safe way to
+          // leave search consistent.
+          await reconcileFtsTriggers(true);
+          AppLog.info('Sql.withSuspendedFtsTriggers: FTS triggers restored'
+              ' + index rebuilt');
+        }
       }
     }
   }
 
-  static Future<void> reconcileFtsTriggers(bool ftsActive) async {
+  /// fix514: deliberately conservative dual threshold (see the long comment
+  /// above) — targeted re-index is ONLY used when the refreshed source is
+  /// small on BOTH axes. A source must clear both caps; failing either one
+  /// falls back to the always-safe global rebuild. 50,000 rows is comfortably
+  /// inside the cleanly-validated "targeted wins big" zone (the A3000 case
+  /// that motivated this fix was 39,515 rows); 20% keeps the fraction check
+  /// tight enough that even a small-catalog scenario doesn't accidentally
+  /// route a meaningfully-sized source through the unvalidated middle zone.
+  static const int _ftsTargetedMaxRows = 50000;
+  static const double _ftsTargetedMaxFraction = 0.2;
+
+  /// fix514: [skipRebuild] lets a caller that has ALREADY resynced the FTS
+  /// index itself (a targeted per-source re-index) skip the redundant global
+  /// rebuild this function would otherwise do when triggers were absent.
+  /// Other callers (search-method toggle) don't pass it and keep the
+  /// original always-rebuild-when-triggers-were-absent behavior.
+  static Future<void> reconcileFtsTriggers(bool ftsActive,
+      {bool skipRebuild = false}) async {
     final db = await DbFactory.db;
     final existing = await db.getAll(
       "SELECT name FROM sqlite_master WHERE type = 'trigger' "
@@ -254,8 +362,11 @@ class Sql {
     final triggersPresent = existing.length == 3;
     if (ftsActive) {
       if (triggersPresent) return;
-      // Triggers were absent => FTS index is stale. Rebuild once, then recreate.
-      await db.execute("INSERT INTO channels_fts(channels_fts) VALUES('rebuild');");
+      // Triggers were absent => FTS index is stale. Rebuild once, then
+      // recreate (unless the caller already resynced it themselves).
+      if (!skipRebuild) {
+        await db.execute("INSERT INTO channels_fts(channels_fts) VALUES('rebuild');");
+      }
       await db.execute('CREATE TRIGGER IF NOT EXISTS channels_ai '
           'AFTER INSERT ON channels BEGIN '
           'INSERT INTO channels_fts(rowid, name) VALUES (new.id, new.name); END;');

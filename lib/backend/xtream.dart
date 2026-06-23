@@ -309,7 +309,7 @@ Future<void> getXtream(
                   approxRows > totalRows ? totalRows : approxRows, totalRows);
             },
     );
-  });
+  }, refreshedSourceId: source.id);
   swCommit.stop();
   AppLog.info('getXtream: DB commit phase for source="${source.name}" '
       'took ${swCommit.elapsedMilliseconds}ms ($totalRows fetched rows)');
