@@ -1,8 +1,8 @@
 {
-  "latest": "1.35.20",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.35.20",
+  "latest": "1.35.21",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.35.21",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Diagnostics: when debug logging is on, the app now records the DNS, TCP and TLS connection-setup time for each channel you start, to help investigate cold start-up speed.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.35.20/Free4Me-IPTV-1.35.20-arm64.apk"
+  "releaseNotes": "\u2022 The full-screen video fit you pick (fit, stretch, or crop) is now remembered, so the next time you open a channel full-screen it uses your last choice.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.35.21/Free4Me-IPTV-1.35.21-arm64.apk"
 }
