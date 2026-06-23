@@ -1,8 +1,8 @@
 {
-  "latest": "1.35.21",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.35.21",
+  "latest": "1.35.22",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.35.22",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 The full-screen video fit you pick (fit, stretch, or crop) is now remembered, so the next time you open a channel full-screen it uses your last choice.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.35.21/Free4Me-IPTV-1.35.21-arm64.apk"
+  "releaseNotes": "\u2022 Fixed: in full-screen, tapping on the area where the bottom control bar appears now reliably brings the controls back. The bar previously sat in a strip (the system gesture area + a small edge band) where taps didn\u2019t register, so you had to tap higher up to wake it.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.35.22/Free4Me-IPTV-1.35.22-arm64.apk"
 }
