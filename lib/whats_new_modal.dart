@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.4': [
+    'Fixed: the app failing to open on 32-bit Android TV boxes (some Walmart onn / Amlogic models). The build is now a universal arm + arm64 APK, so it installs and launches on both 32- and 64-bit devices.',
+  ],
   '2.0.3': [
     'Android TV: the Live tab is now an EPG guide — a category rail on the left scopes a channel × time grid showing what\'s on across the next few hours, with a "now" line. Pick any program or channel to start watching. (Phone view is unchanged.)',
   ],

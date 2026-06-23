@@ -83,7 +83,9 @@ if [[ ! -f "$REPO_DIR/android/app/release.keystore" ]]; then
   exit 1
 fi
 
-flutter build apk --release --target-platform android-arm64
+# fix504: UNIVERSAL arm+arm64 — 32-bit-only TV boxes (onn 4K etc.) cannot load
+# an arm64-only APK's libflutter.so. Mirrors .github/workflows/release.yml.
+flutter build apk --release --target-platform android-arm,android-arm64
 
 APK_SRC="$REPO_DIR/build/app/outputs/flutter-apk/app-release.apk"
 APK_DOWNLOADS="$HOME/Downloads/$APK_NAME"

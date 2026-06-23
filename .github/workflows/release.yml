@@ -288,7 +288,11 @@ jobs:
           # headroom for both Gradle and the Kotlin daemon while still
           # leaving room for the OS + the runner agent.
           GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx5G -XX:MaxMetaspaceSize=1G'
-        run: flutter build apk --release --target-platform android-arm64
+        # fix504: build a UNIVERSAL arm+arm64 APK. fix420 made it arm64-only,
+        # but 32-bit-only Android TV boxes (e.g. Walmart onn 4K, many Amlogic
+        # boxes: ro.zygote=zygote32, no arm64 ABI) then crashed at launch with
+        # "Could not find 'libflutter.so' [armeabi-v7a]". Universal restores them.
+        run: flutter build apk --release --target-platform android-arm,android-arm64
 
       - name: Stage APK with release naming
         id: apk
