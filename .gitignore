@@ -171,3 +171,8 @@ free4me_log_*.txt
 .github-token.*
 *.tar.gz
 *.tar.xz
+
+# Local continuation/handoff scratch doc — kept on the machine, never committed.
+# Ignoring it also shields it from apply_fix.sh's `git clean -fd` and the
+# `git add -A` sweep, so a fix release can't delete or accidentally commit it.
+GROUND_ZERO.md
