@@ -178,7 +178,7 @@ class _RootPageState extends State<_RootPage> with WidgetsBindingObserver {
         widget.isTV ||
         (!widget.hasTouchScreen &&
             (Platform.isAndroid || Platform.isIOS))) {
-      return TvHome();
+      return TvHome(settings: widget.settings);
     }
     return Home(
       firstLaunch: true,

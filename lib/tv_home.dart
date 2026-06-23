@@ -1,18 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:open_tv/backend/settings_service.dart';
-import 'package:open_tv/home.dart';
+import 'package:open_tv/models/settings.dart';
+import 'package:open_tv/tv/tv_shell.dart';
 import 'package:open_tv/version_startup_tasks.dart';
-import 'package:open_tv/menu_tile.dart';
-import 'package:open_tv/models/filters.dart';
-import 'package:open_tv/models/home_manager.dart';
-import 'package:open_tv/models/media_type.dart';
-import 'package:open_tv/models/view_type.dart';
-import 'package:open_tv/settings_view.dart';
 
+/// fix500: the Android-TV entry point.
+///
+/// Runs the once-per-version startup tasks (What's New + log/metrics rotation,
+/// fix403) on first frame, then hosts the persistent [TvShell] tabbed UI. The
+/// old two-level giant-button menu (Channels/Categories/Favorites/History +
+/// nested All/Live/Vods/Series) is gone — replaced by the shell.
 class TvHome extends StatefulWidget {
-  final bool nested;
-  final ViewType? previousViewType;
-  const TvHome({super.key, this.nested = false, this.previousViewType});
+  final Settings settings;
+  const TvHome({super.key, required this.settings});
 
   @override
   State<TvHome> createState() => _TvHomeState();
@@ -22,187 +21,17 @@ class _TvHomeState extends State<TvHome> {
   @override
   void initState() {
     super.initState();
-    // fix403: the version-startup tasks (log/metrics rotation + What's New)
-    // live in Home(firstLaunch:true) — the phone entry. The TV entry is TvHome
-    // (it pushes Home with firstLaunch:false), so on a TV the log never cleared
-    // on a version change and release notes never showed. Run them here for the
-    // TV root (not nested sub-screens) once the first frame has a Navigator.
-    // Idempotent — a no-op once done for the current version.
-    if (!widget.nested) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) runVersionStartupTasks(context);
-      });
-    }
-  }
-
-  void _navigateAllMediaTypes() {
-    final types = SettingsService.cached?.getMediaTypes() ??
-        [
-          MediaType.livestream,
-          MediaType.movie,
-          MediaType.serie,
-        ];
-    navigateHome(
-      Filters(
-        viewType: widget.previousViewType!,
-        mediaTypes: types,
-      ),
-    );
-  }
-
-  void navigateHome(Filters filters) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) =>
-            Home(home: HomeManager(filters: filters), hasTouchScreen: false),
-      ),
-    );
-  }
-
-  void navNested(ViewType viewType) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => TvHome(nested: true, previousViewType: viewType),
-      ),
-    );
-  }
-
-  void navSettings() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (context) => SettingsView(showNavBar: false)),
-    );
+    // The version-startup tasks (log rotation + What's New) historically lived
+    // in Home(firstLaunch:true) — the phone entry. The TV entry is TvHome, so
+    // run them here for the TV root. Idempotent — a no-op once done for the
+    // current version.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) runVersionStartupTasks(context);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            child: Wrap(
-              alignment: WrapAlignment.center,
-              children: widget.nested ? getMediaTypeSelectNested() : getHome(),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  List<Widget> getMediaTypeSelectNested() {
-    return [
-      MenuTile(
-        autofocus: true,
-        icon: Icons.list,
-        label: "All",
-        color: const LinearGradient(
-          colors: [Colors.blueGrey, Colors.blue],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        onTap: () => _navigateAllMediaTypes(),
-      ),
-      MenuTile(
-        icon: Icons.live_tv,
-        label: "Live",
-        color: const LinearGradient(
-          colors: [Colors.amber, Colors.deepOrange],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        onTap: () => navigateHome(
-          Filters(
-            viewType: widget.previousViewType!,
-            mediaTypes: [MediaType.livestream],
-          ),
-        ),
-      ),
-      MenuTile(
-        icon: Icons.movie,
-        label: "Vods",
-        color: LinearGradient(
-          colors: [Colors.red, Colors.red.shade400],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        onTap: () => navigateHome(
-          Filters(
-            viewType: widget.previousViewType!,
-            mediaTypes: [MediaType.movie],
-          ),
-        ),
-      ),
-      MenuTile(
-        icon: Icons.local_movies,
-        label: "Series",
-        color: const LinearGradient(
-          colors: [Colors.purple, Colors.deepPurple],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        onTap: () => navigateHome(
-          Filters(
-            viewType: widget.previousViewType!,
-            mediaTypes: [MediaType.serie],
-          ),
-        ),
-      ),
-    ];
-  }
-
-  List<Widget> getHome() {
-    return [
-      MenuTile(
-        autofocus: true,
-        icon: Icons.tv,
-        label: "Channels",
-        color: LinearGradient(
-          colors: [Colors.blueGrey, Colors.blue],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        onTap: () => navNested(ViewType.all),
-      ),
-      MenuTile(
-        icon: Icons.dashboard,
-        label: "Categories",
-        color: LinearGradient(
-          colors: [Colors.purple, Colors.deepPurple],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        onTap: () => navNested(ViewType.categories),
-      ),
-      MenuTile(
-        icon: Icons.star,
-        label: "Favorites",
-        color: LinearGradient(
-          colors: [Colors.orange.shade700, Colors.amber.shade400],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        onTap: () => navNested(ViewType.favorites),
-      ),
-      MenuTile(
-        icon: Icons.history,
-        label: "History",
-        color: LinearGradient(
-          colors: [Colors.teal.shade700, Colors.green.shade400],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        onTap: () => navNested(ViewType.history),
-      ),
-      MenuTile(
-        icon: Icons.settings,
-        label: "Settings",
-        color: LinearGradient(
-          colors: [Colors.blueGrey.shade800, Colors.blueGrey.shade600],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        onTap: () => navSettings(),
-      ),
-    ];
+    return TvShell(settings: widget.settings);
   }
 }
