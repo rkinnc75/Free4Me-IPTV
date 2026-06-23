@@ -1,0 +1,387 @@
+diff --git a/lib/player.dart b/lib/player.dart
+index 0c63c27..203002b 100644
+--- a/lib/player.dart
++++ b/lib/player.dart
+@@ -8,6 +8,7 @@ import 'package:open_tv/backend/app_logger.dart';
+ import 'package:open_tv/backend/conn_timing.dart';
+ import 'package:open_tv/backend/settings_service.dart';
+ import 'package:open_tv/widgets/player_epg_now_label.dart';
++import 'package:open_tv/widgets/player_stream_info_label.dart';
+ import 'package:open_tv/backend/sql.dart';
+ import 'package:open_tv/channel_tile.dart';
+ import 'package:open_tv/error.dart';
+@@ -1551,6 +1552,11 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+             sourceId: widget.channel.sourceId,
+           ),
+         ),
++        // fix515: stream-info ("720p H.264") — single-cell full-screen only,
++        // same gating as the PiP button below; multi-view cells have their
++        // own constrained layout and weren't part of this feature's scope.
++        if (widget.settings.multiViewLayout == MultiViewLayout.none)
++          PlayerStreamInfoLabel(streamInfoStream: _engine.streamInfoStream),
+         if (_castSupported)
+           IconButton(
+             onPressed: _onCastTap,
+diff --git a/lib/player/mpv_engine.dart b/lib/player/mpv_engine.dart
+index 02a4ff3..d11d6a7 100644
+--- a/lib/player/mpv_engine.dart
++++ b/lib/player/mpv_engine.dart
+@@ -84,6 +84,11 @@ class MpvEngine implements PlayerEngine {
+   final _completedCtrl = StreamController<bool>.broadcast();
+   final _errorCtrl = StreamController<String>.broadcast();
+   final _positionCtrl = StreamController<Duration>.broadcast();
++  // fix515: one-shot-per-play friendly stream-info label ("720p H.264") for
++  // the single-cell full-screen top bar; broadcast so a late subscriber
++  // (e.g. after an engine-swap re-render) doesn't crash, though in practice
++  // there's at most one event per play.
++  final _streamInfoCtrl = StreamController<String>.broadcast();
+ 
+   final List<StreamSubscription<dynamic>> _subs = [];
+ 
+@@ -414,6 +419,7 @@ class MpvEngine implements PlayerEngine {
+     await _completedCtrl.close();
+     await _errorCtrl.close();
+     await _positionCtrl.close();
++    await _streamInfoCtrl.close();
+     await _player.dispose();
+     AppLog.info('MpvEngine: dispose() player disposed (surface released by media_kit)'
+         ' eid=${identityHashCode(this)}');
+@@ -428,6 +434,8 @@ class MpvEngine implements PlayerEngine {
+   Stream<String> get errorStream => _errorCtrl.stream;
+   @override
+   Stream<Duration> get positionStream => _positionCtrl.stream;
++  @override
++  Stream<String> get streamInfoStream => _streamInfoCtrl.stream;
+ 
+   @override
+   Duration get position => _player.state.position;
+@@ -601,10 +609,61 @@ class MpvEngine implements PlayerEngine {
+     });
+   }
+ 
++  /// fix515: format mpv's `dheight` + `video-codec` into a short, friendly
++  /// label for the single-cell full-screen top bar (e.g. "720p H.264").
++  /// Returns null when [dheight] isn't a real decoded size yet (0/empty/'?',
++  /// or unparsable) — the caller should leave the bar blank rather than show
++  /// a "0x0" placeholder while the first frame is still arriving (the same
++  /// guard [_observeFirstFrame] already uses for `dwidth`).
++  ///
++  /// Height-tier mapping is deliberately coarse (matches common marketing
++  /// labels) rather than literal: 2160→"4K", 1080→"1080p", 720→"720p", else
++  /// the raw "WxH". This also surfaces provider mislabeling for free — a
++  /// channel named "4K" that's actually delivering 720p shows "720p" here.
++  /// [rawCodec] is mpv's `video-codec` string (e.g. "h264 (High)"); only the
++  /// codec name before any parenthetical is used and mapped to a friendly
++  /// name (h264→H.264, hevc→H.265), falling back to an uppercased raw token
++  /// for anything else mpv reports.
++  static String? formatStreamInfo(String dheight, String rawCodec) {
++    final h = int.tryParse(dheight);
++    if (h == null || h <= 0) return null;
++    final String resTier;
++    if (h >= 2000) {
++      resTier = '4K';
++    } else if (h >= 1000) {
++      resTier = '1080p';
++    } else if (h >= 700) {
++      resTier = '720p';
++    } else {
++      resTier = '${h}p';
++    }
++    final codecToken = rawCodec.split('(').first.trim().toLowerCase();
++    final String codecLabel;
++    switch (codecToken) {
++      case 'h264':
++        codecLabel = 'H.264';
++        break;
++      case 'hevc':
++      case 'h265':
++        codecLabel = 'H.265';
++        break;
++      case '':
++      case '?':
++        return resTier; // codec unknown — still show the resolution alone.
++      default:
++        codecLabel = codecToken.toUpperCase();
++    }
++    return '$resTier $codecLabel';
++  }
++
+   /// fix396: one-shot — observe libmpv's `dwidth` so the log records the exact
+-  /// moment the first decoded frame is sized (0 → WxH). If audio plays but this
+-  /// never fires, decode is stalled; if it fires with a real size yet the
+-  /// screen stays black, the render/texture path is at fault. Best-effort.
++  /// moment the first decoded frame is sized (0 → WxH). If audio plays but
++  /// this never fires, decode is stalled; if it fires with a real size yet
++  /// the screen stays black, the render/texture path is at fault.
++  /// fix515: also samples `dheight` + `video-codec` at this same moment to
++  /// publish [streamInfoStream] for the single-cell top bar — piggybacking
++  /// on this existing one-shot hook rather than adding a second observer.
++  /// Best-effort throughout.
+   bool _observedFirstFrame = false;
+   void _observeFirstFrame() {
+     if (_observedFirstFrame || _disposed) return;
+@@ -620,10 +679,36 @@ class MpvEngine implements PlayerEngine {
+       // lands, so we capture hwdec-current + vo at the moment video appears.
+       if (value != '0' && value.isNotEmpty && value != '?') {
+         unawaited(logDecodeState('first-frame'));
++        // fix515: sample dheight + codec at this same verified-real moment
++        // and publish a friendly label for the top bar. Best-effort: a
++        // property-read failure here must never affect playback, so any
++        // error just leaves the bar blank (no event emitted).
++        unawaited(_publishStreamInfo());
+       }
+     }).catchError((Object _) {});
+   }
+ 
++  /// fix515: read `dheight` + `video-codec` and emit a formatted label on
++  /// [streamInfoStream] for the single-cell full-screen top bar. Called once
++  /// from [_observeFirstFrame] after `dwidth` confirms a real decoded frame
++  /// has landed (guards against sampling mid-glitch garbage on a stream with
++  /// decode errors). Never emits on failure or while disposed.
++  Future<void> _publishStreamInfo() async {
++    if (_disposed || _player.platform is! mk.NativePlayer) return;
++    final np = _player.platform as mk.NativePlayer;
++    try {
++      final dheight = await np.getProperty('dheight');
++      final codec = await np.getProperty('video-codec');
++      if (_disposed) return;
++      final label = formatStreamInfo(dheight, codec);
++      if (label != null && !_streamInfoCtrl.isClosed) {
++        _streamInfoCtrl.add(label);
++      }
++    } catch (_) {
++      // Best-effort — never surfaces to the player; the bar just stays blank.
++    }
++  }
++
+   // fix130: false — app drives fullscreen via _enterSystemFullscreen() (immersive
+   // + landscape orientation). media_kit's
+   // enterFullscreen() pushes a hidden second root-navigator route with a second
+diff --git a/lib/player/player_engine.dart b/lib/player/player_engine.dart
+index 5f4148e..5df8878 100644
+--- a/lib/player/player_engine.dart
++++ b/lib/player/player_engine.dart
+@@ -49,6 +49,12 @@ abstract class PlayerEngine {
+   /// Current playback position, updated at most once per second.
+   Stream<Duration> get positionStream;
+ 
++  /// fix515: emits a short, friendly label ("720p H.264") once per play,
++  /// after the first real decoded frame lands. Never emits if the property
++  /// read fails or the stream never produces a usable size — callers should
++  /// treat "no event yet" as "unknown", not an error.
++  Stream<String> get streamInfoStream;
++
+ 
+   Duration get position;
+ 
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 473d2aa..9f7f02d 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '2.0.15': [
++    'Full-screen playback now shows the stream\'s actual resolution and video format (e.g. "720p H.264") next to the channel name — handy for spotting when a "4K" channel isn\'t really 4K.',
++  ],
+   '2.0.14': [
+     'Refreshing a single small source no longer pauses the whole app while search re-indexes the entire catalog — only that source\'s entries are updated when it\'s safe to do so.',
+   ],
+diff --git a/lib/widgets/player_stream_info_label.dart b/lib/widgets/player_stream_info_label.dart
+new file mode 100644
+index 0000000..6a664d8
+--- /dev/null
++++ b/lib/widgets/player_stream_info_label.dart
+@@ -0,0 +1,59 @@
++import 'dart:async';
++
++import 'package:flutter/material.dart';
++
++/// fix515: shows the stream's actual resolution + codec ("720p H.264") in
++/// the player's top bar, once mpv reports a real decoded frame size.
++/// Renders nothing until then (no "0x0" flash) and nothing if the engine
++/// never produces a usable reading.
++///
++/// Self-contained StatefulWidget by design, following the same pattern as
++/// PlayerEpgNowLabel: media_kit's MaterialVideoControlsTheme reads
++/// topButtonBar/bottomButtonBar ONCE at mount and never re-reads the list on
++/// parent rebuilds (the fix367/fix405 landmine noted in player.dart) — so a
++/// plain Text built from State that changes after mount would never update.
++/// Placing a StatefulWidget in that frozen list slot sidesteps the problem:
++/// the SLOT is frozen, but the widget occupying it is free to rebuild its
++/// own subtree via its own setState whenever its stream emits.
++class PlayerStreamInfoLabel extends StatefulWidget {
++  final Stream<String> streamInfoStream;
++
++  const PlayerStreamInfoLabel({super.key, required this.streamInfoStream});
++
++  @override
++  State<PlayerStreamInfoLabel> createState() => _PlayerStreamInfoLabelState();
++}
++
++class _PlayerStreamInfoLabelState extends State<PlayerStreamInfoLabel> {
++  String? _label;
++  late final StreamSubscription<String> _sub;
++
++  @override
++  void initState() {
++    super.initState();
++    _sub = widget.streamInfoStream.listen((label) {
++      if (mounted) setState(() => _label = label);
++    });
++  }
++
++  @override
++  void dispose() {
++    _sub.cancel();
++    super.dispose();
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    final label = _label;
++    if (label == null) return const SizedBox.shrink();
++    return Padding(
++      padding: const EdgeInsets.only(left: 4),
++      child: Text(
++        label,
++        maxLines: 1,
++        overflow: TextOverflow.ellipsis,
++        style: const TextStyle(color: Colors.white70, fontSize: 14),
++      ),
++    );
++  }
++}
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 76f7d63..d8598a8 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 2.0.14+514
++version: 2.0.15+515
+ 
+ environment:
+   sdk: ^3.10.7
+diff --git a/test/format_stream_info_test.dart b/test/format_stream_info_test.dart
+new file mode 100644
+index 0000000..fba5ea7
+--- /dev/null
++++ b/test/format_stream_info_test.dart
+@@ -0,0 +1,113 @@
++// fix515: MpvEngine.formatStreamInfo turns mpv's raw `dheight` + `video-codec`
++// properties into a short label for the player's top bar ("720p H.264").
++// This is pure string/number logic with real boundary cases (the height-tier
++// cutoffs, codec name normalization, and the "not a real frame yet" guard
++// that prevents a "0x0" flash before the first frame decodes) — worth
++// covering directly rather than only exercising it through the full player.
++import 'package:flutter_test/flutter_test.dart';
++import 'package:open_tv/player/mpv_engine.dart';
++
++void main() {
++  group('formatStreamInfo — not-yet-real-frame guard', () {
++    test('height "0" (no frame decoded yet) returns null, not "0p"', () {
++      expect(MpvEngine.formatStreamInfo('0', 'h264'), isNull);
++    });
++
++    test('empty height string returns null', () {
++      expect(MpvEngine.formatStreamInfo('', 'h264'), isNull);
++    });
++
++    test('"?" (property read failed) returns null', () {
++      expect(MpvEngine.formatStreamInfo('?', 'h264'), isNull);
++    });
++
++    test('negative height (shouldn\'t happen, but must not crash or label) returns null', () {
++      expect(MpvEngine.formatStreamInfo('-1', 'h264'), isNull);
++    });
++
++    test('non-numeric garbage height returns null, does not throw', () {
++      expect(() => MpvEngine.formatStreamInfo('garbage', 'h264'), returnsNormally);
++      expect(MpvEngine.formatStreamInfo('garbage', 'h264'), isNull);
++    });
++  });
++
++  group('formatStreamInfo — resolution tier boundaries', () {
++    test('2160 (true 4K) -> "4K"', () {
++      expect(MpvEngine.formatStreamInfo('2160', 'h264'), '4K H.264');
++    });
++
++    test('2000 (boundary, still 4K tier) -> "4K"', () {
++      expect(MpvEngine.formatStreamInfo('2000', 'h264'), '4K H.264');
++    });
++
++    test('1999 (just under 4K boundary) -> "1080p" tier, not "4K"', () {
++      expect(MpvEngine.formatStreamInfo('1999', 'h264'), '1080p H.264');
++    });
++
++    test('1080 (true 1080p) -> "1080p"', () {
++      expect(MpvEngine.formatStreamInfo('1080', 'h264'), '1080p H.264');
++    });
++
++    test('1000 (boundary, still 1080p tier) -> "1080p"', () {
++      expect(MpvEngine.formatStreamInfo('1000', 'h264'), '1080p H.264');
++    });
++
++    test('999 (just under 1080p boundary) -> "720p" tier', () {
++      expect(MpvEngine.formatStreamInfo('999', 'h264'), '720p H.264');
++    });
++
++    test('720 (true 720p) -> "720p"', () {
++      expect(MpvEngine.formatStreamInfo('720', 'h264'), '720p H.264');
++    });
++
++    test('700 (boundary, still 720p tier) -> "720p"', () {
++      expect(MpvEngine.formatStreamInfo('700', 'h264'), '720p H.264');
++    });
++
++    test('699 (just under 720p boundary) -> raw height, e.g. "576p" or similar', () {
++      expect(MpvEngine.formatStreamInfo('480', 'h264'), '480p H.264');
++    });
++
++    test('low non-standard height falls back to literal "{h}p", not a wrong tier', () {
++      expect(MpvEngine.formatStreamInfo('360', 'h264'), '360p H.264');
++    });
++  });
++
++  group('formatStreamInfo — codec normalization', () {
++    test('"h264" -> "H.264"', () {
++      expect(MpvEngine.formatStreamInfo('1080', 'h264'), '1080p H.264');
++    });
++
++    test('"h264 (High)" (mpv\'s typical profile-annotated form) -> "H.264", profile dropped', () {
++      expect(MpvEngine.formatStreamInfo('1080', 'h264 (High)'), '1080p H.264');
++    });
++
++    test('"hevc" -> "H.265"', () {
++      expect(MpvEngine.formatStreamInfo('1080', 'hevc'), '1080p H.265');
++    });
++
++    test('"hevc (Main 10)" -> "H.265", profile dropped', () {
++      expect(MpvEngine.formatStreamInfo('1080', 'hevc (Main 10)'), '1080p H.265');
++    });
++
++    test('"h265" (alternate spelling some builds report) -> "H.265"', () {
++      expect(MpvEngine.formatStreamInfo('1080', 'h265'), '1080p H.265');
++    });
++
++    test('unrecognized codec falls back to uppercased raw token, e.g. "mpeg2video"', () {
++      expect(MpvEngine.formatStreamInfo('1080', 'mpeg2video'), '1080p MPEG2VIDEO');
++    });
++
++    test('empty codec string: resolution alone, no trailing space or null', () {
++      expect(MpvEngine.formatStreamInfo('1080', ''), '1080p');
++    });
++
++    test('"?" codec (property read failed): resolution alone', () {
++      expect(MpvEngine.formatStreamInfo('1080', '?'), '1080p');
++    });
++
++    test('codec name is case-insensitive on input ("H264")', () {
++      expect(MpvEngine.formatStreamInfo('1080', 'H264'), '1080p H.264');
++    });
++  });
++}

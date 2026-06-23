@@ -8,6 +8,7 @@ import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/conn_timing.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/widgets/player_epg_now_label.dart';
+import 'package:open_tv/widgets/player_stream_info_label.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/channel_tile.dart';
 import 'package:open_tv/error.dart';
@@ -1551,6 +1552,11 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
             sourceId: widget.channel.sourceId,
           ),
         ),
+        // fix515: stream-info ("720p H.264") — single-cell full-screen only,
+        // same gating as the PiP button below; multi-view cells have their
+        // own constrained layout and weren't part of this feature's scope.
+        if (widget.settings.multiViewLayout == MultiViewLayout.none)
+          PlayerStreamInfoLabel(streamInfoStream: _engine.streamInfoStream),
         if (_castSupported)
           IconButton(
             onPressed: _onCastTap,

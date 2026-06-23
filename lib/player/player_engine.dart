@@ -49,6 +49,12 @@ abstract class PlayerEngine {
   /// Current playback position, updated at most once per second.
   Stream<Duration> get positionStream;
 
+  /// fix515: emits a short, friendly label ("720p H.264") once per play,
+  /// after the first real decoded frame lands. Never emits if the property
+  /// read fails or the stream never produces a usable size — callers should
+  /// treat "no event yet" as "unknown", not an error.
+  Stream<String> get streamInfoStream;
+
 
   Duration get position;
 

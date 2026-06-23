@@ -84,6 +84,11 @@ class MpvEngine implements PlayerEngine {
   final _completedCtrl = StreamController<bool>.broadcast();
   final _errorCtrl = StreamController<String>.broadcast();
   final _positionCtrl = StreamController<Duration>.broadcast();
+  // fix515: one-shot-per-play friendly stream-info label ("720p H.264") for
+  // the single-cell full-screen top bar; broadcast so a late subscriber
+  // (e.g. after an engine-swap re-render) doesn't crash, though in practice
+  // there's at most one event per play.
+  final _streamInfoCtrl = StreamController<String>.broadcast();
 
   final List<StreamSubscription<dynamic>> _subs = [];
 
@@ -414,6 +419,7 @@ class MpvEngine implements PlayerEngine {
     await _completedCtrl.close();
     await _errorCtrl.close();
     await _positionCtrl.close();
+    await _streamInfoCtrl.close();
     await _player.dispose();
     AppLog.info('MpvEngine: dispose() player disposed (surface released by media_kit)'
         ' eid=${identityHashCode(this)}');
@@ -428,6 +434,8 @@ class MpvEngine implements PlayerEngine {
   Stream<String> get errorStream => _errorCtrl.stream;
   @override
   Stream<Duration> get positionStream => _positionCtrl.stream;
+  @override
+  Stream<String> get streamInfoStream => _streamInfoCtrl.stream;
 
   @override
   Duration get position => _player.state.position;
@@ -601,10 +609,61 @@ class MpvEngine implements PlayerEngine {
     });
   }
 
+  /// fix515: format mpv's `dheight` + `video-codec` into a short, friendly
+  /// label for the single-cell full-screen top bar (e.g. "720p H.264").
+  /// Returns null when [dheight] isn't a real decoded size yet (0/empty/'?',
+  /// or unparsable) — the caller should leave the bar blank rather than show
+  /// a "0x0" placeholder while the first frame is still arriving (the same
+  /// guard [_observeFirstFrame] already uses for `dwidth`).
+  ///
+  /// Height-tier mapping is deliberately coarse (matches common marketing
+  /// labels) rather than literal: 2160→"4K", 1080→"1080p", 720→"720p", else
+  /// the raw "WxH". This also surfaces provider mislabeling for free — a
+  /// channel named "4K" that's actually delivering 720p shows "720p" here.
+  /// [rawCodec] is mpv's `video-codec` string (e.g. "h264 (High)"); only the
+  /// codec name before any parenthetical is used and mapped to a friendly
+  /// name (h264→H.264, hevc→H.265), falling back to an uppercased raw token
+  /// for anything else mpv reports.
+  static String? formatStreamInfo(String dheight, String rawCodec) {
+    final h = int.tryParse(dheight);
+    if (h == null || h <= 0) return null;
+    final String resTier;
+    if (h >= 2000) {
+      resTier = '4K';
+    } else if (h >= 1000) {
+      resTier = '1080p';
+    } else if (h >= 700) {
+      resTier = '720p';
+    } else {
+      resTier = '${h}p';
+    }
+    final codecToken = rawCodec.split('(').first.trim().toLowerCase();
+    final String codecLabel;
+    switch (codecToken) {
+      case 'h264':
+        codecLabel = 'H.264';
+        break;
+      case 'hevc':
+      case 'h265':
+        codecLabel = 'H.265';
+        break;
+      case '':
+      case '?':
+        return resTier; // codec unknown — still show the resolution alone.
+      default:
+        codecLabel = codecToken.toUpperCase();
+    }
+    return '$resTier $codecLabel';
+  }
+
   /// fix396: one-shot — observe libmpv's `dwidth` so the log records the exact
-  /// moment the first decoded frame is sized (0 → WxH). If audio plays but this
-  /// never fires, decode is stalled; if it fires with a real size yet the
-  /// screen stays black, the render/texture path is at fault. Best-effort.
+  /// moment the first decoded frame is sized (0 → WxH). If audio plays but
+  /// this never fires, decode is stalled; if it fires with a real size yet
+  /// the screen stays black, the render/texture path is at fault.
+  /// fix515: also samples `dheight` + `video-codec` at this same moment to
+  /// publish [streamInfoStream] for the single-cell top bar — piggybacking
+  /// on this existing one-shot hook rather than adding a second observer.
+  /// Best-effort throughout.
   bool _observedFirstFrame = false;
   void _observeFirstFrame() {
     if (_observedFirstFrame || _disposed) return;
@@ -620,8 +679,34 @@ class MpvEngine implements PlayerEngine {
       // lands, so we capture hwdec-current + vo at the moment video appears.
       if (value != '0' && value.isNotEmpty && value != '?') {
         unawaited(logDecodeState('first-frame'));
+        // fix515: sample dheight + codec at this same verified-real moment
+        // and publish a friendly label for the top bar. Best-effort: a
+        // property-read failure here must never affect playback, so any
+        // error just leaves the bar blank (no event emitted).
+        unawaited(_publishStreamInfo());
       }
     }).catchError((Object _) {});
+  }
+
+  /// fix515: read `dheight` + `video-codec` and emit a formatted label on
+  /// [streamInfoStream] for the single-cell full-screen top bar. Called once
+  /// from [_observeFirstFrame] after `dwidth` confirms a real decoded frame
+  /// has landed (guards against sampling mid-glitch garbage on a stream with
+  /// decode errors). Never emits on failure or while disposed.
+  Future<void> _publishStreamInfo() async {
+    if (_disposed || _player.platform is! mk.NativePlayer) return;
+    final np = _player.platform as mk.NativePlayer;
+    try {
+      final dheight = await np.getProperty('dheight');
+      final codec = await np.getProperty('video-codec');
+      if (_disposed) return;
+      final label = formatStreamInfo(dheight, codec);
+      if (label != null && !_streamInfoCtrl.isClosed) {
+        _streamInfoCtrl.add(label);
+      }
+    } catch (_) {
+      // Best-effort — never surfaces to the player; the bar just stays blank.
+    }
   }
 
   // fix130: false — app drives fullscreen via _enterSystemFullscreen() (immersive
