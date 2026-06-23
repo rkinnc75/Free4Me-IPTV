@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.13': [
+    'Fixed the full-screen control bar sitting too high and being hard to bring back with a tap; restored it to the bottom edge.',
+  ],
   '2.0.12': [
     'Android TV settings now use a TV-friendly two-column layout — pick a category on the left (Playback, Buffering, Content, EPG, Sources, Diagnostics, …) and its options appear on the right, instead of one long scrolling list. Every setting and action is the same as before. (Phone settings are unchanged.)',
   ],

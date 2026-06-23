@@ -1502,22 +1502,11 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   /// button is nudged with a Transform.translate; Spacers are left untouched so
   /// the horizontal flex layout is preserved.
   MaterialVideoControlsThemeData _mpvThemeData(BuildContext context) {
-    // fix423: the auto-hidden control bar couldn't be woken by tapping where it
-    // sits. media_kit's show-on-tap GestureDetector is hard-inset 16px from
-    // every edge, and the bottom bar renders flush at the bottom (default
-    // margin 0) — and because the app drives fullscreen itself, media_kit does
-    // NOT add the system inset, so on a gesture-nav device the whole bar sits
-    // inside the system gesture band too. Lift the bar (and the VOD seek bar)
-    // above BOTH the 16px ring and the device's gesture/nav inset so a tap on
-    // the bar's area reaches media_kit's tap-to-show. Both insets are
-    // device-dependent → compute dynamically; floor 16 covers TVs (no insets),
-    // clamp guards against absurd values.
-    final mq = MediaQuery.of(context);
-    final barLift = (16.0 +
-            (mq.systemGestureInsets.bottom > mq.viewPadding.bottom
-                ? mq.systemGestureInsets.bottom
-                : mq.viewPadding.bottom))
-        .clamp(16.0, 96.0);
+    // fix513: reverted fix423's barLift. Raising bottomButtonBarMargin.bottom
+    // fed media_kit's subtitleVerticalShiftOffset, which insets the tap-to-show
+    // Listener from the bottom — so the lift BOTH floated the bar up and grew
+    // the tap-dead strip by the same amount (net ~doubled it). Back to baseline
+    // edge-aligned margins; the wake-on-tap is handled app-side (fix514).
     return MaterialVideoControlsThemeData(
       speedUpOnLongPress: false,
       // fix409: control-bar auto-hide timeout (dev setting). 0 = keep until
@@ -1527,11 +1516,7 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
           : Duration(seconds: widget.settings.devControlsHideSecs),
       seekOnDoubleTap: widget.channel.mediaType != MediaType.livestream,
       displaySeekBar: widget.channel.mediaType != MediaType.livestream,
-      // fix423: lift both the seek bar and the bottom button bar by [barLift]
-      // so the whole bottom control row is above media_kit's 16px tap-dead ring
-      // and the device's system gesture inset (was bottom:60 / default bottom:0).
-      seekBarMargin: EdgeInsets.only(bottom: 60 + barLift),
-      bottomButtonBarMargin: EdgeInsets.only(left: 16, right: 8, bottom: barLift),
+      seekBarMargin: const EdgeInsets.only(bottom: 60),
       seekBarThumbSize: 20,
       seekBarHeight: 10,
       seekGesture: widget.channel.mediaType != MediaType.livestream,

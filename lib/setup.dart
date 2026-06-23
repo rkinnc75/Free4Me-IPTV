@@ -364,6 +364,9 @@ class _SetupState extends State<Setup> {
   Future<void> _importBackup() async {
     await _ensureSetupLogging('import-backup');
     AppLog.info('Setup: import backup — started');
+    // fix513: guard context across the logging-setup await above before
+    // passing it into importFromFile (use_build_context_synchronously).
+    if (!mounted) return;
 
     final imported = await SettingsIo.importFromFile(context);
     if (!mounted) return;
