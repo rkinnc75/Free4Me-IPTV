@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.11",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.11",
+  "latest": "2.0.12",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.12",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fixed first-time setup failing to receive larger settings backups over Wi-Fi/QR: uploads up to ~32 MB now work (previously a backup over 5 MB was rejected mid-upload and showed on your phone/PC as a \"network disconnect\"). First-run setup also now keeps a diagnostic log even on a brand-new install (where debug logging is off by default), so any import problem can be captured and reported.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.11/Free4Me-IPTV-2.0.11-arm64.apk"
+  "releaseNotes": "\u2022 Android TV settings now use a TV-friendly two-column layout \u2014 pick a category on the left (Playback, Buffering, Content, EPG, Sources, Diagnostics, \u2026) and its options appear on the right, instead of one long scrolling list. Every setting and action is the same as before. (Phone settings are unchanged.)",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.12/Free4Me-IPTV-2.0.12-arm64.apk"
 }
