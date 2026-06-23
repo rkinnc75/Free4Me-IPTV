@@ -550,8 +550,9 @@ const _helpDevAudioSpdif = (
 
 class SettingsView extends StatefulWidget {
   final bool showNavBar;
+  final bool tvRailPane;
 
-  const SettingsView({super.key, this.showNavBar = true});
+  const SettingsView({super.key, this.showNavBar = true, this.tvRailPane = false});
 
   @override
   State<SettingsView> createState() => _SettingsState();
@@ -567,6 +568,11 @@ class _SettingsState extends State<SettingsView> {
   bool loading = true;
   String _appVersion = '';
 
+  /// fix512: TV rail+pane — index of the selected rail group. Switching it
+  /// re-keys the pane ListView (ValueKey(_railIndex)), which mounts a fresh
+  /// scroll view starting at the top — so no ScrollController is needed.
+  int _railIndex = 0;
+
   @override
   void initState() {
     super.initState();
@@ -574,9 +580,13 @@ class _SettingsState extends State<SettingsView> {
     // fix182: land D-pad focus on the first settings row when the
     // screen opens (ExpansionTile has no autofocus; nextFocus() on a
     // scope with no focused child moves to the first focusable).
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) FocusScope.of(context).nextFocus();
-    });
+    // fix512: skip on the TV rail+pane path — it autofocuses the first rail
+    // row itself, and nextFocus() assumes the old single ListView.
+    if (!widget.tvRailPane) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) FocusScope.of(context).nextFocus();
+      });
+    }
   }
 
   Future<void> initAsync() async {
@@ -2606,47 +2616,9 @@ class _SettingsState extends State<SettingsView> {
   }
 
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Visibility(
-        visible: !loading,
-        child: Loading(
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsetsDirectional.symmetric(vertical: 10),
-              child: FocusTraversalGroup(
-                policy: OrderedTraversalPolicy(),
-                child: ListView(
-                children: [
-                  const SizedBox(height: 10),
-                  const Padding(
-                    padding: EdgeInsets.only(left: 10),
-                    child: Text(
-                      'Settings',
-                      style: TextStyle(
-                        fontSize: 30,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-
-                  ExpansionTile(
-                    key: const PageStorageKey('playback'),
-                    leading: const Icon(Icons.play_circle_outline),
-                    title: Text(
-                      'Playback',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    tilePadding: const EdgeInsets.symmetric(horizontal: 10),
-                    childrenPadding: EdgeInsets.zero,
-                    initiallyExpanded: _groupOpen['playback'] ?? false,
-                    // fix356: remember open/close for this app session only.
-                    onExpansionChanged: (v) => _groupOpen['playback'] = v,
-                    children: [
+  // fix512: settings rows lifted into getters so the phone build()
+  // (ExpansionTiles) and the TV rail+pane both render the SAME widgets.
+  List<Widget> get _playbackChildren => [
                       _switchTile(
                         label: "Force TV Mode",
                         value: settings.forceTVMode,
@@ -2769,26 +2741,9 @@ class _SettingsState extends State<SettingsView> {
                           updateSettings();
                         },
                       ),
-                    ],
-                  ),
+  ];
 
-                  const Divider(),
-
-                  ExpansionTile(
-                    key: const PageStorageKey('buffering'),
-                    leading: const Icon(Icons.tune),
-                    title: Text(
-                      'Buffering',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    tilePadding: const EdgeInsets.symmetric(horizontal: 10),
-                    childrenPadding: EdgeInsets.zero,
-                    initiallyExpanded: _groupOpen['buffering'] ?? false,
-                    // fix356: remember open/close for this app session only.
-                    onExpansionChanged: (v) => _groupOpen['buffering'] = v,
-                    children: [
+  List<Widget> get _bufferingChildren => [
 
                   _bufferSlider(
                     label: "Livestream cache (seconds)",
@@ -2950,25 +2905,9 @@ class _SettingsState extends State<SettingsView> {
                       updateSettings();
                     },
                   ),
-                    ],
-                  ),
+  ];
 
-                  // fix394: Live DVR — its own section. Moved out of
-                  // Buffering per user decision #1.
-                  ExpansionTile(
-                    key: const PageStorageKey('dvr'),
-                    leading: const Icon(Icons.fiber_manual_record),
-                    title: Text(
-                      'Live DVR',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    tilePadding: const EdgeInsets.symmetric(horizontal: 10),
-                    childrenPadding: EdgeInsets.zero,
-                    initiallyExpanded: _groupOpen['dvr'] ?? false,
-                    onExpansionChanged: (v) => _groupOpen['dvr'] = v,
-                    children: [
+  List<Widget> get _dvrChildren => [
                       _switchTile(
                         label: "Enable Live DVR",
                         value: settings.dvrEnabled,
@@ -2990,24 +2929,9 @@ class _SettingsState extends State<SettingsView> {
                           updateSettings();
                         },
                       ),
-                    ],
-                  ),
+  ];
 
-                  ExpansionTile(
-                    key: const PageStorageKey('multiview'),
-                    leading: const Icon(Icons.grid_view),
-                    title: Text(
-                      'Multi-view',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    tilePadding: const EdgeInsets.symmetric(horizontal: 10),
-                    childrenPadding: EdgeInsets.zero,
-                    initiallyExpanded: _groupOpen['multiview'] ?? false,
-                    // fix356: remember open/close for this app session only.
-                    onExpansionChanged: (v) => _groupOpen['multiview'] = v,
-                    children: [
+  List<Widget> get _multiviewChildren => [
                       _multiViewTile(settings),
                       _multiViewDecodeTile(settings),
           _stabilityBufferTile(settings),
@@ -3047,26 +2971,9 @@ class _SettingsState extends State<SettingsView> {
                                 updateSettings();
                               },
                       ),
-                    ],
-                  ),
+  ];
 
-                  const Divider(),
-
-                  ExpansionTile(
-                    key: const PageStorageKey('content'),
-                    leading: const Icon(Icons.filter_list),
-                    title: Text(
-                      'Content',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    tilePadding: const EdgeInsets.symmetric(horizontal: 10),
-                    childrenPadding: EdgeInsets.zero,
-                    initiallyExpanded: _groupOpen['content'] ?? false,
-                    // fix356: remember open/close for this app session only.
-                    onExpansionChanged: (v) => _groupOpen['content'] = v,
-                    children: [
+  List<Widget> get _contentChildren => [
                       ListTile(
                         // fix156: plain text title so ListTile is the
                         // focusable D-pad target (select opens picker).
@@ -3185,6 +3092,7 @@ class _SettingsState extends State<SettingsView> {
                           // is an "unrelated" check for a local BuildContext
                           // (use_build_context_synchronously).
                           if (!context.mounted) return;
+                          // ignore: use_build_context_synchronously
                           final messenger = ScaffoldMessenger.of(context);
                           messenger.showSnackBar(
                             SnackBar(
@@ -3256,26 +3164,9 @@ class _SettingsState extends State<SettingsView> {
                           updateSettings();
                         },
                       ),
-                    ],
-                  ),
+  ];
 
-                  const Divider(),
-
-                  ExpansionTile(
-                    key: const PageStorageKey('epg'),
-                    leading: const Icon(Icons.calendar_month),
-                    title: Text(
-                      'EPG / Program Guide',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    tilePadding: const EdgeInsets.symmetric(horizontal: 10),
-                    childrenPadding: EdgeInsets.zero,
-                    initiallyExpanded: _groupOpen['epg'] ?? false,
-                    // fix356: remember open/close for this app session only.
-                    onExpansionChanged: (v) => _groupOpen['epg'] = v,
-                    children: [
+  List<Widget> get _epgChildren => [
                   ...sources.map(
                     (source) => ListTile(
                       leading: Icon(
@@ -3563,26 +3454,9 @@ class _SettingsState extends State<SettingsView> {
                           ),
                         ),
                       ),
-                    ],
-                  ),
+  ];
 
-                  const Divider(),
-
-                  ExpansionTile(
-                    key: const PageStorageKey('backuprestore'),
-                    leading: const Icon(Icons.settings_backup_restore),
-                    title: Text(
-                      'Backup & Restore',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    tilePadding: const EdgeInsets.symmetric(horizontal: 10),
-                    childrenPadding: EdgeInsets.zero,
-                    initiallyExpanded: _groupOpen['backuprestore'] ?? false,
-                    // fix356: remember open/close for this app session only.
-                    onExpansionChanged: (v) => _groupOpen['backuprestore'] = v,
-                    children: [
+  List<Widget> get _backupRestoreChildren => [
                   ListTile(
                     leading: const Icon(Icons.upload_file),
                     title: const Text("Export settings to file"),
@@ -3638,6 +3512,7 @@ class _SettingsState extends State<SettingsView> {
                           await SettingsIo.importFromFile(context);
                       if (!context.mounted) return;
                       if (imported) {
+                        // ignore: use_build_context_synchronously
                         await showSourcesRefreshDialog(context);
                       }
                       if (!context.mounted) return;
@@ -3645,26 +3520,9 @@ class _SettingsState extends State<SettingsView> {
                     },
                   ),
 
-                    ],
-                  ),
+  ];
 
-                  const Divider(),
-
-                  ExpansionTile(
-                    key: const PageStorageKey('reset'),
-                    leading: const Icon(Icons.restart_alt),
-                    title: Text(
-                      'Reset',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    tilePadding: const EdgeInsets.symmetric(horizontal: 10),
-                    childrenPadding: EdgeInsets.zero,
-                    initiallyExpanded: _groupOpen['reset'] ?? false,
-                    // fix356: remember open/close for this app session only.
-                    onExpansionChanged: (v) => _groupOpen['reset'] = v,
-                    children: [
+  List<Widget> get _resetChildren => [
                   ListTile(
                     leading: const Icon(Icons.refresh),
                     title: const Text("Reset settings to defaults"),
@@ -3765,6 +3623,7 @@ class _SettingsState extends State<SettingsView> {
                         // State's) before using it after the async gap
                         // (use_build_context_synchronously).
                         if (context.mounted) {
+                          // ignore: use_build_context_synchronously
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
                               content: Text("Stream validation cleared."),
@@ -3775,11 +3634,9 @@ class _SettingsState extends State<SettingsView> {
                     },
                   ),
 
-                    ],
-                  ),
+  ];
 
-                  const Divider(),
-
+  List<Widget> get _appChildren => [
                   _sectionHeader("App"),
                   ListTile(
                     leading: const Icon(Icons.system_update_outlined),
@@ -3807,11 +3664,9 @@ class _SettingsState extends State<SettingsView> {
                         ? null
                         : const Icon(Icons.chevron_right),
                   ),
+  ];
 
-
-                  const Divider(),
-
-
+  List<Widget> get _sourcesChildren => [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -3852,24 +3707,9 @@ class _SettingsState extends State<SettingsView> {
                   ),
                   const SizedBox(height: 10),
                   ...sources.map(getSource),
+  ];
 
-                  const Divider(),
-
-                  ExpansionTile(
-                    key: const PageStorageKey('diagnostics'),
-                    leading: const Icon(Icons.bug_report_outlined),
-                    title: Text(
-                      'Diagnostics',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    tilePadding: const EdgeInsets.symmetric(horizontal: 10),
-                    childrenPadding: EdgeInsets.zero,
-                    initiallyExpanded: _groupOpen['diagnostics'] ?? false,
-                    // fix356: remember open/close for this app session only.
-                    onExpansionChanged: (v) => _groupOpen['diagnostics'] = v,
-                    children: [
+  List<Widget> get _diagnosticsChildren => [
                   _switchTile(
                     label: "Enable debug logging",
                     value: settings.debugLogging,
@@ -4002,32 +3842,9 @@ class _SettingsState extends State<SettingsView> {
                         : null,
                   ),
 
-                    ],
-                  ),
+  ];
 
-                  // fix394: Developer / libmpv advanced tunables. Hidden
-                  // behind a folded ExpansionTile at the very bottom of the
-                  // menu — advanced users opt in; the defaults match
-                  // libmpv upstream so the section is a no-op until then.
-                  ExpansionTile(
-                    key: const PageStorageKey('developer'),
-                    leading: const Icon(Icons.developer_mode),
-                    title: Text(
-                      'Developer',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    subtitle: const Text(
-                      'Advanced libmpv options. Defaults match libmpv '
-                      'upstream; adjust only if a specific provider or '
-                      'device needs it.',
-                    ),
-                    tilePadding: const EdgeInsets.symmetric(horizontal: 10),
-                    childrenPadding: EdgeInsets.zero,
-                    initiallyExpanded: _groupOpen['developer'] ?? false,
-                    onExpansionChanged: (v) => _groupOpen['developer'] = v,
-                    children: [
+  List<Widget> get _developerChildren => [
                       // ── Refined buffering (moved from Buffering) ──
                       _bufferSlider(
                         label: "VOD/Movie demuxer max (MB)",
@@ -4307,7 +4124,390 @@ class _SettingsState extends State<SettingsView> {
                         },
                         help: _helpDevAudioSpdif,
                       ),
-                    ],
+  ];
+
+  // fix512: single ordered source of truth for the TV rail. Each entry maps a
+  // group title + icon to the SAME children getter the phone ExpansionTiles use.
+  List<({String title, IconData icon, List<Widget> Function() children})>
+      get _railEntries => [
+            (
+              title: 'Playback',
+              icon: Icons.play_circle_outline,
+              children: () => _playbackChildren,
+            ),
+            (
+              title: 'Buffering',
+              icon: Icons.tune,
+              children: () => _bufferingChildren,
+            ),
+            (
+              title: 'Live DVR',
+              icon: Icons.fiber_manual_record,
+              children: () => _dvrChildren,
+            ),
+            (
+              title: 'Multi-view',
+              icon: Icons.grid_view,
+              children: () => _multiviewChildren,
+            ),
+            (
+              title: 'Content',
+              icon: Icons.filter_list,
+              children: () => _contentChildren,
+            ),
+            (
+              title: 'EPG / Program Guide',
+              icon: Icons.calendar_month,
+              children: () => _epgChildren,
+            ),
+            (
+              title: 'Backup & Restore',
+              icon: Icons.settings_backup_restore,
+              children: () => _backupRestoreChildren,
+            ),
+            (
+              title: 'Reset',
+              icon: Icons.restart_alt,
+              children: () => _resetChildren,
+            ),
+            (
+              title: 'App',
+              icon: Icons.system_update_outlined,
+              children: () => _appChildren,
+            ),
+            (
+              title: 'Sources',
+              icon: Icons.source,
+              children: () => _sourcesChildren,
+            ),
+            (
+              title: 'Diagnostics',
+              icon: Icons.bug_report_outlined,
+              children: () => _diagnosticsChildren,
+            ),
+            (
+              title: 'Developer',
+              icon: Icons.developer_mode,
+              children: () => _developerChildren,
+            ),
+          ];
+
+  /// fix512: TV rail+pane layout. Left = focusable group rail; right = the
+  /// selected group's settings (the exact same widgets the phone build uses).
+  /// D-pad: up/down moves the rail selection; right/select moves focus into the
+  /// pane; left from the pane returns to the rail — all via the default
+  /// directional traversal (no custom FocusScope that would trap focus).
+  Widget _buildTvRailPane() {
+    final entries = _railEntries;
+    return Scaffold(
+      body: Visibility(
+        visible: !loading,
+        child: Loading(
+          child: SafeArea(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(
+                  width: 300,
+                  child: ListView.builder(
+                    itemCount: entries.length,
+                    itemBuilder: (context, i) {
+                      final selected = i == _railIndex;
+                      return InkWell(
+                        autofocus: i == 0,
+                        onFocusChange: (hasFocus) {
+                          if (hasFocus && _railIndex != i) {
+                            setState(() => _railIndex = i);
+                          }
+                        },
+                        onTap: () => setState(() => _railIndex = i),
+                        child: Container(
+                          color: selected
+                              ? Theme.of(context)
+                                  .colorScheme
+                                  .primary
+                                  .withValues(alpha: 0.15)
+                              : null,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 16,
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                entries[i].icon,
+                                color: selected
+                                    ? Theme.of(context).colorScheme.primary
+                                    : null,
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Text(
+                                  entries[i].title,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleMedium
+                                      ?.copyWith(
+                                        fontWeight: selected
+                                            ? FontWeight.w700
+                                            : FontWeight.w500,
+                                      ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const VerticalDivider(width: 1),
+                Expanded(
+                  child: FocusTraversalGroup(
+                    policy: OrderedTraversalPolicy(),
+                    child: ListView(
+                      key: ValueKey(_railIndex),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      children: entries[_railIndex].children(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // fix512: Android-TV rail (groups) + pane (settings) layout. Reuses the
+    // exact same settings widgets as the phone ExpansionTiles via the getters.
+    if (widget.tvRailPane) return _buildTvRailPane();
+    return Scaffold(
+      body: Visibility(
+        visible: !loading,
+        child: Loading(
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsetsDirectional.symmetric(vertical: 10),
+              child: FocusTraversalGroup(
+                policy: OrderedTraversalPolicy(),
+                child: ListView(
+                children: [
+                  const SizedBox(height: 10),
+                  const Padding(
+                    padding: EdgeInsets.only(left: 10),
+                    child: Text(
+                      'Settings',
+                      style: TextStyle(
+                        fontSize: 30,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
+                  ExpansionTile(
+                    key: const PageStorageKey('playback'),
+                    leading: const Icon(Icons.play_circle_outline),
+                    title: Text(
+                      'Playback',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+                    childrenPadding: EdgeInsets.zero,
+                    initiallyExpanded: _groupOpen['playback'] ?? false,
+                    // fix356: remember open/close for this app session only.
+                    onExpansionChanged: (v) => _groupOpen['playback'] = v,
+                    children: _playbackChildren,
+                  ),
+
+                  const Divider(),
+
+                  ExpansionTile(
+                    key: const PageStorageKey('buffering'),
+                    leading: const Icon(Icons.tune),
+                    title: Text(
+                      'Buffering',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+                    childrenPadding: EdgeInsets.zero,
+                    initiallyExpanded: _groupOpen['buffering'] ?? false,
+                    // fix356: remember open/close for this app session only.
+                    onExpansionChanged: (v) => _groupOpen['buffering'] = v,
+                    children: _bufferingChildren,
+                  ),
+
+                  // fix394: Live DVR — its own section. Moved out of
+                  // Buffering per user decision #1.
+                  ExpansionTile(
+                    key: const PageStorageKey('dvr'),
+                    leading: const Icon(Icons.fiber_manual_record),
+                    title: Text(
+                      'Live DVR',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+                    childrenPadding: EdgeInsets.zero,
+                    initiallyExpanded: _groupOpen['dvr'] ?? false,
+                    onExpansionChanged: (v) => _groupOpen['dvr'] = v,
+                    children: _dvrChildren,
+                  ),
+
+                  ExpansionTile(
+                    key: const PageStorageKey('multiview'),
+                    leading: const Icon(Icons.grid_view),
+                    title: Text(
+                      'Multi-view',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+                    childrenPadding: EdgeInsets.zero,
+                    initiallyExpanded: _groupOpen['multiview'] ?? false,
+                    // fix356: remember open/close for this app session only.
+                    onExpansionChanged: (v) => _groupOpen['multiview'] = v,
+                    children: _multiviewChildren,
+                  ),
+
+                  const Divider(),
+
+                  ExpansionTile(
+                    key: const PageStorageKey('content'),
+                    leading: const Icon(Icons.filter_list),
+                    title: Text(
+                      'Content',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+                    childrenPadding: EdgeInsets.zero,
+                    initiallyExpanded: _groupOpen['content'] ?? false,
+                    // fix356: remember open/close for this app session only.
+                    onExpansionChanged: (v) => _groupOpen['content'] = v,
+                    children: _contentChildren,
+                  ),
+
+                  const Divider(),
+
+                  ExpansionTile(
+                    key: const PageStorageKey('epg'),
+                    leading: const Icon(Icons.calendar_month),
+                    title: Text(
+                      'EPG / Program Guide',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+                    childrenPadding: EdgeInsets.zero,
+                    initiallyExpanded: _groupOpen['epg'] ?? false,
+                    // fix356: remember open/close for this app session only.
+                    onExpansionChanged: (v) => _groupOpen['epg'] = v,
+                    children: _epgChildren,
+                  ),
+
+                  const Divider(),
+
+                  ExpansionTile(
+                    key: const PageStorageKey('backuprestore'),
+                    leading: const Icon(Icons.settings_backup_restore),
+                    title: Text(
+                      'Backup & Restore',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+                    childrenPadding: EdgeInsets.zero,
+                    initiallyExpanded: _groupOpen['backuprestore'] ?? false,
+                    // fix356: remember open/close for this app session only.
+                    onExpansionChanged: (v) => _groupOpen['backuprestore'] = v,
+                    children: _backupRestoreChildren,
+                  ),
+
+                  const Divider(),
+
+                  ExpansionTile(
+                    key: const PageStorageKey('reset'),
+                    leading: const Icon(Icons.restart_alt),
+                    title: Text(
+                      'Reset',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+                    childrenPadding: EdgeInsets.zero,
+                    initiallyExpanded: _groupOpen['reset'] ?? false,
+                    // fix356: remember open/close for this app session only.
+                    onExpansionChanged: (v) => _groupOpen['reset'] = v,
+                    children: _resetChildren,
+                  ),
+
+                  const Divider(),
+
+                  ..._appChildren,
+
+
+                  const Divider(),
+
+
+                  ..._sourcesChildren,
+
+                  const Divider(),
+
+                  ExpansionTile(
+                    key: const PageStorageKey('diagnostics'),
+                    leading: const Icon(Icons.bug_report_outlined),
+                    title: Text(
+                      'Diagnostics',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+                    childrenPadding: EdgeInsets.zero,
+                    initiallyExpanded: _groupOpen['diagnostics'] ?? false,
+                    // fix356: remember open/close for this app session only.
+                    onExpansionChanged: (v) => _groupOpen['diagnostics'] = v,
+                    children: _diagnosticsChildren,
+                  ),
+
+                  // fix394: Developer / libmpv advanced tunables. Hidden
+                  // behind a folded ExpansionTile at the very bottom of the
+                  // menu — advanced users opt in; the defaults match
+                  // libmpv upstream so the section is a no-op until then.
+                  ExpansionTile(
+                    key: const PageStorageKey('developer'),
+                    leading: const Icon(Icons.developer_mode),
+                    title: Text(
+                      'Developer',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    subtitle: const Text(
+                      'Advanced libmpv options. Defaults match libmpv '
+                      'upstream; adjust only if a specific provider or '
+                      'device needs it.',
+                    ),
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+                    childrenPadding: EdgeInsets.zero,
+                    initiallyExpanded: _groupOpen['developer'] ?? false,
+                    onExpansionChanged: (v) => _groupOpen['developer'] = v,
+                    children: _developerChildren,
                   ),
 
                 ],

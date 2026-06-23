@@ -153,7 +153,8 @@ class _TvShellState extends State<TvShell> {
 
   void _openSettings() {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => SettingsView(showNavBar: false)),
+      MaterialPageRoute(
+          builder: (_) => SettingsView(showNavBar: false, tvRailPane: true)),
     );
   }
 
