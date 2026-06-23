@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.1",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.1",
+  "latest": "2.0.2",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.2",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Android TV: channels now show a colored strip on the left edge marking which source (provider) each came from, and the highlighted tile shows a clear yellow focus outline. (Phone view is unchanged.)",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.1/Free4Me-IPTV-2.0.1-arm64.apk"
+  "releaseNotes": "\u2022 Android TV: the Search tab now finds channels by name AND by what's on \u2014 type a show like \"Family Feud\" and it surfaces the live channels airing it now or soon. New \"Search window (hours)\" setting under EPG controls how far ahead it looks (forward-only, capped at your forecast days). (Phone view is unchanged.)",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.2/Free4Me-IPTV-2.0.2-arm64.apk"
 }
