@@ -6,6 +6,7 @@ import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/view_type.dart';
 import 'package:open_tv/settings_view.dart';
+import 'package:open_tv/tv/tv_browse_view.dart';
 import 'package:open_tv/tv/tv_guide_view.dart';
 import 'package:open_tv/tv/tv_search_view.dart';
 import 'package:open_tv/tv/tv_top_tab_bar.dart';
@@ -110,6 +111,14 @@ class _TvShellState extends State<TvShell> {
       _built[i] = TvSearchView(settings: widget.settings);
     } else if (i == 0) {
       _built[i] = TvGuideView(settings: widget.settings);
+    } else if (i == 1 || i == 2) {
+      // fix507: Movies (1) / Series (2) get the native rail+grid browse instead
+      // of the reused phone Home body. One parameterized widget serves both.
+      _built[i] = TvBrowseView(
+        key: ValueKey<String>('tv-browse-${t.label}'),
+        settings: widget.settings,
+        mediaType: t.mediaTypes.first,
+      );
     } else {
       _built[i] = Home(
         key: ValueKey<String>('tv-tab-${t.label}'),

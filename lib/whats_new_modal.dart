@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.7': [
+    'Android TV: Movies and Series now have a native browse screen — a side rail of your providers\' real categories, with a focusable grid of titles for the category you pick (no more reused phone layout). Use the D-pad to move between the category rail and the grid; open a series to see its episodes. (Phone view is unchanged.)',
+  ],
   '2.0.6': [
     'Android TV performance: on low-memory 4K boxes (e.g. some onn / Amlogic models), the interface now renders at 1080p and upscales to your screen — much smoother navigation, with only slightly softer text (video quality is unaffected). It applies automatically on qualifying boxes and can be turned off under Settings → Playback. (Phone view is unchanged.)',
   ],
