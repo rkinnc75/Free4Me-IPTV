@@ -692,20 +692,43 @@ class MpvEngine implements PlayerEngine {
   /// [streamInfoStream] for the single-cell full-screen top bar. Called once
   /// from [_observeFirstFrame] after `dwidth` confirms a real decoded frame
   /// has landed (guards against sampling mid-glitch garbage on a stream with
-  /// decode errors). Never emits on failure or while disposed.
+  /// decode errors).
+  /// fix516: fix515 shipped with NO logging in this function — a real device
+  /// report of the label never appearing left no way to tell whether this
+  /// ran, what it read, or where it stopped, from the log alone. Every
+  /// branch now logs, so the next report is diagnosable without guessing.
   Future<void> _publishStreamInfo() async {
-    if (_disposed || _player.platform is! mk.NativePlayer) return;
+    if (_disposed || _player.platform is! mk.NativePlayer) {
+      AppLog.info('MpvEngine: STREAMINFO skip — disposed=$_disposed'
+          ' nativePlayer=${_player.platform is mk.NativePlayer}'
+          ' channel="${channel.name}"');
+      return;
+    }
     final np = _player.platform as mk.NativePlayer;
     try {
       final dheight = await np.getProperty('dheight');
       final codec = await np.getProperty('video-codec');
-      if (_disposed) return;
+      if (_disposed) {
+        AppLog.info('MpvEngine: STREAMINFO disposed mid-read'
+            ' channel="${channel.name}"');
+        return;
+      }
       final label = formatStreamInfo(dheight, codec);
+      AppLog.info('MpvEngine: STREAMINFO dheight="$dheight" codec="$codec"'
+          ' label=${label == null ? "null" : '"$label"'}'
+          ' channel="${channel.name}"');
       if (label != null && !_streamInfoCtrl.isClosed) {
         _streamInfoCtrl.add(label);
+        AppLog.info('MpvEngine: STREAMINFO emitted "$label"'
+            ' hasListener=${_streamInfoCtrl.hasListener}'
+            ' channel="${channel.name}"');
+      } else if (label != null) {
+        AppLog.info('MpvEngine: STREAMINFO NOT emitted — controller closed'
+            ' channel="${channel.name}"');
       }
-    } catch (_) {
-      // Best-effort — never surfaces to the player; the bar just stays blank.
+    } catch (e) {
+      AppLog.warn('MpvEngine: STREAMINFO read/emit failed — $e'
+          ' channel="${channel.name}"');
     }
   }
 

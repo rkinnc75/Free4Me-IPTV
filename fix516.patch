@@ -1,0 +1,80 @@
+diff --git a/lib/player/mpv_engine.dart b/lib/player/mpv_engine.dart
+index d11d6a7..34dde27 100644
+--- a/lib/player/mpv_engine.dart
++++ b/lib/player/mpv_engine.dart
+@@ -692,20 +692,43 @@ class MpvEngine implements PlayerEngine {
+   /// [streamInfoStream] for the single-cell full-screen top bar. Called once
+   /// from [_observeFirstFrame] after `dwidth` confirms a real decoded frame
+   /// has landed (guards against sampling mid-glitch garbage on a stream with
+-  /// decode errors). Never emits on failure or while disposed.
++  /// decode errors).
++  /// fix516: fix515 shipped with NO logging in this function — a real device
++  /// report of the label never appearing left no way to tell whether this
++  /// ran, what it read, or where it stopped, from the log alone. Every
++  /// branch now logs, so the next report is diagnosable without guessing.
+   Future<void> _publishStreamInfo() async {
+-    if (_disposed || _player.platform is! mk.NativePlayer) return;
++    if (_disposed || _player.platform is! mk.NativePlayer) {
++      AppLog.info('MpvEngine: STREAMINFO skip — disposed=$_disposed'
++          ' nativePlayer=${_player.platform is mk.NativePlayer}'
++          ' channel="${channel.name}"');
++      return;
++    }
+     final np = _player.platform as mk.NativePlayer;
+     try {
+       final dheight = await np.getProperty('dheight');
+       final codec = await np.getProperty('video-codec');
+-      if (_disposed) return;
++      if (_disposed) {
++        AppLog.info('MpvEngine: STREAMINFO disposed mid-read'
++            ' channel="${channel.name}"');
++        return;
++      }
+       final label = formatStreamInfo(dheight, codec);
++      AppLog.info('MpvEngine: STREAMINFO dheight="$dheight" codec="$codec"'
++          ' label=${label == null ? "null" : '"$label"'}'
++          ' channel="${channel.name}"');
+       if (label != null && !_streamInfoCtrl.isClosed) {
+         _streamInfoCtrl.add(label);
++        AppLog.info('MpvEngine: STREAMINFO emitted "$label"'
++            ' hasListener=${_streamInfoCtrl.hasListener}'
++            ' channel="${channel.name}"');
++      } else if (label != null) {
++        AppLog.info('MpvEngine: STREAMINFO NOT emitted — controller closed'
++            ' channel="${channel.name}"');
+       }
+-    } catch (_) {
+-      // Best-effort — never surfaces to the player; the bar just stays blank.
++    } catch (e) {
++      AppLog.warn('MpvEngine: STREAMINFO read/emit failed — $e'
++          ' channel="${channel.name}"');
+     }
+   }
+ 
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 9f7f02d..ac1b747 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '2.0.16': [
++    'Internal diagnostics only — no user-visible change.',
++  ],
+   '2.0.15': [
+     'Full-screen playback now shows the stream\'s actual resolution and video format (e.g. "720p H.264") next to the channel name — handy for spotting when a "4K" channel isn\'t really 4K.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index d8598a8..ca7d07f 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 2.0.15+515
++version: 2.0.16+516
+ 
+ environment:
+   sdk: ^3.10.7

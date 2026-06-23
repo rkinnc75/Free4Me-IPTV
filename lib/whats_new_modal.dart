@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.16': [
+    'Internal diagnostics only — no user-visible change.',
+  ],
   '2.0.15': [
     'Full-screen playback now shows the stream\'s actual resolution and video format (e.g. "720p H.264") next to the channel name — handy for spotting when a "4K" channel isn\'t really 4K.',
   ],
