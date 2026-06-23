@@ -76,6 +76,8 @@ class _TvShellState extends State<TvShell> {
 
   late int _index;
   late final List<Widget?> _built = List<Widget?>.filled(_tabs.length, null);
+  // fix510: lets _select() release the Live guide's hero preview on tab-away.
+  final GlobalKey<TvGuideViewState> _guideKey = GlobalKey<TvGuideViewState>();
 
   @override
   void initState() {
@@ -110,7 +112,7 @@ class _TvShellState extends State<TvShell> {
     if (t.isSearch) {
       _built[i] = TvSearchView(settings: widget.settings);
     } else if (i == 0) {
-      _built[i] = TvGuideView(settings: widget.settings);
+      _built[i] = TvGuideView(key: _guideKey, settings: widget.settings);
     } else if (i == 1 || i == 2) {
       // fix507: Movies (1) / Series (2) get the native rail+grid browse instead
       // of the reused phone Home body. One parameterized widget serves both.
@@ -133,8 +135,16 @@ class _TvShellState extends State<TvShell> {
     }
   }
 
-  void _select(int i) {
+  Future<void> _select(int i) async {
     if (i == _index) return;
+    // fix510: leaving Live TV → release the hero's muted preview (and its
+    // provider connection) BEFORE switching, so a stream opened from the next
+    // tab can't race the still-releasing preview on a 1-connection provider.
+    // IndexedStack keeps the guide mounted, so there is no implicit hook.
+    if (_index == 0 && i != 0) {
+      await _guideKey.currentState?.stopHeroPreview();
+    }
+    if (!mounted) return;
     setState(() {
       _index = i;
       _ensureBuilt(i);

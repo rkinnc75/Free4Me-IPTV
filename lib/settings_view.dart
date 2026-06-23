@@ -2715,6 +2715,27 @@ class _SettingsState extends State<SettingsView> {
                           RenderCap.setEnabled(v);
                         },
                       ),
+                      // fix510: live video preview in the TV guide hero.
+                      _switchTile(
+                        label: "Live preview in TV guide",
+                        value: settings.tvHeroLivePreview,
+                        help: (
+                          title: 'Live preview in TV guide',
+                          body:
+                              'Plays a muted live preview of the focused channel '
+                              'in the TV guide\'s hero area. On capable boxes this '
+                              'is on automatically; on low-memory boxes (e.g. onn '
+                              '4K / Amlogic) it stays off by default to protect '
+                              'smoothness — turn it on here to enable it there. '
+                              'The preview opens only after you pause on a channel '
+                              'and is always muted. Default: off on low-memory '
+                              'boxes.',
+                        ),
+                        onChanged: (v) {
+                          setState(() => settings.tvHeroLivePreview = v);
+                          updateSettings();
+                        },
+                      ),
                       _switchTile(
                         label: "Pre-warm streams on focus",
                         value: settings.preWarmOnFocus,

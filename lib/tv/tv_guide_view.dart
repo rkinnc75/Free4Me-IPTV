@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/models/channel.dart';
+import 'package:open_tv/models/device_detector.dart';
 import 'package:open_tv/models/filters.dart';
 import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/program.dart';
@@ -13,6 +15,7 @@ import 'package:open_tv/models/view_type.dart';
 import 'package:open_tv/player.dart';
 import 'package:open_tv/player/overlay_player_controller.dart';
 import 'package:open_tv/source_color_picker.dart';
+import 'package:open_tv/tv/tv_hero_preview.dart';
 
 final _timeFmt = DateFormat.Hm();
 
@@ -30,10 +33,13 @@ class TvGuideView extends StatefulWidget {
   const TvGuideView({super.key, required this.settings});
 
   @override
-  State<TvGuideView> createState() => _TvGuideViewState();
+  State<TvGuideView> createState() => TvGuideViewState();
 }
 
-class _TvGuideViewState extends State<TvGuideView> {
+// fix510: public so TvShell can call stopHeroPreview() via a GlobalKey on
+// tab-away (IndexedStack keeps this view mounted, so there is no implicit
+// visibility hook to release the preview's provider connection).
+class TvGuideViewState extends State<TvGuideView> {
   static const int _windowHours = 3;
   static const int _channelCap = 200; // rail-scoped guard against huge groups
 
@@ -48,13 +54,28 @@ class _TvGuideViewState extends State<TvGuideView> {
   bool _ready = false;
   bool _loading = false;
   int _inv = 0;
+  // fix510: hero live-preview state.
+  Channel? _focused;
+  late final TvHeroPreview _preview;
+  bool _liveOk = false;
+  int _dwellMs = 700;
+  bool _favOnly = false;
+  int _focusSeq = 0; // fix510: guards stale async focus callbacks
+  bool _launching = false; // fix510: suppresses preview re-arm during _play
 
   @override
   void initState() {
     super.initState();
+    _preview = TvHeroPreview();
     _windowStart = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     _windowEnd = _windowStart + _windowHours * 3600;
     _init();
+  }
+
+  @override
+  void dispose() {
+    _preview.disposeController();
+    super.dispose();
   }
 
   Future<void> _init() async {
@@ -72,6 +93,9 @@ class _TvGuideViewState extends State<TvGuideView> {
     } catch (_) {
       groups = [];
     }
+    // fix510: gate the always-live hero preview. Capable boxes default ON;
+    // low-RAM (Onn/Amlogic) defaults to art-first unless the owner opts in.
+    final lowRam = await DeviceDetector.isLowRamDevice();
     if (!mounted) return;
     setState(() {
       _sourceColors = {
@@ -80,6 +104,8 @@ class _TvGuideViewState extends State<TvGuideView> {
       };
       _sourceIds = enabled.map((e) => e.id).whereType<int>().toList();
       _groups = groups;
+      _liveOk = !lowRam || widget.settings.tvHeroLivePreview;
+      _dwellMs = lowRam ? 1100 : 700;
       _ready = true;
     });
     await _loadGuide(null);
@@ -140,18 +166,34 @@ class _TvGuideViewState extends State<TvGuideView> {
 
   Future<void> _play(Channel ch) async {
     if (ch.url == null) return;
-    final settings =
-        SettingsService.cached ?? await SettingsService.getSettings();
-    final source = await Sql.getSourceById(ch.sourceId);
-    if (!mounted) return;
-    await OverlayPlayerController.instance.haltMain();
-    if (!mounted) return;
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => Player(channel: ch, settings: settings, source: source),
-      ),
-    );
+    // fix510: suppress preview re-arm for the whole launch, and release the
+    // hero preview (and its provider connection) BEFORE opening full-screen,
+    // so the full-open never races the preview on a connection-limited
+    // provider (fix112 instant "Failed to open").
+    _launching = true;
+    try {
+      await _preview.stop();
+      final settings =
+          SettingsService.cached ?? await SettingsService.getSettings();
+      final source = await Sql.getSourceById(ch.sourceId);
+      // Single-connection providers need a beat to release the preview socket.
+      if (source?.maxConnections == 1) {
+        await Future.delayed(const Duration(milliseconds: 300));
+      }
+      Player.clearCooldown(ch.id);
+      if (!mounted) return;
+      await OverlayPlayerController.instance.haltMain();
+      if (!mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) =>
+              Player(channel: ch, settings: settings, source: source),
+        ),
+      );
+    } finally {
+      _launching = false;
+    }
   }
 
   @override
@@ -195,22 +237,226 @@ class _TvGuideViewState extends State<TvGuideView> {
   }
 
   Widget _guide() {
+    final channels = _visibleChannels;
     return Column(
       children: [
+        _hero(),
+        _filterPills(),
         _timeHeader(),
         Expanded(
-          child: _channels.isEmpty
+          child: channels.isEmpty
               ? Center(
                   child: Text(_loading ? 'Loading guide…' : 'No channels'),
                 )
               : ListView.builder(
-                  itemCount: _channels.length,
-                  itemBuilder: (context, i) => _row(_channels[i], i == 0),
+                  itemCount: channels.length,
+                  itemBuilder: (context, i) => _row(channels[i], i == 0),
                 ),
         ),
       ],
     );
   }
+
+  List<Channel> get _visibleChannels =>
+      _favOnly ? _channels.where((c) => c.favorite).toList() : _channels;
+
+  // fix510: hero with the focused channel's art + an always-live MUTED preview
+  // cross-faded in once the dwell-gated engine produces a frame.
+  Widget _hero() {
+    final ch = _focused;
+    return SizedBox(
+      height: 168,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            AspectRatio(
+              aspectRatio: 16 / 9,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  color: Colors.black,
+                  child: ch == null
+                      ? const Center(
+                          child: Icon(Icons.live_tv,
+                              color: Colors.white24, size: 40))
+                      : Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            if (ch.image != null)
+                              CachedNetworkImage(
+                                imageUrl: ch.image!,
+                                fit: BoxFit.contain,
+                                memCacheHeight: 240,
+                                errorWidget: (c, u, e) => const Center(
+                                    child: Icon(Icons.live_tv,
+                                        color: Colors.white24, size: 40)),
+                              )
+                            else
+                              const Center(
+                                  child: Icon(Icons.live_tv,
+                                      color: Colors.white24, size: 40)),
+                            ListenableBuilder(
+                              listenable: _preview,
+                              builder: (context, _) {
+                                final v = _preview.buildVideoView(context);
+                                return AnimatedOpacity(
+                                  opacity: _preview.isLive ? 1 : 0,
+                                  duration: const Duration(milliseconds: 250),
+                                  child: v ?? const SizedBox.shrink(),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(child: _heroInfo(ch)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _heroInfo(Channel? ch) {
+    if (ch == null) return const SizedBox.shrink();
+    final progs = _progByKey['${ch.sourceId}|${ch.epgChannelId}'] ?? const [];
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    Program? onNow;
+    Program? next;
+    for (final p in progs) {
+      if (p.startUtc <= now && now < p.stopUtc) {
+        onNow = p;
+        continue;
+      }
+      if (p.startUtc >= now) {
+        next = p;
+        break;
+      }
+    }
+    final theme = Theme.of(context);
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(ch.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleLarge
+                ?.copyWith(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 6),
+        if (onNow != null)
+          Text(
+            'NOW   ${onNow.title}   ·   ends '
+            '${_timeFmt.format(DateTime.fromMillisecondsSinceEpoch(onNow.stopUtc * 1000).toLocal())}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodyMedium,
+          ),
+        if (next != null)
+          Text(
+            'NEXT   ${next.title}   ·   '
+            '${_timeFmt.format(DateTime.fromMillisecondsSinceEpoch(next.startUtc * 1000).toLocal())}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+          ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            SizedBox(
+              width: 150,
+              child: _FocusTile(
+                selected: false,
+                onTap: () => _play(ch),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.play_arrow, size: 20),
+                    SizedBox(width: 6),
+                    Text('Watch'),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            ListenableBuilder(
+              listenable: _preview,
+              builder: (context, _) => _preview.isLive
+                  ? const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.volume_off, size: 16, color: Colors.grey),
+                        SizedBox(width: 4),
+                        Text('Muted preview',
+                            style:
+                                TextStyle(color: Colors.grey, fontSize: 12)),
+                      ],
+                    )
+                  : const SizedBox.shrink(),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _filterPills() {
+    return SizedBox(
+      height: 46,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        children: [
+          _pill('All', !_favOnly, () => setState(() => _favOnly = false)),
+          _pill('Favorites', _favOnly, () => setState(() => _favOnly = true)),
+        ],
+      ),
+    );
+  }
+
+  Widget _pill(String label, bool selected, VoidCallback onTap) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: _FocusTile(
+        selected: selected,
+        onTap: onTap,
+        child: Text(label),
+      ),
+    );
+  }
+
+  // fix510: a channel tile gained focus → update the hero + arm the dwell.
+  Future<void> _onChannelFocused(Channel ch) async {
+    final seq = ++_focusSeq;
+    final prev = _focused;
+    if (mounted) setState(() => _focused = ch);
+    // Same channel re-focus, or a full-screen launch is in progress → don't
+    // (re-)arm a preview.
+    if (prev != null && identical(prev, ch)) return;
+    if (_launching) return;
+    final overlayUp = OverlayPlayerController.instance.channel != null;
+    final source = await Sql.getSourceById(ch.sourceId);
+    // Bail if superseded by a newer focus, unmounted, or a launch began while
+    // awaiting — prevents a stale tile (or the tile we just left to play
+    // full-screen) from re-opening a preview connection.
+    if (!mounted || seq != _focusSeq || _launching) return;
+    final liveEnabled =
+        _liveOk && !overlayUp && source?.maxConnections != 1;
+    _preview.onChannelFocused(
+      ch,
+      settings: widget.settings,
+      dwellMs: _dwellMs,
+      liveEnabled: liveEnabled,
+    );
+  }
+
+  /// fix510: called by TvShell when leaving the Live tab so the muted preview
+  /// (and its provider connection) is released immediately.
+  Future<void> stopHeroPreview() => _preview.stop();
 
   Widget _timeHeader() {
     final ticks = <Widget>[];
@@ -236,6 +482,7 @@ class _TvGuideViewState extends State<TvGuideView> {
       Theme.of(context).colorScheme.surfaceContainer,
     );
     return SizedBox(
+      key: ValueKey('guide-row-${ch.sourceId}-${ch.id ?? ch.name}'),
       height: 56,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -247,6 +494,7 @@ class _TvGuideViewState extends State<TvGuideView> {
               selected: false,
               onTap: () => _play(ch),
               autofocus: autofocus,
+              onFocusGained: (_) => _onChannelFocused(ch),
               child: Row(
                 children: [
                   Container(width: 5, color: _edgeColor(ch.sourceId, tint)),
@@ -344,11 +592,13 @@ class _FocusTile extends StatefulWidget {
   final bool autofocus;
   final VoidCallback onTap;
   final Widget child;
+  final ValueChanged<bool>? onFocusGained;
   const _FocusTile({
     required this.selected,
     required this.onTap,
     required this.child,
     this.autofocus = false,
+    this.onFocusGained,
   });
 
   @override
@@ -371,7 +621,10 @@ class _FocusTileState extends State<_FocusTile> {
         child: InkWell(
           autofocus: widget.autofocus,
           onTap: widget.onTap,
-          onFocusChange: (v) => setState(() => _focused = v),
+          onFocusChange: (v) {
+            setState(() => _focused = v);
+            if (v) widget.onFocusGained?.call(true);
+          },
           borderRadius: BorderRadius.circular(8),
           child: Container(
             decoration: BoxDecoration(

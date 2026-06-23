@@ -95,6 +95,11 @@ class Settings {
   /// rendering at native 4K. Pushed to the native SharedPref; applies at launch.
   bool cap1080pOnLowRam;
 
+  /// fix510: opt-in always-live video preview in the TV Live-guide hero. On
+  /// capable boxes the hero is live by default; on low-RAM boxes (Onn/Amlogic)
+  /// it is art-first unless this is true. TV-only; phone code never reads it.
+  bool tvHeroLivePreview;
+
   /// Pre-warm channel URL (HEAD request) when a tile receives focus.
   bool preWarmOnFocus;
   /// fix318: keep long operations (source refresh) running in an Android
@@ -288,6 +293,7 @@ class Settings {
     this.hwDecode = true,
     this.forceHwDecode = false,
     this.cap1080pOnLowRam = true,
+    this.tvHeroLivePreview = false,
     this.preWarmOnFocus = true,
     this.backgroundProcessing = false,
     this.debugLogging = false,
@@ -443,6 +449,7 @@ class Settings {
     s.hwDecode = true;
     s.forceHwDecode = false; // fix505: advanced override off by default
     s.cap1080pOnLowRam = true; // fix506: render cap allowed by default
+    s.tvHeroLivePreview = false; // fix510: live hero opt-in (capable boxes ON via _liveOk)
 
     // Pre-warm — TVs benefit (D-pad-driven focus changes are deliberate);
     // phones less so (touch scrolling sweeps focus rapidly).

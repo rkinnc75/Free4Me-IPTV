@@ -37,6 +37,7 @@ const bufferingWatchdogSecsProp = "bufferingWatchdogSecs";
 const hwDecodeProp = "hwDecode";
 const forceHwDecodeProp = "forceHwDecode";
 const cap1080pOnLowRamProp = "cap1080pOnLowRam";
+const tvHeroLivePreviewProp = "tvHeroLivePreview";
 const preWarmOnFocusProp = "preWarmOnFocus";
 const backgroundProcessingProp = "backgroundProcessing"; // fix318
 
@@ -173,6 +174,7 @@ class SettingsService {
     var hw = settingsMap[hwDecodeProp];
     var forceHw = settingsMap[forceHwDecodeProp];
     var renderCap = settingsMap[cap1080pOnLowRamProp];
+    var heroLive = settingsMap[tvHeroLivePreviewProp];
     var prewarm = settingsMap[preWarmOnFocusProp];
     var bgProc = settingsMap[backgroundProcessingProp];
     var debugLog = settingsMap[debugLoggingProp];
@@ -221,6 +223,9 @@ class SettingsService {
     if (forceHw != null) settings.forceHwDecode = int.parse(forceHw) == 1;
     if (renderCap != null) {
       settings.cap1080pOnLowRam = int.parse(renderCap) == 1;
+    }
+    if (heroLive != null) {
+      settings.tvHeroLivePreview = int.parse(heroLive) == 1;
     }
     if (prewarm != null) settings.preWarmOnFocus = int.parse(prewarm) == 1;
     if (bgProc != null) settings.backgroundProcessing = int.parse(bgProc) == 1;
@@ -413,6 +418,8 @@ class SettingsService {
         (settings.forceHwDecode ? 1 : 0).toString();
     settingsMap[cap1080pOnLowRamProp] =
         (settings.cap1080pOnLowRam ? 1 : 0).toString();
+    settingsMap[tvHeroLivePreviewProp] =
+        (settings.tvHeroLivePreview ? 1 : 0).toString();
     settingsMap[backgroundProcessingProp] =
         (settings.backgroundProcessing ? 1 : 0).toString();
     settingsMap[preWarmOnFocusProp] = (settings.preWarmOnFocus ? 1 : 0)
