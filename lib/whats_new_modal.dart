@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.35.22': [
+    'Fixed: in full-screen, tapping on the area where the bottom control bar appears now reliably brings the controls back. The bar previously sat in a strip (the system gesture area + a small edge band) where taps didn’t register, so you had to tap higher up to wake it.',
+  ],
   '1.35.21': [
     'The full-screen video fit you pick (fit, stretch, or crop) is now remembered, so the next time you open a channel full-screen it uses your last choice.',
   ],
