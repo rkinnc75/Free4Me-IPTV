@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.3",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.3",
+  "latest": "2.0.4",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.4",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Android TV: the Live tab is now an EPG guide \u2014 a category rail on the left scopes a channel \u00d7 time grid showing what's on across the next few hours, with a \"now\" line. Pick any program or channel to start watching. (Phone view is unchanged.)",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.3/Free4Me-IPTV-2.0.3-arm64.apk"
+  "releaseNotes": "\u2022 Fixed: the app failing to open on 32-bit Android TV boxes (some Walmart onn / Amlogic models). The build is now a universal arm + arm64 APK, so it installs and launches on both 32- and 64-bit devices.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.4/Free4Me-IPTV-2.0.4-arm64.apk"
 }
