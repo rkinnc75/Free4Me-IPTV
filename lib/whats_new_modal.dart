@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '1.35.19': [
+    'Smaller download: the APK now ships only the 64-bit (arm64) build that every supported device uses.',
+  ],
   '1.35.18': [
     'Much faster category and movie/series browsing on large playlists — opening a category or VOD list no longer hangs for a few seconds while it scans the whole catalog.',
   ],

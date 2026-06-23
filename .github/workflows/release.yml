@@ -288,7 +288,7 @@ jobs:
           # headroom for both Gradle and the Kotlin daemon while still
           # leaving room for the OS + the runner agent.
           GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx5G -XX:MaxMetaspaceSize=1G'
-        run: flutter build apk --release
+        run: flutter build apk --release --target-platform android-arm64
 
       - name: Stage APK with release naming
         id: apk

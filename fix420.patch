@@ -1,0 +1,53 @@
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index 5f1ff12..19d5ec5 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -288,7 +288,7 @@ jobs:
+           # headroom for both Gradle and the Kotlin daemon while still
+           # leaving room for the OS + the runner agent.
+           GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx5G -XX:MaxMetaspaceSize=1G'
+-        run: flutter build apk --release
++        run: flutter build apk --release --target-platform android-arm64
+ 
+       - name: Stage APK with release naming
+         id: apk
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index fffdd95..254dd82 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.35.19': [
++    'Smaller download: the APK now ships only the 64-bit (arm64) build that every supported device uses.',
++  ],
+   '1.35.18': [
+     'Much faster category and movie/series browsing on large playlists — opening a category or VOD list no longer hangs for a few seconds while it scans the whole catalog.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index a852cb3..26029f4 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.35.18+419
++version: 1.35.19+420
+ 
+ environment:
+   sdk: ^3.10.7
+diff --git a/scripts/build_and_release.sh b/scripts/build_and_release.sh
+index 5f85180..a7cfe7c 100755
+--- a/scripts/build_and_release.sh
++++ b/scripts/build_and_release.sh
+@@ -83,7 +83,7 @@ if [[ ! -f "$REPO_DIR/android/app/release.keystore" ]]; then
+   exit 1
+ fi
+ 
+-flutter build apk --release
++flutter build apk --release --target-platform android-arm64
+ 
+ APK_SRC="$REPO_DIR/build/app/outputs/flutter-apk/app-release.apk"
+ APK_DOWNLOADS="$HOME/Downloads/$APK_NAME"
