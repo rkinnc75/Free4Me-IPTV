@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.17': [
+    'Faster source refresh (part 1 of several): the step that links each channel to its category no longer runs a per-row database lookup — it is now a single set-based update. On large playlists this alone cuts ~30–60 seconds per source. (More refresh-speed work is coming.)',
+  ],
   '2.0.16': [
     'Internal diagnostics only — no user-visible change.',
   ],

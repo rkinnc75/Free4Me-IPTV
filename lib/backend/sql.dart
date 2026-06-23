@@ -465,24 +465,43 @@ class Sql {
           );
         }
       }
+      // fix517: set-based UPDATE...FROM joins replace the old per-row
+      // correlated scalar subqueries (measured 21.6s + 44.8s on a 273K-row
+      // source). group_id: NULL the source's rows first, then join-assign from
+      // groups; an unmatched group_name stays NULL — provably identical to the
+      // old correlated subquery for BOTH the full-wipe and the fix321
+      // keepMediaTypes refresh (the pre-NULL is what makes the keepMediaTypes
+      // path match, since a join leaves unmatched rows unchanged).
+      await tx.execute(
+        'UPDATE channels SET group_id = NULL WHERE source_id = ?',
+        [sourceId],
+      );
       await tx.execute('''
         UPDATE channels
-        SET group_id = (
-          SELECT id FROM groups
-          WHERE groups.name = channels.group_name
-            AND groups.source_id = ?
-          LIMIT 1
-        )
-        WHERE source_id = ?
+        SET group_id = g.id
+        FROM groups g
+        WHERE g.name = channels.group_name
+          AND g.source_id = ?
+          AND channels.source_id = ?
       ''', [sourceId, sourceId]);
-      // fix365: denormalize the category-enabled flag so the browse index can
-      // exclude disabled-category channels without a per-row subquery.
+      // fix365/fix517: denormalize the category-enabled flag so the browse
+      // index can exclude disabled-category channels without a per-row
+      // subquery. Join sets it for channels with a matching group
+      // (COALESCE(g.enabled,1) mirrors the old default for a null enabled
+      // flag); channels with no group default to 1 — identical to the old
+      // COALESCE((SELECT g.enabled ...), 1).
       await tx.execute('''
         UPDATE channels
-        SET cat_enabled = COALESCE(
-          (SELECT g.enabled FROM groups g WHERE g.id = channels.group_id), 1)
-        WHERE source_id = ?
+        SET cat_enabled = COALESCE(g.enabled, 1)
+        FROM groups g
+        WHERE g.id = channels.group_id
+          AND channels.source_id = ?
       ''', [sourceId]);
+      await tx.execute(
+        'UPDATE channels SET cat_enabled = 1'
+        ' WHERE source_id = ? AND group_id IS NULL',
+        [sourceId],
+      );
     };
   }
 
