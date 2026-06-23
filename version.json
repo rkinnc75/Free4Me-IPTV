@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.8",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.8",
+  "latest": "2.0.9",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.9",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Android TV: Movies and Series now show as a wall of portrait posters (cover art + title) instead of list rows \u2014 the look you'd expect on a TV. Selecting a poster plays the movie or opens the series' episodes, exactly as before. (Phone view is unchanged.)",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.8/Free4Me-IPTV-2.0.8-arm64.apk"
+  "releaseNotes": "\u2022 Android TV search now groups results into five horizontal shelves \u2014 On now, Coming up, Channels, Movies and Series \u2014 so searching e.g. a show name surfaces where it's airing now vs later, and searching a channel or title lands in the right row. Movies and Series show as posters. (Phone view is unchanged.)",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.9/Free4Me-IPTV-2.0.9-arm64.apk"
 }
