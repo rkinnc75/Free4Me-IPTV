@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.9",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.9",
+  "latest": "2.0.10",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.10",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Android TV search now groups results into five horizontal shelves \u2014 On now, Coming up, Channels, Movies and Series \u2014 so searching e.g. a show name surfaces where it's airing now vs later, and searching a channel or title lands in the right row. Movies and Series show as posters. (Phone view is unchanged.)",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.9/Free4Me-IPTV-2.0.9-arm64.apk"
+  "releaseNotes": "\u2022 Android TV Live guide now has a hero area up top showing the focused channel \u2014 its artwork, what's on now and next, a Watch button, and a muted live preview that plays once you pause on a channel. Quick filter pills (All / Favorites) sit above the grid. On capable boxes the live preview is on by default; on low-memory boxes it stays off to keep things smooth \u2014 enable it under Settings \u2192 Playback \u2192 \"Live preview in TV guide\". (Phone view is unchanged.)",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.10/Free4Me-IPTV-2.0.10-arm64.apk"
 }
