@@ -539,6 +539,7 @@ class SettingsIo {
         'lowLatency': s.lowLatency,
         'hwDecode': s.hwDecode,
         'forceHwDecode': s.forceHwDecode,
+        'cap1080pOnLowRam': s.cap1080pOnLowRam,
         'preWarmOnFocus': s.preWarmOnFocus,
         'backgroundProcessing': s.backgroundProcessing, // fix318
         'liveCacheSecs': s.liveCacheSecs,
@@ -608,6 +609,7 @@ class SettingsIo {
       lowLatency: m['lowLatency'] as bool? ?? false,
       hwDecode: m['hwDecode'] as bool? ?? true,
       forceHwDecode: m['forceHwDecode'] as bool? ?? false,
+      cap1080pOnLowRam: m['cap1080pOnLowRam'] as bool? ?? true,
       preWarmOnFocus: m['preWarmOnFocus'] as bool? ?? true,
       backgroundProcessing: m['backgroundProcessing'] as bool? ?? false,
       liveCacheSecs: m['liveCacheSecs'] as int? ?? 20,

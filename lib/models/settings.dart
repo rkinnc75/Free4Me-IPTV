@@ -90,6 +90,10 @@ class Settings {
   /// fix505: advanced override — force hardware decode even on a low-RAM box
   /// (bypasses the low-RAM→software routing). Default false.
   bool forceHwDecode;
+  /// fix506: allow the native 1080p render cap on low-RAM 4K boxes (auto-applied
+  /// by MainActivity when the device qualifies). Default true; set false to keep
+  /// rendering at native 4K. Pushed to the native SharedPref; applies at launch.
+  bool cap1080pOnLowRam;
 
   /// Pre-warm channel URL (HEAD request) when a tile receives focus.
   bool preWarmOnFocus;
@@ -283,6 +287,7 @@ class Settings {
     this.startupGraceMs = 500,
     this.hwDecode = true,
     this.forceHwDecode = false,
+    this.cap1080pOnLowRam = true,
     this.preWarmOnFocus = true,
     this.backgroundProcessing = false,
     this.debugLogging = false,
@@ -437,6 +442,7 @@ class Settings {
     // automatically (handled inside MpvEngine._applyMpvOptions).
     s.hwDecode = true;
     s.forceHwDecode = false; // fix505: advanced override off by default
+    s.cap1080pOnLowRam = true; // fix506: render cap allowed by default
 
     // Pre-warm — TVs benefit (D-pad-driven focus changes are deliberate);
     // phones less so (touch scrolling sweeps focus rapidly).

@@ -36,6 +36,7 @@ const openTimeoutSecsProp = "openTimeoutSecs";
 const bufferingWatchdogSecsProp = "bufferingWatchdogSecs";
 const hwDecodeProp = "hwDecode";
 const forceHwDecodeProp = "forceHwDecode";
+const cap1080pOnLowRamProp = "cap1080pOnLowRam";
 const preWarmOnFocusProp = "preWarmOnFocus";
 const backgroundProcessingProp = "backgroundProcessing"; // fix318
 
@@ -171,6 +172,7 @@ class SettingsService {
     var watchdog = settingsMap[bufferingWatchdogSecsProp];
     var hw = settingsMap[hwDecodeProp];
     var forceHw = settingsMap[forceHwDecodeProp];
+    var renderCap = settingsMap[cap1080pOnLowRamProp];
     var prewarm = settingsMap[preWarmOnFocusProp];
     var bgProc = settingsMap[backgroundProcessingProp];
     var debugLog = settingsMap[debugLoggingProp];
@@ -217,6 +219,9 @@ class SettingsService {
     if (watchdog != null) settings.bufferingWatchdogSecs = int.parse(watchdog);
     if (hw != null) settings.hwDecode = int.parse(hw) == 1;
     if (forceHw != null) settings.forceHwDecode = int.parse(forceHw) == 1;
+    if (renderCap != null) {
+      settings.cap1080pOnLowRam = int.parse(renderCap) == 1;
+    }
     if (prewarm != null) settings.preWarmOnFocus = int.parse(prewarm) == 1;
     if (bgProc != null) settings.backgroundProcessing = int.parse(bgProc) == 1;
     if (debugLog != null) settings.debugLogging = int.parse(debugLog) == 1;
@@ -406,6 +411,8 @@ class SettingsService {
     settingsMap[hwDecodeProp] = (settings.hwDecode ? 1 : 0).toString();
     settingsMap[forceHwDecodeProp] =
         (settings.forceHwDecode ? 1 : 0).toString();
+    settingsMap[cap1080pOnLowRamProp] =
+        (settings.cap1080pOnLowRam ? 1 : 0).toString();
     settingsMap[backgroundProcessingProp] =
         (settings.backgroundProcessing ? 1 : 0).toString();
     settingsMap[preWarmOnFocusProp] = (settings.preWarmOnFocus ? 1 : 0)

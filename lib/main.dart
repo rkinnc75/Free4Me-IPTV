@@ -22,6 +22,7 @@ import 'package:open_tv/models/device_detector.dart';
 import 'package:open_tv/models/filters.dart';
 import 'package:open_tv/models/home_manager.dart';
 import 'package:open_tv/models/settings.dart';
+import 'package:open_tv/backend/render_cap.dart';
 import 'package:open_tv/backend/utils.dart';
 import 'package:open_tv/setup.dart';
 import 'package:open_tv/tv_home.dart';
@@ -105,6 +106,9 @@ Future<void> main() async {
     }));
   }
   unawaited(EpgService.scheduleBackgroundRefresh());
+  // fix506: mirror the render-cap setting to the native SharedPref so the
+  // 1080p cap decision is correct on the NEXT launch.
+  unawaited(RenderCap.setEnabled(settings.cap1080pOnLowRam));
   runApp(
     MyApp(
       skipSetup: hasSources,

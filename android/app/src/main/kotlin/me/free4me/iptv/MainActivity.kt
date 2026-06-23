@@ -1,9 +1,16 @@
 package me.free4me.iptv
 
+import android.app.ActivityManager
 import android.app.PictureInPictureParams
+import android.content.Context
+import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
+import android.os.Bundle
 import android.util.Rational
+import android.view.SurfaceView
+import android.view.View
+import android.view.ViewGroup
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -19,6 +26,24 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         flutterEngine.plugins.add(CastPlugin())
+
+        // ── fix506: render-cap pref bridge ────────────────────────────────
+        // Flutter's render-cap toggle writes the SharedPref that
+        // attachBaseContext/onCreate read at the NEXT launch.
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "me.free4me.iptv/render",
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "setCap" -> {
+                    val enabled = call.argument<Boolean>("enabled") ?: true
+                    getSharedPreferences("free4me_prefs", Context.MODE_PRIVATE)
+                        .edit().putBoolean("render_1080p_cap", enabled).apply()
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
 
         // ── PiP MethodChannel ─────────────────────────────────────────────
         MethodChannel(
@@ -65,6 +90,83 @@ class MainActivity : FlutterActivity() {
                 pipEventSink = null
             }
         })
+    }
+
+    // ── fix506: 1080p render cap for low-RAM 4K TV boxes ──────────────────
+    // A weak GPU (onn 4K Plus / Mali-G310) renders the Flutter UI far more
+    // smoothly at 1080p than native 4K. We halve BOTH the surface buffer
+    // (setFixedSize) AND the density (attachBaseContext) so the LOGICAL layout
+    // is unchanged while a quarter of the pixels are rendered; SurfaceFlinger
+    // upscales to the panel. Gated on TV + low-RAM + >1080p + the user pref
+    // (default on); disable in Settings → Playback. Applies at launch.
+    private var renderScale: Double = 1.0
+
+    override fun attachBaseContext(newBase: Context) {
+        val scale = renderCapScale(newBase)
+        renderScale = scale
+        if (scale > 1.0) {
+            val config = Configuration(newBase.resources.configuration)
+            config.densityDpi = (config.densityDpi / scale).toInt()
+            super.attachBaseContext(newBase.createConfigurationContext(config))
+        } else {
+            super.attachBaseContext(newBase)
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        if (renderScale > 1.0) {
+            // Buffer is sized in PHYSICAL pixels (widthPixels is unaffected by
+            // the density override above), so /renderScale yields 1080p on 4K.
+            window.decorView.post {
+                try {
+                    val sv = findSurfaceView(findViewById(android.R.id.content))
+                    val m = resources.displayMetrics
+                    sv?.holder?.setFixedSize(
+                        (m.widthPixels / renderScale).toInt(),
+                        (m.heightPixels / renderScale).toInt(),
+                    )
+                } catch (_: Throwable) {
+                    // Best-effort; never block launch.
+                }
+            }
+        }
+    }
+
+    // Downscale factor (>1.0) when the render cap should apply, else 1.0:
+    // user pref on (default) + leanback TV + low-RAM (<2300 MB, matching the
+    // Dart DeviceDetector cutoff) + a panel wider than 1080p.
+    private fun renderCapScale(ctx: Context): Double {
+        return try {
+            val prefs =
+                ctx.getSharedPreferences("free4me_prefs", Context.MODE_PRIVATE)
+            if (!prefs.getBoolean("render_1080p_cap", true)) return 1.0
+            if (!ctx.packageManager
+                    .hasSystemFeature(PackageManager.FEATURE_LEANBACK)) {
+                return 1.0
+            }
+            val am = ctx.getSystemService(Context.ACTIVITY_SERVICE)
+                as ActivityManager
+            val mem = ActivityManager.MemoryInfo()
+            am.getMemoryInfo(mem)
+            if (mem.totalMem >= 2300L * 1024 * 1024) return 1.0
+            val m = ctx.resources.displayMetrics
+            val maxDim = maxOf(m.widthPixels, m.heightPixels)
+            if (maxDim <= 1920) 1.0 else maxDim / 1920.0
+        } catch (_: Throwable) {
+            1.0
+        }
+    }
+
+    private fun findSurfaceView(v: View?): SurfaceView? {
+        if (v is SurfaceView) return v
+        if (v is ViewGroup) {
+            for (i in 0 until v.childCount) {
+                val r = findSurfaceView(v.getChildAt(i))
+                if (r != null) return r
+            }
+        }
+        return null
     }
 
     // Enter PiP automatically when the user presses Home (phone) or Back

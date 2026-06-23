@@ -23,6 +23,7 @@ import 'package:open_tv/multi_view_picker_dialog.dart';
 import 'package:open_tv/backend/epg_service.dart';
 import 'package:open_tv/backend/settings_io.dart';
 import 'package:open_tv/views/epg_channel_mapping.dart';
+import 'package:open_tv/backend/render_cap.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/source_color_picker.dart';
@@ -2692,6 +2693,26 @@ class _SettingsState extends State<SettingsView> {
                         onChanged: (v) {
                           setState(() => settings.forceHwDecode = v);
                           updateSettings();
+                        },
+                      ),
+                      // fix506: 1080p render cap on low-RAM 4K boxes.
+                      _switchTile(
+                        label: "Render at 1080p on 4K (low-memory boxes)",
+                        value: settings.cap1080pOnLowRam,
+                        help: (
+                          title: 'Render at 1080p on 4K',
+                          body:
+                              'On low-memory 4K boxes (e.g. onn 4K / Amlogic) the '
+                              'interface renders much more smoothly at 1080p, '
+                              'upscaled to your 4K screen — the UI looks slightly '
+                              'softer but is far less laggy. Only applies to '
+                              'low-memory 4K TV boxes; no effect elsewhere. '
+                              'Takes effect after an app restart. Default: on.',
+                        ),
+                        onChanged: (v) {
+                          setState(() => settings.cap1080pOnLowRam = v);
+                          updateSettings();
+                          RenderCap.setEnabled(v);
                         },
                       ),
                       _switchTile(
