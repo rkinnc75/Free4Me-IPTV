@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.2",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.2",
+  "latest": "2.0.3",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.3",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Android TV: the Search tab now finds channels by name AND by what's on \u2014 type a show like \"Family Feud\" and it surfaces the live channels airing it now or soon. New \"Search window (hours)\" setting under EPG controls how far ahead it looks (forward-only, capped at your forecast days). (Phone view is unchanged.)",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.2/Free4Me-IPTV-2.0.2-arm64.apk"
+  "releaseNotes": "\u2022 Android TV: the Live tab is now an EPG guide \u2014 a category rail on the left scopes a channel \u00d7 time grid showing what's on across the next few hours, with a \"now\" line. Pick any program or channel to start watching. (Phone view is unchanged.)",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.3/Free4Me-IPTV-2.0.3-arm64.apk"
 }
