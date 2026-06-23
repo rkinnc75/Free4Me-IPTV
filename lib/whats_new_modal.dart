@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.19': [
+    'Faster source refresh (part 3 — the big one): channel search now uses a lightweight word index that updates as channels load, instead of one that had to be fully rebuilt — re-scanning your entire channel list — after every source. That rebuild was the single largest cost (3+ minutes per large source). Search now matches by word or start of name (e.g. "fox" finds "FOX Sports", "espn" finds "ESPN HD"). Your search index upgrades automatically on first launch after this update. (Phone and TV both benefit.)',
+  ],
   '2.0.18': [
     'Faster source refresh (part 2): during a refresh the app now drops the channel-list search/browse indexes, loads all your sources, then rebuilds the indexes once at the end — instead of updating a dozen indexes on every single row as it goes. On large playlists this removes the biggest chunk of refresh time. Refresh also now runs sources one at a time for reliability. (Phone and TV both benefit.)',
   ],

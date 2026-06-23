@@ -45,8 +45,11 @@ s3.Database _seeded({String name1 = 'ESPN HD'}) {
   final db = s3.sqlite3.openInMemory();
   db.execute('CREATE TABLE channels (id INTEGER PRIMARY KEY, name TEXT NOT NULL, '
       'source_id INTEGER NOT NULL)');
+  // fix519: channels_fts is now unicode61 word-prefix (migration 35), not
+  // trigram. The targeted-reindex delete/insert ordering this test pins is
+  // tokenizer-independent, so it runs against the current tokenizer.
   db.execute("CREATE VIRTUAL TABLE channels_fts USING fts5(name, content='channels', "
-      "content_rowid='id', tokenize='trigram')");
+      "content_rowid='id', tokenize='unicode61', prefix='2 3')");
   // Source 1 (refreshed) + source 2 (must stay untouched throughout).
   db.execute('INSERT INTO channels(id,name,source_id) VALUES '
       "(1,?,1), (2,'CNN HD',1), (3,'FOX SPORTS',2), (4,'BBC NEWS',2)", [name1]);

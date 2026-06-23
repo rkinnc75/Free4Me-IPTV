@@ -706,19 +706,23 @@ class Sql {
         filters.searchMethod == SearchMethod.ftsAnd || filters.useKeywords;
 
     if (useFts) {
-      // Build an FTS5 MATCH expression. Trigram tokenizer matches substrings
-      // when the term is at least 3 characters; for shorter terms fall back
-      // to LIKE so single/double-letter queries still work.
+      // fix519: word-prefix MATCH for the unicode61 channels_fts (migration
+      // 35). Each term >= 2 chars becomes a quoted phrase + trailing prefix
+      // star ("term"*), so "fox" matches "FOX Sports", "espn" matches
+      // "ESPN HD", "sport" matches "FOX Sports" (the word "Sports"), and a
+      // 2-char "fo" is still index-served (prefix='2 3'). Terms < 2 chars are
+      // non-discriminating and dropped; if EVERY term is < 2 we skip the scan.
       final terms = effectiveKeywords
           ? rawQuery.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList()
           : [rawQuery];
-      final longTerms = terms.where((t) => t.length >= 3).toList();
-      final shortTerms = terms.where((t) => t.length < 3).toList();
+      final longTerms = terms.where((t) => t.length >= 2).toList();
 
       if (longTerms.isNotEmpty) {
-        // Quote each term to escape FTS5 syntax.
+        // Quote each term (escaping embedded quotes) and append * for a
+        // prefix query. "x"* is valid FTS5 (quoted phrase + prefix), so names
+        // containing FTS operator characters are handled without a sanitizer.
         final matchExpr = longTerms
-            .map((t) => '"${t.replaceAll('"', '""')}"')
+            .map((t) => '"${t.replaceAll('"', '""')}"*')
             .join(' AND ');
         sqlQuery = '''
           SELECT c.* FROM channels c
@@ -729,22 +733,15 @@ class Sql {
             AND c.url IS NOT NULL
         ''';
         params.add(matchExpr);
-        if (shortTerms.isNotEmpty) {
-          sqlQuery += '\nAND (${shortTerms.map((_) => 'c.name LIKE ?').join(' AND ')})';
-          params.addAll(shortTerms.map((t) => '%$t%'));
-          branch = 'fts+like'; // long + short terms; rare
-        } else {
-          branch = 'fts'; // long terms only; the common ≥3-char case
-        }
+        branch = 'fts';
       } else {
-        // A leading-wildcard LIKE scan here forces a full-table read that can
-        // take 2–5 seconds on a 90k-channel source. The result set would be
-        // enormous and unhelpful anyway. Return early with an empty list so
-        // the UI stays snappy; the user hasn't typed a meaningful query yet.
+        // Every term is < 2 chars — non-discriminating. Skip the scan and
+        // return early so the UI stays snappy; the user hasn't typed a
+        // meaningful query yet.
         if (AppLog.enabled) {
           AppLog.info(
             'Sql.search[$invocation]: branch=short-skip'
-            ' query="$rawQuery" — all terms < 3 chars, skipping scan',
+            ' query="$rawQuery" — all terms < 2 chars, skipping scan',
           );
         }
         return [];

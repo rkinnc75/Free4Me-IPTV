@@ -700,6 +700,52 @@ class DbFactory {
           )
           WHERE url IS NOT NULL AND series_id IS NULL;
         ''');
+      }))
+      // fix519: replace the trigram channels_fts with a WORD-PREFIX (unicode61)
+      // index. Trigram indexed every 3-char gram of every channel name, so the
+      // global 'rebuild' (fired on every large-source refresh) re-tokenized the
+      // whole catalog — measured ~200s+ per large source on the onn 4K box, and
+      // worse as the catalog grew. unicode61 indexes whole words; prefix='2 3'
+      // keeps 2-3 char queries index-served. Channel search only needs
+      // word/start-of-name matching (owner decision), so this is the right
+      // trade, and the (now far cheaper) rebuild stays as the safe fallback.
+      // Runs once per install on upgrade; the channels table is untouched.
+      ..add(SqliteMigration(35, (tx) async {
+        // Drop the sync triggers BEFORE the table (they reference channels_fts).
+        await tx.execute('DROP TRIGGER IF EXISTS channels_ai;');
+        await tx.execute('DROP TRIGGER IF EXISTS channels_au;');
+        await tx.execute('DROP TRIGGER IF EXISTS channels_ad;');
+        await tx.execute('DROP TABLE IF EXISTS channels_fts;');
+        await tx.execute('''
+          CREATE VIRTUAL TABLE channels_fts USING fts5(
+            name,
+            content='channels',
+            content_rowid='id',
+            tokenize='unicode61',
+            prefix='2 3'
+          );
+        ''');
+        // One-time repopulate from the existing channels (paid once here, not
+        // per refresh).
+        await tx.execute('''
+          INSERT INTO channels_fts(rowid, name)
+          SELECT id, name FROM channels;
+        ''');
+        // Recreate the sync triggers BYTE-IDENTICAL to Sql.reconcileFtsTriggers
+        // (channels_au is AFTER UPDATE OF name, per migration 11) so the
+        // boot-time reconcile never treats them as drifted and rebuilds.
+        await tx.execute('CREATE TRIGGER IF NOT EXISTS channels_ai '
+            'AFTER INSERT ON channels BEGIN '
+            'INSERT INTO channels_fts(rowid, name) VALUES (new.id, new.name); END;');
+        await tx.execute('CREATE TRIGGER IF NOT EXISTS channels_ad '
+            'AFTER DELETE ON channels BEGIN '
+            "INSERT INTO channels_fts(channels_fts, rowid, name) "
+            "VALUES('delete', old.id, old.name); END;");
+        await tx.execute('CREATE TRIGGER IF NOT EXISTS channels_au '
+            'AFTER UPDATE OF name ON channels BEGIN '
+            "INSERT INTO channels_fts(channels_fts, rowid, name) "
+            "VALUES('delete', old.id, old.name); "
+            'INSERT INTO channels_fts(rowid, name) VALUES (new.id, new.name); END;');
       }));
     await migrations.migrate(db);
     // fix419: give the planner real statistics. The app never ran ANALYZE, so
