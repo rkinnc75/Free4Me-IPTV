@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.13",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.13",
+  "latest": "2.0.14",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.14",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fixed the full-screen control bar sitting too high and being hard to bring back with a tap; restored it to the bottom edge.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.13/Free4Me-IPTV-2.0.13-arm64.apk"
+  "releaseNotes": "\u2022 Refreshing a single small source no longer pauses the whole app while search re-indexes the entire catalog \u2014 only that source's entries are updated when it's safe to do so.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.14/Free4Me-IPTV-2.0.14-arm64.apk"
 }
