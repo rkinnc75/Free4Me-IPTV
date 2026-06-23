@@ -35,6 +35,7 @@ const vodDemuxerMaxMBProp = "vodDemuxerMaxMB";
 const openTimeoutSecsProp = "openTimeoutSecs";
 const bufferingWatchdogSecsProp = "bufferingWatchdogSecs";
 const hwDecodeProp = "hwDecode";
+const forceHwDecodeProp = "forceHwDecode";
 const preWarmOnFocusProp = "preWarmOnFocus";
 const backgroundProcessingProp = "backgroundProcessing"; // fix318
 
@@ -119,12 +120,14 @@ class SettingsService {
   /// [ChannelSearchCache._minRamMbForCache]) the default is
   /// [SearchMethod.likeSubstring] instead of [SearchMethod.inMemory].
   ///
-  /// Why: with `inMemory` on a low-RAM device the in-memory cache is
-  /// skipped (see `ChannelSearchCache.cacheSkipped`) and the search
-  /// silently falls through to FTS. The user sees "in-memory" in
-  /// Settings but actually gets FTS, which is confusing. Auto-setting
-  /// `likeSubstring` makes the user-visible setting match the actual
-  /// search path (LIKE scan, no FTS triggers, no cache build).
+  /// Why (fix505): on a low-RAM device the in-memory cache is skipped
+  /// (see `ChannelSearchCache.cacheSkipped`). fix390 picked `likeSubstring`
+  /// to keep the visible setting honest, but on a huge catalogue (~1.15M
+  /// channels, e.g. an onn 4K Plus) a leading-wildcard LIKE is a full-table
+  /// scan (>1 s). `ftsTrigram` uses the index-backed `channels_fts` (fast +
+  /// on-disk, not the skipped RAM cache) and makes `main.dart` reconcile the
+  /// FTS triggers so the index stays fresh. The minor refresh write-cost is
+  /// an accepted trade.
   ///
   /// A persisted value always wins — the auto-set only fires on first
   /// run. The threshold is exposed via the named arg so unit tests
@@ -139,7 +142,9 @@ class SettingsService {
           SearchMethod.inMemory;
     }
     final ram = totalMb ?? DeviceMemory.totalMb;
-    if (ram > 0 && ram < lowRamThresholdMb) return SearchMethod.likeSubstring;
+    // fix505: low-RAM default is the index-backed channels_fts path
+    // (`ftsTrigram`), not the full-table-scan `likeSubstring` (fix390).
+    if (ram > 0 && ram < lowRamThresholdMb) return SearchMethod.ftsTrigram;
     return SearchMethod.inMemory;
   }
 
@@ -165,6 +170,7 @@ class SettingsService {
     var openTimeout = settingsMap[openTimeoutSecsProp];
     var watchdog = settingsMap[bufferingWatchdogSecsProp];
     var hw = settingsMap[hwDecodeProp];
+    var forceHw = settingsMap[forceHwDecodeProp];
     var prewarm = settingsMap[preWarmOnFocusProp];
     var bgProc = settingsMap[backgroundProcessingProp];
     var debugLog = settingsMap[debugLoggingProp];
@@ -210,6 +216,7 @@ class SettingsService {
     if (openTimeout != null) settings.openTimeoutSecs = int.parse(openTimeout);
     if (watchdog != null) settings.bufferingWatchdogSecs = int.parse(watchdog);
     if (hw != null) settings.hwDecode = int.parse(hw) == 1;
+    if (forceHw != null) settings.forceHwDecode = int.parse(forceHw) == 1;
     if (prewarm != null) settings.preWarmOnFocus = int.parse(prewarm) == 1;
     if (bgProc != null) settings.backgroundProcessing = int.parse(bgProc) == 1;
     if (debugLog != null) settings.debugLogging = int.parse(debugLog) == 1;
@@ -270,12 +277,13 @@ class SettingsService {
     final sm = settingsMap[searchMethodProp];
     final resolvedSm = resolveSearchMethod(sm);
     settings.searchMethod = resolvedSm;
-    if (sm == null && resolvedSm == SearchMethod.likeSubstring) {
-      // fix390: first-run auto-set on low-RAM device. Logged so support
-      // can confirm the cause when a user reports "search feels slow" on
-      // a 1.9 GB onn 4K Plus.
+    if (sm == null && resolvedSm == SearchMethod.ftsTrigram) {
+      // fix505: first-run auto-set on low-RAM device. ftsTrigram is the
+      // index-backed channels_fts path — fast on huge catalogues (~1.15M)
+      // where likeSubstring (fix390) was a full-table scan. Logged so
+      // support can confirm the search path on a 1.9 GB onn 4K Plus.
       AppLog.info(
-        'Settings: searchMethod auto-set to likeSubstring (low-RAM'
+        'Settings: searchMethod auto-set to ftsTrigram (low-RAM'
         ' device, totalMb=${DeviceMemory.totalMb})',
       );
     }
@@ -396,6 +404,8 @@ class SettingsService {
     settingsMap[bufferingWatchdogSecsProp] =
         settings.bufferingWatchdogSecs.toString();
     settingsMap[hwDecodeProp] = (settings.hwDecode ? 1 : 0).toString();
+    settingsMap[forceHwDecodeProp] =
+        (settings.forceHwDecode ? 1 : 0).toString();
     settingsMap[backgroundProcessingProp] =
         (settings.backgroundProcessing ? 1 : 0).toString();
     settingsMap[preWarmOnFocusProp] = (settings.preWarmOnFocus ? 1 : 0)

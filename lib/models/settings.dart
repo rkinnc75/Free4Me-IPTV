@@ -87,6 +87,9 @@ class Settings {
 
   /// Enable hardware decoding via Android mediacodec.
   bool hwDecode;
+  /// fix505: advanced override — force hardware decode even on a low-RAM box
+  /// (bypasses the low-RAM→software routing). Default false.
+  bool forceHwDecode;
 
   /// Pre-warm channel URL (HEAD request) when a tile receives focus.
   bool preWarmOnFocus;
@@ -279,6 +282,7 @@ class Settings {
     this.stableThresholdSecs = 30,
     this.startupGraceMs = 500,
     this.hwDecode = true,
+    this.forceHwDecode = false,
     this.preWarmOnFocus = true,
     this.backgroundProcessing = false,
     this.debugLogging = false,
@@ -432,6 +436,7 @@ class Settings {
     // hardware to mediacodec-copy and preview cells to software decode
     // automatically (handled inside MpvEngine._applyMpvOptions).
     s.hwDecode = true;
+    s.forceHwDecode = false; // fix505: advanced override off by default
 
     // Pre-warm — TVs benefit (D-pad-driven focus changes are deliberate);
     // phones less so (touch scrolling sweeps focus rapidly).

@@ -37,6 +37,22 @@ void main() {
       );
     });
 
+    test('fix505: forceHardware overrides the low-RAM software fallback', () {
+      // Advanced opt-in — on a low-RAM box the user can force hardware decode.
+      expect(
+        androidFullscreenHwdec(
+            isTegra: false, isLowRam: true, isTV: true, forceHardware: true),
+        'mediacodec-copy',
+      );
+    });
+
+    test('fix505: forceHardware defaults false → low-RAM stays software', () {
+      expect(
+        androidFullscreenHwdec(isTegra: false, isLowRam: true, isTV: true),
+        'no',
+      );
+    });
+
     test('capable non-Tegra TV → mediacodec-copy (Fire TV, etc.)', () {
       expect(
         androidFullscreenHwdec(isTegra: false, isLowRam: false, isTV: true),

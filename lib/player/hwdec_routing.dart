@@ -42,8 +42,14 @@ String androidFullscreenHwdec({
   required bool isTegra,
   required bool isLowRam,
   required bool isTV,
+  bool forceHardware = false,
 }) {
   if (isTegra) return 'mediacodec-copy';
+  // fix505: advanced user override — force hardware decode even on a low-RAM
+  // box, skipping the software fallback below. Lets the user A/B hardware on
+  // content where the A/V desync that drove the low-RAM→software default
+  // (Amlogic + Mali-G310) doesn't actually occur.
+  if (forceHardware) return 'mediacodec-copy';
   if (isLowRam) return 'no';
   if (isTV) return 'mediacodec-copy';
   // fix402: phone was 'mediacodec' (surface mode), but that silently falls back

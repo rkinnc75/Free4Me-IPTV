@@ -7,8 +7,9 @@
 // Plus (1.9 GB) would see "in-memory search" in Settings while the actual
 // search silently fell through to FTS. The setting lied.
 //
-// The fix: on first run (no persisted `searchMethod` key in the DB), the
-// default is `SearchMethod.likeSubstring` when total RAM < 2300 MB. A
+// fix505: on first run (no persisted `searchMethod`), the low-RAM default is
+// `SearchMethod.ftsTrigram` — the index-backed channels_fts path, fast on huge
+// catalogues where the previous `likeSubstring` (fix390) full-scanned. A
 // persisted value always wins — the auto-set is a first-run default only.
 //
 // These tests exercise the real `SettingsService.resolveSearchMethod`
@@ -20,17 +21,17 @@ import 'package:open_tv/models/settings.dart';
 
 void main() {
   group('resolveSearchMethod (fix390 first-run auto-set)', () {
-    test('first run + low RAM (1.9 GB onn 4K Plus) → likeSubstring', () {
+    test('first run + low RAM (1.9 GB onn 4K Plus) → ftsTrigram (fix505)', () {
       expect(
         SettingsService.resolveSearchMethod(null, totalMb: 1900),
-        SearchMethod.likeSubstring,
+        SearchMethod.ftsTrigram,
       );
     });
 
-    test('first run + mid-low RAM (just under 2300 MB) → likeSubstring', () {
+    test('first run + mid-low RAM (just under 2300 MB) → ftsTrigram (fix505)', () {
       expect(
         SettingsService.resolveSearchMethod(null, totalMb: 2299),
-        SearchMethod.likeSubstring,
+        SearchMethod.ftsTrigram,
       );
     });
 

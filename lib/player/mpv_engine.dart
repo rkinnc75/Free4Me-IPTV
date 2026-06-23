@@ -784,10 +784,11 @@ class MpvEngine implements PlayerEngine {
         isTegra: isTegra,
         isLowRam: isLowRam,
         isTV: isTV,
+        forceHardware: s.forceHwDecode, // fix505: advanced override
       );
       await np.setProperty('hwdec', hwdecMode);
       AppLog.info('Player: hwdec=$hwdecMode isTV=$isTV isTegra=$isTegra '
-          'isLowRam=$isLowRam (fix395)');
+          'isLowRam=$isLowRam forceHw=${s.forceHwDecode} (fix395/505)');
     } else if (s.hwDecode && Platform.isIOS) {
       await np.setProperty('hwdec', 'videotoolbox');
     } else {

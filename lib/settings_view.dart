@@ -2673,6 +2673,27 @@ class _SettingsState extends State<SettingsView> {
                           updateSettings();
                         },
                       ),
+                      // fix505: advanced override — force hardware decode on
+                      // low-RAM boxes (normally routed to software for A/V sync).
+                      _switchTile(
+                        label: "Force hardware decode (advanced)",
+                        value: settings.forceHwDecode,
+                        help: (
+                          title: 'Force hardware decode',
+                          body:
+                              'On weak / low-RAM boxes (e.g. onn 4K / Amlogic) the '
+                              'app defaults to SOFTWARE decode, because hardware '
+                              'decode there can drift audio and video out of sync. '
+                              'Turn this on to force hardware decode anyway — it '
+                              'may be smoother for high-bitrate / 4K streams, but '
+                              'if audio and video desync, turn it back off. '
+                              'Requires Hardware decoding to be on. Default: off.',
+                        ),
+                        onChanged: (v) {
+                          setState(() => settings.forceHwDecode = v);
+                          updateSettings();
+                        },
+                      ),
                       _switchTile(
                         label: "Pre-warm streams on focus",
                         value: settings.preWarmOnFocus,

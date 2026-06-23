@@ -538,6 +538,7 @@ class SettingsIo {
         'forceTVMode': s.forceTVMode,
         'lowLatency': s.lowLatency,
         'hwDecode': s.hwDecode,
+        'forceHwDecode': s.forceHwDecode,
         'preWarmOnFocus': s.preWarmOnFocus,
         'backgroundProcessing': s.backgroundProcessing, // fix318
         'liveCacheSecs': s.liveCacheSecs,
@@ -606,6 +607,7 @@ class SettingsIo {
       forceTVMode: m['forceTVMode'] as bool? ?? false,
       lowLatency: m['lowLatency'] as bool? ?? false,
       hwDecode: m['hwDecode'] as bool? ?? true,
+      forceHwDecode: m['forceHwDecode'] as bool? ?? false,
       preWarmOnFocus: m['preWarmOnFocus'] as bool? ?? true,
       backgroundProcessing: m['backgroundProcessing'] as bool? ?? false,
       liveCacheSecs: m['liveCacheSecs'] as int? ?? 20,

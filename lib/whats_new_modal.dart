@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.5': [
+    'Android TV performance: on low-memory boxes, channel search now uses the fast indexed search by default — instant even on very large channel lists (previously it scanned the whole list). Also added an advanced "Force hardware decode" option under Settings → Playback, for boxes where the default software decode struggles with 4K / high-bitrate streams. (Phone view is unchanged.)',
+  ],
   '2.0.4': [
     'Fixed: the app failing to open on 32-bit Android TV boxes (some Walmart onn / Amlogic models). The build is now a universal arm + arm64 APK, so it installs and launches on both 32- and 64-bit devices.',
   ],
