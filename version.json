@@ -1,8 +1,8 @@
 {
-  "latest": "1.35.22",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v1.35.22",
+  "latest": "2.0.0",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.0",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fixed: in full-screen, tapping on the area where the bottom control bar appears now reliably brings the controls back. The bar previously sat in a strip (the system gesture area + a small edge band) where taps didn\u2019t register, so you had to tap higher up to wake it.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v1.35.22/Free4Me-IPTV-1.35.22-arm64.apk"
+  "releaseNotes": "\u2022 Redesigned Android TV home: a top tab bar \u2014 Live TV, Movies, Series, Favorites, History and Search \u2014 replaces the old full-screen button menu. Your \"Default view\" setting still chooses which tab opens first. (Phone mode is unchanged.)",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.0/Free4Me-IPTV-2.0.0-arm64.apk"
 }
