@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.15",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.15",
+  "latest": "2.0.16",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.16",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Full-screen playback now shows the stream's actual resolution and video format (e.g. \"720p H.264\") next to the channel name \u2014 handy for spotting when a \"4K\" channel isn't really 4K.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.15/Free4Me-IPTV-2.0.15-arm64.apk"
+  "releaseNotes": "\u2022 Internal diagnostics only \u2014 no user-visible change.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.16/Free4Me-IPTV-2.0.16-arm64.apk"
 }
