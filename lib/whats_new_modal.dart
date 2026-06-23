@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.8': [
+    'Android TV: Movies and Series now show as a wall of portrait posters (cover art + title) instead of list rows — the look you\'d expect on a TV. Selecting a poster plays the movie or opens the series\' episodes, exactly as before. (Phone view is unchanged.)',
+  ],
   '2.0.7': [
     'Android TV: Movies and Series now have a native browse screen — a side rail of your providers\' real categories, with a focusable grid of titles for the category you pick (no more reused phone layout). Use the D-pad to move between the category rail and the grid; open a series to see its episodes. (Phone view is unchanged.)',
   ],

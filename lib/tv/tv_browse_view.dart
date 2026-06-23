@@ -230,35 +230,36 @@ class _TvBrowseViewState extends State<TvBrowseView> {
           ),
         ),
         Expanded(
-          child: LayoutBuilder(builder: (context, c) {
-            final cols = (c.maxWidth / 340).floor().clamp(1, 4);
-            return GridView.builder(
-              controller: _gridController,
-              padding: const EdgeInsets.fromLTRB(10, 0, 10, 12),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: cols,
-                mainAxisExtent: 100,
-                mainAxisSpacing: 12,
-                crossAxisSpacing: 12,
-              ),
-              itemCount: _items.length,
-              itemBuilder: (context, i) {
-                final ch = _items[i];
-                return ChannelTile(
-                  key: ValueKey(
-                      'browse-${widget.mediaType.index}-${ch.id ?? ch.name}-$i'),
-                  channel: ch,
-                  parentContext: context,
-                  setNode: _setNode,
-                  tintColor: _sourceColors[ch.sourceId],
-                  showSourceEdgeBar: true,
-                  autofocus: i == 0,
-                  playlist: _items,
-                  playlistIndex: i,
-                );
-              },
-            );
-          }),
+          child: GridView.builder(
+            controller: _gridController,
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+            // fix508: portrait poster wall (cover image + title) — the mockup
+            // "movies boxes". maxCrossAxisExtent adapts the column count to the
+            // content width; childAspectRatio < 1 keeps the cards portrait.
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 180,
+              childAspectRatio: 0.58,
+              mainAxisSpacing: 16,
+              crossAxisSpacing: 16,
+            ),
+            itemCount: _items.length,
+            itemBuilder: (context, i) {
+              final ch = _items[i];
+              return ChannelTile(
+                key: ValueKey(
+                    'browse-${widget.mediaType.index}-${ch.id ?? ch.name}-$i'),
+                channel: ch,
+                parentContext: context,
+                setNode: _setNode,
+                tintColor: _sourceColors[ch.sourceId],
+                showSourceEdgeBar: true,
+                poster: true, // fix508: portrait poster layout
+                autofocus: i == 0,
+                playlist: _items,
+                playlistIndex: i,
+              );
+            },
+          ),
         ),
       ],
     );

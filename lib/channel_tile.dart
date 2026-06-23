@@ -69,6 +69,12 @@ class ChannelTile extends StatefulWidget {
   final List<Channel>? playlist;
   final int playlistIndex;
 
+  /// fix508: TV-only — render a portrait poster card (cover image + title)
+  /// instead of the landscape row. Default false so the phone (touch) UI is
+  /// byte-for-byte unchanged. All play / drill-in / focus / long-press
+  /// behaviour is identical; only the InkWell child's layout differs.
+  final bool poster;
+
   const ChannelTile({
     super.key,
     required this.channel,
@@ -85,6 +91,7 @@ class ChannelTile extends StatefulWidget {
     this.onOpenCategory, // fix308: channel long-press category link
     this.playlist, // fix397
     this.playlistIndex = 0, // fix397
+    this.poster = false, // fix508: TV portrait poster layout
   });
 
   @override
@@ -407,6 +414,59 @@ class _ChannelTileState extends State<ChannelTile> {
     }
   }
 
+  /// fix508: portrait poster body (cover image + title) used when
+  /// [ChannelTile.poster] is true. Swaps ONLY the visual layout of the InkWell
+  /// child — play/drill-in/focus/long-press all stay on the shared code paths.
+  Widget _buildPoster(BuildContext context) {
+    const fallback = ColoredBox(
+      color: Colors.black26,
+      child: Center(child: Icon(Icons.movie, size: 40, color: Colors.grey)),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              widget.channel.image != null
+                  ? CachedNetworkImage(
+                      imageUrl: widget.channel.image!,
+                      memCacheHeight: 360,
+                      fit: BoxFit.cover,
+                      placeholder: (c, u) =>
+                          const ColoredBox(color: Colors.black26),
+                      errorWidget: (c, u, e) => fallback,
+                    )
+                  : fallback,
+              // Source-color accent as a thin top strip in poster mode.
+              if (widget.showSourceEdgeBar && widget.tintColor != null)
+                Align(
+                  alignment: Alignment.topCenter,
+                  child: Container(height: 4, color: Color(widget.tintColor!)),
+                ),
+              if (widget.channel.favorite)
+                const Positioned(
+                  top: 4,
+                  right: 4,
+                  child: Icon(Icons.star, size: 20, color: Colors.amber),
+                ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+          child: Text(
+            widget.channel.name,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+          ),
+        ),
+      ],
+    );
+  }
+
   void _openSchedule() {
     Navigator.push(
       context,
@@ -450,7 +510,9 @@ class _ChannelTileState extends State<ChannelTile> {
         autofocus: widget.autofocus,
         onLongPress: _onLongPress,
         onTap: () async => await play(),
-        child: Row(
+        child: widget.poster
+            ? _buildPoster(context)
+            : Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // fix501: TV-only solid source-color edge bar (full saturation),
