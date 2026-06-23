@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.0",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.0",
+  "latest": "2.0.1",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.1",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Redesigned Android TV home: a top tab bar \u2014 Live TV, Movies, Series, Favorites, History and Search \u2014 replaces the old full-screen button menu. Your \"Default view\" setting still chooses which tab opens first. (Phone mode is unchanged.)",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.0/Free4Me-IPTV-2.0.0-arm64.apk"
+  "releaseNotes": "\u2022 Android TV: channels now show a colored strip on the left edge marking which source (provider) each came from, and the highlighted tile shows a clear yellow focus outline. (Phone view is unchanged.)",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.1/Free4Me-IPTV-2.0.1-arm64.apk"
 }
