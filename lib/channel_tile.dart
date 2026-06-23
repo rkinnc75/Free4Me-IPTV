@@ -47,6 +47,10 @@ class ChannelTile extends StatefulWidget {
   final bool autofocus;
   /// fix196: source tag color (ARGB int; null = no tint).
   final int? tintColor;
+  /// fix501: TV-only — draw a solid full-saturation source-color edge bar on
+  /// the leading edge + a yellow D-pad focus ring. Default false so the phone
+  /// (touch) UI is byte-for-byte unchanged.
+  final bool showSourceEdgeBar;
   /// fix278: for category tiles — toggle the category's enabled flag. Null for
   /// non-category tiles.
   final Future<void> Function(bool enabled)? onToggleEnabled;
@@ -75,6 +79,7 @@ class ChannelTile extends StatefulWidget {
     this.onRemoveHistory,
     this.autofocus = false,
     this.tintColor,
+    this.showSourceEdgeBar = false, // fix501: TV-only edge bar + yellow focus
     this.onToggleEnabled, // fix278: category tiles only
     this.onFavoriteGroup, // fix308: category tiles only
     this.onOpenCategory, // fix308: channel long-press category link
@@ -420,11 +425,19 @@ class _ChannelTileState extends State<ChannelTile> {
             StreamScanner.results[widget.channel.id] == true);
     return Card(
       elevation: _focusNode.hasFocus ? 8.0 : 2.0,
+      // fix501: clip so the TV edge bar follows the card's rounded corners.
+      // Gated on the TV flag so the phone card's clipping is unchanged.
+      clipBehavior:
+          widget.showSourceEdgeBar ? Clip.antiAlias : Clip.none,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: scanOk
-            ? const BorderSide(color: Colors.greenAccent, width: 2.5)
-            : BorderSide.none,
+        // fix501: on TV, a focused tile shows the app-standard yellow ring
+        // (drawn over the source tint). Phone keeps elevation-only focus.
+        side: (widget.showSourceEdgeBar && _focusNode.hasFocus)
+            ? const BorderSide(color: Colors.yellow, width: 3)
+            : scanOk
+                ? const BorderSide(color: Colors.greenAccent, width: 2.5)
+                : BorderSide.none,
       ),
       // fix196: tint the whole card with the source's tag color (~35%) so the
       // channel's source is identifiable at a glance. Null = surface unchanged.
@@ -440,6 +453,10 @@ class _ChannelTileState extends State<ChannelTile> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // fix501: TV-only solid source-color edge bar (full saturation),
+            // flush to the leading edge. Null source = no bar (explicit).
+            if (widget.showSourceEdgeBar && widget.tintColor != null)
+              Container(width: 6, color: Color(widget.tintColor!)),
             AspectRatio(
               aspectRatio: 1,
               child: Container(

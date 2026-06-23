@@ -851,6 +851,9 @@ class _HomeState extends State<Home> {
                                     ),
                                     channel: channel,
                                     tintColor: _sourceColors[channel.sourceId],
+                                    // fix501: TV-only source edge bar + yellow
+                                    // focus ring; phone passes false (unchanged).
+                                    showSourceEdgeBar: !widget.hasTouchScreen,
                                     parentContext: context,
                                     setNode: setNode,
                                     isHistory: isHistory,
