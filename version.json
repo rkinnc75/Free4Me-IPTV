@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.6",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.6",
+  "latest": "2.0.7",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.7",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Android TV performance: on low-memory 4K boxes (e.g. some onn / Amlogic models), the interface now renders at 1080p and upscales to your screen \u2014 much smoother navigation, with only slightly softer text (video quality is unaffected). It applies automatically on qualifying boxes and can be turned off under Settings \u2192 Playback. (Phone view is unchanged.)",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.6/Free4Me-IPTV-2.0.6-arm64.apk"
+  "releaseNotes": "\u2022 Android TV: Movies and Series now have a native browse screen \u2014 a side rail of your providers' real categories, with a focusable grid of titles for the category you pick (no more reused phone layout). Use the D-pad to move between the category rail and the grid; open a series to see its episodes. (Phone view is unchanged.)",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.7/Free4Me-IPTV-2.0.7-arm64.apk"
 }
