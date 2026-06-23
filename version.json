@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.4",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.4",
+  "latest": "2.0.5",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.5",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fixed: the app failing to open on 32-bit Android TV boxes (some Walmart onn / Amlogic models). The build is now a universal arm + arm64 APK, so it installs and launches on both 32- and 64-bit devices.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.4/Free4Me-IPTV-2.0.4-arm64.apk"
+  "releaseNotes": "\u2022 Android TV performance: on low-memory boxes, channel search now uses the fast indexed search by default \u2014 instant even on very large channel lists (previously it scanned the whole list). Also added an advanced \"Force hardware decode\" option under Settings \u2192 Playback, for boxes where the default software decode struggles with 4K / high-bitrate streams. (Phone view is unchanged.)",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.5/Free4Me-IPTV-2.0.5-arm64.apk"
 }
