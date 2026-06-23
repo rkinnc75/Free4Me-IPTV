@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.11': [
+    'Fixed first-time setup failing to receive larger settings backups over Wi-Fi/QR: uploads up to ~32 MB now work (previously a backup over 5 MB was rejected mid-upload and showed on your phone/PC as a "network disconnect"). First-run setup also now keeps a diagnostic log even on a brand-new install (where debug logging is off by default), so any import problem can be captured and reported.',
+  ],
   '2.0.10': [
     'Android TV Live guide now has a hero area up top showing the focused channel — its artwork, what\'s on now and next, a Watch button, and a muted live preview that plays once you pause on a channel. Quick filter pills (All / Favorites) sit above the grid. On capable boxes the live preview is on by default; on low-memory boxes it stays off to keep things smooth — enable it under Settings → Playback → "Live preview in TV guide". (Phone view is unchanged.)',
   ],

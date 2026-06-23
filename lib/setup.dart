@@ -337,6 +337,20 @@ class _SetupState extends State<Setup> {
     );
   }
 
+  /// fix511: first-run setup is the one place a brand-new install must be
+  /// diagnosable even though debug logging defaults OFF — a failed backup/QR
+  /// import here otherwise leaves the user stuck with no log (the 6.8 MB
+  /// upload that disconnected left no trace). Force the file logger on for the
+  /// rest of this app SESSION (not persisted; a normal launch still respects
+  /// the saved setting) so the whole import path is captured.
+  Future<void> _ensureSetupLogging(String flow) async {
+    if (AppLog.enabled) return;
+    await AppLog.setEnabled(true);
+    await AppLog.stampVersion('setup diagnostics ($flow, fix511)');
+    AppLog.info('Setup: diagnostic logging force-enabled for $flow on a '
+        'fresh install (debug-off); session-only, not persisted');
+  }
+
   /// Import a backup file from the welcome screen. If the import
   /// produces at least one source, block on a refresh of all enabled
   /// sources with a progress dialog, then jump straight to
@@ -348,6 +362,7 @@ class _SetupState extends State<Setup> {
   /// validation, the confirm dialog, and persistence. We just react
   /// to its outcome.
   Future<void> _importBackup() async {
+    await _ensureSetupLogging('import-backup');
     AppLog.info('Setup: import backup — started');
 
     final imported = await SettingsIo.importFromFile(context);
@@ -391,6 +406,7 @@ class _SetupState extends State<Setup> {
   /// fix368: receive sources from another device via the LAN export portal
   /// during first-run setup.
   Future<void> _receiveViaQr() async {
+    await _ensureSetupLogging('receive-via-QR');
     AppLog.info('Setup: receive via QR — starting portal');
     var imported = 0;
     final deviceName = await DeviceDetector.deviceLabel();
@@ -400,9 +416,17 @@ class _SetupState extends State<Setup> {
       const [],
       deviceName: deviceName,
       onImportSources: (bytes) async {
-        final n = await SettingsIo.importSourcesOnly(bytes);
-        if (n > 0) imported = n;
-        return n;
+        AppLog.info('Setup: receive via QR — upload received'
+            ' ${bytes.length} bytes; parsing sources');
+        try {
+          final n = await SettingsIo.importSourcesOnly(bytes);
+          AppLog.info('Setup: receive via QR — importSourcesOnly returned $n');
+          if (n > 0) imported = n;
+          return n;
+        } catch (e) {
+          AppLog.error('Setup: receive via QR — importSourcesOnly threw — $e');
+          return -1;
+        }
       },
     );
 

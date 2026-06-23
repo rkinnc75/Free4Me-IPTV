@@ -197,10 +197,15 @@ class ExportServer {
         await req.response.close();
         return;
       }
+      AppLog.info('ExportServer: /import-sources POST from'
+          ' ${req.connectionInfo?.remoteAddress.address}'
+          ' contentType=${req.headers.contentType}');
       try {
         final bytes = await _collectBytes(req);
         final fileBytes = _extractMultipartFile(bytes,
             req.headers.contentType?.parameters['boundary']);
+        AppLog.info('ExportServer: extracted file part'
+            ' ${fileBytes?.length ?? 0} bytes (multipart body ${bytes.length})');
         if (fileBytes == null || fileBytes.isEmpty) {
           throw 'no file part found';
         }
@@ -240,19 +245,40 @@ class ExportServer {
   }
 
   // fix317: read the full request body into a byte list.
-  // fix347: capped — a settings export is tens of KB; an uncapped multipart
-  // body let any LAN client OOM a 2GB box (same class as the fix328 export-
-  // side fix). 5 MB is generous headroom.
-  static const _maxImportBytes = 5 * 1024 * 1024;
+  // fix347: capped — an uncapped multipart body let any LAN client OOM a 2GB
+  // box (same class as the fix328 export-side fix).
+  // fix511: raised 5 MB -> 32 MB. Real backups carry per-source settings,
+  // favorites, category state and resume positions (fix358) and routinely
+  // exceed 5 MB — a 6.8 MB backup was silently rejected, and because the old
+  // code threw mid-stream the phone/PC saw a TCP reset ("network disconnect")
+  // instead of an error. The import runs at first-run setup when almost no
+  // other RAM is in use, so 32 MB buffered is safe even on the ~1.9 GB Onn.
+  static const _maxImportBytes = 32 * 1024 * 1024;
 
   Future<List<int>> _collectBytes(HttpRequest req) async {
+    // fix511: log the declared size up front for fresh-install diagnostics.
+    AppLog.info('ExportServer: /import-sources body declared'
+        ' contentLength=${req.contentLength} cap=$_maxImportBytes');
     final out = <int>[];
+    var total = 0;
+    var over = false;
     await for (final chunk in req) {
-      out.addAll(chunk);
-      if (out.length > _maxImportBytes) {
-        throw 'request body too large (max 5 MB)';
-      }
+      total += chunk.length;
+      // fix511: once over the cap, STOP buffering but keep draining the socket
+      // so the client finishes uploading and receives our error response —
+      // abandoning the read mid-upload is what surfaced as a "network
+      // disconnect" before.
+      if (!over && out.length + chunk.length > _maxImportBytes) over = true;
+      if (!over) out.addAll(chunk);
     }
+    if (over) {
+      final mb = (total / 1048576).toStringAsFixed(1);
+      final capMb = (_maxImportBytes / 1048576).toStringAsFixed(0);
+      AppLog.warn('ExportServer: import body too large total=$total'
+          ' (${mb}MB) cap=$_maxImportBytes — rejected');
+      throw 'file too large ($mb MB; max $capMb MB)';
+    }
+    AppLog.info('ExportServer: collected import body $total bytes');
     return out;
   }
 
