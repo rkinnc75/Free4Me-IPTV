@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:open_tv/backend/app_logger.dart';
+import 'package:open_tv/backend/conn_timing.dart';
 import 'package:open_tv/widgets/player_epg_now_label.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/channel_tile.dart';
@@ -662,6 +663,10 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     _isReconnecting = false;
   }
 
+  /// fix421: ensures the connection-setup timing probe runs once per
+  /// user-initiated channel open, not on every reconnect.
+  bool _connProbeDone = false;
+
   Future<void> _startPlayback(
     Duration? startPosition, {
     ChannelHttpHeaders? headers,
@@ -674,6 +679,13 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
       _startupWatchdog?.cancel(); // fix94: clear before re-open
       try {
         final playbackUrl = _playbackUrl();
+        // fix421: one-shot connection-setup timing (DNS/TCP/TLS) for this
+        // channel open — diagnostic only, fire-and-forget, skipped on
+        // reconnects so it runs once per user-initiated play.
+        if (!_connProbeDone) {
+          _connProbeDone = true;
+          unawaited(ConnTiming.probe(playbackUrl));
+        }
         final httpHeaders = headers != null
             ? {
                 if (headers.referrer != null) 'Referer': headers.referrer!,

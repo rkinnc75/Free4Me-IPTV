@@ -1,0 +1,132 @@
+diff --git a/lib/backend/conn_timing.dart b/lib/backend/conn_timing.dart
+new file mode 100644
+index 0000000..76f5f1a
+--- /dev/null
++++ b/lib/backend/conn_timing.dart
+@@ -0,0 +1,62 @@
++import 'dart:io';
++
++import 'package:open_tv/backend/app_logger.dart';
++
++/// fix421: one-shot connection-setup timing diagnostic. Measures the cold
++/// pre-first-byte phases — DNS resolve, TCP connect, TLS handshake — for a
++/// stream's host, so a log shows whether channel-start latency lives in
++/// connection setup (where DNS pre-resolution could help) or somewhere else.
++///
++/// Deliberately sends NO HTTP request: a bare TCP+TLS handshake carries no
++/// credentials, so it does not consume a provider "max connections" slot the
++/// way an authenticated GET would. Gated behind debug logging, fire-and-forget,
++/// and never blocks or fails playback. The host is redacted by the logger
++/// (fix415) like every other line.
++class ConnTiming {
++  static Future<void> probe(String url) async {
++    if (!AppLog.enabled) return;
++    final Uri uri;
++    try {
++      uri = Uri.parse(url);
++    } catch (_) {
++      return;
++    }
++    if (uri.scheme != 'http' && uri.scheme != 'https') return;
++    final host = uri.host;
++    if (host.isEmpty) return;
++    final isTls = uri.scheme == 'https';
++    final port = uri.hasPort ? uri.port : (isTls ? 443 : 80);
++    const limit = Duration(seconds: 5);
++    final sw = Stopwatch()..start();
++    int dns = -1, tcp = -1, tls = -1;
++    Socket? sock;
++    try {
++      final addrs = await InternetAddress.lookup(host).timeout(limit);
++      dns = sw.elapsedMilliseconds;
++      if (addrs.isEmpty) {
++        AppLog.info('CONNPROBE host=$host dns=${dns}ms (no address)');
++        return;
++      }
++      sw.reset();
++      sock = await Socket.connect(addrs.first, port).timeout(limit);
++      tcp = sw.elapsedMilliseconds;
++      if (isTls) {
++        sw.reset();
++        sock = await SecureSocket.secure(sock, host: host).timeout(limit);
++        tls = sw.elapsedMilliseconds;
++      }
++      final total = dns + tcp + (tls < 0 ? 0 : tls);
++      AppLog.info('CONNPROBE host=$host dns=${dns}ms tcp=${tcp}ms'
++          '${isTls ? ' tls=${tls}ms' : ''} total=${total}ms');
++    } catch (e) {
++      // Never log the raw exception — it can contain the resolved IP. The phase
++      // values already show how far the handshake got before failing.
++      AppLog.info('CONNPROBE host=$host dns=${dns}ms tcp=${tcp}ms'
++          '${isTls ? ' tls=${tls}ms' : ''} aborted=${e.runtimeType}');
++    } finally {
++      try {
++        sock?.destroy();
++      } catch (_) {}
++    }
++  }
++}
+diff --git a/lib/player.dart b/lib/player.dart
+index 68f16ab..403cac6 100644
+--- a/lib/player.dart
++++ b/lib/player.dart
+@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
+ import 'package:flutter/services.dart';
+ import 'package:media_kit_video/media_kit_video.dart';
+ import 'package:open_tv/backend/app_logger.dart';
++import 'package:open_tv/backend/conn_timing.dart';
+ import 'package:open_tv/widgets/player_epg_now_label.dart';
+ import 'package:open_tv/backend/sql.dart';
+ import 'package:open_tv/channel_tile.dart';
+@@ -662,6 +663,10 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+     _isReconnecting = false;
+   }
+ 
++  /// fix421: ensures the connection-setup timing probe runs once per
++  /// user-initiated channel open, not on every reconnect.
++  bool _connProbeDone = false;
++
+   Future<void> _startPlayback(
+     Duration? startPosition, {
+     ChannelHttpHeaders? headers,
+@@ -674,6 +679,13 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+       _startupWatchdog?.cancel(); // fix94: clear before re-open
+       try {
+         final playbackUrl = _playbackUrl();
++        // fix421: one-shot connection-setup timing (DNS/TCP/TLS) for this
++        // channel open — diagnostic only, fire-and-forget, skipped on
++        // reconnects so it runs once per user-initiated play.
++        if (!_connProbeDone) {
++          _connProbeDone = true;
++          unawaited(ConnTiming.probe(playbackUrl));
++        }
+         final httpHeaders = headers != null
+             ? {
+                 if (headers.referrer != null) 'Referer': headers.referrer!,
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 254dd82..2fb8ad8 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '1.35.20': [
++    'Diagnostics: when debug logging is on, the app now records the DNS, TCP and TLS connection-setup time for each channel you start, to help investigate cold start-up speed.',
++  ],
+   '1.35.19': [
+     'Smaller download: the APK now ships only the 64-bit (arm64) build that every supported device uses.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 26029f4..8abbac5 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 1.35.19+420
++version: 1.35.20+421
+ 
+ environment:
+   sdk: ^3.10.7
