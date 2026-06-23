@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.16",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.16",
+  "latest": "2.0.17",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.17",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Internal diagnostics only \u2014 no user-visible change.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.16/Free4Me-IPTV-2.0.16-arm64.apk"
+  "releaseNotes": "\u2022 Faster source refresh (part 1 of several): the step that links each channel to its category no longer runs a per-row database lookup \u2014 it is now a single set-based update. On large playlists this alone cuts ~30\u201360 seconds per source. (More refresh-speed work is coming.)",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.17/Free4Me-IPTV-2.0.17-arm64.apk"
 }
