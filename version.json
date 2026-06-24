@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.27",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.27",
+  "latest": "2.0.28",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.28",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 \ud83e\uddea TEST THIS BUILD: The Live TV category rail no longer stops at ~36 categories. Open Live TV and scroll the category list \u2014 all your live categories should now appear (up to 300). Confirm categories that were cut off before are now reachable.\n\u2022 Fixed: the Live TV guide's category rail only showed the first ~36 categories (it fetched a single page). It now pages through all live-TV categories (up to 300), matching the Movies/Series rails \u2014 which, along with the channel grids, already paged.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.27/Free4Me-IPTV-2.0.27-arm64.apk"
+  "releaseNotes": "\u2022 \ud83e\uddea TEST THIS BUILD: The FIRST launch after this update runs a one-time index rebuild \u2014 on a large catalog it may take a minute or two, so let it finish. Then, with Safe Mode ON, open Live / Movies / Series and confirm the lists now LOAD FAST again (they were stuck on \"Loading\u2026\"). Content should appear within a second or two.\n\u2022 Fixed: with Safe Mode on, TV browse lists (Live/Movies/Series) were extremely slow or stuck on \"Loading\u2026\" on large catalogs. Applying the adult-content filter forced a full-catalog sort because no database index covered it. Added Safe-Mode index variants so browse is index-served and fast again, and rebuilt three browse indexes some installs were missing. Safe-Mode-off browse is unchanged.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.28/Free4Me-IPTV-2.0.28-arm64.apk"
 }
