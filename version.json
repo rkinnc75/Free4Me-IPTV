@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.28",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.28",
+  "latest": "2.0.29",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.29",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 \ud83e\uddea TEST THIS BUILD: The FIRST launch after this update runs a one-time index rebuild \u2014 on a large catalog it may take a minute or two, so let it finish. Then, with Safe Mode ON, open Live / Movies / Series and confirm the lists now LOAD FAST again (they were stuck on \"Loading\u2026\"). Content should appear within a second or two.\n\u2022 Fixed: with Safe Mode on, TV browse lists (Live/Movies/Series) were extremely slow or stuck on \"Loading\u2026\" on large catalogs. Applying the adult-content filter forced a full-catalog sort because no database index covered it. Added Safe-Mode index variants so browse is index-served and fast again, and rebuilt three browse indexes some installs were missing. Safe-Mode-off browse is unchanged.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.28/Free4Me-IPTV-2.0.28-arm64.apk"
+  "releaseNotes": "\u2022 \ud83e\uddea TEST THIS BUILD (cumulative \u2014 also includes the browse-speed fix): (1) With Safe Mode ON, open Live / Movies / Series \u2014 lists should LOAD FAST now (first launch runs a one-time index build, ~1\u20132 min, let it finish). (2) Open the TV \"Categories\" tab: it is now a D-pad-navigable grid of category cards \u2014 press SELECT to toggle a category on/off (the checkbox shows the state), plus Select all / Unselect all. Disabled categories drop out of Live. (3) The top-left header icon is now the app icon.\n\u2022 TV Categories is now a proper TV screen: a D-pad-navigable grid of category cards (matching the Search/Movies card style) where the SELECT button toggles each category on/off \u2014 the old screen reused the phone layout and could not be operated by remote. Select all / Unselect all included.\n\u2022 TV header now shows the app icon instead of a generic green TV icon.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.29/Free4Me-IPTV-2.0.29-arm64.apk"
 }
