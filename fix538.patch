@@ -1,0 +1,121 @@
+diff --git a/lib/channel_tile.dart b/lib/channel_tile.dart
+index cabf02b..6ba7f97 100644
+--- a/lib/channel_tile.dart
++++ b/lib/channel_tile.dart
+@@ -427,7 +427,9 @@ class _ChannelTileState extends State<ChannelTile> {
+   Widget _buildPoster(BuildContext context) {
+     const fallback = ColoredBox(
+       color: Colors.black26,
+-      child: Center(child: Icon(Icons.movie, size: 40, color: Colors.grey)),
++      // fix538: smaller fallback glyph so it doesn't dominate the half-size
++      // poster tiles (grid went from ~4 to ~8 across).
++      child: Center(child: Icon(Icons.movie, size: 28, color: Colors.grey)),
+     );
+     return Column(
+       crossAxisAlignment: CrossAxisAlignment.stretch,
+@@ -456,7 +458,8 @@ class _ChannelTileState extends State<ChannelTile> {
+                 const Positioned(
+                   top: 4,
+                   right: 4,
+-                  child: Icon(Icons.star, size: 20, color: Colors.amber),
++                  // fix538: smaller for the half-size poster tiles.
++                  child: Icon(Icons.star, size: 16, color: Colors.amber),
+                 ),
+               // fix529: category-toggle checkbox overlay (shows enabled state).
+               if (widget.categoryToggleMode)
+@@ -472,7 +475,8 @@ class _ChannelTileState extends State<ChannelTile> {
+                       (widget.channel.groupEnabled ?? true)
+                           ? Icons.check_box
+                           : Icons.check_box_outline_blank,
+-                      size: 24,
++                      // fix538: smaller for the half-size category tiles.
++                      size: 18,
+                       color: (widget.channel.groupEnabled ?? true)
+                           ? Colors.lightBlueAccent
+                           : Colors.white70,
+@@ -483,12 +487,13 @@ class _ChannelTileState extends State<ChannelTile> {
+           ),
+         ),
+         Padding(
+-          padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
++          // fix538: tighter padding + single line for the half-size tiles.
++          padding: const EdgeInsets.fromLTRB(6, 4, 6, 6),
+           child: Text(
+             widget.channel.name,
+-            maxLines: 2,
++            maxLines: 1,
+             overflow: TextOverflow.ellipsis,
+-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
++            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+           ),
+         ),
+       ],
+diff --git a/lib/tv/tv_browse_view.dart b/lib/tv/tv_browse_view.dart
+index 2b4517c..8ee7b61 100644
+--- a/lib/tv/tv_browse_view.dart
++++ b/lib/tv/tv_browse_view.dart
+@@ -241,7 +241,10 @@ class _TvBrowseViewState extends State<TvBrowseView> {
+             // "movies boxes". maxCrossAxisExtent adapts the column count to the
+             // content width; childAspectRatio < 1 keeps the cards portrait.
+             gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+-              maxCrossAxisExtent: 180,
++              // fix538: halve the max extent (180->90) to roughly double the
++              // column count (~8 across on a 4K TV) for smaller posters and
++              // more titles visible per screen.
++              maxCrossAxisExtent: 90,
+               childAspectRatio: 0.58,
+               mainAxisSpacing: 16,
+               crossAxisSpacing: 16,
+diff --git a/lib/tv/tv_categories_view.dart b/lib/tv/tv_categories_view.dart
+index 1dc7e1f..5c5a95f 100644
+--- a/lib/tv/tv_categories_view.dart
++++ b/lib/tv/tv_categories_view.dart
+@@ -25,7 +25,7 @@ class TvCategoriesView extends StatefulWidget {
+ }
+ 
+ class _TvCategoriesViewState extends State<TvCategoriesView> {
+-  static const int _cap = 500;
++  static const int _cap = 1000;
+   List<Channel> _groups = [];
+   Map<int, int?> _sourceColors = {};
+   List<int> _sourceIds = [];
+@@ -122,7 +122,10 @@ class _TvCategoriesViewState extends State<TvCategoriesView> {
+           child: GridView.builder(
+             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+             gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+-              maxCrossAxisExtent: 220,
++              // fix538: halve the max extent (220->110) to roughly double the
++              // column count (~8 across on a 4K TV), giving smaller tiles and
++              // more categories visible per screen.
++              maxCrossAxisExtent: 110,
+               childAspectRatio: 0.82,
+               mainAxisSpacing: 14,
+               crossAxisSpacing: 14,
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 578bbac..6a151ff 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '2.0.38': [
++    'TV: the Movies, Series, and Categories grids now show about twice as many smaller tiles per row, so you can see more at a glance.',
++    'TV: the Categories management screen now lists up to 1000 categories (was 500).',
++  ],
+   '2.0.37': [
+     '⏳ FIRST LAUNCH AFTER UPDATE MAY BE SLOW: this version rebuilds the database to make enabling/disabling sources dramatically faster and to reclaim disk space. The one-time rebuild can take a few minutes on a large catalog — please let it finish.',
+     '🧪 TEST THIS BUILD: After the first launch completes, enable or disable a source (or use Select All / Unselect All on categories). It should now apply in about a second instead of taking many seconds.',
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 9f47354..9106e54 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 2.0.37+537
++version: 2.0.38+538
+ 
+ environment:
+   sdk: ^3.10.7

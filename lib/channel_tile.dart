@@ -427,7 +427,9 @@ class _ChannelTileState extends State<ChannelTile> {
   Widget _buildPoster(BuildContext context) {
     const fallback = ColoredBox(
       color: Colors.black26,
-      child: Center(child: Icon(Icons.movie, size: 40, color: Colors.grey)),
+      // fix538: smaller fallback glyph so it doesn't dominate the half-size
+      // poster tiles (grid went from ~4 to ~8 across).
+      child: Center(child: Icon(Icons.movie, size: 28, color: Colors.grey)),
     );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -456,7 +458,8 @@ class _ChannelTileState extends State<ChannelTile> {
                 const Positioned(
                   top: 4,
                   right: 4,
-                  child: Icon(Icons.star, size: 20, color: Colors.amber),
+                  // fix538: smaller for the half-size poster tiles.
+                  child: Icon(Icons.star, size: 16, color: Colors.amber),
                 ),
               // fix529: category-toggle checkbox overlay (shows enabled state).
               if (widget.categoryToggleMode)
@@ -472,7 +475,8 @@ class _ChannelTileState extends State<ChannelTile> {
                       (widget.channel.groupEnabled ?? true)
                           ? Icons.check_box
                           : Icons.check_box_outline_blank,
-                      size: 24,
+                      // fix538: smaller for the half-size category tiles.
+                      size: 18,
                       color: (widget.channel.groupEnabled ?? true)
                           ? Colors.lightBlueAccent
                           : Colors.white70,
@@ -483,12 +487,13 @@ class _ChannelTileState extends State<ChannelTile> {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+          // fix538: tighter padding + single line for the half-size tiles.
+          padding: const EdgeInsets.fromLTRB(6, 4, 6, 6),
           child: Text(
             widget.channel.name,
-            maxLines: 2,
+            maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
           ),
         ),
       ],

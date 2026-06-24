@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.38': [
+    'TV: the Movies, Series, and Categories grids now show about twice as many smaller tiles per row, so you can see more at a glance.',
+    'TV: the Categories management screen now lists up to 1000 categories (was 500).',
+  ],
   '2.0.37': [
     '⏳ FIRST LAUNCH AFTER UPDATE MAY BE SLOW: this version rebuilds the database to make enabling/disabling sources dramatically faster and to reclaim disk space. The one-time rebuild can take a few minutes on a large catalog — please let it finish.',
     '🧪 TEST THIS BUILD: After the first launch completes, enable or disable a source (or use Select All / Unselect All on categories). It should now apply in about a second instead of taking many seconds.',

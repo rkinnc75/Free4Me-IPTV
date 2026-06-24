@@ -25,7 +25,7 @@ class TvCategoriesView extends StatefulWidget {
 }
 
 class _TvCategoriesViewState extends State<TvCategoriesView> {
-  static const int _cap = 500;
+  static const int _cap = 1000;
   List<Channel> _groups = [];
   Map<int, int?> _sourceColors = {};
   List<int> _sourceIds = [];
@@ -122,7 +122,10 @@ class _TvCategoriesViewState extends State<TvCategoriesView> {
           child: GridView.builder(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: 220,
+              // fix538: halve the max extent (220->110) to roughly double the
+              // column count (~8 across on a 4K TV), giving smaller tiles and
+              // more categories visible per screen.
+              maxCrossAxisExtent: 110,
               childAspectRatio: 0.82,
               mainAxisSpacing: 14,
               crossAxisSpacing: 14,

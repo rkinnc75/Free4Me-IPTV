@@ -241,7 +241,10 @@ class _TvBrowseViewState extends State<TvBrowseView> {
             // "movies boxes". maxCrossAxisExtent adapts the column count to the
             // content width; childAspectRatio < 1 keeps the cards portrait.
             gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: 180,
+              // fix538: halve the max extent (180->90) to roughly double the
+              // column count (~8 across on a 4K TV) for smaller posters and
+              // more titles visible per screen.
+              maxCrossAxisExtent: 90,
               childAspectRatio: 0.58,
               mainAxisSpacing: 16,
               crossAxisSpacing: 16,
