@@ -8,6 +8,7 @@ import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/view_type.dart';
 import 'package:open_tv/settings_view.dart';
 import 'package:open_tv/tv/tv_browse_view.dart';
+import 'package:open_tv/tv/tv_categories_view.dart';
 import 'package:open_tv/tv/tv_guide_view.dart';
 import 'package:open_tv/tv/tv_search_view.dart';
 import 'package:open_tv/tv/tv_top_tab_bar.dart';
@@ -136,6 +137,10 @@ class _TvShellState extends State<TvShell> {
         settings: widget.settings,
         mediaType: t.mediaTypes.first,
       );
+    } else if (t.viewType == ViewType.categories) {
+      // fix529: TV-native category management (D-pad checkable poster grid),
+      // not the phone Home (which trapped focus on its search box).
+      _built[i] = TvCategoriesView(settings: widget.settings);
     } else {
       _built[i] = Home(
         key: ValueKey<String>('tv-tab-${t.label}'),

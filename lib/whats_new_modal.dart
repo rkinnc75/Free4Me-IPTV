@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.29': [
+    '🧪 TEST THIS BUILD (cumulative — also includes the browse-speed fix): (1) With Safe Mode ON, open Live / Movies / Series — lists should LOAD FAST now (first launch runs a one-time index build, ~1–2 min, let it finish). (2) Open the TV "Categories" tab: it is now a D-pad-navigable grid of category cards — press SELECT to toggle a category on/off (the checkbox shows the state), plus Select all / Unselect all. Disabled categories drop out of Live. (3) The top-left header icon is now the app icon.',
+    'TV Categories is now a proper TV screen: a D-pad-navigable grid of category cards (matching the Search/Movies card style) where the SELECT button toggles each category on/off — the old screen reused the phone layout and could not be operated by remote. Select all / Unselect all included.',
+    'TV header now shows the app icon instead of a generic green TV icon.',
+  ],
   '2.0.28': [
     '🧪 TEST THIS BUILD: The FIRST launch after this update runs a one-time index rebuild — on a large catalog it may take a minute or two, so let it finish. Then, with Safe Mode ON, open Live / Movies / Series and confirm the lists now LOAD FAST again (they were stuck on "Loading…"). Content should appear within a second or two.',
     'Fixed: with Safe Mode on, TV browse lists (Live/Movies/Series) were extremely slow or stuck on "Loading…" on large catalogs. Applying the adult-content filter forced a full-catalog sort because no database index covered it. Added Safe-Mode index variants so browse is index-served and fast again, and rebuilt three browse indexes some installs were missing. Safe-Mode-off browse is unchanged.',

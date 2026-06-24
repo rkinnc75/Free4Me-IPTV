@@ -51,14 +51,19 @@ class TvTopTabBar extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
-          const Padding(
-            padding: EdgeInsets.only(right: 16),
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.live_tv, color: Color(0xFF4CAF78)),
-                SizedBox(width: 8),
-                Text(
+                // fix529: the real app icon, not the placeholder green TV icon.
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: Image.asset('assets/icon.png',
+                      width: 28, height: 28, fit: BoxFit.cover),
+                ),
+                const SizedBox(width: 8),
+                const Text(
                   'Free4Me',
                   style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18),
                 ),

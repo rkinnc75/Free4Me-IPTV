@@ -45,14 +45,14 @@ void main() {
   });
   tearDown(() => db.dispose());
 
-  String _q(String hint, {required bool safe}) =>
+  String buildQ(String hint, {required bool safe}) =>
       'SELECT id FROM channels c INDEXED BY $hint '
       'WHERE media_type IN (0) AND url IS NOT NULL AND series_id IS NULL '
       'AND cat_enabled = 1${safe ? ' AND COALESCE(is_adult,0) = 0' : ''} '
       'ORDER BY $_tierProv';
 
   test('Safe-Mode-ON query matches the _safe variant + excludes adult', () {
-    final ids = db.select(_q('idx_browse_prov_safe', safe: true))
+    final ids = db.select(buildQ('idx_browse_prov_safe', safe: true))
         .map((r) => r['id'] as int).toList();
     expect(ids, [1], reason: 'adult id=2 excluded by the partial index');
   });
@@ -60,20 +60,20 @@ void main() {
   test('Safe-Mode-OFF query CANNOT use the _safe variant (no regression)', () {
     // No is_adult predicate → SQLite cannot prove the partial index applies →
     // forcing it is an error. Proves safe-off falls back to the ORIGINAL index.
-    expect(() => db.select(_q('idx_browse_prov_safe', safe: false)),
+    expect(() => db.select(buildQ('idx_browse_prov_safe', safe: false)),
         throwsA(isA<s3.SqliteException>()));
   });
 
   test('Safe-Mode-OFF query uses the ORIGINAL index fine', () {
-    expect(() => db.select(_q('idx_browse_prov', safe: false)), returnsNormally);
-    final ids = db.select(_q('idx_browse_prov', safe: false))
+    expect(() => db.select(buildQ('idx_browse_prov', safe: false)), returnsNormally);
+    final ids = db.select(buildQ('idx_browse_prov', safe: false))
         .map((r) => r['id'] as int).toList();
     expect(ids, [1, 2], reason: 'safe-off shows all (provider_order)');
   });
 
   test('the safe-mode query is served by the variant with NO temp B-tree', () {
     final plan = db
-        .select('EXPLAIN QUERY PLAN ${_q('idx_browse_prov_safe', safe: true)}')
+        .select('EXPLAIN QUERY PLAN ${buildQ('idx_browse_prov_safe', safe: true)}')
         .map((r) => r['detail'] as String)
         .join(' | ');
     expect(plan, contains('idx_browse_prov_safe'));

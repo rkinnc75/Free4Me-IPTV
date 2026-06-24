@@ -75,6 +75,12 @@ class ChannelTile extends StatefulWidget {
   /// behaviour is identical; only the InkWell child's layout differs.
   final bool poster;
 
+  /// fix529: TV Categories management mode. The card's PRIMARY select toggles
+  /// the category's enabled flag (via [onToggleEnabled]) and a checkbox overlay
+  /// shows the state, instead of navigating into the category. Default false so
+  /// phone + other TV uses are unchanged.
+  final bool categoryToggleMode;
+
   const ChannelTile({
     super.key,
     required this.channel,
@@ -92,6 +98,7 @@ class ChannelTile extends StatefulWidget {
     this.playlist, // fix397
     this.playlistIndex = 0, // fix397
     this.poster = false, // fix508: TV portrait poster layout
+    this.categoryToggleMode = false, // fix529: TV category-toggle grid
   });
 
   @override
@@ -451,6 +458,27 @@ class _ChannelTileState extends State<ChannelTile> {
                   right: 4,
                   child: Icon(Icons.star, size: 20, color: Colors.amber),
                 ),
+              // fix529: category-toggle checkbox overlay (shows enabled state).
+              if (widget.categoryToggleMode)
+                Positioned(
+                  top: 4,
+                  left: 4,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Icon(
+                      (widget.channel.groupEnabled ?? true)
+                          ? Icons.check_box
+                          : Icons.check_box_outline_blank,
+                      size: 24,
+                      color: (widget.channel.groupEnabled ?? true)
+                          ? Colors.lightBlueAccent
+                          : Colors.white70,
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
@@ -509,7 +537,10 @@ class _ChannelTileState extends State<ChannelTile> {
         focusNode: _focusNode,
         autofocus: widget.autofocus,
         onLongPress: _onLongPress,
-        onTap: () async => await play(),
+        onTap: widget.categoryToggleMode && widget.onToggleEnabled != null
+            ? () async => await widget
+                .onToggleEnabled!(!(widget.channel.groupEnabled ?? true))
+            : () async => await play(),
         child: widget.poster
             ? _buildPoster(context)
             : Row(
