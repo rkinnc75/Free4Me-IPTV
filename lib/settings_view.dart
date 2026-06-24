@@ -1638,6 +1638,54 @@ class _SettingsState extends State<SettingsView> {
     await addTextFile('settings', 'free4me-settings-$stamp.json',
         'Settings backup', backup, 'application/json');
 
+    // fix535: SQLite database snapshot(s). The QR/LAN diagnostic export
+    // previously shipped only the raw source dumps + settings + log, which lets
+    // us mirror schema and row SHAPE but not the real cat_enabled / favorite /
+    // stream_validated / EPG distribution — exactly what a faithful
+    // performance-benchmark seed needs.
+    //
+    // GATED on includeCredentials: db.sqlite stores Xtream usernames/passwords
+    // in the `sources` table AND embeds them in every channel `url`, so the DB
+    // ships ONLY when the user explicitly opted into credentials (same gate as
+    // the settings backup). When creds are excluded, the DB is omitted rather
+    // than shipped with secrets.
+    //
+    // Checkpoint+truncate the WAL first so the .sqlite files are self-consistent
+    // (recent writes otherwise live only in the -wal sidecar), then copy each DB
+    // file-to-file (no in-memory buffering, preserving the fix328 OOM-avoidance
+    // design on the 2GB TV box).
+    if (includeCredentials) {
+      onStep?.call('Snapshotting database…');
+      try {
+        await Sql.checkpointAndTruncateWal();
+      } catch (e) {
+        AppLog.warn('export: WAL checkpoint before DB snapshot failed — $e');
+      }
+      final appDir = await Utils.appDir;
+      for (final dbName in const ['db.sqlite', 'epg.sqlite']) {
+        final src = File('$appDir/$dbName');
+        if (!await src.exists()) continue;
+        final destName = 'free4me-$dbName-$stamp.sqlite';
+        final destPath = '${outDir.path}/$destName';
+        try {
+          await src.copy(destPath);
+          final len = await File(destPath).length();
+          items.add(ExportItem(
+            key: 'db-$dbName',
+            filename: destName,
+            label:
+                dbName == 'db.sqlite' ? 'Channel database' : 'EPG database',
+            filePath: destPath,
+            sizeBytes: len,
+            contentType: 'application/x-sqlite3',
+          ));
+          toZip[destPath] = destName;
+        } catch (e) {
+          AppLog.warn('export: failed to copy $dbName — $e');
+        }
+      }
+    }
+
     // 4. Combined zip — encoded directly to a file on disk.
     onStep?.call('Compressing files…');
     if (toZip.isNotEmpty) {
@@ -3470,6 +3518,9 @@ class _SettingsState extends State<SettingsView> {
                           title: const Text('Include credentials?'),
                           content: const Text(
                             'Include Xtream usernames and passwords in the backup?\n\n'
+                            'Choosing YES also includes a full database snapshot '
+                            '(channels + EPG) for diagnostics, which contains '
+                            'those credentials.\n\n'
                             'Only choose YES if you are saving the file somewhere secure.',
                           ),
                           actions: [

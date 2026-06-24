@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.35': [
+    'Diagnostic export now includes a full database snapshot (channels + EPG) when you choose to include credentials, so support can reproduce performance issues with your exact data. The snapshot is omitted unless credentials are included, since the database contains them.',
+  ],
   '2.0.34': [
     '🧪 TEST THIS BUILD (TV): Change which sources are enabled (in Settings or the source list), then go back to Live / Movies / Series / Categories. Each tab should now reflect the new source set immediately — previously a tab could keep showing the old source\'s categories/channels until the app restarted.',
     'Fixed the TV tabs (Live, Movies, Series, Categories) not refreshing after you change which sources are enabled. They now reload when you open the tab or return from Settings, so the list always matches your current sources.',
