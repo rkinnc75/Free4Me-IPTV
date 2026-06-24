@@ -89,6 +89,8 @@ class MpvEngine implements PlayerEngine {
   // (e.g. after an engine-swap re-render) doesn't crash, though in practice
   // there's at most one event per play.
   final _streamInfoCtrl = StreamController<String>.broadcast();
+  // fix522: latch the last label so a late subscriber can seed from it.
+  String? _lastStreamInfo;
 
   final List<StreamSubscription<dynamic>> _subs = [];
 
@@ -438,6 +440,9 @@ class MpvEngine implements PlayerEngine {
   Stream<String> get streamInfoStream => _streamInfoCtrl.stream;
 
   @override
+  String? get lastStreamInfo => _lastStreamInfo;
+
+  @override
   Duration get position => _player.state.position;
 
   // fix336: transport surface for interface parity.
@@ -718,6 +723,7 @@ class MpvEngine implements PlayerEngine {
           ' label=${label == null ? "null" : '"$label"'}'
           ' channel="${channel.name}"');
       if (label != null && !_streamInfoCtrl.isClosed) {
+        _lastStreamInfo = label; // fix522: latch before broadcast
         _streamInfoCtrl.add(label);
         AppLog.info('MpvEngine: STREAMINFO emitted "$label"'
             ' hasListener=${_streamInfoCtrl.hasListener}'

@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.22': [
+    '🧪 TEST THIS BUILD: Play any channel in full screen and look at the top bar, just to the right of the channel name — the stream\'s resolution and codec (e.g. "720p H.264") should now appear within about a second of playback starting. Before, it usually stayed blank. Try a few different channels.',
+    'Fixed the full-screen stream-info label (e.g. "720p H.264") not appearing next to the channel name. A timing race meant the value was produced just before the label was ready to receive it, so it was dropped and the label stayed blank. The label is now latched and shown as soon as playback starts, regardless of timing.',
+    'Settings → Search method: the "FTS Phrase" option is relabeled "(word order)" instead of "(original)", and internal diagnostics now name the word-prefix search index accurately (cosmetic only — no behavior change).',
+  ],
   '2.0.21': [
     '🧪 TEST THIS BUILD: On the TV, open the source list and Refresh ALL sources (all 5). Let every source finish loading. Watch the very last step — the search index should now rebuild only ONCE, at the very end, instead of once per source. Then try a channel search (e.g. "fox", "espn") to confirm results are correct across every source. Note whether the total refresh time is shorter than 2.0.20.',
     'Faster source refresh (part 4): the search-index rebuild is now deferred to a single pass at the end of the whole refresh — not once per source. Before, each source triggered its own full rebuild (re-scanning your entire catalog). Now all sources load with indexing suspended and the index is rebuilt exactly once at the end, covering every source including M3U playlists. On a multi-source catalog this removes several more minutes. A single-source refresh is unchanged. (Phone and TV both benefit.)',

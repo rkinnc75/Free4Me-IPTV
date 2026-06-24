@@ -18,7 +18,19 @@ import 'package:flutter/material.dart';
 class PlayerStreamInfoLabel extends StatefulWidget {
   final Stream<String> streamInfoStream;
 
-  const PlayerStreamInfoLabel({super.key, required this.streamInfoStream});
+  /// fix522: latched label, if the engine already emitted before this widget
+  /// mounted. media_kit's MaterialVideoControlsTheme builds topButtonBar once
+  /// at its own mount, which (per the fix516 log) reliably lands AFTER the
+  /// engine's first-frame emission — so the broadcast event is dropped with no
+  /// listener. Seeding from the latch makes the label appear regardless of
+  /// mount order; the stream subscription still covers any later change.
+  final String? initialLabel;
+
+  const PlayerStreamInfoLabel({
+    super.key,
+    required this.streamInfoStream,
+    this.initialLabel,
+  });
 
   @override
   State<PlayerStreamInfoLabel> createState() => _PlayerStreamInfoLabelState();
@@ -31,6 +43,7 @@ class _PlayerStreamInfoLabelState extends State<PlayerStreamInfoLabel> {
   @override
   void initState() {
     super.initState();
+    _label = widget.initialLabel; // fix522: seed from latch
     _sub = widget.streamInfoStream.listen((label) {
       if (mounted) setState(() => _label = label);
     });

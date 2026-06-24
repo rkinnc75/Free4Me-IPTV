@@ -1556,7 +1556,10 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
         // same gating as the PiP button below; multi-view cells have their
         // own constrained layout and weren't part of this feature's scope.
         if (widget.settings.multiViewLayout == MultiViewLayout.none)
-          PlayerStreamInfoLabel(streamInfoStream: _engine.streamInfoStream),
+          PlayerStreamInfoLabel(
+            streamInfoStream: _engine.streamInfoStream,
+            initialLabel: _engine.lastStreamInfo,
+          ),
         if (_castSupported)
           IconButton(
             onPressed: _onCastTap,

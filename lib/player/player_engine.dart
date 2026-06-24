@@ -55,6 +55,13 @@ abstract class PlayerEngine {
   /// treat "no event yet" as "unknown", not an error.
   Stream<String> get streamInfoStream;
 
+  /// fix522: the most recent stream-info label emitted this play, or null if
+  /// none yet. Latched so a subscriber that attaches AFTER the emission (the
+  /// media_kit topButtonBar read-once mount race — confirmed in the fix516
+  /// log, every emission landed hasListener=false) can seed itself instead of
+  /// silently missing the one broadcast event.
+  String? get lastStreamInfo;
+
 
   Duration get position;
 
