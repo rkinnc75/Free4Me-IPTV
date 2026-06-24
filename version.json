@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.30",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.30",
+  "latest": "2.0.31",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.31",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 \ud83e\uddea TEST THIS BUILD: First launch runs a one-time database statistics pass (a few seconds). Then with Safe Mode ON, open Live / Movies / Series and confirm lists load FAST \u2014 including categories/sources that are mostly adult content (those could take 100+ seconds before). Content should appear within about a second.\n\u2022 Fixed (follow-up to the browse-speed work): with Safe Mode on, some browse lists \u2014 especially adult-heavy sources \u2014 could still take a very long time because the database query planner was not using the new Safe-Mode indexes. The app now runs a one-time statistics pass (ANALYZE) so the planner always picks the fast index.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.30/Free4Me-IPTV-2.0.30-arm64.apk"
+  "releaseNotes": "\u2022 \ud83e\uddea TEST THIS BUILD: With Safe Mode ON, open Live / Movies / Series and confirm they load FAST even for adult-heavy sources or categories (those could still hang ~80 seconds in the previous build). Content should appear within about a second everywhere.\n\u2022 Fixed the last slow browse case: with Safe Mode on, browsing a source/category that is mostly adult content could still take ~80 seconds, because the planner used a non-filtered index and scanned the whole list. The mixed-source browse now forces the adult-excluding index, so even all-adult sources return instantly.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.31/Free4Me-IPTV-2.0.31-arm64.apk"
 }
