@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.37",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.37",
+  "latest": "2.0.38",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.38",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 \u23f3 FIRST LAUNCH AFTER UPDATE MAY BE SLOW: this version rebuilds the database to make enabling/disabling sources dramatically faster and to reclaim disk space. The one-time rebuild can take a few minutes on a large catalog \u2014 please let it finish.\n\u2022 \ud83e\uddea TEST THIS BUILD: After the first launch completes, enable or disable a source (or use Select All / Unselect All on categories). It should now apply in about a second instead of taking many seconds.\n\u2022 Hugely sped up enabling/disabling sources and categories. On a 1.2-million-channel setup, applying an enable/disable change dropped from ~11 seconds to under 1 second.\n\u2022 Reduced the channel database size (about 290 MB smaller on a large catalog), which also makes browsing snappier on lower-RAM devices.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.37/Free4Me-IPTV-2.0.37-arm64.apk"
+  "releaseNotes": "\u2022 TV: the Movies, Series, and Categories grids now show about twice as many smaller tiles per row, so you can see more at a glance.\n\u2022 TV: the Categories management screen now lists up to 1000 categories (was 500).",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.38/Free4Me-IPTV-2.0.38-arm64.apk"
 }
