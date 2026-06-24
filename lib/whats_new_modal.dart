@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.37': [
+    '⏳ FIRST LAUNCH AFTER UPDATE MAY BE SLOW: this version rebuilds the database to make enabling/disabling sources dramatically faster and to reclaim disk space. The one-time rebuild can take a few minutes on a large catalog — please let it finish.',
+    '🧪 TEST THIS BUILD: After the first launch completes, enable or disable a source (or use Select All / Unselect All on categories). It should now apply in about a second instead of taking many seconds.',
+    'Hugely sped up enabling/disabling sources and categories. On a 1.2-million-channel setup, applying an enable/disable change dropped from ~11 seconds to under 1 second.',
+    'Reduced the channel database size (about 290 MB smaller on a large catalog), which also makes browsing snappier on lower-RAM devices.',
+  ],
   '2.0.36': [
     '🧪 TEST THIS BUILD: Run the source-dump / diagnostic export and choose YES to include the database snapshot. It should now finish without the "Out of Memory" error, and the database files appear as their own downloads on the export page.',
     'Fixed an out-of-memory crash when exporting the database snapshot on lower-RAM devices. The database is now copied as a streamed standalone download instead of being compressed into the zip.',

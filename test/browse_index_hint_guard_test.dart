@@ -55,12 +55,12 @@ void main() {
         source_id, media_type,
         (CASE WHEN COALESCE(favorite,0)=1 THEN 0 ELSE 5 END),
         name COLLATE NOCASE)
-      WHERE url IS NOT NULL AND series_id IS NULL AND cat_enabled = 1
+      WHERE url IS NOT NULL AND series_id IS NULL
     ''');
     expect(_indexExists(db, 'idx_browse_src_mt'), isTrue);
-    // The real browse query satisfies the partial index's WHERE
-    // (series_id IS NULL AND cat_enabled = 1, emitted by VisibilityClause when
-    // seriesId/groupId are null), so SQLite can honor the forced INDEXED BY.
+    // fix537: cat_enabled is no longer in the index predicate (it is a residual
+    // WHERE filter now), so the forced INDEXED BY is honored as long as the
+    // query satisfies the remaining partial (series_id IS NULL).
     expect(
       () => db.select('SELECT * FROM channels c INDEXED BY idx_browse_src_mt '
           'WHERE media_type IN (0) AND source_id IN (1) AND url IS NOT NULL '

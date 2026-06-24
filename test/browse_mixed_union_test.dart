@@ -31,7 +31,9 @@ const _tier = '(CASE'
 const _ff = '(CASE WHEN COALESCE(favorite,0)=1 THEN 0 ELSE 1 END)';
 const _vf = '(CASE WHEN COALESCE(favorite,0)=1'
     ' AND COALESCE(stream_validated,0)=1 THEN 0 ELSE 1 END)';
-const _part = 'WHERE url IS NOT NULL AND series_id IS NULL AND cat_enabled = 1';
+// fix537: cat_enabled removed from the index partial predicate (now a residual
+// WHERE filter in the query, not an index condition).
+const _part = 'WHERE url IS NOT NULL AND series_id IS NULL';
 
 s3.Database _seed() {
   final db = s3.sqlite3.openInMemory();

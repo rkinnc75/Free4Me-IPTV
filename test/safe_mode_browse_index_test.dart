@@ -25,19 +25,20 @@ void main() {
         'media_type INTEGER, url TEXT, source_id INTEGER, series_id INTEGER, '
         'cat_enabled INTEGER, favorite INTEGER, stream_validated INTEGER, '
         'provider_order INTEGER, is_adult INTEGER)');
-    // fix528 safe variant (mirrors idx_browse_prov + the is_adult partial cond).
+    // fix537: cat_enabled removed from the partial predicate (now a residual
+    // WHERE filter). Index keeps the is_adult partial for the _safe variant.
     db.execute('CREATE INDEX idx_browse_prov_safe ON channels('
         'media_type, (CASE WHEN COALESCE(favorite,0)=1 THEN 0 ELSE 1 END), '
         '(CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 '
         'THEN 0 ELSE 1 END), provider_order, name COLLATE NOCASE) '
-        'WHERE url IS NOT NULL AND series_id IS NULL AND cat_enabled = 1 '
+        'WHERE url IS NOT NULL AND series_id IS NULL '
         'AND COALESCE(is_adult,0) = 0');
     // The original (no is_adult), for the safe-OFF path.
     db.execute('CREATE INDEX idx_browse_prov ON channels('
         'media_type, (CASE WHEN COALESCE(favorite,0)=1 THEN 0 ELSE 1 END), '
         '(CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 '
         'THEN 0 ELSE 1 END), provider_order, name COLLATE NOCASE) '
-        'WHERE url IS NOT NULL AND series_id IS NULL AND cat_enabled = 1');
+        'WHERE url IS NOT NULL AND series_id IS NULL');
     db.execute("INSERT INTO channels(id,name,media_type,url,source_id,series_id,"
         "cat_enabled,favorite,stream_validated,provider_order,is_adult) VALUES "
         "(1,'ESPN',0,'http://x/1',1,NULL,1,0,1,10,0),"
@@ -99,7 +100,7 @@ void main() {
           'NULL AND COALESCE(stream_validated,0)=1 THEN 2 WHEN last_watched IS '
           'NOT NULL THEN 3 WHEN COALESCE(stream_validated,0)=1 THEN 4 ELSE 5 '
           'END), name COLLATE NOCASE) '
-          'WHERE url IS NOT NULL AND series_id IS NULL AND cat_enabled = 1 '
+          'WHERE url IS NOT NULL AND series_id IS NULL '
           'AND COALESCE(is_adult,0) = 0');
       // source 2 is all-adult; source 1 has one clean channel.
       db2.execute("INSERT INTO channels(id,name,media_type,url,source_id,"

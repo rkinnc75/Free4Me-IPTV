@@ -927,8 +927,141 @@ class DbFactory {
         try {
           await tx.execute('PRAGMA cache_size = -2000;');
         } catch (_) {}
+      }))
+      // fix537: the enable/disable-source delay (10-72s on the onn 4K box,
+      // confirmed on the field db.sqlite: 1.2M channels, ~1GB of indexes) was
+      // write-amplification. Eight browse indexes were PARTIAL on
+      // `cat_enabled = 1`, so toggling cat_enabled on hundreds of thousands of
+      // rows (Select-All / source enable) inserted/removed every one of those
+      // rows in every partial index. Measured on the real DB: removing
+      // cat_enabled from the index predicate cut an all-source live toggle from
+      // 11.0s to 0.8s (13x) with NO browse regression — the browse queries keep
+      // these indexes (planner-verified for every sort mode) and apply
+      // `cat_enabled = 1` as a cheap residual filter on the already-narrowed
+      // page (VisibilityClause still emits it). Also drops 5 never-selected
+      // indexes (idx_browse_cat/_safe never beat idx_channels_browse_mt_safe;
+      // index_channel_name is covered by index_channel_name_source;
+      // idx_channel_adult/_divider are unused). The VACUUM that reclaims the
+      // freed pages (~290MB on the field DB) runs once AFTER migrate(), below
+      // (VACUUM cannot run inside the migration transaction).
+      ..add(SqliteMigration(39, (tx) async {
+        try {
+          await tx.execute('PRAGMA temp_store = FILE;');
+          await tx.execute('PRAGMA cache_size = -32768;');
+        } catch (_) {}
+        // fix537: tiny KV table for one-shot post-migration markers (the
+        // VACUUM-done flag below). IF NOT EXISTS so re-running is harmless.
+        await tx.execute(
+          'CREATE TABLE IF NOT EXISTS app_meta'
+          ' (key TEXT PRIMARY KEY, value TEXT);',
+        );
+        for (final dead in const [
+          'idx_browse_cat',
+          'idx_browse_cat_safe',
+          'index_channel_name',
+          'idx_channel_adult',
+          'idx_channel_divider',
+        ]) {
+          await tx.execute('DROP INDEX IF EXISTS $dead;');
+        }
+        // Rebuild the 7 browse indexes WITHOUT `AND cat_enabled = 1`. DDL is
+        // the prior-migration DDL minus that predicate; the 6-tier CASE and
+        // column order are otherwise identical so the planner still walks each
+        // one (EXPLAIN-verified on the field DB for alpha/provider/category x
+        // safe/non-safe x mt-only/src-scoped). Drop-then-create replaces the
+        // old partial version on already-upgraded DBs.
+        const rebuilt = <String, String>{
+          'idx_channels_browse_mt':
+              'CREATE INDEX idx_channels_browse_mt ON channels( media_type,'
+                  ' (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0'
+                  ' WHEN COALESCE(favorite,0)=1 THEN 1'
+                  ' WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2'
+                  ' WHEN last_watched IS NOT NULL THEN 3'
+                  ' WHEN COALESCE(stream_validated,0)=1 THEN 4 ELSE 5 END),'
+                  ' name COLLATE NOCASE )'
+                  ' WHERE url IS NOT NULL AND series_id IS NULL',
+          'idx_channels_browse_mt_safe':
+              'CREATE INDEX idx_channels_browse_mt_safe ON channels( media_type,'
+                  ' (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0'
+                  ' WHEN COALESCE(favorite,0)=1 THEN 1'
+                  ' WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2'
+                  ' WHEN last_watched IS NOT NULL THEN 3'
+                  ' WHEN COALESCE(stream_validated,0)=1 THEN 4 ELSE 5 END),'
+                  ' name COLLATE NOCASE )'
+                  ' WHERE url IS NOT NULL AND series_id IS NULL'
+                  ' AND COALESCE(is_adult,0) = 0',
+          'idx_browse_prov':
+              'CREATE INDEX idx_browse_prov ON channels( media_type,'
+                  ' (CASE WHEN COALESCE(favorite,0)=1 THEN 0 ELSE 1 END),'
+                  ' (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0 ELSE 1 END),'
+                  ' provider_order, name COLLATE NOCASE )'
+                  ' WHERE url IS NOT NULL AND series_id IS NULL',
+          'idx_browse_prov_safe':
+              'CREATE INDEX idx_browse_prov_safe ON channels( media_type,'
+                  ' (CASE WHEN COALESCE(favorite,0)=1 THEN 0 ELSE 1 END),'
+                  ' (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0 ELSE 1 END),'
+                  ' provider_order, name COLLATE NOCASE )'
+                  ' WHERE url IS NOT NULL AND series_id IS NULL'
+                  ' AND COALESCE(is_adult,0) = 0',
+          'idx_browse_src_mt':
+              'CREATE INDEX idx_browse_src_mt ON channels( source_id, media_type,'
+                  ' (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0'
+                  ' WHEN COALESCE(favorite,0)=1 THEN 1'
+                  ' WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2'
+                  ' WHEN last_watched IS NOT NULL THEN 3'
+                  ' WHEN COALESCE(stream_validated,0)=1 THEN 4 ELSE 5 END),'
+                  ' name COLLATE NOCASE )'
+                  ' WHERE url IS NOT NULL AND series_id IS NULL',
+          'idx_browse_src_mt_safe':
+              'CREATE INDEX idx_browse_src_mt_safe ON channels( source_id, media_type,'
+                  ' (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0'
+                  ' WHEN COALESCE(favorite,0)=1 THEN 1'
+                  ' WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2'
+                  ' WHEN last_watched IS NOT NULL THEN 3'
+                  ' WHEN COALESCE(stream_validated,0)=1 THEN 4 ELSE 5 END),'
+                  ' name COLLATE NOCASE )'
+                  ' WHERE url IS NOT NULL AND series_id IS NULL'
+                  ' AND COALESCE(is_adult,0) = 0',
+          'idx_channels_browse_enabled':
+              'CREATE INDEX idx_channels_browse_enabled ON channels( source_id,'
+                  ' (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0'
+                  ' WHEN COALESCE(favorite,0)=1 THEN 1'
+                  ' WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2'
+                  ' WHEN last_watched IS NOT NULL THEN 3'
+                  ' WHEN COALESCE(stream_validated,0)=1 THEN 4 ELSE 5 END),'
+                  ' name COLLATE NOCASE )'
+                  ' WHERE url IS NOT NULL AND series_id IS NULL',
+        };
+        for (final entry in rebuilt.entries) {
+          await tx.execute('DROP INDEX IF EXISTS ${entry.key};');
+          await tx.execute(entry.value);
+        }
+        try {
+          await tx.execute('PRAGMA cache_size = -2000;');
+        } catch (_) {}
       }));
     await migrations.migrate(db);
+    // fix537: reclaim the pages freed by migration 39's index drops/rebuilds
+    // (~290MB on the field DB). VACUUM cannot run inside the migration
+    // transaction, so it runs here, once, gated by a marker so it does not
+    // repeat on every launch. Best-effort: a failure leaves a larger-but-
+    // correct DB, never a broken one.
+    try {
+      final marker = await db.getOptional(
+        "SELECT value FROM app_meta WHERE key = 'fix537_vacuum_done'",
+      );
+      if (marker == null) {
+        AppLog.info('fix537: VACUUM to reclaim freed index pages (one-time)…');
+        await db.execute('VACUUM;');
+        await db.execute(
+          "INSERT OR REPLACE INTO app_meta (key, value) VALUES"
+          " ('fix537_vacuum_done', '1');",
+        );
+        AppLog.info('fix537: VACUUM complete.');
+      }
+    } catch (e) {
+      AppLog.warn('fix537: one-time VACUUM skipped — $e');
+    }
     // fix419: give the planner real statistics. The app never ran ANALYZE, so
     // SQLite planned blind — part of why the device chose the slow VOD index.
     // PRAGMA optimize is cheap on repeat runs (re-analyzes only changed tables).
