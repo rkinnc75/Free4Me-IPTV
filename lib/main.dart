@@ -58,7 +58,7 @@ Future<void> main() async {
   // fast. Unawaited — not on the critical render path.
   unawaited(Sql.reconcileFtsTriggers(
     settings.searchMethod == SearchMethod.ftsAnd ||
-        settings.searchMethod == SearchMethod.ftsTrigram,
+        settings.searchMethod == SearchMethod.ftsPhrase,
   ));
 
   // unawaited — startup continues immediately; the cache is ready by the time
@@ -84,7 +84,7 @@ Future<void> main() async {
     ' build=${packageInfo.buildNumber}'
     ' searchMethod=${settings.searchMethod.name}' // fix361: which search
     ' (ftsTriggers=${settings.searchMethod == SearchMethod.ftsAnd ||
-        settings.searchMethod == SearchMethod.ftsTrigram})',
+        settings.searchMethod == SearchMethod.ftsPhrase})',
   );
   // fix314: log SoC/board + Tegra detection so multi-view decode routing is
   // verifiable on real hardware (Shield colour-corruption investigation).

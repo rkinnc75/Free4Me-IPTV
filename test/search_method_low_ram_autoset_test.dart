@@ -8,7 +8,7 @@
 // search silently fell through to FTS. The setting lied.
 //
 // fix505: on first run (no persisted `searchMethod`), the low-RAM default is
-// `SearchMethod.ftsTrigram` — the index-backed channels_fts path, fast on huge
+// `SearchMethod.ftsPhrase` — the index-backed channels_fts path, fast on huge
 // catalogues where the previous `likeSubstring` (fix390) full-scanned. A
 // persisted value always wins — the auto-set is a first-run default only.
 //
@@ -21,17 +21,17 @@ import 'package:open_tv/models/settings.dart';
 
 void main() {
   group('resolveSearchMethod (fix390 first-run auto-set)', () {
-    test('first run + low RAM (1.9 GB onn 4K Plus) → ftsTrigram (fix505)', () {
+    test('first run + low RAM (1.9 GB onn 4K Plus) → ftsPhrase (fix505)', () {
       expect(
         SettingsService.resolveSearchMethod(null, totalMb: 1900),
-        SearchMethod.ftsTrigram,
+        SearchMethod.ftsPhrase,
       );
     });
 
-    test('first run + mid-low RAM (just under 2300 MB) → ftsTrigram (fix505)', () {
+    test('first run + mid-low RAM (just under 2300 MB) → ftsPhrase (fix505)', () {
       expect(
         SettingsService.resolveSearchMethod(null, totalMb: 2299),
-        SearchMethod.ftsTrigram,
+        SearchMethod.ftsPhrase,
       );
     });
 
@@ -93,15 +93,15 @@ void main() {
       );
     });
 
-    test('garbage persisted value → ftsTrigram (preserved pre-fix behavior)', () {
+    test('garbage persisted value → ftsPhrase (preserved pre-fix behavior)', () {
       // Pre-fix behavior: an unparseable stored string coerces to
-      // index 0 (the first SearchMethod, ftsTrigram). The trailing
+      // index 0 (the first SearchMethod, ftsPhrase). The trailing
       // `?? SearchMethod.inMemory` only fires when the value is out of
       // range, NOT when it's unparseable. This test pins the existing
       // behavior so the fix doesn't accidentally change it.
       expect(
         SettingsService.resolveSearchMethod('not-a-number', totalMb: 4096),
-        SearchMethod.ftsTrigram,
+        SearchMethod.ftsPhrase,
       );
     });
 

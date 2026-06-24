@@ -126,7 +126,7 @@ class SettingsService {
   /// (see `ChannelSearchCache.cacheSkipped`). fix390 picked `likeSubstring`
   /// to keep the visible setting honest, but on a huge catalogue (~1.15M
   /// channels, e.g. an onn 4K Plus) a leading-wildcard LIKE is a full-table
-  /// scan (>1 s). `ftsTrigram` uses the index-backed `channels_fts` (fast +
+  /// scan (>1 s). `ftsPhrase` uses the index-backed `channels_fts` (fast +
   /// on-disk, not the skipped RAM cache) and makes `main.dart` reconcile the
   /// FTS triggers so the index stays fresh. The minor refresh write-cost is
   /// an accepted trade.
@@ -145,8 +145,8 @@ class SettingsService {
     }
     final ram = totalMb ?? DeviceMemory.totalMb;
     // fix505: low-RAM default is the index-backed channels_fts path
-    // (`ftsTrigram`), not the full-table-scan `likeSubstring` (fix390).
-    if (ram > 0 && ram < lowRamThresholdMb) return SearchMethod.ftsTrigram;
+    // (`ftsPhrase`), not the full-table-scan `likeSubstring` (fix390).
+    if (ram > 0 && ram < lowRamThresholdMb) return SearchMethod.ftsPhrase;
     return SearchMethod.inMemory;
   }
 
@@ -287,13 +287,13 @@ class SettingsService {
     final sm = settingsMap[searchMethodProp];
     final resolvedSm = resolveSearchMethod(sm);
     settings.searchMethod = resolvedSm;
-    if (sm == null && resolvedSm == SearchMethod.ftsTrigram) {
-      // fix505: first-run auto-set on low-RAM device. ftsTrigram is the
+    if (sm == null && resolvedSm == SearchMethod.ftsPhrase) {
+      // fix505: first-run auto-set on low-RAM device. ftsPhrase is the
       // index-backed channels_fts path — fast on huge catalogues (~1.15M)
       // where likeSubstring (fix390) was a full-table scan. Logged so
       // support can confirm the search path on a 1.9 GB onn 4K Plus.
       AppLog.info(
-        'Settings: searchMethod auto-set to ftsTrigram (low-RAM'
+        'Settings: searchMethod auto-set to ftsPhrase (low-RAM'
         ' device, totalMb=${DeviceMemory.totalMb})',
       );
     }
@@ -493,7 +493,7 @@ class SettingsService {
     // for FTS methods. Cheap when already in the right state.
     await Sql.reconcileFtsTriggers(
       settings.searchMethod == SearchMethod.ftsAnd ||
-          settings.searchMethod == SearchMethod.ftsTrigram,
+          settings.searchMethod == SearchMethod.ftsPhrase,
     );
     _cached = settings; // keep the in-memory copy in sync
     AppLog.info(

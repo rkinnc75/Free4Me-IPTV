@@ -198,8 +198,8 @@ class Sql {
   }
 
   /// fix212: the FTS index/triggers are only needed for the FTS search methods
-  /// (ftsTrigram/ftsAnd). When the active method is inMemory or likeSubstring,
-  /// the per-row FTS trigram maintenance during a refresh is pure overhead.
+  /// (ftsPhrase/ftsAnd). When the active method is inMemory or likeSubstring,
+  /// the per-row FTS index maintenance during a refresh is pure overhead.
   /// This reconciles the trigger state to [ftsActive]:
   ///   - ftsActive=false: drop the FTS sync triggers (inserts stay fast).
   ///   - ftsActive=true : (re)create the triggers; if they were absent, the FTS
@@ -741,8 +741,8 @@ class Sql {
       }
     }
 
-    // For ftsTrigram and ftsAnd, effectiveKeywords overrides the legacy flag.
-    // ftsAnd splits on whitespace (AND mode); ftsTrigram keeps the raw phrase.
+    // For ftsPhrase and ftsAnd, effectiveKeywords overrides the legacy flag.
+    // ftsAnd splits on whitespace (AND mode); ftsPhrase keeps the raw phrase.
     final effectiveKeywords =
         filters.searchMethod == SearchMethod.ftsAnd || filters.useKeywords;
 

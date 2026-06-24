@@ -13,12 +13,14 @@ enum ContentTypeFilter { all, live, movies, series }
 
 /// Controls how channel name search queries are executed.
 enum SearchMethod {
-  /// FTS5 trigram phrase. Substring match,
-  /// phrase ordering verified. Slowest on large datasets.
-  ftsTrigram,
+  /// FTS5 word-prefix phrase (unicode61, fix519): matches the whole query as
+  /// one quoted phrase against the channels_fts index, so word order is
+  /// preserved. (Was a trigram substring index before fix519.)
+  ftsPhrase,
 
-  /// FTS5 trigram AND — same index, no phrase ordering. ~2x faster
-  /// for multi-word queries. Single words identical to ftsTrigram.
+  /// FTS5 word-prefix AND — same unicode61 index, splits the query on
+  /// whitespace and requires every word (as a prefix); no phrase ordering.
+  /// ~2x faster for multi-word queries. Single words identical to ftsPhrase.
   ftsAnd,
 
   /// LIKE substring scan — no FTS index. Simple string comparison.

@@ -2449,7 +2449,7 @@ class _SettingsState extends State<SettingsView> {
 
   String _searchMethodShortLabel(SearchMethod m) => switch (m) {
         SearchMethod.ftsAnd => 'FTS AND',
-        SearchMethod.ftsTrigram => 'FTS Phrase',
+        SearchMethod.ftsPhrase => 'FTS Phrase',
         SearchMethod.likeSubstring => 'LIKE Scan',
         SearchMethod.inMemory => 'In-Memory',
       };
@@ -2502,7 +2502,7 @@ class _SettingsState extends State<SettingsView> {
 
   static const _searchMethodOptions = [
     (method: SearchMethod.ftsAnd,        label: 'FTS AND (recommended)'),
-    (method: SearchMethod.ftsTrigram,    label: 'FTS Phrase (original)'),
+    (method: SearchMethod.ftsPhrase,     label: 'FTS Phrase (word order)'),
     (method: SearchMethod.likeSubstring, label: 'LIKE Scan (any length)'),
     (method: SearchMethod.inMemory,      label: 'In-Memory (fastest)'),
   ];
