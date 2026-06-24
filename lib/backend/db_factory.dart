@@ -771,6 +771,142 @@ class DbFactory {
         //   always combined with source_id or led by a media_type browse
         //   composite (idx_channels_browse_mt / idx_channel_src_media_url).
         await tx.execute('DROP INDEX IF EXISTS index_channel_media_type;');
+      }))
+      // fix528: Safe-Mode-ON TV browse went 7-84s on the onn 4K box. fix524
+      // first applied Safe Mode on TV, appending `AND COALESCE(is_adult,0)=0`
+      // (safeModeClause) to the browse query — but EVERY partial browse index
+      // lacks is_adult, so it's a RESIDUAL the planner can't serve in sort order
+      // -> USE TEMP B-TREE over the whole media_type partition (~1.17M rows;
+      // 84s/0-rows = a fully-adult source scanned to exhaustion). These
+      // SAFE-MODE-VARIANT partials duplicate the existing browse index KEY
+      // columns (byte-identical to mig 30/33/34 & BrowseOrder — guarded by
+      // browse_order_test) with `AND COALESCE(is_adult,0)=0` added to the PARTIAL
+      // WHERE (never the key — a key column would scatter the safe-OFF sort).
+      // Safe-ON matches the variant (full filter+ORDER BY service, no temp
+      // b-tree, stops at LIMIT); Safe-OFF carries no is_adult predicate so it
+      // can't match the variant and keeps using the ORIGINAL indexes unchanged
+      // (zero safe-off regression). Also re-asserts the 3 mig-34 partials missing
+      // on fix518-era DBs (idempotent — closes the "no such index" perf gap).
+      // Wrapped in the fix523 memory pragmas: this runs OUTSIDE
+      // withDroppedBrowseIndexes, and each ~1.17M-row partial CREATE
+      // external-merge-sorts (a ~2MiB cache spills to slow eMMC). Restored after.
+      ..add(SqliteMigration(37, (tx) async {
+        try {
+          await tx.execute('PRAGMA temp_store = FILE;');
+          await tx.execute('PRAGMA cache_size = -32768;');
+        } catch (_) {}
+        // provider-mode safe variant (mirrors idx_browse_prov, mig 33)
+        await tx.execute('''
+          CREATE INDEX IF NOT EXISTS idx_browse_prov_safe ON channels(
+            media_type,
+            (CASE WHEN COALESCE(favorite,0)=1 THEN 0 ELSE 1 END),
+            (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1
+              THEN 0 ELSE 1 END),
+            provider_order,
+            name COLLATE NOCASE
+          )
+          WHERE url IS NOT NULL AND series_id IS NULL AND cat_enabled = 1
+            AND COALESCE(is_adult,0) = 0;
+        ''');
+        // category-mode safe variant (mirrors idx_browse_cat, mig 33)
+        await tx.execute('''
+          CREATE INDEX IF NOT EXISTS idx_browse_cat_safe ON channels(
+            media_type,
+            (CASE WHEN COALESCE(favorite,0)=1 THEN 0 ELSE 1 END),
+            (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1
+              THEN 0 ELSE 1 END),
+            group_name COLLATE NOCASE,
+            provider_order,
+            name COLLATE NOCASE
+          )
+          WHERE url IS NOT NULL AND series_id IS NULL AND cat_enabled = 1
+            AND COALESCE(is_adult,0) = 0;
+        ''');
+        // alpha-mode safe variant (mirrors idx_channels_browse_mt, mig 30)
+        await tx.execute('''
+          CREATE INDEX IF NOT EXISTS idx_channels_browse_mt_safe ON channels(
+            media_type,
+            (CASE
+              WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0
+              WHEN COALESCE(favorite,0)=1 THEN 1
+              WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2
+              WHEN last_watched IS NOT NULL THEN 3
+              WHEN COALESCE(stream_validated,0)=1 THEN 4
+              ELSE 5 END),
+            name COLLATE NOCASE
+          )
+          WHERE url IS NOT NULL AND series_id IS NULL AND cat_enabled = 1
+            AND COALESCE(is_adult,0) = 0;
+        ''');
+        // source-led alpha safe variant (mirrors idx_browse_src_mt, mig 34) so
+        // the mixed-union per-source inner subqueries seek (source_id, media_type)
+        await tx.execute('''
+          CREATE INDEX IF NOT EXISTS idx_browse_src_mt_safe ON channels(
+            source_id,
+            media_type,
+            (CASE
+              WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0
+              WHEN COALESCE(favorite,0)=1 THEN 1
+              WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2
+              WHEN last_watched IS NOT NULL THEN 3
+              WHEN COALESCE(stream_validated,0)=1 THEN 4
+              ELSE 5 END),
+            name COLLATE NOCASE
+          )
+          WHERE url IS NOT NULL AND series_id IS NULL AND cat_enabled = 1
+            AND COALESCE(is_adult,0) = 0;
+        ''');
+        // re-assert the mig-34/33 partials missing on fix518-era DBs (idempotent;
+        // verbatim from their migrations so withDroppedBrowseIndexes recaptures
+        // them on the next refresh).
+        await tx.execute('''
+          CREATE INDEX IF NOT EXISTS idx_browse_src_mt
+          ON channels(
+            source_id,
+            media_type,
+            (CASE
+              WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0
+              WHEN COALESCE(favorite,0)=1 THEN 1
+              WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2
+              WHEN last_watched IS NOT NULL THEN 3
+              WHEN COALESCE(stream_validated,0)=1 THEN 4
+              ELSE 5 END),
+            name COLLATE NOCASE
+          )
+          WHERE url IS NOT NULL AND series_id IS NULL AND cat_enabled = 1;
+        ''');
+        await tx.execute('''
+          CREATE INDEX IF NOT EXISTS idx_browse_src_grp
+          ON channels(
+            source_id,
+            group_id,
+            (CASE
+              WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0
+              WHEN COALESCE(favorite,0)=1 THEN 1
+              WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2
+              WHEN last_watched IS NOT NULL THEN 3
+              WHEN COALESCE(stream_validated,0)=1 THEN 4
+              ELSE 5 END),
+            name COLLATE NOCASE
+          )
+          WHERE url IS NOT NULL AND series_id IS NULL;
+        ''');
+        await tx.execute('''
+          CREATE INDEX IF NOT EXISTS idx_browse_cat ON channels(
+            media_type,
+            (CASE WHEN COALESCE(favorite,0)=1 THEN 0 ELSE 1 END),
+            (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1
+              THEN 0 ELSE 1 END),
+            group_name COLLATE NOCASE,
+            provider_order,
+            name COLLATE NOCASE
+          )
+          WHERE url IS NOT NULL AND series_id IS NULL AND cat_enabled = 1;
+        ''');
+        // fix528: restore the ~2 MiB default cache (best-effort, like fix523).
+        try {
+          await tx.execute('PRAGMA cache_size = -2000;');
+        } catch (_) {}
       }));
     await migrations.migrate(db);
     // fix419: give the planner real statistics. The app never ran ANALYZE, so
