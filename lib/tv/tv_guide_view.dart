@@ -42,6 +42,8 @@ class TvGuideView extends StatefulWidget {
 class TvGuideViewState extends State<TvGuideView> {
   static const int _windowHours = 3;
   static const int _channelCap = 200; // rail-scoped guard against huge groups
+  // fix527: cap the (now paged) Live category rail, mirroring TvBrowseView.
+  static const int _railCap = 300;
 
   Map<int, int?> _sourceColors = {};
   List<int> _sourceIds = [];
@@ -85,15 +87,26 @@ class TvGuideViewState extends State<TvGuideView> {
     final s = SettingsService.cached ?? widget.settings;
     final sources = await Sql.getSources();
     final enabled = await Sql.getEnabledSourcesMinimal();
-    List<Channel> groups = [];
+    final enabledIds = enabled.map((e) => e.id).whereType<int>().toList();
+    // fix527: page the Live category rail so providers with >36 categories
+    // aren't truncated. Previously a single page-1 Sql.search capped the Live
+    // TV rail at pageSize (36). Mirrors TvBrowseView's rail paging; bounded by
+    // _railCap.
+    var groups = <Channel>[];
     try {
-      groups = await Sql.search(Filters(
-        viewType: ViewType.categories,
-        mediaTypes: const [MediaType.livestream],
-        sourceIds: enabled.map((e) => e.id).whereType<int>().toList(),
-        searchMethod: s.searchMethod,
-        safeMode: s.safeMode,
-      ));
+      for (var page = 1; groups.length < _railCap; page++) {
+        final batch = await Sql.search(Filters(
+          viewType: ViewType.categories,
+          mediaTypes: const [MediaType.livestream],
+          sourceIds: enabledIds,
+          page: page,
+          searchMethod: s.searchMethod,
+          safeMode: s.safeMode,
+        ));
+        if (batch.isEmpty) break;
+        groups.addAll(batch);
+        if (batch.length < pageSize) break;
+      }
     } catch (_) {
       groups = [];
     }
@@ -106,8 +119,8 @@ class TvGuideViewState extends State<TvGuideView> {
         for (final s in sources)
           if (s.id != null) s.id!: s.color,
       };
-      _sourceIds = enabled.map((e) => e.id).whereType<int>().toList();
-      _groups = groups;
+      _sourceIds = enabledIds;
+      _groups = groups.take(_railCap).toList();
       _liveOk = !lowRam || widget.settings.tvHeroLivePreview;
       _dwellMs = lowRam ? 1100 : 700;
       _ready = true;

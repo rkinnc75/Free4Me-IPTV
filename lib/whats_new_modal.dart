@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.27': [
+    '🧪 TEST THIS BUILD: The Live TV category rail no longer stops at ~36 categories. Open Live TV and scroll the category list — all your live categories should now appear (up to 300). Confirm categories that were cut off before are now reachable.',
+    'Fixed: the Live TV guide\'s category rail only showed the first ~36 categories (it fetched a single page). It now pages through all live-TV categories (up to 300), matching the Movies/Series rails — which, along with the channel grids, already paged.',
+  ],
   '2.0.26': [
     '🧪 TEST THIS BUILD: This fixes the regression where channel/movie/series lists got stuck on "loading" and showed nothing. Open Live, Movies, Series, Favorites, and History and confirm content loads again — including when viewing a single source. Also in this build (from the last two updates): the new "Categories" tab (toggle live-TV categories on/off, Select All / Unselect All) and Safe Mode now applying in TV mode.',
     'Fixed: channel/movie/series lists could get stuck on "loading" with nothing shown. A browse query forced a database index that some upgraded installs are missing, which crashed the query instead of falling back. It now uses that index only when present, so lists always load. (A future update will rebuild the missing index to restore peak single-source browse speed.)',
