@@ -746,6 +746,31 @@ class DbFactory {
             "INSERT INTO channels_fts(channels_fts, rowid, name) "
             "VALUES('delete', old.id, old.name); "
             'INSERT INTO channels_fts(rowid, name) VALUES (new.id, new.name); END;');
+      }))
+      // fix523: permanently drop dead/superseded secondary indexes on `channels`
+      // so they are NEVER rebuilt in the refresh recreate loop
+      // (Sql.withDroppedBrowseIndexes reads sqlite_master, so a dropped index
+      // simply stops appearing — no loop code change needed). Each removal
+      // eliminates one ~20-36s CREATE INDEX from every full refresh. Limited to
+      // the 3 highest-confidence superseded/dead-by-construction indexes that
+      // passed an adversarial dead-index review. DROP IF EXISTS = idempotent;
+      // the historical CREATE INDEX migrations (mig 1 / mig 11) are left intact
+      // (immutable history — a fresh install creates then drops them, cheap on
+      // an empty table). Roll back via a later migration that re-CREATEs.
+      ..add(SqliteMigration(36, (tx) async {
+        // index_channels_browse_order (mig 11): fully superseded by the
+        //   tier-CASE browse indexes (mig 27/30/34); alpha browse's ORDER BY
+        //   (6-tier CASE + name COLLATE NOCASE) cannot use its favorite-DESC /
+        //   stream_validated-DESC / last_watched-DESC shape.
+        await tx.execute('DROP INDEX IF EXISTS index_channels_browse_order;');
+        // index_channel_favorite (mig 1): single-col favorite — only ever a
+        //   residual AND favorite=1 after a source_id/media_type filter or
+        //   inside the tier CASE, never a leading equality this index serves.
+        await tx.execute('DROP INDEX IF EXISTS index_channel_favorite;');
+        // index_channel_media_type (mig 1): cardinality 0/1/2 — non-selective;
+        //   always combined with source_id or led by a media_type browse
+        //   composite (idx_channels_browse_mt / idx_channel_src_media_url).
+        await tx.execute('DROP INDEX IF EXISTS index_channel_media_type;');
       }));
     await migrations.migrate(db);
     // fix419: give the planner real statistics. The app never ran ANALYZE, so

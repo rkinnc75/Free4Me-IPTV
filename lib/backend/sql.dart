@@ -424,6 +424,33 @@ class Sql {
     try {
       await body();
     } finally {
+      // fix523: transient bounded memory window for the index recreate ONLY.
+      // Placed HERE (inner withDroppedBrowseIndexes), NOT in the outer
+      // withSuspendedFtsTriggers: on the single-source path (Utils.processSource)
+      // withDroppedBrowseIndexes is the OUTER wrapper and the FTS suspend is
+      // INNER, so a pragma set in the FTS wrapper would be restored BEFORE this
+      // recreate runs (no speedup on single-source). This placement also covers
+      // FTS-OFF users (fix212) who skip the FTS-suspend branch entirely.
+      // Each CREATE INDEX over the ~1.17M-row channels table runs an external
+      // merge-sort; with SQLite's ~2 MiB default cache the sort SPILLS to slow
+      // eMMC (the uniform ~20-36s/index floor measured on the onn 4K box is the
+      // disk-spill signature). A 32 MiB HARD-CAPPED page cache keeps the table
+      // pages + merge runs resident. cache_size negative = KiB, so -32768 is an
+      // ABSOLUTE 32 MiB ceiling SQLite never exceeds (pages allocated lazily;
+      // OOM-safe on a 1-2GB render-capped box, fix506). temp_store=FILE is set
+      // EXPLICITLY (NOT MEMORY): MEMORY would let the 1.17M-row sorter hold tens
+      // of MB of spill in RAM with no cap across 20+ builds — a real OOM risk.
+      // Connection-scoped pragmas on the single persistent sqlite_async writer
+      // (db.execute routes through writeLock on one reused connection), so they
+      // persist across the recreate db.execute()s and are restored below. In
+      // finally so a throwing body() still restores.
+      try {
+        await db.execute('PRAGMA temp_store = FILE;');
+        await db.execute('PRAGMA cache_size = -32768;');
+      } catch (e) {
+        AppLog.warn('Sql.withDroppedBrowseIndexes: failed to set recreate'
+            ' memory pragmas (continuing on defaults) — $e');
+      }
       var restored = 0;
       for (final r in rows) {
         try {
@@ -436,6 +463,12 @@ class Sql {
       }
       try {
         await db.execute('PRAGMA optimize;');
+      } catch (_) {}
+      // fix523: restore the ~2 MiB SQLite default page cache so the bump never
+      // lingers for normal browse/search on the persistent writer. temp_store
+      // stays at FILE (the safe default). Best-effort like optimize.
+      try {
+        await db.execute('PRAGMA cache_size = -2000;');
       } catch (_) {}
       _browseIndexesDropped = false;
       AppLog.info('Sql.withDroppedBrowseIndexes: recreated $restored/'

@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.23': [
+    '🧪 TEST THIS BUILD: Do a full channel refresh of ALL 5 sources from Settings and let it finish. The long pause at the END of the refresh (rebuilding the channel indexes) is the part that should shrink the most — it should complete noticeably faster than v2.0.22. Then browse normally (All / Live / Movies / Series, the Favorites row, the History row), run a channel search, and toggle a category on/off — everything must load and sort exactly as before, with no missing or mis-ordered channels. Report the total refresh time.',
+    'Faster source refresh (part 5): the slowest remaining step — rebuilding the channel indexes at the end of a refresh — now runs inside a bounded 32 MB memory cache, so each index build keeps its working data in RAM instead of repeatedly reading from slow storage. Three redundant indexes that no longer needed rebuilding were also removed permanently. Together this targets the multi-minute pause at the end of a large refresh. (Phone and TV both benefit.)',
+  ],
   '2.0.22': [
     '🧪 TEST THIS BUILD: Play any channel in full screen and look at the top bar, just to the right of the channel name — the stream\'s resolution and codec (e.g. "720p H.264") should now appear within about a second of playback starting. Before, it usually stayed blank. Try a few different channels.',
     'Fixed the full-screen stream-info label (e.g. "720p H.264") not appearing next to the channel name. A timing race meant the value was produced just before the label was ready to receive it, so it was dropped and the label stayed blank. The label is now latched and shown as soon as playback starts, regardless of timing.',
