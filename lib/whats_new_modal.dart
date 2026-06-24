@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.25': [
+    '🧪 TEST THIS BUILD: TV mode now has a "Categories" tab in the top bar. Open it and confirm you can see your live-TV categories, turn individual ones on/off (e.g. hide |AR| / |DE| foreign-language categories), and use Select All / Unselect All. Disabled categories should disappear from the Live guide and Live browse. (Same category list as phone mode — changes apply to both.)',
+    'TV mode: added a "Categories" tab — manage which live-TV categories are shown, exactly like phone mode: per-category enable/disable plus Select All / Unselect All. Hidden categories are removed from the Live guide and browse. Handy for hiding foreign-language category groups you don\'t watch.',
+  ],
   '2.0.24': [
     '🧪 TEST THIS BUILD: With Safe Mode ON, first refresh your sources once (so the updated adult-keyword list re-flags channels). Then in TV mode confirm adult channels/categories are hidden everywhere — Live guide, Movies/Series browse and drill-in, and Search (the "On now"/"Coming up" shelves). Toggle Safe Mode OFF and confirm they reappear unchanged. Separately: long-press the "History" tab to clear all watch history.',
     'Safe Mode now applies throughout TV mode. Several TV-only screens — Search ("On now"/"Coming up"), series/category drill-in, and the Favorites/History tabs on a cold start — were not honoring Safe Mode and could show adult channels even when it was on. They now filter correctly, matching phone mode.',

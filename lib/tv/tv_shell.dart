@@ -52,6 +52,17 @@ class _TvShellState extends State<TvShell> {
       mediaTypes: [MediaType.serie],
       viewType: ViewType.all,
     ),
+    // fix525: Categories management — mounts the SAME ViewType.categories Home
+    // the phone uses (Select All / Unselect All + per-category enable/disable),
+    // scoped to live-TV categories so foreign-language groups (|AR|, |DE|, ...)
+    // can be hidden. Built by _ensureBuilt's generic `else` Home branch; the
+    // toggles write groups.enabled / channels.cat_enabled shared with phone.
+    TvTab(
+      label: 'Categories',
+      color: Color(0xFF26C6DA),
+      mediaTypes: [MediaType.livestream],
+      viewType: ViewType.categories,
+    ),
     TvTab(
       label: 'Favorites',
       color: Color(0xFFF0B429),
@@ -90,17 +101,18 @@ class _TvShellState extends State<TvShell> {
   }
 
   /// fix500: map the saved Default view onto a landing tab. [ViewType] has no
-  /// livestream/movie/serie member, so `all` / `categories` land on Live TV
-  /// (the category rail focus arrives in fix501); favorites/history map to
-  /// their own tabs.
+  /// livestream/movie/serie member, so `all` lands on Live TV; favorites/history
+  /// /categories map to their own tabs.
+  /// fix525: indices shifted by the inserted Categories tab (now index 3).
   int _landingIndex(ViewType v) {
     switch (v) {
-      case ViewType.favorites:
-        return 3;
-      case ViewType.history:
-        return 4;
-      case ViewType.all:
       case ViewType.categories:
+        return 3;
+      case ViewType.favorites:
+        return 4;
+      case ViewType.history:
+        return 5;
+      case ViewType.all:
       case ViewType.settings:
         return 0;
     }
