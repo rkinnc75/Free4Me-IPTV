@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.20",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.20",
+  "latest": "2.0.21",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.21",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Refresh speed fix: the previous update temporarily set aside one database index during a refresh that the refresh itself needs \u2014 making several steps slow on large playlists. This keeps that index in place, so each step stays fast. With the recent refresh-speed work, a full multi-source refresh is now dramatically quicker than before.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.20/Free4Me-IPTV-2.0.20-arm64.apk"
+  "releaseNotes": "\u2022 \ud83e\uddea TEST THIS BUILD: On the TV, open the source list and Refresh ALL sources (all 5). Let every source finish loading. Watch the very last step \u2014 the search index should now rebuild only ONCE, at the very end, instead of once per source. Then try a channel search (e.g. \"fox\", \"espn\") to confirm results are correct across every source. Note whether the total refresh time is shorter than 2.0.20.\n\u2022 Faster source refresh (part 4): the search-index rebuild is now deferred to a single pass at the end of the whole refresh \u2014 not once per source. Before, each source triggered its own full rebuild (re-scanning your entire catalog). Now all sources load with indexing suspended and the index is rebuilt exactly once at the end, covering every source including M3U playlists. On a multi-source catalog this removes several more minutes. A single-source refresh is unchanged. (Phone and TV both benefit.)",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.21/Free4Me-IPTV-2.0.21-arm64.apk"
 }
