@@ -126,7 +126,8 @@ class _TvSearchViewState extends State<TvSearchView> {
       windowEndEpoch: now + hours * 3600,
     );
     final epgIds = programmes.map((p) => p.epgChannelId).toSet().toList();
-    final epgChannels = await Sql.getLiveChannelsByEpg(_sourceIds, epgIds);
+    final epgChannels =
+        await Sql.getLiveChannelsByEpg(_sourceIds, epgIds, safeMode: s.safeMode);
     if (!mounted || inv != _inv) return;
 
     // Merge into 5 groups. EPG title matches answer "what's on" — split the
@@ -172,6 +173,9 @@ class _TvSearchViewState extends State<TvSearchView> {
   }
 
   void _setNode(Node node) {
+    // fix524 (safe-mode TV leak): the pushed Home runs its own Sql.search /
+    // searchGroup; without safeMode the drilled-in subtree defaulted to OFF.
+    final s = SettingsService.cached ?? widget.settings;
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => Home(
         hasTouchScreen: false,
@@ -186,6 +190,7 @@ class _TvSearchViewState extends State<TvSearchView> {
             ],
             sourceIds: _sourceIds,
             seriesId: node.type == NodeType.series ? node.id : null,
+            safeMode: s.safeMode,
           ),
         ),
       ),

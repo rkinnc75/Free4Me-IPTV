@@ -501,4 +501,12 @@ const safeModeBlocklist = [
   'erotic',
   'porn',
   'x-rated',
+  // fix524 (owner request): bracketed adult category tag, the literal word
+  // "adult", and the "Brazzers" brand (substring matches "brazzers"). Matching
+  // is case-insensitive substring on channel name OR group (Channel.nameIsAdult
+  // + the safeModeGroupClause LIKE). NOTE: "adult" also matches "Adult Swim" —
+  // accepted per owner request; revisit if that legit channel must show.
+  '[xx]',
+  'adult',
+  'brazzer',
 ];

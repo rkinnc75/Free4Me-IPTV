@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.24': [
+    '🧪 TEST THIS BUILD: With Safe Mode ON, first refresh your sources once (so the updated adult-keyword list re-flags channels). Then in TV mode confirm adult channels/categories are hidden everywhere — Live guide, Movies/Series browse and drill-in, and Search (the "On now"/"Coming up" shelves). Toggle Safe Mode OFF and confirm they reappear unchanged. Separately: long-press the "History" tab to clear all watch history.',
+    'Safe Mode now applies throughout TV mode. Several TV-only screens — Search ("On now"/"Coming up"), series/category drill-in, and the Favorites/History tabs on a cold start — were not honoring Safe Mode and could show adult channels even when it was on. They now filter correctly, matching phone mode.',
+    'Safe Mode keyword list expanded: added "[xx]", "adult", and "brazzer" (matched on channel name OR category, alongside your provider\'s adult flag). Refresh your sources after this update so the new keywords apply to already-loaded channels.',
+    'TV History: long-press the "History" tab to clear your entire watch history (a confirm prompt appears first).',
+  ],
   '2.0.23': [
     '🧪 TEST THIS BUILD: Do a full channel refresh of ALL 5 sources from Settings and let it finish. The long pause at the END of the refresh (rebuilding the channel indexes) is the part that should shrink the most — it should complete noticeably faster than v2.0.22. Then browse normally (All / Live / Movies / Series, the Favorites row, the History row), run a channel search, and toggle a category on/off — everything must load and sort exactly as before, with no missing or mis-ordered channels. Report the total refresh time.',
     'Faster source refresh (part 5): the slowest remaining step — rebuilding the channel indexes at the end of a refresh — now runs inside a bounded 32 MB memory cache, so each index build keeps its working data in RAM instead of repeatedly reading from slow storage. Three redundant indexes that no longer needed rebuilding were also removed permanently. Together this targets the multi-minute pause at the end of a large refresh. (Phone and TV both benefit.)',

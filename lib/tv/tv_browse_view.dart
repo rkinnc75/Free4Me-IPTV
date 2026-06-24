@@ -153,6 +153,9 @@ class _TvBrowseViewState extends State<TvBrowseView> {
   /// serie tiles (it also fetches episodes internally); we only route the
   /// seriesId into a navigation [Home]. Copied from TvSearchView._setNode.
   void _setNode(Node node) {
+    // fix524 (safe-mode TV leak): the pushed Home runs its own Sql.search /
+    // searchGroup; without safeMode the drilled-in subtree defaulted to OFF.
+    final s = SettingsService.cached ?? widget.settings;
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => Home(
         hasTouchScreen: false,
@@ -167,6 +170,7 @@ class _TvBrowseViewState extends State<TvBrowseView> {
             ],
             sourceIds: _sourceIds,
             seriesId: node.type == NodeType.series ? node.id : null,
+            safeMode: s.safeMode,
           ),
         ),
       ),

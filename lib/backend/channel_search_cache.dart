@@ -349,6 +349,20 @@ class ChannelSearchCache {
     );
   }
 
+  /// fix524: reset all [lastWatched] to null after [Sql.clearHistory] (the TV
+  /// History tab long-press → clear all). Mirrors clearAllStreamValidated.
+  static void clearAllHistory() {
+    if (!_built || _entries.isEmpty) return;
+    _entries = _entries
+        .map((e) => e.copyWith(lastWatched: null))
+        .toList(growable: false);
+    // _indexById unchanged — IDs and indices are the same.
+    _rebuildSortedViews();
+    AppLog.info(
+      'ChannelSearchCache: clearAllHistory reset ${_entries.length} entries',
+    );
+  }
+
 
   /// Returns channel IDs matching all supplied filters, fully paginated.
   ///

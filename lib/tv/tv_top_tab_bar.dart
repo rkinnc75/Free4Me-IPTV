@@ -33,12 +33,16 @@ class TvTopTabBar extends StatelessWidget {
   final ValueChanged<int> onSelected;
   final VoidCallback onSettings;
 
+  /// fix524: optional long-press per tab index (TV History tab → clear all).
+  final ValueChanged<int>? onLongPress;
+
   const TvTopTabBar({
     super.key,
     required this.tabs,
     required this.selectedIndex,
     required this.onSelected,
     required this.onSettings,
+    this.onLongPress,
   });
 
   @override
@@ -72,6 +76,8 @@ class TvTopTabBar extends StatelessWidget {
                       selected: i == selectedIndex,
                       autofocus: i == selectedIndex,
                       onTap: () => onSelected(i),
+                      onLongPress:
+                          onLongPress == null ? null : () => onLongPress!(i),
                     ),
                 ],
               ),
@@ -93,12 +99,14 @@ class _TabButton extends StatefulWidget {
   final bool selected;
   final bool autofocus;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   const _TabButton({
     required this.tab,
     required this.selected,
     required this.autofocus,
     required this.onTap,
+    this.onLongPress,
   });
 
   @override
@@ -124,6 +132,7 @@ class _TabButtonState extends State<_TabButton> {
           autofocus: widget.autofocus,
           borderRadius: BorderRadius.circular(999),
           onTap: widget.onTap,
+          onLongPress: widget.onLongPress,
           onFocusChange: (value) => setState(() => _focused = value),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 150),

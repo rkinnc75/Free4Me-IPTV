@@ -79,6 +79,10 @@ class TvGuideViewState extends State<TvGuideView> {
   }
 
   Future<void> _init() async {
+    // fix524 (safe-mode TV leak): the guide is built once at shell init and kept
+    // alive in IndexedStack, so widget.settings can go stale if Safe Mode is
+    // toggled afterward. Prefer the live SettingsService.cached value.
+    final s = SettingsService.cached ?? widget.settings;
     final sources = await Sql.getSources();
     final enabled = await Sql.getEnabledSourcesMinimal();
     List<Channel> groups = [];
@@ -87,8 +91,8 @@ class TvGuideViewState extends State<TvGuideView> {
         viewType: ViewType.categories,
         mediaTypes: const [MediaType.livestream],
         sourceIds: enabled.map((e) => e.id).whereType<int>().toList(),
-        searchMethod: widget.settings.searchMethod,
-        safeMode: widget.settings.safeMode,
+        searchMethod: s.searchMethod,
+        safeMode: s.safeMode,
       ));
     } catch (_) {
       groups = [];
@@ -117,6 +121,9 @@ class TvGuideViewState extends State<TvGuideView> {
       _loading = true;
       _selectedGroupId = groupId;
     });
+    // fix524 (safe-mode TV leak): use the live settings value, not the possibly
+    // stale widget.settings (the guide is kept alive across Settings changes).
+    final s = SettingsService.cached ?? widget.settings;
     // Load the scoped channels, paged up to the cap (keeps the grid bounded).
     final channels = <Channel>[];
     for (var page = 1; channels.length < _channelCap; page++) {
@@ -126,8 +133,8 @@ class TvGuideViewState extends State<TvGuideView> {
         groupId: groupId,
         sourceIds: _sourceIds,
         page: page,
-        searchMethod: widget.settings.searchMethod,
-        safeMode: widget.settings.safeMode,
+        searchMethod: s.searchMethod,
+        safeMode: s.safeMode,
       ));
       if (batch.isEmpty) break;
       channels.addAll(batch);

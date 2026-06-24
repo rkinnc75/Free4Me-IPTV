@@ -1670,6 +1670,16 @@ class Sql {
     ChannelSearchCache.updateLastWatched(channelId, null);
   }
 
+  /// fix524: clear ALL watch history (TV History tab long-press). Nulls
+  /// last_watched for every channel; unscoped sibling of deleteHistoryEntry.
+  static Future<void> clearHistory() async {
+    var db = await DbFactory.db;
+    await db.execute(
+      'UPDATE channels SET last_watched = NULL WHERE last_watched IS NOT NULL',
+    );
+    ChannelSearchCache.clearAllHistory();
+  }
+
   static Future<void> addToHistory(int id) async {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     var db = await DbFactory.db;
@@ -2208,16 +2218,22 @@ class Sql {
   /// bounded by the searchPrograms LIMIT.
   static Future<Map<String, Channel>> getLiveChannelsByEpg(
     List<int> sourceIds,
-    List<String> epgChannelIds,
-  ) async {
+    List<String> epgChannelIds, {
+    required bool safeMode,
+  }) async {
     if (sourceIds.isEmpty || epgChannelIds.isEmpty) return {};
     final db = await DbFactory.db;
+    // fix524 (safe-mode TV leak): this query has NO `c.` alias, so use the bare
+    // is_adult column (safeModeClause emits `c.is_adult` and would error here).
+    // Constant predicate → no new bind params; safeMode=false → SQL byte-identical.
+    final smSql = safeMode ? ' AND COALESCE(is_adult, 0) = 0' : '';
     final rows = await db.getAll(
       'SELECT * FROM channels'
       ' WHERE media_type = ${MediaType.livestream.index}'
       ' AND url IS NOT NULL'
       ' AND source_id IN (${generatePlaceholders(sourceIds.length)})'
-      ' AND epg_channel_id IN (${generatePlaceholders(epgChannelIds.length)})',
+      ' AND epg_channel_id IN (${generatePlaceholders(epgChannelIds.length)})'
+      '$smSql',
       [...sourceIds, ...epgChannelIds],
     );
     final map = <String, Channel>{};

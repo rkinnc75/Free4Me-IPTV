@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/home.dart';
 import 'package:open_tv/models/filters.dart';
 import 'package:open_tv/models/home_manager.dart';
@@ -75,6 +76,8 @@ class _TvShellState extends State<TvShell> {
   ];
 
   late int _index;
+  // fix524: bumped to force the History tab body to rebuild after a clear.
+  int _historyGen = 0;
   late final List<Widget?> _built = List<Widget?>.filled(_tabs.length, null);
   // fix510: lets _select() release the Live guide's hero preview on tab-away.
   final GlobalKey<TvGuideViewState> _guideKey = GlobalKey<TvGuideViewState>();
@@ -158,6 +161,51 @@ class _TvShellState extends State<TvShell> {
     );
   }
 
+  /// fix524: long-press the History tab to clear ALL watch history (after a
+  /// confirm). Other tabs ignore the long-press. On confirm, wipes history via
+  /// [Sql.clearHistory] and rebuilds the History body with a fresh key so it
+  /// re-queries (now empty) instead of reusing the cached, stale State.
+  Future<void> _onTabLongPress(int i) async {
+    if (_tabs[i].viewType != ViewType.history) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Clear history?'),
+        content: const Text(
+            'Remove all channels from your watch history? '
+            'This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            autofocus: true,
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    await Sql.clearHistory();
+    if (!mounted) return;
+    setState(() {
+      _historyGen++;
+      final TvTab t = _tabs[i];
+      _built[i] = Home(
+        key: ValueKey<String>('tv-tab-${t.label}-$_historyGen'),
+        hasTouchScreen: false,
+        home: HomeManager(
+          filters: Filters(
+            viewType: t.viewType,
+            mediaTypes: List<MediaType>.of(t.mediaTypes),
+          ),
+        ),
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -169,6 +217,7 @@ class _TvShellState extends State<TvShell> {
               selectedIndex: _index,
               onSelected: _select,
               onSettings: _openSettings,
+              onLongPress: _onTabLongPress,
             ),
             Expanded(
               child: IndexedStack(

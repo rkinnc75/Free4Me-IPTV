@@ -133,13 +133,20 @@ class _HomeState extends State<Home> {
       if (!mounted) return;
       widget.home.filters.sourceIds = sources.map((x) => x.id).toList();
     }
-    if (widget.home.filters.mediaTypes == null) {
+    // fix524 (safe-mode TV leak): sync safeMode/searchMethod from settings even
+    // when mediaTypes is pre-populated. The TV tabs and the _setNode drill-in
+    // pushes set mediaTypes, which previously skipped this whole block → safeMode
+    // stayed at the Filters default (false). Only the mediaTypes fallback stays
+    // gated on null.
+    {
       final s =
           SettingsService.cached ?? await SettingsService.getSettings();
       if (!mounted) return;
-      widget.home.filters.mediaTypes = s.getMediaTypes();
       widget.home.filters.safeMode = s.safeMode;
       widget.home.filters.searchMethod = s.searchMethod;
+      if (widget.home.filters.mediaTypes == null) {
+        widget.home.filters.mediaTypes = s.getMediaTypes();
+      }
     }
 
     final versionFuture = widget.firstLaunch
@@ -225,11 +232,16 @@ class _HomeState extends State<Home> {
 
   Future<void> load([bool more = false]) async {
     // changes made in the Settings screen take effect without a restart.
-    final liveSettings = SettingsService.cached;
-    if (liveSettings != null) {
-      widget.home.filters.searchMethod = liveSettings.searchMethod;
-      widget.home.filters.safeMode = liveSettings.safeMode;
-    }
+    // fix524 (safe-mode TV leak): always resolve a non-null Settings so safeMode
+    // is set before every query. The old cached-only guard left safeMode at the
+    // Filters default (false) on a cold cache — leaking adult content in the TV
+    // Favorites/History tabs (which pre-populate mediaTypes and so skipped the
+    // initState-time sync below).
+    final liveSettings =
+        SettingsService.cached ?? await SettingsService.getSettings();
+    if (!mounted) return;
+    widget.home.filters.searchMethod = liveSettings.searchMethod;
+    widget.home.filters.safeMode = liveSettings.safeMode;
 
     if (more) {
       widget.home.filters.page++;
