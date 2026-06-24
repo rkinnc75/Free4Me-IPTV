@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.22",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.22",
+  "latest": "2.0.23",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.23",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 \ud83e\uddea TEST THIS BUILD: Play any channel in full screen and look at the top bar, just to the right of the channel name \u2014 the stream's resolution and codec (e.g. \"720p H.264\") should now appear within about a second of playback starting. Before, it usually stayed blank. Try a few different channels.\n\u2022 Fixed the full-screen stream-info label (e.g. \"720p H.264\") not appearing next to the channel name. A timing race meant the value was produced just before the label was ready to receive it, so it was dropped and the label stayed blank. The label is now latched and shown as soon as playback starts, regardless of timing.\n\u2022 Settings \u2192 Search method: the \"FTS Phrase\" option is relabeled \"(word order)\" instead of \"(original)\", and internal diagnostics now name the word-prefix search index accurately (cosmetic only \u2014 no behavior change).",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.22/Free4Me-IPTV-2.0.22-arm64.apk"
+  "releaseNotes": "\u2022 \ud83e\uddea TEST THIS BUILD: Do a full channel refresh of ALL 5 sources from Settings and let it finish. The long pause at the END of the refresh (rebuilding the channel indexes) is the part that should shrink the most \u2014 it should complete noticeably faster than v2.0.22. Then browse normally (All / Live / Movies / Series, the Favorites row, the History row), run a channel search, and toggle a category on/off \u2014 everything must load and sort exactly as before, with no missing or mis-ordered channels. Report the total refresh time.\n\u2022 Faster source refresh (part 5): the slowest remaining step \u2014 rebuilding the channel indexes at the end of a refresh \u2014 now runs inside a bounded 32 MB memory cache, so each index build keeps its working data in RAM instead of repeatedly reading from slow storage. Three redundant indexes that no longer needed rebuilding were also removed permanently. Together this targets the multi-minute pause at the end of a large refresh. (Phone and TV both benefit.)",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.23/Free4Me-IPTV-2.0.23-arm64.apk"
 }
