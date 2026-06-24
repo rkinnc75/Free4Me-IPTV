@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.33': [
+    'Internal diagnostics only — no user-visible change. Adds extra logging to help track down why some Live TV categories can appear empty.',
+  ],
   '2.0.32': [
     '🧪 TEST THIS BUILD: Open Live TV (and the TV "Live" browse) and scroll the category rail all the way down. Providers with hundreds of live categories (e.g. 800+) should now show far more of them — the rail used to stop at 300.',
     'Raised the Live TV category-rail ceiling from 300 to 1000, so providers with very large live-category lists no longer have categories cut off the bottom of the rail.',

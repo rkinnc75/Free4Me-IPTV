@@ -101,6 +101,40 @@ class TimedWriteContext implements SqliteWriteContext {
         AppLog.info('fix418 stats bigcat src=${r['source_id']}'
             ' group=${r['group_id']} n=${r['n']}');
       }
+      // fix533: groups.enabled dump per source/media_type. Pairs with the
+      // channels `en` (cat_enabled) line above to disambiguate the
+      // empty-live-category symptom: if a source's live (mt=0) shows
+      // groups_en=0/N here, the categories are genuinely disabled at the
+      // groups level (prior user disable, restored by fix298) — channels.
+      // cat_enabled=0 is then CORRECT. If groups_en=N/N but channels `en`=0,
+      // the cat_enabled denormalization UPDATE failed to propagate — a bug.
+      final grpEn = await _inner.getAll(
+        'SELECT source_id, media_type, COUNT(*) g_n,'
+        ' SUM(CASE WHEN COALESCE(enabled,1)=1 THEN 1 ELSE 0 END) g_en'
+        ' FROM groups GROUP BY source_id, media_type',
+      );
+      for (final r in grpEn) {
+        AppLog.info('fix533 groups src=${r['source_id']} mt=${r['media_type']}'
+            ' g_n=${r['g_n']} g_en=${r['g_en']}');
+      }
+      // fix533: channels whose group_id is NULL or points at a missing groups
+      // row (the group_name->group_id join-failure signal). A nonzero unmatched
+      // count on a source means the refresh group_id assignment did not resolve
+      // every channel — those rows fall through to the `group_id IS NULL`
+      // cat_enabled=1 default, so they would NOT be the empty-category cause,
+      // but the number is the direct measure of join health.
+      final orphan = await _inner.getAll(
+        'SELECT c.source_id,'
+        ' SUM(CASE WHEN c.group_id IS NULL THEN 1 ELSE 0 END) null_gid,'
+        ' SUM(CASE WHEN c.group_id IS NOT NULL AND g.id IS NULL'
+        '   THEN 1 ELSE 0 END) dangling_gid'
+        ' FROM channels c LEFT JOIN groups g ON g.id = c.group_id'
+        ' GROUP BY c.source_id',
+      );
+      for (final r in orphan) {
+        AppLog.info('fix533 orphan src=${r['source_id']}'
+            ' null_gid=${r['null_gid']} dangling_gid=${r['dangling_gid']}');
+      }
     } catch (e) {
       AppLog.warn('fix418 stats failed: $e');
     }
