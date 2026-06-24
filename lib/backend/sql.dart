@@ -390,6 +390,18 @@ class Sql {
   static const List<String> _keepIndexesDuringRefresh = [
     'index_channel_source_id',
   ];
+  /// fix526: does a named index currently exist? Gates forced `INDEXED BY`
+  /// hints so a missing or mid-rebuild index never hard-crashes a query with
+  /// "no such index" (which previously left the browse stuck loading).
+  static Future<bool> _indexExists(String name) async {
+    final db = await DbFactory.db;
+    final r = await db.getOptional(
+      "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?",
+      [name],
+    );
+    return r != null;
+  }
+
   static Future<void> withDroppedBrowseIndexes(
       Future<void> Function() body) async {
     if (_browseIndexesDropped) {
@@ -850,13 +862,24 @@ class Sql {
       // VisibilityClause when seriesId/groupId are null) and its tier sort are
       // guaranteed present; otherwise no hint and behaviour is unchanged.
       final browseMode = await _uniformSortMode(filters.sourceIds!);
-      final useSrcMtHint = filters.viewType != ViewType.favorites &&
+      var useSrcMtHint = filters.viewType != ViewType.favorites &&
           filters.viewType != ViewType.history &&
           filters.seriesId == null &&
           filters.groupId == null &&
           filters.sourceIds!.length == 1 &&
           mediaTypes.length == 1 &&
           browseMode == 'alpha';
+      // fix526: a forced `INDEXED BY` on a MISSING index is a hard
+      // SqliteException ("no such index") that escapes as an unhandled error and
+      // leaves the browse stuck on "loading". Some upgraded DBs are missing the
+      // partial browse indexes from migration 34, and withDroppedBrowseIndexes
+      // also drops idx_browse_src_mt for the duration of a refresh. Only force
+      // the hint when the index actually exists right now; otherwise fall back
+      // to the planner (functional, just unhinted). Checked LIVE (not cached) so
+      // the mid-refresh drop window cannot produce a stale "present".
+      if (useSrcMtHint && !await _indexExists('idx_browse_src_mt')) {
+        useSrcMtHint = false;
+      }
       // No query — simple filter on indexed columns.
       sqlQuery = '''
         SELECT * FROM channels c${useSrcMtHint ? ' INDEXED BY idx_browse_src_mt' : ''}

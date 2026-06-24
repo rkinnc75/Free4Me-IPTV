@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.26': [
+    '🧪 TEST THIS BUILD: This fixes the regression where channel/movie/series lists got stuck on "loading" and showed nothing. Open Live, Movies, Series, Favorites, and History and confirm content loads again — including when viewing a single source. Also in this build (from the last two updates): the new "Categories" tab (toggle live-TV categories on/off, Select All / Unselect All) and Safe Mode now applying in TV mode.',
+    'Fixed: channel/movie/series lists could get stuck on "loading" with nothing shown. A browse query forced a database index that some upgraded installs are missing, which crashed the query instead of falling back. It now uses that index only when present, so lists always load. (A future update will rebuild the missing index to restore peak single-source browse speed.)',
+  ],
   '2.0.25': [
     '🧪 TEST THIS BUILD: TV mode now has a "Categories" tab in the top bar. Open it and confirm you can see your live-TV categories, turn individual ones on/off (e.g. hide |AR| / |DE| foreign-language categories), and use Select All / Unselect All. Disabled categories should disappear from the Live guide and Live browse. (Same category list as phone mode — changes apply to both.)',
     'TV mode: added a "Categories" tab — manage which live-TV categories are shown, exactly like phone mode: per-category enable/disable plus Select All / Unselect All. Hidden categories are removed from the Live guide and browse. Handy for hiding foreign-language category groups you don\'t watch.',
