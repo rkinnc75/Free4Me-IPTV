@@ -264,11 +264,22 @@ class Sql {
       "AND name IN ('channels_ai', 'channels_au', 'channels_ad')",
     );
     final hadTriggers = existing.length == 3;
+    // fix521: re-entrancy — when an outer batch (refreshAllSources) has already
+    // suspended the FTS triggers around the WHOLE loop, this inner per-source
+    // call is a pure pass-through: the triggers are already dropped so the body
+    // inserts trigger-free, and the OUTER finally owns the single end-of-batch
+    // global rebuild (no per-source rebuild). Mirrors fix518's
+    // _browseIndexesDropped.
+    if (_ftsTriggersSuspended) {
+      await body();
+      return;
+    }
     var useTargeted = false;
     if (hadTriggers) {
       await db.execute('DROP TRIGGER IF EXISTS channels_ai;');
       await db.execute('DROP TRIGGER IF EXISTS channels_au;');
       await db.execute('DROP TRIGGER IF EXISTS channels_ad;');
+      _ftsTriggersSuspended = true;
       if (refreshedSourceId != null) {
         final counts = await db.getAll(
           'SELECT '
@@ -310,6 +321,9 @@ class Sql {
       bodySucceeded = true;
     } finally {
       if (hadTriggers) {
+        // fix521: clear the re-entrancy flag before recreating triggers, so the
+        // next refresh (or a throw-recovery) starts clean.
+        _ftsTriggersSuspended = false;
         if (useTargeted && bodySucceeded) {
           // [body] has now wiped+reinserted this source's rows in `channels`;
           // insert their current state into the FTS index.
@@ -346,6 +360,12 @@ class Sql {
   /// route a meaningfully-sized source through the unvalidated middle zone.
   static const int _ftsTargetedMaxRows = 50000;
   static const double _ftsTargetedMaxFraction = 0.2;
+
+  /// fix521: re-entrancy guard for the deferred FTS rebuild — set true by the
+  /// OUTER withSuspendedFtsTriggers (refreshAllSources wrapping the whole loop)
+  /// so inner per-source calls pass through and the FTS index rebuilds ONCE at
+  /// the end of the batch. Sibling of [_browseIndexesDropped].
+  static bool _ftsTriggersSuspended = false;
 
   /// fix518: drop the non-unique secondary indexes on `channels` for the
   /// duration of a bulk refresh, then recreate them ONCE from their stored DDL.

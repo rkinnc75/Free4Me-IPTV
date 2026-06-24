@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.21': [
+    '🧪 TEST THIS BUILD: On the TV, open the source list and Refresh ALL sources (all 5). Let every source finish loading. Watch the very last step — the search index should now rebuild only ONCE, at the very end, instead of once per source. Then try a channel search (e.g. "fox", "espn") to confirm results are correct across every source. Note whether the total refresh time is shorter than 2.0.20.',
+    'Faster source refresh (part 4): the search-index rebuild is now deferred to a single pass at the end of the whole refresh — not once per source. Before, each source triggered its own full rebuild (re-scanning your entire catalog). Now all sources load with indexing suspended and the index is rebuilt exactly once at the end, covering every source including M3U playlists. On a multi-source catalog this removes several more minutes. A single-source refresh is unchanged. (Phone and TV both benefit.)',
+  ],
   '2.0.20': [
     'Refresh speed fix: the previous update temporarily set aside one database index during a refresh that the refresh itself needs — making several steps slow on large playlists. This keeps that index in place, so each step stays fast. With the recent refresh-speed work, a full multi-source refresh is now dramatically quicker than before.',
   ],

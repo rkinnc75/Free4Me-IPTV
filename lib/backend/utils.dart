@@ -153,6 +153,14 @@ class Utils {
 
     if (enabled.isEmpty) return;
 
+    // fix521: suspend the FTS triggers around the WHOLE batch (outermost) so
+    // every source inserts trigger-free and the FTS index is rebuilt exactly
+    // ONCE at the end — not once per source. The per-source wrap in xtream.dart
+    // hits the _ftsTriggersSuspended early-return and becomes a pass-through,
+    // and M3U (which has no per-source wrap) is still covered because this
+    // outer call always ends in a full global rebuild. No refreshedSourceId →
+    // the end rebuild reindexes every source, including M3U.
+    //
     // fix518: drop the channels browse indexes ONCE around the whole loop and
     // rebuild them once at the end (not per source) — the per-row index
     // maintenance across every source's wipe+reinsert was the dominant cost.
@@ -160,19 +168,21 @@ class Utils {
     // both the shared FTS-trigger suspend and this index drop/recreate, and
     // SQLite serializes writes anyway, so concurrency bought nothing on the
     // DB-write-bound refresh.
-    await Sql.withDroppedBrowseIndexes(() async {
-      for (var i = 0; i < enabled.length; i++) {
-        final s = enabled[i];
-        onSourceStart?.call(i + 1, enabled.length, s);
-        await refreshSource(
-          s,
-          onProgress:
-              onSourceStatus == null ? null : (msg) => onSourceStatus(s, msg),
-          onRowProgress: onSourceRowProgress == null
-              ? null
-              : (done, total) => onSourceRowProgress(s, done, total),
-        );
-      }
+    await Sql.withSuspendedFtsTriggers(() async {
+      await Sql.withDroppedBrowseIndexes(() async {
+        for (var i = 0; i < enabled.length; i++) {
+          final s = enabled[i];
+          onSourceStart?.call(i + 1, enabled.length, s);
+          await refreshSource(
+            s,
+            onProgress:
+                onSourceStatus == null ? null : (msg) => onSourceStatus(s, msg),
+            onRowProgress: onSourceRowProgress == null
+                ? null
+                : (done, total) => onSourceRowProgress(s, done, total),
+          );
+        }
+      });
     });
   }
 
