@@ -43,7 +43,7 @@ class TvGuideViewState extends State<TvGuideView> {
   static const int _windowHours = 3;
   static const int _channelCap = 200; // rail-scoped guard against huge groups
   // fix527: cap the (now paged) Live category rail, mirroring TvBrowseView.
-  static const int _railCap = 300;
+  static const int _railCap = 1000;
 
   Map<int, int?> _sourceColors = {};
   List<int> _sourceIds = [];

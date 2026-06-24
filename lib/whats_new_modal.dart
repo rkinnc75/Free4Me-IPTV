@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.32': [
+    '🧪 TEST THIS BUILD: Open Live TV (and the TV "Live" browse) and scroll the category rail all the way down. Providers with hundreds of live categories (e.g. 800+) should now show far more of them — the rail used to stop at 300.',
+    'Raised the Live TV category-rail ceiling from 300 to 1000, so providers with very large live-category lists no longer have categories cut off the bottom of the rail.',
+  ],
   '2.0.31': [
     '🧪 TEST THIS BUILD: With Safe Mode ON, open Live / Movies / Series and confirm they load FAST even for adult-heavy sources or categories (those could still hang ~80 seconds in the previous build). Content should appear within about a second everywhere.',
     'Fixed the last slow browse case: with Safe Mode on, browsing a source/category that is mostly adult content could still take ~80 seconds, because the planner used a non-filtered index and scanned the whole list. The mixed-source browse now forces the adult-excluding index, so even all-adult sources return instantly.',

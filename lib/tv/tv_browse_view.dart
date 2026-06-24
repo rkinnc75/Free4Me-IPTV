@@ -52,7 +52,7 @@ class _TvBrowseViewState extends State<TvBrowseView> {
   // Bounded-query guards (mirror TvGuideView). One page (pageSize) is the
   // common case; the caps protect against pathological providers.
   static const int _itemCap = 200;
-  static const int _railCap = 300;
+  static const int _railCap = 1000;
 
   Map<int, int?> _sourceColors = {};
   List<int> _sourceIds = [];
