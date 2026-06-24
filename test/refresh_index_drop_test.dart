@@ -18,7 +18,8 @@ import 'package:sqlite3/sqlite3.dart' as s3;
 List<Map<String, Object?>> _droppable(s3.Database db) => db
     .select("SELECT name, sql FROM sqlite_master "
         "WHERE type='index' AND tbl_name='channels' "
-        "AND sql IS NOT NULL AND UPPER(sql) NOT LIKE 'CREATE UNIQUE%'")
+        "AND sql IS NOT NULL AND UPPER(sql) NOT LIKE 'CREATE UNIQUE%' "
+        "AND name NOT IN ('index_channel_source_id')")
     .map((r) => {'name': r['name'], 'sql': r['sql']})
     .toList();
 
@@ -60,12 +61,15 @@ void main() {
       expect(
           names,
           {
-            'index_channel_source_id',
             'index_channels_group_name',
             'idx_browse_src_mt',
             'index_channel_favorite',
           },
-          reason: 'only non-unique secondary indexes are droppable');
+          reason: 'non-unique secondary indexes are droppable EXCEPT the '
+              'refresh-critical index_channel_source_id (fix520)');
+      expect(names, isNot(contains('index_channel_source_id')),
+          reason: 'fix520: kept so per-source WHERE source_id=? stays indexed '
+              '(dropping it made each a ~20s full scan on the box)');
       expect(names, isNot(contains('channels_unique_stream')));
       expect(names, isNot(contains('channels_unique_series')));
     });
@@ -79,11 +83,13 @@ void main() {
       for (final r in dropped) {
         db.execute('DROP INDEX IF EXISTS "${r['name']}";');
       }
-      // Mid-body: unique indexes survive; droppable ones are gone.
+      // Mid-body: unique indexes + the kept source_id index survive;
+      // droppable ones are gone.
       final mid = _allChannelIndexes(db);
       expect(mid.containsKey('channels_unique_stream'), isTrue);
       expect(mid.containsKey('channels_unique_series'), isTrue);
-      expect(mid.containsKey('index_channel_source_id'), isFalse);
+      expect(mid.containsKey('index_channel_source_id'), isTrue,
+          reason: 'fix520: kept so refresh source_id queries stay indexed');
       expect(mid.containsKey('idx_browse_src_mt'), isFalse);
       // Recreate from the stored DDL.
       for (final r in dropped) {

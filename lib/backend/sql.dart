@@ -360,6 +360,16 @@ class Sql {
   /// the indexes around the whole loop, a nested per-source call is a no-op, so
   /// the catalog is reindexed once for the batch, not once per source.
   static bool _browseIndexesDropped = false;
+
+  /// fix520: channels indexes that must survive a bulk refresh because the
+  /// refresh's own statements query by them. Only index_channel_source_id
+  /// qualifies — every per-source step filters `WHERE source_id = ?`, so
+  /// without it each becomes a full-catalog scan. All other secondary indexes
+  /// (the expensive composite/CASE browse-tier ones) are still dropped +
+  /// rebuilt once.
+  static const List<String> _keepIndexesDuringRefresh = [
+    'index_channel_source_id',
+  ];
   static Future<void> withDroppedBrowseIndexes(
       Future<void> Function() body) async {
     if (_browseIndexesDropped) {
@@ -368,10 +378,21 @@ class Sql {
       return;
     }
     final db = await DbFactory.db;
+    // fix520: KEEP the indexes the refresh itself queries by. Every per-source
+    // `WHERE source_id = ?` (the wipe DELETE, the two COUNTs, the groups
+    // GROUP BY, the group_id/cat_enabled UPDATEs, the preserve SELECT, the FTS
+    // targeted SELECT) needs index_channel_source_id; dropping it turned each
+    // into a ~20s full scan of the ~1.17M-row catalog on the onn 4K box
+    // (measured: A3000 went 38s -> 220s). We still drop the expensive
+    // composite/CASE browse-tier indexes — those are the real per-row
+    // insert-maintenance cost — just not the source_id lookup the refresh
+    // depends on.
     final rows = await db.getAll(
       "SELECT name, sql FROM sqlite_master "
       "WHERE type = 'index' AND tbl_name = 'channels' "
-      "AND sql IS NOT NULL AND UPPER(sql) NOT LIKE 'CREATE UNIQUE%'",
+      "AND sql IS NOT NULL AND UPPER(sql) NOT LIKE 'CREATE UNIQUE%' "
+      "AND name NOT IN (${generatePlaceholders(_keepIndexesDuringRefresh.length)})",
+      _keepIndexesDuringRefresh,
     );
     for (final r in rows) {
       await db.execute('DROP INDEX IF EXISTS "${r['name']}";');
