@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.35",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.35",
+  "latest": "2.0.36",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.36",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Diagnostic export now includes a full database snapshot (channels + EPG) when you choose to include credentials, so support can reproduce performance issues with your exact data. The snapshot is omitted unless credentials are included, since the database contains them.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.35/Free4Me-IPTV-2.0.35-arm64.apk"
+  "releaseNotes": "\u2022 \ud83e\uddea TEST THIS BUILD: Run the source-dump / diagnostic export and choose YES to include the database snapshot. It should now finish without the \"Out of Memory\" error, and the database files appear as their own downloads on the export page.\n\u2022 Fixed an out-of-memory crash when exporting the database snapshot on lower-RAM devices. The database is now copied as a streamed standalone download instead of being compressed into the zip.\n\u2022 The diagnostic (source-dump) export can now also include the database snapshot, not just the settings export.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.36/Free4Me-IPTV-2.0.36-arm64.apk"
 }
