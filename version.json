@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.33",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.33",
+  "latest": "2.0.34",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.34",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Internal diagnostics only \u2014 no user-visible change. Adds extra logging to help track down why some Live TV categories can appear empty.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.33/Free4Me-IPTV-2.0.33-arm64.apk"
+  "releaseNotes": "\u2022 \ud83e\uddea TEST THIS BUILD (TV): Change which sources are enabled (in Settings or the source list), then go back to Live / Movies / Series / Categories. Each tab should now reflect the new source set immediately \u2014 previously a tab could keep showing the old source's categories/channels until the app restarted.\n\u2022 Fixed the TV tabs (Live, Movies, Series, Categories) not refreshing after you change which sources are enabled. They now reload when you open the tab or return from Settings, so the list always matches your current sources.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.34/Free4Me-IPTV-2.0.34-arm64.apk"
 }
