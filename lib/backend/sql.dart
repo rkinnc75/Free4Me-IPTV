@@ -2556,12 +2556,30 @@ class Sql {
       seriesId: filters.seriesId,
       groupId: filters.groupId,
     );
+    // fix531: with Safe Mode ON the planner residual-filters is_adult on the
+    // NON-safe idx_browse_src_mt and scans an adult-heavy source's whole
+    // (source,media_type) partition to find 0 non-adult rows (measured 83s on
+    // the onn; ANALYZE in fix530 couldn't fix it — sqlite_stat1 is averaged and
+    // can't model per-source adult skew). Force the source-led *_safe partial
+    // (fix528, migration 37): it EXCLUDES adult rows, so an adult-heavy source
+    // contributes ~0 rows instantly. Only when the partial WHERE is provably
+    // implied — ungrouped browse emits `series_id IS NULL AND cat_enabled = 1`
+    // (VisibilityClause) and smClause emits `is_adult = 0`. Gated on existence
+    // (a forced INDEXED BY on a missing index is a hard crash — fix526). For
+    // provider/category modes the index serves the filter and the small
+    // per-source result re-sorts via a cheap temp B-tree (results unchanged).
+    final safeHint = (filters.safeMode &&
+            filters.seriesId == null &&
+            filters.groupId == null &&
+            await _indexExists('idx_browse_src_mt_safe'))
+        ? ' INDEXED BY idx_browse_src_mt_safe'
+        : '';
     final innerLimit = offset + pageSize;
     final parts = <String>[];
     final params = <Object>[];
     for (final s in filters.sourceIds!) {
       parts.add('SELECT * FROM ('
-          'SELECT c.* FROM channels c'
+          'SELECT c.* FROM channels c$safeHint'
           ' WHERE media_type IN (${generatePlaceholders(mt.length)})'
           ' AND source_id = ? AND url IS NOT NULL'
           '$smClause$visSql${BrowseOrder.orderBy(modes[s] ?? 'alpha')}'

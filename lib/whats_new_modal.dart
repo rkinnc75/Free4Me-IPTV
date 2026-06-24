@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.31': [
+    '🧪 TEST THIS BUILD: With Safe Mode ON, open Live / Movies / Series and confirm they load FAST even for adult-heavy sources or categories (those could still hang ~80 seconds in the previous build). Content should appear within about a second everywhere.',
+    'Fixed the last slow browse case: with Safe Mode on, browsing a source/category that is mostly adult content could still take ~80 seconds, because the planner used a non-filtered index and scanned the whole list. The mixed-source browse now forces the adult-excluding index, so even all-adult sources return instantly.',
+  ],
   '2.0.30': [
     '🧪 TEST THIS BUILD: First launch runs a one-time database statistics pass (a few seconds). Then with Safe Mode ON, open Live / Movies / Series and confirm lists load FAST — including categories/sources that are mostly adult content (those could take 100+ seconds before). Content should appear within about a second.',
     'Fixed (follow-up to the browse-speed work): with Safe Mode on, some browse lists — especially adult-heavy sources — could still take a very long time because the database query planner was not using the new Safe-Mode indexes. The app now runs a one-time statistics pass (ANALYZE) so the planner always picks the fast index.',
