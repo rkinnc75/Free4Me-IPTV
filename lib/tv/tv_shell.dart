@@ -90,6 +90,11 @@ class _TvShellState extends State<TvShell> {
   late int _index;
   // fix524: bumped to force the History tab body to rebuild after a clear.
   int _historyGen = 0;
+  // fix534: bumped on tab re-select / return-from-Settings to force the cached
+  // TV tabs (Search/Movies/Series/Categories) to rebuild with a fresh key, so
+  // they re-run initState/_load and pick up a changed enabled-source set. The
+  // IndexedStack keeps every tab alive, so without this they stay stale.
+  int _reloadGen = 0;
   late final List<Widget?> _built = List<Widget?>.filled(_tabs.length, null);
   // fix510: lets _select() release the Live guide's hero preview on tab-away.
   final GlobalKey<TvGuideViewState> _guideKey = GlobalKey<TvGuideViewState>();
@@ -126,24 +131,30 @@ class _TvShellState extends State<TvShell> {
     // grid). fix502: the Search tab hosts the grouped "what's on" search. The
     // other content tabs host the existing Home browse body.
     if (t.isSearch) {
-      _built[i] = TvSearchView(settings: widget.settings);
+      _built[i] = TvSearchView(
+        key: ValueKey<String>('tv-search-$_reloadGen'),
+        settings: widget.settings,
+      );
     } else if (i == 0) {
       _built[i] = TvGuideView(key: _guideKey, settings: widget.settings);
     } else if (i == 1 || i == 2) {
       // fix507: Movies (1) / Series (2) get the native rail+grid browse instead
       // of the reused phone Home body. One parameterized widget serves both.
       _built[i] = TvBrowseView(
-        key: ValueKey<String>('tv-browse-${t.label}'),
+        key: ValueKey<String>('tv-browse-${t.label}-$_reloadGen'),
         settings: widget.settings,
         mediaType: t.mediaTypes.first,
       );
     } else if (t.viewType == ViewType.categories) {
       // fix529: TV-native category management (D-pad checkable poster grid),
       // not the phone Home (which trapped focus on its search box).
-      _built[i] = TvCategoriesView(settings: widget.settings);
+      _built[i] = TvCategoriesView(
+        key: ValueKey<String>('tv-categories-$_reloadGen'),
+        settings: widget.settings,
+      );
     } else {
       _built[i] = Home(
-        key: ValueKey<String>('tv-tab-${t.label}'),
+        key: ValueKey<String>('tv-tab-${t.label}-$_reloadGen-$_historyGen'),
         hasTouchScreen: false,
         home: HomeManager(
           filters: Filters(
@@ -167,15 +178,39 @@ class _TvShellState extends State<TvShell> {
     if (!mounted) return;
     setState(() {
       _index = i;
+      // fix534: force the target tab to re-query the (possibly changed)
+      // enabled-source set. The guide reloads via its GlobalKey method; the
+      // other keyed tabs rebuild under a fresh _reloadGen key. Home-based tabs
+      // (Favorites/History) and the guide's own cached widget are untouched
+      // except where they re-query themselves.
+      if (i == 0) {
+        _guideKey.currentState?.reloadGuide();
+      } else {
+        _reloadGen++;
+        _built[i] = null;
+      }
       _ensureBuilt(i);
     });
   }
 
-  void _openSettings() {
-    Navigator.of(context).push(
+  Future<void> _openSettings() async {
+    await Navigator.of(context).push(
       MaterialPageRoute(
           builder: (_) => SettingsView(showNavBar: false, tvRailPane: true)),
     );
+    // fix534: sources (and other settings) may have changed in Settings. The
+    // IndexedStack keeps the current tab alive, so force it to re-query on
+    // return — same mechanism as _select's tab-change reload.
+    if (!mounted) return;
+    setState(() {
+      if (_index == 0) {
+        _guideKey.currentState?.reloadGuide();
+      } else {
+        _reloadGen++;
+        _built[_index] = null;
+        _ensureBuilt(_index);
+      }
+    });
   }
 
   /// fix524: long-press the History tab to clear ALL watch history (after a
@@ -211,7 +246,7 @@ class _TvShellState extends State<TvShell> {
       _historyGen++;
       final TvTab t = _tabs[i];
       _built[i] = Home(
-        key: ValueKey<String>('tv-tab-${t.label}-$_historyGen'),
+        key: ValueKey<String>('tv-tab-${t.label}-$_reloadGen-$_historyGen'),
         hasTouchScreen: false,
         home: HomeManager(
           filters: Filters(

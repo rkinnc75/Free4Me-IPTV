@@ -478,6 +478,13 @@ class TvGuideViewState extends State<TvGuideView> {
   /// (and its provider connection) is released immediately.
   Future<void> stopHeroPreview() => _preview.stop();
 
+  /// fix534: called by TvShell when the Live tab is re-selected (or after
+  /// returning from Settings), so the guide re-reads the enabled-source set and
+  /// re-queries. The IndexedStack keeps this widget alive, so initState does NOT
+  /// re-run on re-entry; without this the rail/grid stay stale after the user
+  /// changes which sources are enabled. Reloads from the top (no group filter).
+  Future<void> reloadGuide() => _loadGuide(null);
+
   Widget _timeHeader() {
     final ticks = <Widget>[];
     for (var h = 0; h <= _windowHours; h++) {
