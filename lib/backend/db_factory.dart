@@ -907,6 +907,26 @@ class DbFactory {
         try {
           await tx.execute('PRAGMA cache_size = -2000;');
         } catch (_) {}
+      }))
+      // fix530: the app had NEVER run a full ANALYZE (only PRAGMA optimize), so
+      // the planner was blind and chose the NON-safe browse indexes over the
+      // fix528 *_safe partial variants — leaving Safe-Mode browse on the slow
+      // residual-is_adult scan (on-box: a fully-adult 2-source slice measured
+      // 105s, rows=0, because it walked the whole media_type partition skipping
+      // adult rows). ANALYZE records each partial index's TRUE row count; the
+      // *_safe partials are smaller (adult rows excluded) so the planner now
+      // prefers them for the safe-mode query (filter + ORDER BY index-served, no
+      // full-partition scan; an all-adult source's _safe slice is ~0 rows =
+      // instant). One-time; wrapped in the fix523 memory pragmas.
+      ..add(SqliteMigration(38, (tx) async {
+        try {
+          await tx.execute('PRAGMA temp_store = FILE;');
+          await tx.execute('PRAGMA cache_size = -32768;');
+        } catch (_) {}
+        await tx.execute('ANALYZE;');
+        try {
+          await tx.execute('PRAGMA cache_size = -2000;');
+        } catch (_) {}
       }));
     await migrations.migrate(db);
     // fix419: give the planner real statistics. The app never ran ANALYZE, so
