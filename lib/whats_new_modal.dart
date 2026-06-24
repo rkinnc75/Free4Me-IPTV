@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.36': [
+    '🧪 TEST THIS BUILD: Run the source-dump / diagnostic export and choose YES to include the database snapshot. It should now finish without the "Out of Memory" error, and the database files appear as their own downloads on the export page.',
+    'Fixed an out-of-memory crash when exporting the database snapshot on lower-RAM devices. The database is now copied as a streamed standalone download instead of being compressed into the zip.',
+    'The diagnostic (source-dump) export can now also include the database snapshot, not just the settings export.',
+  ],
   '2.0.35': [
     'Diagnostic export now includes a full database snapshot (channels + EPG) when you choose to include credentials, so support can reproduce performance issues with your exact data. The snapshot is omitted unless credentials are included, since the database contains them.',
   ],

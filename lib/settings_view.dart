@@ -1540,12 +1540,40 @@ class _SettingsState extends State<SettingsView> {
     if (!mounted) return;
     final stamp = await SettingsIo.stampWithDevice(); // fix322
     if (isTV) {
+      // fix536: offer to include the DB snapshot from the diagnostic export too
+      // (previously only the "Export settings to file" path could). Gated the
+      // same way — the DB carries credentials — and defaults to No.
+      if (!mounted) return;
+      final includeDb = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Include database snapshot?'),
+          content: const Text(
+            'Also include a full database snapshot (channels + EPG) for '
+            'diagnostics? This makes the export much larger and contains your '
+            'Xtream usernames and passwords.\n\n'
+            'Only choose YES if you are sending this somewhere secure.',
+          ),
+          actions: [
+            TextButton(
+              autofocus: true,
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('No (safer)'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Yes'),
+            ),
+          ],
+        ),
+      );
+      if (includeDb == null || !mounted) return;
       // fix311: the LAN server exports all files (source dump, debug log,
       // settings) plus a combined zip.
       // fix327: build + serve behind a progress dialog.
       // fix328: pass sourceDump:null so the builder STREAMS the dumps to a
       // file instead of this method concatenating them in memory (OOM on TV).
-      await _runTvServerExport(stamp: stamp);
+      await _runTvServerExport(stamp: stamp, includeCredentials: includeDb);
     } else {
       // Phone/tablet: concatenate for the single-file save (SAF available,
       // catalogues smaller — acceptable in memory here).
@@ -1651,9 +1679,11 @@ class _SettingsState extends State<SettingsView> {
     // than shipped with secrets.
     //
     // Checkpoint+truncate the WAL first so the .sqlite files are self-consistent
-    // (recent writes otherwise live only in the -wal sidecar), then copy each DB
-    // file-to-file (no in-memory buffering, preserving the fix328 OOM-avoidance
-    // design on the 2GB TV box).
+    // (recent writes otherwise live only in the -wal sidecar), then stream-copy
+    // each DB to the export dir as a STANDALONE download. fix536: the DB is
+    // deliberately NOT added to the combined zip — ZipFileEncoder.addFile read
+    // the whole multi-hundred-MB db.sqlite into the heap and OOM'd the 2GB TV
+    // box (fix535 regression). A SQLite file barely compresses anyway.
     if (includeCredentials) {
       onStep?.call('Snapshotting database…');
       try {
@@ -1668,7 +1698,14 @@ class _SettingsState extends State<SettingsView> {
         final destName = 'free4me-$dbName-$stamp.sqlite';
         final destPath = '${outDir.path}/$destName';
         try {
-          await src.copy(destPath);
+          // fix536: stream the copy in chunks instead of File.copy() and, more
+          // importantly, do NOT add the DB to the combined zip. The OOM on the
+          // 2GB TV box (fix535 regression) was ZipFileEncoder.addFile reading
+          // the full multi-hundred-MB db.sqlite into the heap to compress it.
+          // The DB is already a binary blob that barely compresses, so it ships
+          // as a standalone portal download only; the zip stays small (dumps +
+          // log + settings), preserving the fix328 OOM-avoidance design.
+          await _streamCopyFile(src, destPath);
           final len = await File(destPath).length();
           items.add(ExportItem(
             key: 'db-$dbName',
@@ -1679,7 +1716,6 @@ class _SettingsState extends State<SettingsView> {
             sizeBytes: len,
             contentType: 'application/x-sqlite3',
           ));
-          toZip[destPath] = destName;
         } catch (e) {
           AppLog.warn('export: failed to copy $dbName — $e');
         }
@@ -1716,6 +1752,18 @@ class _SettingsState extends State<SettingsView> {
     if (content.isEmpty) return false;
     await File(path).writeAsString(content);
     return true;
+  }
+
+  // fix536: copy a (potentially very large) file by streaming bytes through a
+  // sink, never holding the whole file in memory. Used for the DB snapshot so
+  // a multi-hundred-MB db.sqlite cannot OOM the 2GB TV box.
+  Future<void> _streamCopyFile(File src, String destPath) async {
+    final sink = File(destPath).openWrite();
+    try {
+      await sink.addStream(src.openRead());
+    } finally {
+      await sink.close();
+    }
   }
 
   // fix311/fix328: stream the raw Xtream source dumps to a single file,
