@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.29",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.29",
+  "latest": "2.0.30",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.30",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 \ud83e\uddea TEST THIS BUILD (cumulative \u2014 also includes the browse-speed fix): (1) With Safe Mode ON, open Live / Movies / Series \u2014 lists should LOAD FAST now (first launch runs a one-time index build, ~1\u20132 min, let it finish). (2) Open the TV \"Categories\" tab: it is now a D-pad-navigable grid of category cards \u2014 press SELECT to toggle a category on/off (the checkbox shows the state), plus Select all / Unselect all. Disabled categories drop out of Live. (3) The top-left header icon is now the app icon.\n\u2022 TV Categories is now a proper TV screen: a D-pad-navigable grid of category cards (matching the Search/Movies card style) where the SELECT button toggles each category on/off \u2014 the old screen reused the phone layout and could not be operated by remote. Select all / Unselect all included.\n\u2022 TV header now shows the app icon instead of a generic green TV icon.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.29/Free4Me-IPTV-2.0.29-arm64.apk"
+  "releaseNotes": "\u2022 \ud83e\uddea TEST THIS BUILD: First launch runs a one-time database statistics pass (a few seconds). Then with Safe Mode ON, open Live / Movies / Series and confirm lists load FAST \u2014 including categories/sources that are mostly adult content (those could take 100+ seconds before). Content should appear within about a second.\n\u2022 Fixed (follow-up to the browse-speed work): with Safe Mode on, some browse lists \u2014 especially adult-heavy sources \u2014 could still take a very long time because the database query planner was not using the new Safe-Mode indexes. The app now runs a one-time statistics pass (ANALYZE) so the planner always picks the fast index.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.30/Free4Me-IPTV-2.0.30-arm64.apk"
 }
