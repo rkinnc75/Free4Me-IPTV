@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.23",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.23",
+  "latest": "2.0.25",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.25",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 \ud83e\uddea TEST THIS BUILD: Do a full channel refresh of ALL 5 sources from Settings and let it finish. The long pause at the END of the refresh (rebuilding the channel indexes) is the part that should shrink the most \u2014 it should complete noticeably faster than v2.0.22. Then browse normally (All / Live / Movies / Series, the Favorites row, the History row), run a channel search, and toggle a category on/off \u2014 everything must load and sort exactly as before, with no missing or mis-ordered channels. Report the total refresh time.\n\u2022 Faster source refresh (part 5): the slowest remaining step \u2014 rebuilding the channel indexes at the end of a refresh \u2014 now runs inside a bounded 32 MB memory cache, so each index build keeps its working data in RAM instead of repeatedly reading from slow storage. Three redundant indexes that no longer needed rebuilding were also removed permanently. Together this targets the multi-minute pause at the end of a large refresh. (Phone and TV both benefit.)",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.23/Free4Me-IPTV-2.0.23-arm64.apk"
+  "releaseNotes": "\u2022 \ud83e\uddea TEST THIS BUILD: TV mode now has a \"Categories\" tab in the top bar. Open it and confirm you can see your live-TV categories, turn individual ones on/off (e.g. hide |AR| / |DE| foreign-language categories), and use Select All / Unselect All. Disabled categories should disappear from the Live guide and Live browse. (Same category list as phone mode \u2014 changes apply to both.)\n\u2022 TV mode: added a \"Categories\" tab \u2014 manage which live-TV categories are shown, exactly like phone mode: per-category enable/disable plus Select All / Unselect All. Hidden categories are removed from the Live guide and browse. Handy for hiding foreign-language category groups you don't watch.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.25/Free4Me-IPTV-2.0.25-arm64.apk"
 }
