@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.31",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.31",
+  "latest": "2.0.32",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.32",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 \ud83e\uddea TEST THIS BUILD: With Safe Mode ON, open Live / Movies / Series and confirm they load FAST even for adult-heavy sources or categories (those could still hang ~80 seconds in the previous build). Content should appear within about a second everywhere.\n\u2022 Fixed the last slow browse case: with Safe Mode on, browsing a source/category that is mostly adult content could still take ~80 seconds, because the planner used a non-filtered index and scanned the whole list. The mixed-source browse now forces the adult-excluding index, so even all-adult sources return instantly.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.31/Free4Me-IPTV-2.0.31-arm64.apk"
+  "releaseNotes": "\u2022 \ud83e\uddea TEST THIS BUILD: Open Live TV (and the TV \"Live\" browse) and scroll the category rail all the way down. Providers with hundreds of live categories (e.g. 800+) should now show far more of them \u2014 the rail used to stop at 300.\n\u2022 Raised the Live TV category-rail ceiling from 300 to 1000, so providers with very large live-category lists no longer have categories cut off the bottom of the rail.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.32/Free4Me-IPTV-2.0.32-arm64.apk"
 }
