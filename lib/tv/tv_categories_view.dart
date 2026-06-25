@@ -200,11 +200,13 @@ class _TvCategoriesViewState extends State<TvCategoriesView> {
           child: GridView.builder(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              // fix538: halve the max extent (220->110) to roughly double the
-              // column count (~8 across on a 4K TV), giving smaller tiles and
-              // more categories visible per screen.
-              maxCrossAxisExtent: 110,
-              childAspectRatio: 0.82,
+              // fix551: widen tiles from ~8 across to ~6 (maxExtent 110->150) so
+              // the 2-line category label (see ChannelTile poster body) is
+              // readable on a 10-foot TV. fix538 had halved this to 110 for
+              // density, but the labels became too small/truncated to read.
+              // Taller aspect (0.82->0.74) gives room for the second text line.
+              maxCrossAxisExtent: 150,
+              childAspectRatio: 0.74,
               mainAxisSpacing: 14,
               crossAxisSpacing: 14,
             ),

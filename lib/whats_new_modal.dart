@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.51': [
+    'TV: the Categories grid tiles are now wider (~6 across instead of ~8) with two-line labels so they read at 10 feet; Search poster cards are resized to match; the background scrim is slightly lighter so more of the neon art shows through.',
+  ],
   '2.0.50': [
     'TV: fixed the "Report an issue" dialog focus trap — D-pad could not leave the multi-line Details field to reach Cancel/Submit. The dialog now opens with Submit focused and lets the remote move up to the fields and back down.',
   ],

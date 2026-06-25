@@ -271,8 +271,12 @@ class _TvSearchViewState extends State<TvSearchView> {
     required bool poster,
     bool autofocusFirst = false,
   }) {
-    final double rowHeight = poster ? 236 : 104;
-    final double cardWidth = poster ? 150 : 320;
+    // fix551: size TV search poster cards to match the category grid tiles
+    // (which widened to ~6-across with 2-line labels) instead of the smaller
+    // phone-ish cards. Taller poster rows give the wrapped 2-line title room;
+    // wider cards read at 10ft. Live (now/next) cards unchanged.
+    final double rowHeight = poster ? 270 : 104;
+    final double cardWidth = poster ? 168 : 320;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

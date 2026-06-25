@@ -1,0 +1,109 @@
+diff --git a/lib/channel_tile.dart b/lib/channel_tile.dart
+index 6ba7f97..f55d309 100644
+--- a/lib/channel_tile.dart
++++ b/lib/channel_tile.dart
+@@ -487,13 +487,16 @@ class _ChannelTileState extends State<ChannelTile> {
+           ),
+         ),
+         Padding(
+-          // fix538: tighter padding + single line for the half-size tiles.
++          // fix551: allow the title to wrap to 2 lines (was maxLines:1 +
++          // ellipsis, too small/truncated to read at 10ft). Pairs with the
++          // wider category tiles (tv_categories_view 8->6 across) and applies to
++          // all TV poster tiles (categories + movies/series) for legibility.
+           padding: const EdgeInsets.fromLTRB(6, 4, 6, 6),
+           child: Text(
+             widget.channel.name,
+-            maxLines: 1,
++            maxLines: 2,
+             overflow: TextOverflow.ellipsis,
+-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
++            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+           ),
+         ),
+       ],
+diff --git a/lib/tv/tv_categories_view.dart b/lib/tv/tv_categories_view.dart
+index 86c6092..dbc6c39 100644
+--- a/lib/tv/tv_categories_view.dart
++++ b/lib/tv/tv_categories_view.dart
+@@ -200,11 +200,13 @@ class _TvCategoriesViewState extends State<TvCategoriesView> {
+           child: GridView.builder(
+             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+             gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+-              // fix538: halve the max extent (220->110) to roughly double the
+-              // column count (~8 across on a 4K TV), giving smaller tiles and
+-              // more categories visible per screen.
+-              maxCrossAxisExtent: 110,
+-              childAspectRatio: 0.82,
++              // fix551: widen tiles from ~8 across to ~6 (maxExtent 110->150) so
++              // the 2-line category label (see ChannelTile poster body) is
++              // readable on a 10-foot TV. fix538 had halved this to 110 for
++              // density, but the labels became too small/truncated to read.
++              // Taller aspect (0.82->0.74) gives room for the second text line.
++              maxCrossAxisExtent: 150,
++              childAspectRatio: 0.74,
+               mainAxisSpacing: 14,
+               crossAxisSpacing: 14,
+             ),
+diff --git a/lib/tv/tv_search_view.dart b/lib/tv/tv_search_view.dart
+index af244fe..e4a1330 100644
+--- a/lib/tv/tv_search_view.dart
++++ b/lib/tv/tv_search_view.dart
+@@ -271,8 +271,12 @@ class _TvSearchViewState extends State<TvSearchView> {
+     required bool poster,
+     bool autofocusFirst = false,
+   }) {
+-    final double rowHeight = poster ? 236 : 104;
+-    final double cardWidth = poster ? 150 : 320;
++    // fix551: size TV search poster cards to match the category grid tiles
++    // (which widened to ~6-across with 2-line labels) instead of the smaller
++    // phone-ish cards. Taller poster rows give the wrapped 2-line title room;
++    // wider cards read at 10ft. Live (now/next) cards unchanged.
++    final double rowHeight = poster ? 270 : 104;
++    final double cardWidth = poster ? 168 : 320;
+     return Column(
+       crossAxisAlignment: CrossAxisAlignment.start,
+       children: [
+diff --git a/lib/tv/tv_shell.dart b/lib/tv/tv_shell.dart
+index d0c915c..b0cc19a 100644
+--- a/lib/tv/tv_shell.dart
++++ b/lib/tv/tv_shell.dart
+@@ -270,9 +270,10 @@ class _TvShellState extends State<TvShell> {
+           image: AssetImage('assets/tv_background.webp'),
+           fit: BoxFit.cover,
+         ),
+-        // Dark scrim: a flat ~90% black keeps the whole UI legible over the
+-        // bright neon art while leaving a subtle ambient glow.
+-        const ColoredBox(color: Color(0xE6000000)),
++        // Dark scrim: fix551 softened from ~90% to ~80% black (0xE6->0xCC) —
++        // the 90% scrim was too dark over the neon art. Still keeps foreground
++        // text/tiles legible while letting more of the background glow through.
++        const ColoredBox(color: Color(0xCC000000)),
+         Scaffold(
+           backgroundColor: Colors.transparent,
+           body: SafeArea(
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '2.0.51': [
++    'TV: the Categories grid tiles are now wider (~6 across instead of ~8) with two-line labels so they read at 10 feet; Search poster cards are resized to match; the background scrim is slightly lighter so more of the neon art shows through.',
++  ],
+   '2.0.50': [
+     'TV: fixed the "Report an issue" dialog focus trap — D-pad could not leave the multi-line Details field to reach Cancel/Submit. The dialog now opens with Submit focused and lets the remote move up to the fields and back down.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 2.0.50+550
++version: 2.0.51+551
+
+ environment:
+   sdk: ^3.10.7

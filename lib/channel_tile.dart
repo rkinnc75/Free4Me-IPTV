@@ -487,13 +487,16 @@ class _ChannelTileState extends State<ChannelTile> {
           ),
         ),
         Padding(
-          // fix538: tighter padding + single line for the half-size tiles.
+          // fix551: allow the title to wrap to 2 lines (was maxLines:1 +
+          // ellipsis, too small/truncated to read at 10ft). Pairs with the
+          // wider category tiles (tv_categories_view 8->6 across) and applies to
+          // all TV poster tiles (categories + movies/series) for legibility.
           padding: const EdgeInsets.fromLTRB(6, 4, 6, 6),
           child: Text(
             widget.channel.name,
-            maxLines: 1,
+            maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
           ),
         ),
       ],
