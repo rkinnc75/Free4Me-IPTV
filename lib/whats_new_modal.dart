@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.48': [
+    'Build/signing: release APKs are now signed with both the v1 and v2 signature schemes (was v2 only), which can reduce Google Play Protect warnings on install. No change to the signing key — updates still install over previous versions.',
+  ],
   '2.0.47': [
     'TV: the Categories screen now has Live TV, Movies, and Series buttons across the top. Pick one to manage that type\'s categories (enable/disable them as before). Defaults to Live TV.',
   ],

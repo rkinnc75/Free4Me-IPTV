@@ -54,6 +54,18 @@ android {
                 keyPassword = keystoreProperties['keyPassword']
                 storeFile = file(keystoreProperties['storeFile'])
                 storePassword = keystoreProperties['storePassword']
+                // fix548: enable the v1 (JAR) APK signature in addition to v2.
+                // The release was v2-only; some Google Play Protect heuristics
+                // still weight the presence of a v1 signature as a "known-app"
+                // signal, and its absence can contribute to the harsher
+                // "tries to bypass Android's security protections" sideload
+                // warning. v2/v3 stay enabled (default true) for modern Android;
+                // adding v1 is strictly additive and safe on all supported API
+                // levels. Does NOT change the signing key/cert — the cert
+                // SHA-256 is unchanged, so updates still install over prior
+                // releases cleanly.
+                v1SigningEnabled true
+                v2SigningEnabled true
             }
         }
     }
