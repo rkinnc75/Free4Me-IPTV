@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.52': [
+    'TV: the top-left header icon now shows the current neon play-triangle app icon (was the old green/blue "Free4Me-IPTV" circle logo). It now matches the home-screen launcher icon.',
+  ],
   '2.0.51': [
     'TV: the Categories grid tiles are now wider (~6 across instead of ~8) with two-line labels so they read at 10 feet; Search poster cards are resized to match; the background scrim is slightly lighter so more of the neon art shows through.',
   ],
