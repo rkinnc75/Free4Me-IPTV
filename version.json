@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.52",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.52",
+  "latest": "2.0.53",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.53",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 TV: the top-left header icon now shows the current neon play-triangle app icon (was the old green/blue \"Free4Me-IPTV\" circle logo). It now matches the home-screen launcher icon.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.52/Free4Me-IPTV-2.0.52-arm64.apk"
+  "releaseNotes": "\u2022 TV: Categories now uses a left type-rail (Live TV / Movies / Series) instead of the centered pill row, matching the Movies/Series layout. All three TV grids (Categories / Movies / Series) now share one tile size (~120x155px) for a consistent look.\n\u2022 TV: the Report-issue dialog opens with Subject focused (so the user can start typing immediately); after Submit the result dialog opens with OK focused.\n\u2022 TV: replaced the in-app header icon with a rounded-corner version so it no longer shows white corners behind the TV header frame. The background scrim is also a touch lighter (75%).",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.53/Free4Me-IPTV-2.0.53-arm64.apk"
 }
