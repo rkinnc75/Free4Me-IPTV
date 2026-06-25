@@ -26,6 +26,15 @@ class TvCategoriesView extends StatefulWidget {
 
 class _TvCategoriesViewState extends State<TvCategoriesView> {
   static const int _cap = 1000;
+  // fix547: Categories now spans all three media types. A centered row of three
+  // type buttons (Live TV / Movies / Series) selects which type's categories the
+  // grid below shows; defaults to Live TV.
+  static const List<MediaType> _types = [
+    MediaType.livestream,
+    MediaType.movie,
+    MediaType.serie,
+  ];
+  MediaType _selectedType = MediaType.livestream;
   List<Channel> _groups = [];
   Map<int, int?> _sourceColors = {};
   List<int> _sourceIds = [];
@@ -51,7 +60,7 @@ class _TvCategoriesViewState extends State<TvCategoriesView> {
       for (var page = 1; groups.length < _cap; page++) {
         final batch = await Sql.search(Filters(
           viewType: ViewType.categories,
-          mediaTypes: const [MediaType.livestream],
+          mediaTypes: [_selectedType],
           sourceIds: ids,
           page: page,
           searchMethod: s.searchMethod,
@@ -77,27 +86,96 @@ class _TvCategoriesViewState extends State<TvCategoriesView> {
   }
 
   Future<void> _setAll(bool enabled) async {
-    await Sql.setAllGroupsEnabled(
-        _sourceIds, const [MediaType.livestream], enabled);
+    await Sql.setAllGroupsEnabled(_sourceIds, [_selectedType], enabled);
     await _load();
+  }
+
+  // fix547: switch which media type's categories are shown and reload.
+  void _selectType(MediaType t) {
+    if (t == _selectedType) return;
+    setState(() {
+      _selectedType = t;
+      _ready = false;
+      _groups = [];
+    });
+    _load();
+  }
+
+  static String _typeLabel(MediaType t) {
+    switch (t) {
+      case MediaType.livestream:
+        return 'Live TV';
+      case MediaType.movie:
+        return 'Movies';
+      case MediaType.serie:
+        return 'Series';
+      case MediaType.group:
+        return '';
+    }
+  }
+
+  static IconData _typeIcon(MediaType t) {
+    switch (t) {
+      case MediaType.livestream:
+        return Icons.live_tv;
+      case MediaType.movie:
+        return Icons.movie;
+      case MediaType.serie:
+        return Icons.video_library;
+      case MediaType.group:
+        return Icons.folder;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _typeRow(),
+        Expanded(child: _body()),
+      ],
+    );
+  }
+
+  // fix547: centered row of the three media-type buttons. Equal-width, tightly
+  // sized, horizontally centered (not stretched edge-to-edge).
+  Widget _typeRow() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          for (var i = 0; i < _types.length; i++) ...[
+            if (i > 0) const SizedBox(width: 14),
+            _TypeButton(
+              label: _typeLabel(_types[i]),
+              icon: _typeIcon(_types[i]),
+              selected: _types[i] == _selectedType,
+              autofocus: i == 0,
+              onTap: () => _selectType(_types[i]),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _body() {
     if (!_ready) {
       return const Center(child: CircularProgressIndicator());
     }
     if (_groups.isEmpty) {
-      return const Center(
-        child: Text('No live-TV categories',
-            style: TextStyle(color: Colors.white70)),
+      return Center(
+        child: Text('No ${_typeLabel(_selectedType)} categories',
+            style: const TextStyle(color: Colors.white70)),
       );
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
           child: Row(
             children: [
               Text('${_groups.length} categories · select toggles on/off',
@@ -156,6 +234,77 @@ class _TvCategoriesViewState extends State<TvCategoriesView> {
           ),
         ),
       ],
+    );
+  }
+}
+
+// fix547: a focusable, DPad-navigable type button for the Categories type row.
+// Mirrors TvBrowseView's _FocusTile (yellow focus border, primary-tinted when
+// selected) so focus behaviour matches the rest of the TV UI.
+class _TypeButton extends StatefulWidget {
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final bool autofocus;
+  final VoidCallback onTap;
+  const _TypeButton({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.autofocus,
+    required this.onTap,
+  });
+
+  @override
+  State<_TypeButton> createState() => _TypeButtonState();
+}
+
+class _TypeButtonState extends State<_TypeButton> {
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: widget.selected
+          ? scheme.primary.withValues(alpha: 0.22)
+          : Colors.white.withValues(alpha: 0.05),
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        autofocus: widget.autofocus,
+        onTap: widget.onTap,
+        onFocusChange: (v) => setState(() => _focused = v),
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          width: 180,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: _focused
+                  ? Colors.yellow
+                  : (widget.selected
+                      ? scheme.primary
+                      : Colors.white24),
+              width: 3,
+            ),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(widget.icon, size: 20),
+              const SizedBox(width: 10),
+              Text(
+                widget.label,
+                style: TextStyle(
+                  fontWeight:
+                      widget.selected ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
