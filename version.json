@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.39",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.39",
+  "latest": "2.0.40",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.40",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 \ud83e\uddea TEST THIS BUILD (TV): Open Live TV, Movies, and Series \u2014 each now opens to your Favorites for that section. In Movies/Series the rail's top item is \"Favorites\"; in Live TV the \"Favorites\" pill is on by default (tap it to see all channels). The separate Favorites tab has been removed.\n\u2022 TV: Favorites is now built into Live TV, Movies, and Series (showing favorites for that section) instead of a separate top-menu tab. The old standalone Favorites tab and the \"All\" toggle were removed.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.39/Free4Me-IPTV-2.0.39-arm64.apk"
+  "releaseNotes": "\u2022 TV: added a subtle neon background image behind the interface, dimmed for readability.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.40/Free4Me-IPTV-2.0.40-arm64.apk"
 }
