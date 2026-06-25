@@ -104,6 +104,11 @@ Future<void> main() async {
     }).catchError((e) {
       AppLog.warn('main: browse warm-up failed — $e');
     }));
+    // fix542: run the deferred one-time fix537 index maintenance (drop unused +
+    // rebuild cat_enabled-free browse indexes + VACUUM) HERE, off the cold-start
+    // critical path (unawaited, after first frame), so it can never block
+    // startup / black-screen the app on a large catalog. Gated to run once.
+    unawaited(Sql.runPendingIndexMaintenance());
   }
   unawaited(EpgService.scheduleBackgroundRefresh());
   // fix506: mirror the render-cap setting to the native SharedPref so the

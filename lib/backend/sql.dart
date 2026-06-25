@@ -1213,6 +1213,145 @@ class Sql {
   /// point is the side effect of pulling idx_channels_browse_mt /
   /// idx_channels_browse_enabled and their data pages into cache. Best-effort:
   /// any error is swallowed by the caller. Returns elapsed ms for logging.
+  /// fix542: the deferred, one-time fix537 index maintenance — moved OFF the
+  /// cold-start path because on the full ~1.43GB catalog it was ~27s of index
+  /// rebuild + a full-file VACUUM on the main thread before runApp(), which
+  /// blacked-out / ANR-killed the app on open. main() calls this unawaited
+  /// after first frame. Gated by the app_meta marker so it runs at most once;
+  /// the marker is only written after the WHOLE pass succeeds, so a partial /
+  /// interrupted run simply retries on a later launch (every step is
+  /// idempotent: DROP IF EXISTS, then drop-then-create). Until it completes the
+  /// OLD cat_enabled-partial browse indexes remain and browse works normally.
+  static Future<void> runPendingIndexMaintenance() async {
+    const marker = 'fix537_index_rebuild_done';
+    // The 5 unused indexes to drop, and the 7 browse indexes rebuilt WITHOUT
+    // `cat_enabled` in the partial predicate (so toggling cat_enabled no longer
+    // churns them — the fix537 win). DDL is verified planner-equivalent.
+    const dead = <String>[
+      'idx_browse_cat',
+      'idx_browse_cat_safe',
+      'index_channel_name',
+      'idx_channel_adult',
+      'idx_channel_divider',
+    ];
+    const rebuilt = <String, String>{
+      'idx_channels_browse_mt':
+          'CREATE INDEX idx_channels_browse_mt ON channels( media_type,'
+              ' (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0'
+              ' WHEN COALESCE(favorite,0)=1 THEN 1'
+              ' WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2'
+              ' WHEN last_watched IS NOT NULL THEN 3'
+              ' WHEN COALESCE(stream_validated,0)=1 THEN 4 ELSE 5 END),'
+              ' name COLLATE NOCASE )'
+              ' WHERE url IS NOT NULL AND series_id IS NULL',
+      'idx_channels_browse_mt_safe':
+          'CREATE INDEX idx_channels_browse_mt_safe ON channels( media_type,'
+              ' (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0'
+              ' WHEN COALESCE(favorite,0)=1 THEN 1'
+              ' WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2'
+              ' WHEN last_watched IS NOT NULL THEN 3'
+              ' WHEN COALESCE(stream_validated,0)=1 THEN 4 ELSE 5 END),'
+              ' name COLLATE NOCASE )'
+              ' WHERE url IS NOT NULL AND series_id IS NULL'
+              ' AND COALESCE(is_adult,0) = 0',
+      'idx_browse_prov':
+          'CREATE INDEX idx_browse_prov ON channels( media_type,'
+              ' (CASE WHEN COALESCE(favorite,0)=1 THEN 0 ELSE 1 END),'
+              ' (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0 ELSE 1 END),'
+              ' provider_order, name COLLATE NOCASE )'
+              ' WHERE url IS NOT NULL AND series_id IS NULL',
+      'idx_browse_prov_safe':
+          'CREATE INDEX idx_browse_prov_safe ON channels( media_type,'
+              ' (CASE WHEN COALESCE(favorite,0)=1 THEN 0 ELSE 1 END),'
+              ' (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0 ELSE 1 END),'
+              ' provider_order, name COLLATE NOCASE )'
+              ' WHERE url IS NOT NULL AND series_id IS NULL'
+              ' AND COALESCE(is_adult,0) = 0',
+      'idx_browse_src_mt':
+          'CREATE INDEX idx_browse_src_mt ON channels( source_id, media_type,'
+              ' (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0'
+              ' WHEN COALESCE(favorite,0)=1 THEN 1'
+              ' WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2'
+              ' WHEN last_watched IS NOT NULL THEN 3'
+              ' WHEN COALESCE(stream_validated,0)=1 THEN 4 ELSE 5 END),'
+              ' name COLLATE NOCASE )'
+              ' WHERE url IS NOT NULL AND series_id IS NULL',
+      'idx_browse_src_mt_safe':
+          'CREATE INDEX idx_browse_src_mt_safe ON channels( source_id, media_type,'
+              ' (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0'
+              ' WHEN COALESCE(favorite,0)=1 THEN 1'
+              ' WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2'
+              ' WHEN last_watched IS NOT NULL THEN 3'
+              ' WHEN COALESCE(stream_validated,0)=1 THEN 4 ELSE 5 END),'
+              ' name COLLATE NOCASE )'
+              ' WHERE url IS NOT NULL AND series_id IS NULL'
+              ' AND COALESCE(is_adult,0) = 0',
+      'idx_channels_browse_enabled':
+          'CREATE INDEX idx_channels_browse_enabled ON channels( source_id,'
+              ' (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0'
+              ' WHEN COALESCE(favorite,0)=1 THEN 1'
+              ' WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2'
+              ' WHEN last_watched IS NOT NULL THEN 3'
+              ' WHEN COALESCE(stream_validated,0)=1 THEN 4 ELSE 5 END),'
+              ' name COLLATE NOCASE )'
+              ' WHERE url IS NOT NULL AND series_id IS NULL',
+    };
+    try {
+      final db = await DbFactory.db;
+      final done = await db.getOptional(
+        "SELECT value FROM app_meta WHERE key = '$marker'",
+      );
+      if (done != null) return;
+      // fix542: devices that already completed the OLD blocking migration-39
+      // (its marker was 'fix537_vacuum_done') are ALREADY in the target state —
+      // cat_enabled-free indexes + a VACUUMed DB. Don't redundantly re-run the
+      // ~50s pass; just record the new marker and stop.
+      final legacy = await db.getOptional(
+        "SELECT value FROM app_meta WHERE key = 'fix537_vacuum_done'",
+      );
+      if (legacy != null) {
+        await db.execute(
+          "INSERT OR REPLACE INTO app_meta (key, value) VALUES ('$marker', '1');",
+        );
+        AppLog.info('fix542: legacy fix537 marker present — maintenance already'
+            ' done, marking complete.');
+        return;
+      }
+      AppLog.info('fix542: deferred index maintenance starting…');
+      final sw = Stopwatch()..start();
+      // Bounded memory so the index merge-sorts spill to disk, not RAM (OOM-safe
+      // on a 1-2GB box). Connection-scoped on the single persistent writer.
+      try {
+        await db.execute('PRAGMA temp_store = FILE;');
+        await db.execute('PRAGMA cache_size = -32768;');
+      } catch (_) {}
+      for (final name in dead) {
+        await db.execute('DROP INDEX IF EXISTS $name;');
+      }
+      for (final entry in rebuilt.entries) {
+        await db.execute('DROP INDEX IF EXISTS ${entry.key};');
+        await db.execute(entry.value);
+      }
+      // VACUUM reclaims the freed pages (cannot run in a transaction; the
+      // writer is between statements here). Best-effort within the larger try.
+      await db.execute('VACUUM;');
+      await db.execute(
+        "INSERT OR REPLACE INTO app_meta (key, value) VALUES ('$marker', '1');",
+      );
+      try {
+        await db.execute('PRAGMA cache_size = -2000;');
+        await db.execute('PRAGMA optimize;');
+      } catch (_) {}
+      AppLog.info('fix542: deferred index maintenance complete'
+          ' (${sw.elapsedMilliseconds}ms).');
+    } catch (e) {
+      // Leaves the OLD indexes in place (browse still works); retries next
+      // launch since the marker is only written on full success.
+      AppLog.warn('fix542: deferred index maintenance skipped'
+          ' (will retry next launch) — $e');
+    }
+  }
+
   static Future<int> warmBrowseCache(Settings settings) async {
     final sw = Stopwatch()..start();
     try {

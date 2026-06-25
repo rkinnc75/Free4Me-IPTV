@@ -945,123 +945,29 @@ class DbFactory {
       // freed pages (~290MB on the field DB) runs once AFTER migrate(), below
       // (VACUUM cannot run inside the migration transaction).
       ..add(SqliteMigration(39, (tx) async {
-        try {
-          await tx.execute('PRAGMA temp_store = FILE;');
-          await tx.execute('PRAGMA cache_size = -32768;');
-        } catch (_) {}
-        // fix537: tiny KV table for one-shot post-migration markers (the
-        // VACUUM-done flag below). IF NOT EXISTS so re-running is harmless.
+        // fix542: migration 39 is now TRIVIAL — it only creates the marker
+        // table. The original fix537 body (drop 5 dead indexes + rebuild 7
+        // browse indexes without cat_enabled + VACUUM) ran INSIDE this
+        // migration on the cold-start path, before runApp(). On a device with
+        // the full ~1.43GB catalog that was ~27s of index work + a full-file
+        // VACUUM on the main thread, which blacked-out/ANR-killed the app on
+        // open (both phone and the onn box, on the 2.0.35->latest jump). All of
+        // that heavy work is deferred to Sql.runPendingIndexMaintenance(),
+        // invoked unawaited from main() AFTER first frame and gated by the
+        // app_meta marker so it runs at most once. Until it completes, the OLD
+        // cat_enabled-partial indexes remain and browse works normally (enable-
+        // source is merely slow, the pre-fix537 behaviour) — never a crash.
         await tx.execute(
           'CREATE TABLE IF NOT EXISTS app_meta'
           ' (key TEXT PRIMARY KEY, value TEXT);',
         );
-        for (final dead in const [
-          'idx_browse_cat',
-          'idx_browse_cat_safe',
-          'index_channel_name',
-          'idx_channel_adult',
-          'idx_channel_divider',
-        ]) {
-          await tx.execute('DROP INDEX IF EXISTS $dead;');
-        }
-        // Rebuild the 7 browse indexes WITHOUT `AND cat_enabled = 1`. DDL is
-        // the prior-migration DDL minus that predicate; the 6-tier CASE and
-        // column order are otherwise identical so the planner still walks each
-        // one (EXPLAIN-verified on the field DB for alpha/provider/category x
-        // safe/non-safe x mt-only/src-scoped). Drop-then-create replaces the
-        // old partial version on already-upgraded DBs.
-        const rebuilt = <String, String>{
-          'idx_channels_browse_mt':
-              'CREATE INDEX idx_channels_browse_mt ON channels( media_type,'
-                  ' (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0'
-                  ' WHEN COALESCE(favorite,0)=1 THEN 1'
-                  ' WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2'
-                  ' WHEN last_watched IS NOT NULL THEN 3'
-                  ' WHEN COALESCE(stream_validated,0)=1 THEN 4 ELSE 5 END),'
-                  ' name COLLATE NOCASE )'
-                  ' WHERE url IS NOT NULL AND series_id IS NULL',
-          'idx_channels_browse_mt_safe':
-              'CREATE INDEX idx_channels_browse_mt_safe ON channels( media_type,'
-                  ' (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0'
-                  ' WHEN COALESCE(favorite,0)=1 THEN 1'
-                  ' WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2'
-                  ' WHEN last_watched IS NOT NULL THEN 3'
-                  ' WHEN COALESCE(stream_validated,0)=1 THEN 4 ELSE 5 END),'
-                  ' name COLLATE NOCASE )'
-                  ' WHERE url IS NOT NULL AND series_id IS NULL'
-                  ' AND COALESCE(is_adult,0) = 0',
-          'idx_browse_prov':
-              'CREATE INDEX idx_browse_prov ON channels( media_type,'
-                  ' (CASE WHEN COALESCE(favorite,0)=1 THEN 0 ELSE 1 END),'
-                  ' (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0 ELSE 1 END),'
-                  ' provider_order, name COLLATE NOCASE )'
-                  ' WHERE url IS NOT NULL AND series_id IS NULL',
-          'idx_browse_prov_safe':
-              'CREATE INDEX idx_browse_prov_safe ON channels( media_type,'
-                  ' (CASE WHEN COALESCE(favorite,0)=1 THEN 0 ELSE 1 END),'
-                  ' (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0 ELSE 1 END),'
-                  ' provider_order, name COLLATE NOCASE )'
-                  ' WHERE url IS NOT NULL AND series_id IS NULL'
-                  ' AND COALESCE(is_adult,0) = 0',
-          'idx_browse_src_mt':
-              'CREATE INDEX idx_browse_src_mt ON channels( source_id, media_type,'
-                  ' (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0'
-                  ' WHEN COALESCE(favorite,0)=1 THEN 1'
-                  ' WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2'
-                  ' WHEN last_watched IS NOT NULL THEN 3'
-                  ' WHEN COALESCE(stream_validated,0)=1 THEN 4 ELSE 5 END),'
-                  ' name COLLATE NOCASE )'
-                  ' WHERE url IS NOT NULL AND series_id IS NULL',
-          'idx_browse_src_mt_safe':
-              'CREATE INDEX idx_browse_src_mt_safe ON channels( source_id, media_type,'
-                  ' (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0'
-                  ' WHEN COALESCE(favorite,0)=1 THEN 1'
-                  ' WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2'
-                  ' WHEN last_watched IS NOT NULL THEN 3'
-                  ' WHEN COALESCE(stream_validated,0)=1 THEN 4 ELSE 5 END),'
-                  ' name COLLATE NOCASE )'
-                  ' WHERE url IS NOT NULL AND series_id IS NULL'
-                  ' AND COALESCE(is_adult,0) = 0',
-          'idx_channels_browse_enabled':
-              'CREATE INDEX idx_channels_browse_enabled ON channels( source_id,'
-                  ' (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0'
-                  ' WHEN COALESCE(favorite,0)=1 THEN 1'
-                  ' WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2'
-                  ' WHEN last_watched IS NOT NULL THEN 3'
-                  ' WHEN COALESCE(stream_validated,0)=1 THEN 4 ELSE 5 END),'
-                  ' name COLLATE NOCASE )'
-                  ' WHERE url IS NOT NULL AND series_id IS NULL',
-        };
-        for (final entry in rebuilt.entries) {
-          await tx.execute('DROP INDEX IF EXISTS ${entry.key};');
-          await tx.execute(entry.value);
-        }
-        try {
-          await tx.execute('PRAGMA cache_size = -2000;');
-        } catch (_) {}
       }));
     await migrations.migrate(db);
-    // fix537: reclaim the pages freed by migration 39's index drops/rebuilds
-    // (~290MB on the field DB). VACUUM cannot run inside the migration
-    // transaction, so it runs here, once, gated by a marker so it does not
-    // repeat on every launch. Best-effort: a failure leaves a larger-but-
-    // correct DB, never a broken one.
-    try {
-      final marker = await db.getOptional(
-        "SELECT value FROM app_meta WHERE key = 'fix537_vacuum_done'",
-      );
-      if (marker == null) {
-        AppLog.info('fix537: VACUUM to reclaim freed index pages (one-time)…');
-        await db.execute('VACUUM;');
-        await db.execute(
-          "INSERT OR REPLACE INTO app_meta (key, value) VALUES"
-          " ('fix537_vacuum_done', '1');",
-        );
-        AppLog.info('fix537: VACUUM complete.');
-      }
-    } catch (e) {
-      AppLog.warn('fix537: one-time VACUUM skipped — $e');
-    }
+    // fix542: the heavy fix537 index maintenance (drop 5 dead indexes, rebuild
+    // 7 browse indexes without cat_enabled, then VACUUM) is NO LONGER run on
+    // this cold-start path — it blacked-out/ANR-killed the app on open for the
+    // full ~1.43GB catalog. It now runs in Sql.runPendingIndexMaintenance(),
+    // called unawaited from main() after first frame, gated once by app_meta.
     // fix419: give the planner real statistics. The app never ran ANALYZE, so
     // SQLite planned blind — part of why the device chose the slow VOD index.
     // PRAGMA optimize is cheap on repeat runs (re-analyzes only changed tables).
