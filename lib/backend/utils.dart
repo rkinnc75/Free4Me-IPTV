@@ -80,7 +80,7 @@ class Utils {
             await getXtream(source, wipe, onProgress, onRowProgress);
             break;
         }
-      });
+      }, onProgress: onProgress);
       // fix386: brand-new Xtream add — fire EPG auto-discovery.
       // The runner is sticky (skips if epgDiscoveryState is set) and
       // is fire-and-forget; a probe failure must not roll back the
@@ -182,7 +182,14 @@ class Utils {
                 : (done, total) => onSourceRowProgress(s, done, total),
           );
         }
-      });
+      },
+          // fix549: the once-at-the-end index recreate runs AFTER the loop, so
+          // attribute its progress to the last source's status sink — keeps the
+          // dialog updating ("Building index N/M…") through the final rebuild
+          // instead of sitting frozen on the last source's "Saving…" line.
+          onProgress: onSourceStatus == null || enabled.isEmpty
+              ? null
+              : (msg) => onSourceStatus(enabled.last, msg));
     });
   }
 

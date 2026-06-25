@@ -403,7 +403,8 @@ class Sql {
   }
 
   static Future<void> withDroppedBrowseIndexes(
-      Future<void> Function() body) async {
+      Future<void> Function() body,
+      {void Function(String)? onProgress}) async {
     if (_browseIndexesDropped) {
       // An outer (multi-source) drop already owns drop+recreate; just run.
       await body();
@@ -464,15 +465,28 @@ class Sql {
             ' memory pragmas (continuing on defaults) — $e');
       }
       var restored = 0;
-      for (final r in rows) {
+      final total = rows.length;
+      // fix549: surface the previously-silent index recreate phase (the
+      // dominant tail of "Saving to database…" — each CREATE INDEX over the
+      // ~1.17M-row catalog is a multi-second external merge-sort on eMMC).
+      // Without this the UI sat on a static "Saving to database…" for minutes
+      // and looked frozen. Per-index counter to the dialog + per-index elapsed
+      // ms to the log so the slow ones are identifiable in field diagnostics.
+      for (var i = 0; i < rows.length; i++) {
+        final r = rows[i];
+        onProgress?.call('Building index ${i + 1}/$total…');
+        final swIdx = Stopwatch()..start();
         try {
           await db.execute(r['sql'] as String);
           restored++;
+          AppLog.info('Sql.withDroppedBrowseIndexes: built ${i + 1}/$total'
+              ' "${r['name']}" in ${swIdx.elapsedMilliseconds}ms');
         } catch (e) {
           AppLog.error('Sql.withDroppedBrowseIndexes: FAILED to recreate index'
               ' "${r['name']}" — $e');
         }
       }
+      onProgress?.call('Finalizing database…');
       try {
         await db.execute('PRAGMA optimize;');
       } catch (_) {}

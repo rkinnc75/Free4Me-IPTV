@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.49': [
+    'Import: the "Saving to database…" dialog now advances through a per-index counter (e.g. "Building index 3/13…") during the final index-recreate phase, instead of sitting on a static label and looking frozen. The log also records per-index elapsed ms so the slowest indexes are identifiable.',
+  ],
   '2.0.48': [
     'Build/signing: release APKs are now signed with both the v1 and v2 signature schemes (was v2 only), which can reduce Google Play Protect warnings on install. No change to the signing key — updates still install over previous versions.',
   ],

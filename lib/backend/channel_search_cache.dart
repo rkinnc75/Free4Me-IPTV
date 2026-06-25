@@ -419,11 +419,13 @@ class ChannelSearchCache {
       // (the SQL paths got this in fix355; this default path was missed).
       if (seriesId == null && e.seriesId != null) continue;
       if (groupId != null && e.groupId != groupId) continue;
-      // fix298: apply the divider + disabled-category exclusions HERE, before
-      // the limit, so they don't consume page slots (the old post-fetch SQL
-      // filter ran after the cache had already capped at `limit`, which let
-      // dividers/disabled rows fill the page and hide real channels).
-      if (e.isDivider && e.hideDividers) continue;
+      // fix549: the divider exclusion that used to live here is dead — divider
+      // rows are discarded at import (fix546) and purged from existing catalogs
+      // (Sql.runPendingDividerCleanup), so e.isDivider is uniformly false on
+      // every cache entry and the filter never fired. Removed (was:
+      // `if (e.isDivider && e.hideDividers) continue;`). The cache's isDivider/
+      // hideDividers fields are left in place (inert) to avoid reshuffling the
+      // getAllChannelNamesForCache tuple positions consumed by BrowseOrder.
       // fix382 (cold-eyes HIGH-1): mirror VisibilityClause — the disabled-
       // category gate applies ONLY when NOT browsing INTO a specific category.
       // Browsing into a disabled category (groupId set) must show its channels
