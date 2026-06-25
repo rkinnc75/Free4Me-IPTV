@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.44': [
+    '🧪 TEST THIS BUILD (TV): Disable all sources (or change which are enabled), then open Live TV — it now correctly updates (empty when no sources are enabled) instead of showing stale channels.',
+    'Fixed Live TV showing stale channels after changing which sources are enabled. The guide now re-reads the enabled-source list (and rebuilds its category rail) when you return to it.',
+  ],
   '2.0.43': [
     '🧪 TEST THIS BUILD (TV): In Live TV, select any category (e.g. "USA CBS Locals") and press OK — it now shows that category\'s channels instead of "No channels". The Favorites filter now only applies to the "All channels" view.',
     'Fixed Live TV showing "No channels" when opening any category if you had no live favorites. Selecting a specific category now always shows its channels; the Favorites toggle only filters the "All channels" view.',

@@ -504,7 +504,15 @@ class TvGuideViewState extends State<TvGuideView> {
   /// re-queries. The IndexedStack keeps this widget alive, so initState does NOT
   /// re-run on re-entry; without this the rail/grid stay stale after the user
   /// changes which sources are enabled. Reloads from the top (no group filter).
-  Future<void> reloadGuide() => _loadGuide(null);
+  ///
+  /// fix544: this MUST re-run _init(), not just _loadGuide(null). _loadGuide
+  /// re-queries channels but reuses the cached _sourceIds and _groups (the
+  /// category rail) captured at the last _init(). So after the user disabled
+  /// ALL sources, reloadGuide() re-queried with the STALE enabled-source list
+  /// and the Live grid kept showing channels (while Movies/Series/Categories,
+  /// which rebuild fully, correctly went empty). _init() re-reads
+  /// getEnabledSourcesMinimal(), rebuilds the rail, and then loads the guide.
+  Future<void> reloadGuide() => _init();
 
   Widget _timeHeader() {
     final ticks = <Widget>[];

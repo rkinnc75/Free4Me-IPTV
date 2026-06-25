@@ -1,0 +1,49 @@
+diff --git a/lib/tv/tv_guide_view.dart b/lib/tv/tv_guide_view.dart
+index e58b744..76eeefd 100644
+--- a/lib/tv/tv_guide_view.dart
++++ b/lib/tv/tv_guide_view.dart
+@@ -504,7 +504,15 @@ class TvGuideViewState extends State<TvGuideView> {
+   /// re-queries. The IndexedStack keeps this widget alive, so initState does NOT
+   /// re-run on re-entry; without this the rail/grid stay stale after the user
+   /// changes which sources are enabled. Reloads from the top (no group filter).
+-  Future<void> reloadGuide() => _loadGuide(null);
++  ///
++  /// fix544: this MUST re-run _init(), not just _loadGuide(null). _loadGuide
++  /// re-queries channels but reuses the cached _sourceIds and _groups (the
++  /// category rail) captured at the last _init(). So after the user disabled
++  /// ALL sources, reloadGuide() re-queried with the STALE enabled-source list
++  /// and the Live grid kept showing channels (while Movies/Series/Categories,
++  /// which rebuild fully, correctly went empty). _init() re-reads
++  /// getEnabledSourcesMinimal(), rebuilds the rail, and then loads the guide.
++  Future<void> reloadGuide() => _init();
+ 
+   Widget _timeHeader() {
+     final ticks = <Widget>[];
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 5d0d4de..13289a2 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '2.0.44': [
++    '🧪 TEST THIS BUILD (TV): Disable all sources (or change which are enabled), then open Live TV — it now correctly updates (empty when no sources are enabled) instead of showing stale channels.',
++    'Fixed Live TV showing stale channels after changing which sources are enabled. The guide now re-reads the enabled-source list (and rebuilds its category rail) when you return to it.',
++  ],
+   '2.0.43': [
+     '🧪 TEST THIS BUILD (TV): In Live TV, select any category (e.g. "USA CBS Locals") and press OK — it now shows that category\'s channels instead of "No channels". The Favorites filter now only applies to the "All channels" view.',
+     'Fixed Live TV showing "No channels" when opening any category if you had no live favorites. Selecting a specific category now always shows its channels; the Favorites toggle only filters the "All channels" view.',
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 82e1c6c..26991e0 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 2.0.43+543
++version: 2.0.44+544
+ 
+ environment:
+   sdk: ^3.10.7
