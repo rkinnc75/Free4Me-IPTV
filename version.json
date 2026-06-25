@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.43",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.43",
+  "latest": "2.0.45",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.45",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 \ud83e\uddea TEST THIS BUILD (TV): In Live TV, select any category (e.g. \"USA CBS Locals\") and press OK \u2014 it now shows that category's channels instead of \"No channels\". The Favorites filter now only applies to the \"All channels\" view.\n\u2022 Fixed Live TV showing \"No channels\" when opening any category if you had no live favorites. Selecting a specific category now always shows its channels; the Favorites toggle only filters the \"All channels\" view.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.43/Free4Me-IPTV-2.0.43-arm64.apk"
+  "releaseNotes": "\u2022 TV: Live TV now has \"Favorites\" as the top item of the category list (replacing \"All channels\"), matching Movies and Series. The separate Favorites button has been removed.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.45/Free4Me-IPTV-2.0.45-arm64.apk"
 }
