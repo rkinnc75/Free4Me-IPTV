@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.46",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.46",
+  "latest": "2.0.47",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.47",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Divider/header entries (the \"##### \u2026 #####\" separator rows) are no longer imported, and existing ones are removed automatically in the background after this update. This trims junk entries and slightly speeds up browsing.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.46/Free4Me-IPTV-2.0.46-arm64.apk"
+  "releaseNotes": "\u2022 TV: the Categories screen now has Live TV, Movies, and Series buttons across the top. Pick one to manage that type's categories (enable/disable them as before). Defaults to Live TV.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.47/Free4Me-IPTV-2.0.47-arm64.apk"
 }
