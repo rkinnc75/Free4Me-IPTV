@@ -74,4 +74,36 @@ void main() {
     expect(p, contains('IDX_PROGRAMS_CHANNEL_TIME'));
     expect(p, isNot(contains('SCAN PROGRAMMES')));
   });
+
+  // fix541 (item 6): the guide's _windowStart/_windowEnd were set ONCE in
+  // initState and never recomputed; because the shell keeps the guide alive,
+  // the window went stale and getGridPrograms fetched a fully-elapsed range, so
+  // now/next details vanished. This documents the failure (stale window misses
+  // the on-now programme) and the fix (a window re-anchored to NOW catches it).
+  group('fix541 stale guide window', () {
+    int countInWindow(int windowStart, int windowEnd) {
+      final rows = db.select(
+        'SELECT COUNT(*) c FROM programmes WHERE source_id = 1 '
+        'AND epg_channel_id = ? AND start_utc < ? AND stop_utc > ?',
+        ['ch0', windowEnd, windowStart],
+      );
+      return rows.first['c'] as int;
+    }
+
+    test('a stale window entirely before the data misses on-now', () {
+      // ch0's earliest programme starts at _now - 6h. A window that ends before
+      // that (the "set once, hours ago, now elapsed" case) sees nothing.
+      final staleStart = _now - 12 * 3600;
+      final staleEnd = _now - 8 * 3600; // ends 2h before the first programme
+      expect(countInWindow(staleStart, staleEnd), 0,
+          reason: 'fully-elapsed window cannot see any current programme');
+    });
+
+    test('a window re-anchored to NOW finds the on-now programme', () {
+      // ch0 has a programme at [_now, _now+1800) (k=12 in the seed:
+      // start = _now - 6h + 12*1800 = _now). Re-anchoring catches it.
+      expect(countInWindow(_now, _windowEnd), greaterThan(0),
+          reason: 'recomputed window includes the current programme');
+    });
+  });
 }

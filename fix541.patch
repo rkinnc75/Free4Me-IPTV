@@ -1,0 +1,221 @@
+diff --git a/lib/backend/sql.dart b/lib/backend/sql.dart
+index 4cc1441..82304fa 100644
+--- a/lib/backend/sql.dart
++++ b/lib/backend/sql.dart
+@@ -2337,6 +2337,18 @@ class Sql {
+     };
+   }
+ 
++  /// fix541: the most recent EPG refresh time across ALL sources (epoch
++  /// seconds), or null if EPG has never been refreshed. Used to show the user
++  /// the last load time and to warn before a redundant re-download (<24h).
++  static Future<int?> getLatestEpgRefresh() async {
++    final db = await EpgDbFactory.db;
++    final row = await db.getOptional(
++      'SELECT MAX(last_refreshed_utc) FROM epg_refresh_log',
++    );
++    if (row == null) return null;
++    return row.columnAt(0) as int?;
++  }
++
+   /// All channels for a source that need EPG matching (have no epg_channel_id yet,
+   /// or have a manual override to respect).
+   static Future<List<Channel>> getChannelsForEpgMatching(int sourceId) async {
+diff --git a/lib/settings_view.dart b/lib/settings_view.dart
+index 9bd3d24..32317eb 100644
+--- a/lib/settings_view.dart
++++ b/lib/settings_view.dart
+@@ -886,6 +886,34 @@ class _SettingsState extends State<SettingsView> {
+     await dialogClosed;
+   }
+ 
++  // fix541: format an EPG refresh timestamp as a friendly relative/absolute
++  // string for the "Last loaded …" subtitle.
++  String _formatEpgWhen(DateTime when) {
++    final diff = DateTime.now().difference(when);
++    if (diff.inMinutes < 1) return 'just now';
++    if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
++    if (diff.inHours < 24) {
++      final h = diff.inHours;
++      return '$h hour${h == 1 ? '' : 's'} ago';
++    }
++    if (diff.inDays < 7) {
++      final d = diff.inDays;
++      return '$d day${d == 1 ? '' : 's'} ago';
++    }
++    String two(int v) => v.toString().padLeft(2, '0');
++    return '${when.year}-${two(when.month)}-${two(when.day)}';
++  }
++
++  // fix541: format a sub-24h age (in hours) for the recent-EPG confirm prompt.
++  String _formatEpgAge(double ageHours) {
++    if (ageHours < 1) {
++      final mins = (ageHours * 60).round();
++      return '$mins minute${mins == 1 ? '' : 's'}';
++    }
++    final h = ageHours.floor();
++    return '$h hour${h == 1 ? '' : 's'}';
++  }
++
+   /// Shows a live progress dialog while refreshing all EPG sources, then
+   /// displays a summary of results.
+   Future<void> _runEpgRefresh(BuildContext ctx) async {
+@@ -3495,7 +3523,21 @@ class _SettingsState extends State<SettingsView> {
+                   ListTile(
+                     leading: const Icon(Icons.refresh),
+                     title: const Text("Refresh EPG now"),
+-                    subtitle: const Text("Download latest program guide"),
++                    // fix541 (item 7): show when the EPG was last loaded.
++                    subtitle: FutureBuilder<int?>(
++                      future: Sql.getLatestEpgRefresh(),
++                      builder: (context, snap) {
++                        final ts = snap.data;
++                        if (ts == null) {
++                          return const Text('Download latest program guide');
++                        }
++                        final when = DateTime.fromMillisecondsSinceEpoch(
++                            ts * 1000);
++                        return Text(
++                          'Last loaded ${_formatEpgWhen(when)}',
++                        );
++                      },
++                    ),
+                     onTap: () async {
+                       final noUrls = sources.every(
+                         (s) =>
+@@ -3514,6 +3556,46 @@ class _SettingsState extends State<SettingsView> {
+                         );
+                         return;
+                       }
++                      // fix541 (item 8): if the EPG was refreshed less than 24h
++                      // ago, confirm before re-downloading (it rarely changes
++                      // intra-day and the download is heavy).
++                      final last = await Sql.getLatestEpgRefresh();
++                      if (!mounted) return;
++                      if (last != null) {
++                        final ageH = (DateTime.now()
++                                    .millisecondsSinceEpoch ~/
++                                1000 -
++                                last) /
++                            3600.0;
++                        if (ageH < 24) {
++                          final proceed = await showDialog<bool>(
++                            context: context,
++                            builder: (_) => AlertDialog(
++                              title: const Text('EPG is recent'),
++                              content: Text(
++                                'The guide was loaded '
++                                '${_formatEpgAge(ageH)} ago. It usually does '
++                                'not change within a day. Download it again '
++                                'anyway?',
++                              ),
++                              actions: [
++                                TextButton(
++                                  autofocus: true,
++                                  onPressed: () =>
++                                      Navigator.pop(context, false),
++                                  child: const Text('Cancel'),
++                                ),
++                                FilledButton(
++                                  onPressed: () =>
++                                      Navigator.pop(context, true),
++                                  child: const Text('Refresh anyway'),
++                                ),
++                              ],
++                            ),
++                          );
++                          if (proceed != true || !mounted) return;
++                        }
++                      }
+                       await _runEpgRefresh(context);
+                     },
+                   ),
+diff --git a/lib/tv/tv_guide_view.dart b/lib/tv/tv_guide_view.dart
+index df7014d..7afab3e 100644
+--- a/lib/tv/tv_guide_view.dart
++++ b/lib/tv/tv_guide_view.dart
+@@ -130,6 +130,14 @@ class TvGuideViewState extends State<TvGuideView> {
+ 
+   Future<void> _loadGuide(int? groupId) async {
+     final inv = ++_inv;
++    // fix541: re-anchor the EPG window to NOW on every load. _windowStart/_End
++    // were set ONCE in initState; because the guide is kept alive by the shell's
++    // IndexedStack, that window went stale as time passed (and across an app
++    // resume the next day), so getGridPrograms fetched a fully-elapsed window
++    // and now/next details silently disappeared. Recomputing here keeps the
++    // grid + the hero now/next anchored to the real current time on each reload.
++    _windowStart = DateTime.now().millisecondsSinceEpoch ~/ 1000;
++    _windowEnd = _windowStart + _windowHours * 3600;
+     setState(() {
+       _loading = true;
+       _selectedGroupId = groupId;
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 5b0a7ee..a0a07ed 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '2.0.41': [
++    '🧪 TEST THIS BUILD (TV): In Live TV, the "NOW / NEXT" program details should appear for EPG-equipped channels and stay correct even after the app has been open for a while. In Settings, "Refresh EPG now" shows when the guide was last loaded and asks for confirmation if you refresh again within 24 hours.',
++    'Fixed Live TV not showing the current/next program for EPG channels after the app had been left open — the guide now re-checks the current time each time it loads.',
++    'Settings: "Refresh EPG now" now shows when the guide was last downloaded, and warns before re-downloading if it was refreshed in the last 24 hours.',
++  ],
+   '2.0.40': [
+     'TV: added a subtle neon background image behind the interface, dimmed for readability.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 15c19d7..2167d4a 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 2.0.40+540
++version: 2.0.41+541
+ 
+ environment:
+   sdk: ^3.10.7
+diff --git a/test/epg_guide_grid_query_test.dart b/test/epg_guide_grid_query_test.dart
+index 94bf449..b12d111 100644
+--- a/test/epg_guide_grid_query_test.dart
++++ b/test/epg_guide_grid_query_test.dart
+@@ -74,4 +74,36 @@ void main() {
+     expect(p, contains('IDX_PROGRAMS_CHANNEL_TIME'));
+     expect(p, isNot(contains('SCAN PROGRAMMES')));
+   });
++
++  // fix541 (item 6): the guide's _windowStart/_windowEnd were set ONCE in
++  // initState and never recomputed; because the shell keeps the guide alive,
++  // the window went stale and getGridPrograms fetched a fully-elapsed range, so
++  // now/next details vanished. This documents the failure (stale window misses
++  // the on-now programme) and the fix (a window re-anchored to NOW catches it).
++  group('fix541 stale guide window', () {
++    int countInWindow(int windowStart, int windowEnd) {
++      final rows = db.select(
++        'SELECT COUNT(*) c FROM programmes WHERE source_id = 1 '
++        'AND epg_channel_id = ? AND start_utc < ? AND stop_utc > ?',
++        ['ch0', windowEnd, windowStart],
++      );
++      return rows.first['c'] as int;
++    }
++
++    test('a stale window entirely before the data misses on-now', () {
++      // ch0's earliest programme starts at _now - 6h. A window that ends before
++      // that (the "set once, hours ago, now elapsed" case) sees nothing.
++      final staleStart = _now - 12 * 3600;
++      final staleEnd = _now - 8 * 3600; // ends 2h before the first programme
++      expect(countInWindow(staleStart, staleEnd), 0,
++          reason: 'fully-elapsed window cannot see any current programme');
++    });
++
++    test('a window re-anchored to NOW finds the on-now programme', () {
++      // ch0 has a programme at [_now, _now+1800) (k=12 in the seed:
++      // start = _now - 6h + 12*1800 = _now). Re-anchoring catches it.
++      expect(countInWindow(_now, _windowEnd), greaterThan(0),
++          reason: 'recomputed window includes the current programme');
++    });
++  });
+ }

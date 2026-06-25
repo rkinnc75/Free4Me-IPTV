@@ -886,6 +886,34 @@ class _SettingsState extends State<SettingsView> {
     await dialogClosed;
   }
 
+  // fix541: format an EPG refresh timestamp as a friendly relative/absolute
+  // string for the "Last loaded …" subtitle.
+  String _formatEpgWhen(DateTime when) {
+    final diff = DateTime.now().difference(when);
+    if (diff.inMinutes < 1) return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
+    if (diff.inHours < 24) {
+      final h = diff.inHours;
+      return '$h hour${h == 1 ? '' : 's'} ago';
+    }
+    if (diff.inDays < 7) {
+      final d = diff.inDays;
+      return '$d day${d == 1 ? '' : 's'} ago';
+    }
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${when.year}-${two(when.month)}-${two(when.day)}';
+  }
+
+  // fix541: format a sub-24h age (in hours) for the recent-EPG confirm prompt.
+  String _formatEpgAge(double ageHours) {
+    if (ageHours < 1) {
+      final mins = (ageHours * 60).round();
+      return '$mins minute${mins == 1 ? '' : 's'}';
+    }
+    final h = ageHours.floor();
+    return '$h hour${h == 1 ? '' : 's'}';
+  }
+
   /// Shows a live progress dialog while refreshing all EPG sources, then
   /// displays a summary of results.
   Future<void> _runEpgRefresh(BuildContext ctx) async {
@@ -3495,7 +3523,21 @@ class _SettingsState extends State<SettingsView> {
                   ListTile(
                     leading: const Icon(Icons.refresh),
                     title: const Text("Refresh EPG now"),
-                    subtitle: const Text("Download latest program guide"),
+                    // fix541 (item 7): show when the EPG was last loaded.
+                    subtitle: FutureBuilder<int?>(
+                      future: Sql.getLatestEpgRefresh(),
+                      builder: (context, snap) {
+                        final ts = snap.data;
+                        if (ts == null) {
+                          return const Text('Download latest program guide');
+                        }
+                        final when = DateTime.fromMillisecondsSinceEpoch(
+                            ts * 1000);
+                        return Text(
+                          'Last loaded ${_formatEpgWhen(when)}',
+                        );
+                      },
+                    ),
                     onTap: () async {
                       final noUrls = sources.every(
                         (s) =>
@@ -3513,6 +3555,46 @@ class _SettingsState extends State<SettingsView> {
                           ),
                         );
                         return;
+                      }
+                      // fix541 (item 8): if the EPG was refreshed less than 24h
+                      // ago, confirm before re-downloading (it rarely changes
+                      // intra-day and the download is heavy).
+                      final last = await Sql.getLatestEpgRefresh();
+                      if (!mounted) return;
+                      if (last != null) {
+                        final ageH = (DateTime.now()
+                                    .millisecondsSinceEpoch ~/
+                                1000 -
+                                last) /
+                            3600.0;
+                        if (ageH < 24) {
+                          final proceed = await showDialog<bool>(
+                            context: context,
+                            builder: (_) => AlertDialog(
+                              title: const Text('EPG is recent'),
+                              content: Text(
+                                'The guide was loaded '
+                                '${_formatEpgAge(ageH)} ago. It usually does '
+                                'not change within a day. Download it again '
+                                'anyway?',
+                              ),
+                              actions: [
+                                TextButton(
+                                  autofocus: true,
+                                  onPressed: () =>
+                                      Navigator.pop(context, false),
+                                  child: const Text('Cancel'),
+                                ),
+                                FilledButton(
+                                  onPressed: () =>
+                                      Navigator.pop(context, true),
+                                  child: const Text('Refresh anyway'),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (proceed != true || !mounted) return;
+                        }
                       }
                       await _runEpgRefresh(context);
                     },

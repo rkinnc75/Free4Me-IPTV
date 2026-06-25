@@ -130,6 +130,14 @@ class TvGuideViewState extends State<TvGuideView> {
 
   Future<void> _loadGuide(int? groupId) async {
     final inv = ++_inv;
+    // fix541: re-anchor the EPG window to NOW on every load. _windowStart/_End
+    // were set ONCE in initState; because the guide is kept alive by the shell's
+    // IndexedStack, that window went stale as time passed (and across an app
+    // resume the next day), so getGridPrograms fetched a fully-elapsed window
+    // and now/next details silently disappeared. Recomputing here keeps the
+    // grid + the hero now/next anchored to the real current time on each reload.
+    _windowStart = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    _windowEnd = _windowStart + _windowHours * 3600;
     setState(() {
       _loading = true;
       _selectedGroupId = groupId;

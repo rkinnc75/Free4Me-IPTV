@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.41': [
+    '🧪 TEST THIS BUILD (TV): In Live TV, the "NOW / NEXT" program details should appear for EPG-equipped channels and stay correct even after the app has been open for a while. In Settings, "Refresh EPG now" shows when the guide was last loaded and asks for confirmation if you refresh again within 24 hours.',
+    'Fixed Live TV not showing the current/next program for EPG channels after the app had been left open — the guide now re-checks the current time each time it loads.',
+    'Settings: "Refresh EPG now" now shows when the guide was last downloaded, and warns before re-downloading if it was refreshed in the last 24 hours.',
+  ],
   '2.0.40': [
     'TV: added a subtle neon background image behind the interface, dimmed for readability.',
   ],

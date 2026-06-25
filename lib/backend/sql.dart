@@ -2337,6 +2337,18 @@ class Sql {
     };
   }
 
+  /// fix541: the most recent EPG refresh time across ALL sources (epoch
+  /// seconds), or null if EPG has never been refreshed. Used to show the user
+  /// the last load time and to warn before a redundant re-download (<24h).
+  static Future<int?> getLatestEpgRefresh() async {
+    final db = await EpgDbFactory.db;
+    final row = await db.getOptional(
+      'SELECT MAX(last_refreshed_utc) FROM epg_refresh_log',
+    );
+    if (row == null) return null;
+    return row.columnAt(0) as int?;
+  }
+
   /// All channels for a source that need EPG matching (have no epg_channel_id yet,
   /// or have a manual override to respect).
   static Future<List<Channel>> getChannelsForEpgMatching(int sourceId) async {
