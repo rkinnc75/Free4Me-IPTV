@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.50",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.50",
+  "latest": "2.0.51",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.51",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 TV: fixed the \"Report an issue\" dialog focus trap \u2014 D-pad could not leave the multi-line Details field to reach Cancel/Submit. The dialog now opens with Submit focused and lets the remote move up to the fields and back down.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.50/Free4Me-IPTV-2.0.50-arm64.apk"
+  "releaseNotes": "\u2022 TV: the Categories grid tiles are now wider (~6 across instead of ~8) with two-line labels so they read at 10 feet; Search poster cards are resized to match; the background scrim is slightly lighter so more of the neon art shows through.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.51/Free4Me-IPTV-2.0.51-arm64.apk"
 }
