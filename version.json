@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.47",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.47",
+  "latest": "2.0.48",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.48",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 TV: the Categories screen now has Live TV, Movies, and Series buttons across the top. Pick one to manage that type's categories (enable/disable them as before). Defaults to Live TV.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.47/Free4Me-IPTV-2.0.47-arm64.apk"
+  "releaseNotes": "\u2022 Build/signing: release APKs are now signed with both the v1 and v2 signature schemes (was v2 only), which can reduce Google Play Protect warnings on install. No change to the signing key \u2014 updates still install over previous versions.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.48/Free4Me-IPTV-2.0.48-arm64.apk"
 }
