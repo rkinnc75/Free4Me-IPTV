@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.45",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.45",
+  "latest": "2.0.46",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.46",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 TV: Live TV now has \"Favorites\" as the top item of the category list (replacing \"All channels\"), matching Movies and Series. The separate Favorites button has been removed.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.45/Free4Me-IPTV-2.0.45-arm64.apk"
+  "releaseNotes": "\u2022 Divider/header entries (the \"##### \u2026 #####\" separator rows) are no longer imported, and existing ones are removed automatically in the background after this update. This trims junk entries and slightly speeds up browsing.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.46/Free4Me-IPTV-2.0.46-arm64.apk"
 }
