@@ -285,8 +285,16 @@ class TvGuideViewState extends State<TvGuideView> {
     );
   }
 
+  // fix543: the favorites filter applies ONLY to the top-level "All channels"
+  // view. When the user explicitly drills into a category (e.g. "USA CBS
+  // Locals", _selectedGroupId != null) they want that category's channels — not
+  // an empty favorites-filtered list. Before this, fix539's _favOnly=true
+  // default stripped every non-favorite even inside a selected category, so
+  // every category showed "No channels" for anyone without live favorites.
   List<Channel> get _visibleChannels =>
-      _favOnly ? _channels.where((c) => c.favorite).toList() : _channels;
+      (_favOnly && _selectedGroupId == null)
+          ? _channels.where((c) => c.favorite).toList()
+          : _channels;
 
   // fix510: hero with the focused channel's art + an always-live MUTED preview
   // cross-faded in once the dwell-gated engine produces a frame.
@@ -433,6 +441,10 @@ class TvGuideViewState extends State<TvGuideView> {
   }
 
   Widget _filterPills() {
+    // fix543: the Favorites filter only affects the "All channels" view, so the
+    // pill is only shown there. Inside a selected category it would be a no-op
+    // (and misleading), so it is hidden.
+    if (_selectedGroupId != null) return const SizedBox.shrink();
     return SizedBox(
       height: 46,
       child: ListView(

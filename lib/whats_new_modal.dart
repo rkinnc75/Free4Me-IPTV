@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.43': [
+    '🧪 TEST THIS BUILD (TV): In Live TV, select any category (e.g. "USA CBS Locals") and press OK — it now shows that category\'s channels instead of "No channels". The Favorites filter now only applies to the "All channels" view.',
+    'Fixed Live TV showing "No channels" when opening any category if you had no live favorites. Selecting a specific category now always shows its channels; the Favorites toggle only filters the "All channels" view.',
+  ],
   '2.0.42': [
     'Fixed a long black screen (sometimes minutes) on the first launch after updating, on devices with very large channel catalogs. The one-time database optimization now runs quietly in the background after the app opens, instead of blocking startup.',
   ],
