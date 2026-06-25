@@ -64,12 +64,9 @@ class _TvShellState extends State<TvShell> {
       mediaTypes: [MediaType.livestream],
       viewType: ViewType.categories,
     ),
-    TvTab(
-      label: 'Favorites',
-      color: Color(0xFFF0B429),
-      mediaTypes: [MediaType.livestream, MediaType.movie, MediaType.serie],
-      viewType: ViewType.favorites,
-    ),
+    // fix539: the standalone Favorites tab is removed — Favorites now lives
+    // inside Live/Movies/Series (the rail's top item / the guide's pill), so a
+    // separate cross-media Favorites tab is redundant.
     TvTab(
       label: 'History',
       color: Color(0xFF4CAF78),
@@ -107,17 +104,19 @@ class _TvShellState extends State<TvShell> {
   }
 
   /// fix500: map the saved Default view onto a landing tab. [ViewType] has no
-  /// livestream/movie/serie member, so `all` lands on Live TV; favorites/history
-  /// /categories map to their own tabs.
+  /// livestream/movie/serie member, so `all` lands on Live TV; history and
+  /// categories map to their own tabs.
   /// fix525: indices shifted by the inserted Categories tab (now index 3).
+  /// fix539: the standalone Favorites tab is removed; a saved "favorites"
+  /// default now lands on Live TV (which itself defaults to Favorites). History
+  /// shifts up to index 4.
   int _landingIndex(ViewType v) {
     switch (v) {
       case ViewType.categories:
         return 3;
-      case ViewType.favorites:
-        return 4;
       case ViewType.history:
-        return 5;
+        return 4;
+      case ViewType.favorites:
       case ViewType.all:
       case ViewType.settings:
         return 0;

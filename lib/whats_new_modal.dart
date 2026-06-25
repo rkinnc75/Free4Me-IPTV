@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.39': [
+    '🧪 TEST THIS BUILD (TV): Open Live TV, Movies, and Series — each now opens to your Favorites for that section. In Movies/Series the rail\'s top item is "Favorites"; in Live TV the "Favorites" pill is on by default (tap it to see all channels). The separate Favorites tab has been removed.',
+    'TV: Favorites is now built into Live TV, Movies, and Series (showing favorites for that section) instead of a separate top-menu tab. The old standalone Favorites tab and the "All" toggle were removed.',
+  ],
   '2.0.38': [
     'TV: the Movies, Series, and Categories grids now show about twice as many smaller tiles per row, so you can see more at a glance.',
     'TV: the Categories management screen now lists up to 1000 categories (was 500).',

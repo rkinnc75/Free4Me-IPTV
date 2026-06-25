@@ -57,8 +57,8 @@ class _TvBrowseViewState extends State<TvBrowseView> {
   Map<int, int?> _sourceColors = {};
   List<int> _sourceIds = [];
   List<Channel> _groups = [];
-  int? _selectedGroupId; // null = All
-  String _selectedLabel = 'All';
+  int? _selectedGroupId = _favGroupId; // fix539: default = Favorites
+  String _selectedLabel = 'Favorites';
   List<Channel> _items = [];
   bool _ready = false;
   bool _loading = false;
@@ -113,8 +113,12 @@ class _TvBrowseViewState extends State<TvBrowseView> {
       _groups = groups.take(_railCap).toList();
       _ready = true;
     });
-    await _loadItems(null, 'All');
+    await _loadItems(_favGroupId, 'Favorites');
   }
+
+  // fix539: sentinel rail selection meaning "favorites for this media type"
+  // (replaces the old 'All' top item). Real group ids are >= 1, so -1 is safe.
+  static const int _favGroupId = -1;
 
   Future<void> _loadItems(int? groupId, String label) async {
     final inv = ++_inv;
@@ -124,13 +128,16 @@ class _TvBrowseViewState extends State<TvBrowseView> {
       _selectedLabel = label;
     });
     final s = SettingsService.cached ?? widget.settings;
-    // Bounded item paging: viewType=all + groupId scopes into the category.
+    final favoritesMode = groupId == _favGroupId;
+    // Bounded item paging. fix539: the top rail item is Favorites
+    // (viewType=favorites); a real category id scopes into that category
+    // (viewType=all + groupId).
     final items = <Channel>[];
     for (var page = 1; items.length < _itemCap; page++) {
       final batch = await Sql.search(Filters(
-        viewType: ViewType.all,
+        viewType: favoritesMode ? ViewType.favorites : ViewType.all,
         mediaTypes: [widget.mediaType],
-        groupId: groupId,
+        groupId: favoritesMode ? null : groupId,
         sourceIds: _sourceIds,
         page: page,
         searchMethod: s.searchMethod,
@@ -189,12 +196,11 @@ class _TvBrowseViewState extends State<TvBrowseView> {
   }
 
   Widget _rail() {
-    final allIcon =
-        widget.mediaType == MediaType.serie ? Icons.video_library : Icons.movie;
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 8),
       children: [
-        _railItem(null, 'All', allIcon),
+        // fix539: Favorites replaces the old 'All' top item (media-type-scoped).
+        _railItem(_favGroupId, 'Favorites', Icons.star),
         for (final g in _groups)
           if (g.id != null) _railItem(g.id, g.name, Icons.folder_outlined),
       ],

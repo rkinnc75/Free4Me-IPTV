@@ -61,7 +61,7 @@ class TvGuideViewState extends State<TvGuideView> {
   late final TvHeroPreview _preview;
   bool _liveOk = false;
   int _dwellMs = 700;
-  bool _favOnly = false;
+  bool _favOnly = true; // fix539: Live defaults to Favorites (All pill removed)
   int _focusSeq = 0; // fix510: guards stale async focus callbacks
   bool _launching = false; // fix510: suppresses preview re-arm during _play
 
@@ -431,8 +431,9 @@ class TvGuideViewState extends State<TvGuideView> {
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12),
         children: [
-          _pill('All', !_favOnly, () => setState(() => _favOnly = false)),
-          _pill('Favorites', _favOnly, () => setState(() => _favOnly = true)),
+          // fix539: the 'All' pill is removed; Favorites is a sticky toggle.
+          // Tapping toggles between favorites-only (default) and all channels.
+          _pill('Favorites', _favOnly, () => setState(() => _favOnly = !_favOnly)),
         ],
       ),
     );
