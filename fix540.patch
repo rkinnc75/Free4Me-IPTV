@@ -1,0 +1,99 @@
+diff --git a/lib/tv/tv_shell.dart b/lib/tv/tv_shell.dart
+index 4486922..d0c915c 100644
+--- a/lib/tv/tv_shell.dart
++++ b/lib/tv/tv_shell.dart
+@@ -259,29 +259,46 @@ class _TvShellState extends State<TvShell> {
+ 
+   @override
+   Widget build(BuildContext context) {
+-    return Scaffold(
+-      body: SafeArea(
+-        child: Column(
+-          children: [
+-            TvTopTabBar(
+-              tabs: _tabs,
+-              selectedIndex: _index,
+-              onSelected: _select,
+-              onSettings: _openSettings,
+-              onLongPress: _onTabLongPress,
+-            ),
+-            Expanded(
+-              child: IndexedStack(
+-                index: _index,
+-                children: [
+-                  for (final Widget? w in _built)
+-                    w ?? const SizedBox.shrink(),
+-                ],
+-              ),
++    // fix540: full-screen neon background, cropped to fill (BoxFit.cover), with
++    // a dark scrim so foreground text/tiles stay readable. The Scaffold and its
++    // content are transparent so the image shows through; only the guide's
++    // small now-line element paints its own color (intended).
++    return Stack(
++      fit: StackFit.expand,
++      children: [
++        const Image(
++          image: AssetImage('assets/tv_background.webp'),
++          fit: BoxFit.cover,
++        ),
++        // Dark scrim: a flat ~90% black keeps the whole UI legible over the
++        // bright neon art while leaving a subtle ambient glow.
++        const ColoredBox(color: Color(0xE6000000)),
++        Scaffold(
++          backgroundColor: Colors.transparent,
++          body: SafeArea(
++            child: Column(
++              children: [
++                TvTopTabBar(
++                  tabs: _tabs,
++                  selectedIndex: _index,
++                  onSelected: _select,
++                  onSettings: _openSettings,
++                  onLongPress: _onTabLongPress,
++                ),
++                Expanded(
++                  child: IndexedStack(
++                    index: _index,
++                    children: [
++                      for (final Widget? w in _built)
++                        w ?? const SizedBox.shrink(),
++                    ],
++                  ),
++                ),
++              ],
+             ),
+-          ],
++          ),
+         ),
+-      ),
++      ],
+     );
+   }
+ }
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index dab8b5f..5b0a7ee 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '2.0.40': [
++    'TV: added a subtle neon background image behind the interface, dimmed for readability.',
++  ],
+   '2.0.39': [
+     '🧪 TEST THIS BUILD (TV): Open Live TV, Movies, and Series — each now opens to your Favorites for that section. In Movies/Series the rail\'s top item is "Favorites"; in Live TV the "Favorites" pill is on by default (tap it to see all channels). The separate Favorites tab has been removed.',
+     'TV: Favorites is now built into Live TV, Movies, and Series (showing favorites for that section) instead of a separate top-menu tab. The old standalone Favorites tab and the "All" toggle were removed.',
+diff --git a/pubspec.yaml b/pubspec.yaml
+index dc9cc47..15c19d7 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 2.0.39+539
++version: 2.0.40+540
+ 
+ environment:
+   sdk: ^3.10.7

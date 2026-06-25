@@ -259,29 +259,46 @@ class _TvShellState extends State<TvShell> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            TvTopTabBar(
-              tabs: _tabs,
-              selectedIndex: _index,
-              onSelected: _select,
-              onSettings: _openSettings,
-              onLongPress: _onTabLongPress,
-            ),
-            Expanded(
-              child: IndexedStack(
-                index: _index,
-                children: [
-                  for (final Widget? w in _built)
-                    w ?? const SizedBox.shrink(),
-                ],
-              ),
-            ),
-          ],
+    // fix540: full-screen neon background, cropped to fill (BoxFit.cover), with
+    // a dark scrim so foreground text/tiles stay readable. The Scaffold and its
+    // content are transparent so the image shows through; only the guide's
+    // small now-line element paints its own color (intended).
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        const Image(
+          image: AssetImage('assets/tv_background.webp'),
+          fit: BoxFit.cover,
         ),
-      ),
+        // Dark scrim: a flat ~90% black keeps the whole UI legible over the
+        // bright neon art while leaving a subtle ambient glow.
+        const ColoredBox(color: Color(0xE6000000)),
+        Scaffold(
+          backgroundColor: Colors.transparent,
+          body: SafeArea(
+            child: Column(
+              children: [
+                TvTopTabBar(
+                  tabs: _tabs,
+                  selectedIndex: _index,
+                  onSelected: _select,
+                  onSettings: _openSettings,
+                  onLongPress: _onTabLongPress,
+                ),
+                Expanded(
+                  child: IndexedStack(
+                    index: _index,
+                    children: [
+                      for (final Widget? w in _built)
+                        w ?? const SizedBox.shrink(),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
