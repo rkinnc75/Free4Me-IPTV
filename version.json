@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.49",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.49",
+  "latest": "2.0.50",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.50",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Import: the \"Saving to database\u2026\" dialog now advances through a per-index counter (e.g. \"Building index 3/13\u2026\") during the final index-recreate phase, instead of sitting on a static label and looking frozen. The log also records per-index elapsed ms so the slowest indexes are identifiable.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.49/Free4Me-IPTV-2.0.49-arm64.apk"
+  "releaseNotes": "\u2022 TV: fixed the \"Report an issue\" dialog focus trap \u2014 D-pad could not leave the multi-line Details field to reach Cancel/Submit. The dialog now opens with Submit focused and lets the remote move up to the fields and back down.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.50/Free4Me-IPTV-2.0.50-arm64.apk"
 }
