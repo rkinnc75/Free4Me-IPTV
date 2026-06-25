@@ -141,6 +141,10 @@ class TvGuideViewState extends State<TvGuideView> {
     setState(() {
       _loading = true;
       _selectedGroupId = groupId;
+      // fix545: the rail's top item (groupId == null) is "Favorites" → enable
+      // the favorites filter; selecting a real category disables it so the whole
+      // category shows. This replaces the old standalone Favorites pill.
+      _favOnly = groupId == null;
     });
     // fix524 (safe-mode TV leak): use the live settings value, not the possibly
     // stale widget.settings (the guide is kept alive across Settings changes).
@@ -239,7 +243,11 @@ class TvGuideViewState extends State<TvGuideView> {
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 8),
       children: [
-        _railItem(null, 'All channels', Icons.live_tv),
+        // fix545: the rail's top item is "Favorites" (replacing "All channels"),
+        // matching the Movies/Series rails. Tapping it shows live favorites (the
+        // all-channels view with the favorites filter on); tapping a category
+        // shows that category. The old standalone "Favorites" pill is removed.
+        _railItem(null, 'Favorites', Icons.star),
         for (final g in _groups)
           if (g.id != null) _railItem(g.id, g.name, Icons.folder_outlined),
       ],
@@ -269,7 +277,8 @@ class TvGuideViewState extends State<TvGuideView> {
     return Column(
       children: [
         _hero(),
-        _filterPills(),
+        // fix545: the standalone Favorites pill is removed — Favorites is now
+        // the rail's top item (matching Movies/Series).
         _timeHeader(),
         Expanded(
           child: channels.isEmpty
@@ -437,36 +446,6 @@ class TvGuideViewState extends State<TvGuideView> {
           ],
         ),
       ],
-    );
-  }
-
-  Widget _filterPills() {
-    // fix543: the Favorites filter only affects the "All channels" view, so the
-    // pill is only shown there. Inside a selected category it would be a no-op
-    // (and misleading), so it is hidden.
-    if (_selectedGroupId != null) return const SizedBox.shrink();
-    return SizedBox(
-      height: 46,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        children: [
-          // fix539: the 'All' pill is removed; Favorites is a sticky toggle.
-          // Tapping toggles between favorites-only (default) and all channels.
-          _pill('Favorites', _favOnly, () => setState(() => _favOnly = !_favOnly)),
-        ],
-      ),
-    );
-  }
-
-  Widget _pill(String label, bool selected, VoidCallback onTap) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: _FocusTile(
-        selected: selected,
-        onTap: onTap,
-        child: Text(label),
-      ),
     );
   }
 
