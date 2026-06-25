@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.48",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.48",
+  "latest": "2.0.49",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.49",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Build/signing: release APKs are now signed with both the v1 and v2 signature schemes (was v2 only), which can reduce Google Play Protect warnings on install. No change to the signing key \u2014 updates still install over previous versions.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.48/Free4Me-IPTV-2.0.48-arm64.apk"
+  "releaseNotes": "\u2022 Import: the \"Saving to database\u2026\" dialog now advances through a per-index counter (e.g. \"Building index 3/13\u2026\") during the final index-recreate phase, instead of sitting on a static label and looking frozen. The log also records per-index elapsed ms so the slowest indexes are identifiable.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.49/Free4Me-IPTV-2.0.49-arm64.apk"
 }
