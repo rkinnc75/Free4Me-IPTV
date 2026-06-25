@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.50': [
+    'TV: fixed the "Report an issue" dialog focus trap — D-pad could not leave the multi-line Details field to reach Cancel/Submit. The dialog now opens with Submit focused and lets the remote move up to the fields and back down.',
+  ],
   '2.0.49': [
     'Import: the "Saving to database…" dialog now advances through a per-index counter (e.g. "Building index 3/13…") during the final index-recreate phase, instead of sitting on a static label and looking frozen. The log also records per-index elapsed ms so the slowest indexes are identifiable.',
   ],

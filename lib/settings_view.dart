@@ -1850,21 +1850,32 @@ class _SettingsState extends State<SettingsView> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(
-                controller: subjectCtl,
-                maxLength: 100,
-                textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(
-                  labelText: 'Subject',
-                  hintText: 'Short summary',
+              // fix550: on Android TV a raw multi-line TextField traps D-pad
+              // up/down for caret movement, so focus could never leave the
+              // 5-line Details field to reach Cancel/Submit — the report dialog
+              // was unusable by remote. DpadFocusEscape intercepts arrow up/down
+              // and yields focus (previousFocus/nextFocus) before the field sees
+              // them, while preserving maxLength/textInputAction/maxLines exactly
+              // (so the touch soft-keyboard and char counter are unchanged).
+              DpadFocusEscape(
+                child: TextField(
+                  controller: subjectCtl,
+                  maxLength: 100,
+                  textInputAction: TextInputAction.next,
+                  decoration: const InputDecoration(
+                    labelText: 'Subject',
+                    hintText: 'Short summary',
+                  ),
                 ),
               ),
-              TextField(
-                controller: detailsCtl,
-                maxLines: 5,
-                decoration: const InputDecoration(
-                  labelText: 'Details',
-                  hintText: 'What happened? Steps to reproduce?',
+              DpadFocusEscape(
+                child: TextField(
+                  controller: detailsCtl,
+                  maxLines: 5,
+                  decoration: const InputDecoration(
+                    labelText: 'Details',
+                    hintText: 'What happened? Steps to reproduce?',
+                  ),
                 ),
               ),
               const SizedBox(height: 8),
@@ -1882,6 +1893,7 @@ class _SettingsState extends State<SettingsView> {
             child: const Text('Cancel'),
           ),
           FilledButton(
+            autofocus: true,
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Submit'),
           ),
