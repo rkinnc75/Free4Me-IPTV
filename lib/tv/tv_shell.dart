@@ -270,10 +270,10 @@ class _TvShellState extends State<TvShell> {
           image: AssetImage('assets/tv_background.webp'),
           fit: BoxFit.cover,
         ),
-        // Dark scrim: fix551 softened from ~90% to ~80% black (0xE6->0xCC) —
-        // the 90% scrim was too dark over the neon art. Still keeps foreground
-        // text/tiles legible while letting more of the background glow through.
-        const ColoredBox(color: Color(0xCC000000)),
+        // Dark scrim: fix553 softened further to ~75% black (0xCC->0xBF) per
+        // on-device review — lets more of the neon art through while keeping
+        // foreground text/tiles legible. (Was 90% fix540 -> 80% fix551.)
+        const ColoredBox(color: Color(0xBF000000)),
         Scaffold(
           backgroundColor: Colors.transparent,
           body: SafeArea(

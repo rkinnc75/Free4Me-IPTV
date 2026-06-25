@@ -129,33 +129,43 @@ class _TvCategoriesViewState extends State<TvCategoriesView> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    // fix553: Categories now uses a LEFT type-rail (Live TV / Movies / Series)
+    // to match the Movies/Series browse layout, instead of the fix547 centered
+    // pill row. Selecting a type switches the whole screen's category grid.
+    return Row(
       children: [
-        _typeRow(),
+        SizedBox(width: 210, child: _typeRail()),
+        const VerticalDivider(width: 1),
         Expanded(child: _body()),
       ],
     );
   }
 
-  // fix547: centered row of the three media-type buttons. Equal-width, tightly
-  // sized, horizontally centered (not stretched edge-to-edge).
-  Widget _typeRow() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+  // fix553: left vertical rail of the three media types, mirroring
+  // TvBrowseView._rail / _railItem so the three TV screens share one layout.
+  Widget _typeRail() {
+    return ListView(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      children: [
+        for (var i = 0; i < _types.length; i++)
+          _typeRailItem(_types[i], autofocus: i == 0),
+      ],
+    );
+  }
+
+  Widget _typeRailItem(MediaType type, {bool autofocus = false}) {
+    return _FocusTile(
+      selected: type == _selectedType,
+      autofocus: autofocus,
+      onTap: () => _selectType(type),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          for (var i = 0; i < _types.length; i++) ...[
-            if (i > 0) const SizedBox(width: 14),
-            _TypeButton(
-              label: _typeLabel(_types[i]),
-              icon: _typeIcon(_types[i]),
-              selected: _types[i] == _selectedType,
-              autofocus: i == 0,
-              onTap: () => _selectType(_types[i]),
-            ),
-          ],
+          Icon(_typeIcon(type), size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(_typeLabel(type),
+                maxLines: 1, overflow: TextOverflow.ellipsis),
+          ),
         ],
       ),
     );
@@ -198,17 +208,16 @@ class _TvCategoriesViewState extends State<TvCategoriesView> {
         ),
         Expanded(
           child: GridView.builder(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
             gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              // fix551: widen tiles from ~8 across to ~6 (maxExtent 110->150) so
-              // the 2-line category label (see ChannelTile poster body) is
-              // readable on a 10-foot TV. fix538 had halved this to 110 for
-              // density, but the labels became too small/truncated to read.
-              // Taller aspect (0.82->0.74) gives room for the second text line.
-              maxCrossAxisExtent: 150,
-              childAspectRatio: 0.74,
-              mainAxisSpacing: 14,
-              crossAxisSpacing: 14,
+              // fix553: unify all three TV grids (Categories/Movies/Series) on
+              // one tile size — wider cards (extent 120), tighter spacing (10),
+              // same rendered HEIGHT as the Movies/Series cards (~155px). AR
+              // 0.773 = 120/155 holds that height. (Was 150/0.74 from fix551.)
+              maxCrossAxisExtent: 120,
+              childAspectRatio: 0.773,
+              mainAxisSpacing: 10,
+              crossAxisSpacing: 10,
             ),
             itemCount: _groups.length,
             itemBuilder: (context, i) {
@@ -222,7 +231,9 @@ class _TvCategoriesViewState extends State<TvCategoriesView> {
                 showSourceEdgeBar: true,
                 poster: true,
                 categoryToggleMode: true,
-                autofocus: i == 0,
+                // fix553: the left type-rail owns initial focus now, so the grid
+                // no longer autofocuses its first tile (avoids a focus conflict).
+                autofocus: false,
                 onToggleEnabled: g.id != null
                     ? (enabled) async {
                         await Sql.setGroupEnabled(g.id!, enabled);
@@ -240,70 +251,54 @@ class _TvCategoriesViewState extends State<TvCategoriesView> {
   }
 }
 
-// fix547: a focusable, DPad-navigable type button for the Categories type row.
-// Mirrors TvBrowseView's _FocusTile (yellow focus border, primary-tinted when
-// selected) so focus behaviour matches the rest of the TV UI.
-class _TypeButton extends StatefulWidget {
-  final String label;
-  final IconData icon;
+// fix553: local focusable rail tile mirroring TvBrowseView._FocusTile (yellow
+// focus border, primary-tinted when selected) so the Categories type-rail looks
+// and behaves like the Movies/Series rail. Adds [autofocus] so the rail can own
+// initial screen focus.
+class _FocusTile extends StatefulWidget {
   final bool selected;
   final bool autofocus;
   final VoidCallback onTap;
-  const _TypeButton({
-    required this.label,
-    required this.icon,
+  final Widget child;
+  const _FocusTile({
     required this.selected,
-    required this.autofocus,
     required this.onTap,
+    required this.child,
+    this.autofocus = false,
   });
 
   @override
-  State<_TypeButton> createState() => _TypeButtonState();
+  State<_FocusTile> createState() => _FocusTileState();
 }
 
-class _TypeButtonState extends State<_TypeButton> {
+class _FocusTileState extends State<_FocusTile> {
   bool _focused = false;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Material(
-      color: widget.selected
-          ? scheme.primary.withValues(alpha: 0.22)
-          : Colors.white.withValues(alpha: 0.05),
-      borderRadius: BorderRadius.circular(10),
-      child: InkWell(
-        autofocus: widget.autofocus,
-        onTap: widget.onTap,
-        onFocusChange: (v) => setState(() => _focused = v),
-        borderRadius: BorderRadius.circular(10),
-        child: Container(
-          width: 180,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: _focused
-                  ? Colors.yellow
-                  : (widget.selected
-                      ? scheme.primary
-                      : Colors.white24),
-              width: 3,
-            ),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(widget.icon, size: 20),
-              const SizedBox(width: 10),
-              Text(
-                widget.label,
-                style: TextStyle(
-                  fontWeight:
-                      widget.selected ? FontWeight.w700 : FontWeight.w500,
-                ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      child: Material(
+        color: widget.selected
+            ? scheme.primary.withValues(alpha: 0.18)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+        child: InkWell(
+          autofocus: widget.autofocus,
+          onTap: widget.onTap,
+          onFocusChange: (v) => setState(() => _focused = v),
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: _focused ? Colors.yellow : Colors.transparent,
+                width: 3,
               ),
-            ],
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: widget.child,
           ),
         ),
       ),

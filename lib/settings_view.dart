@@ -1860,6 +1860,7 @@ class _SettingsState extends State<SettingsView> {
               DpadFocusEscape(
                 child: TextField(
                   controller: subjectCtl,
+                  autofocus: true,
                   maxLength: 100,
                   textInputAction: TextInputAction.next,
                   decoration: const InputDecoration(
@@ -1893,7 +1894,6 @@ class _SettingsState extends State<SettingsView> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            autofocus: true,
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Submit'),
           ),
@@ -1988,6 +1988,7 @@ class _SettingsState extends State<SettingsView> {
         ),
         actions: [
           TextButton(
+            autofocus: true,
             onPressed: () => Navigator.pop(ctx),
             child: const Text('OK'),
           ),

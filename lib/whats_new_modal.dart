@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.53': [
+    'TV: Categories now uses a left type-rail (Live TV / Movies / Series) instead of the centered pill row, matching the Movies/Series layout. All three TV grids (Categories / Movies / Series) now share one tile size (~120x155px) for a consistent look.',
+    'TV: the Report-issue dialog opens with Subject focused (so the user can start typing immediately); after Submit the result dialog opens with OK focused.',
+    'TV: replaced the in-app header icon with a rounded-corner version so it no longer shows white corners behind the TV header frame. The background scrim is also a touch lighter (75%).',
+  ],
   '2.0.52': [
     'TV: the top-left header icon now shows the current neon play-triangle app icon (was the old green/blue "Free4Me-IPTV" circle logo). It now matches the home-screen launcher icon.',
   ],
