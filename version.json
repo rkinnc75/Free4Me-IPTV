@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.40",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.40",
+  "latest": "2.0.41",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.41",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 TV: added a subtle neon background image behind the interface, dimmed for readability.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.40/Free4Me-IPTV-2.0.40-arm64.apk"
+  "releaseNotes": "\u2022 \ud83e\uddea TEST THIS BUILD (TV): In Live TV, the \"NOW / NEXT\" program details should appear for EPG-equipped channels and stay correct even after the app has been open for a while. In Settings, \"Refresh EPG now\" shows when the guide was last loaded and asks for confirmation if you refresh again within 24 hours.\n\u2022 Fixed Live TV not showing the current/next program for EPG channels after the app had been left open \u2014 the guide now re-checks the current time each time it loads.\n\u2022 Settings: \"Refresh EPG now\" now shows when the guide was last downloaded, and warns before re-downloading if it was refreshed in the last 24 hours.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.41/Free4Me-IPTV-2.0.41-arm64.apk"
 }
