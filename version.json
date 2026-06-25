@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.42",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.42",
+  "latest": "2.0.43",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.43",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fixed a long black screen (sometimes minutes) on the first launch after updating, on devices with very large channel catalogs. The one-time database optimization now runs quietly in the background after the app opens, instead of blocking startup.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.42/Free4Me-IPTV-2.0.42-arm64.apk"
+  "releaseNotes": "\u2022 \ud83e\uddea TEST THIS BUILD (TV): In Live TV, select any category (e.g. \"USA CBS Locals\") and press OK \u2014 it now shows that category's channels instead of \"No channels\". The Favorites filter now only applies to the \"All channels\" view.\n\u2022 Fixed Live TV showing \"No channels\" when opening any category if you had no live favorites. Selecting a specific category now always shows its channels; the Favorites toggle only filters the \"All channels\" view.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.43/Free4Me-IPTV-2.0.43-arm64.apk"
 }
