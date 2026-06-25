@@ -70,10 +70,11 @@ void main() {
     final q = 'SELECT * FROM channels c WHERE media_type IN (1) AND source_id IN (1) '
         'AND c.url IS NOT NULL $vis ORDER BY source_id, name COLLATE NOCASE LIMIT 36';
     final plan = db.select('EXPLAIN QUERY PLAN $q').map((r) => r['detail'] as String).join(' | ');
-    // The browse uses the partial index for the hot path. (A correlated
-    // subquery for the per-source divider-hide guard remains by design — it is
-    // the category-enabled filter that must NOT be a correlated subquery, and
-    // it is not: cat_enabled is a plain indexed column.)
+    // The browse uses the partial index for the hot path. (fix546 removed the
+    // per-source divider-hide correlated subquery entirely — dividers are now
+    // discarded at import and purged from existing DBs. The category-enabled
+    // filter is NOT a correlated subquery: cat_enabled is a plain indexed
+    // column.)
     expect(plan, contains('idx_channels_browse_enabled'));
     expect(plan, isNot(contains('g.enabled')));
     expect(vis, contains('cat_enabled = 1'));

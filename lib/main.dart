@@ -109,6 +109,8 @@ Future<void> main() async {
     // critical path (unawaited, after first frame), so it can never block
     // startup / black-screen the app on a large catalog. Gated to run once.
     unawaited(Sql.runPendingIndexMaintenance());
+    // fix546: purge legacy divider rows once, also off the cold-start path.
+    unawaited(Sql.runPendingDividerCleanup());
   }
   unawaited(EpgService.scheduleBackgroundRefresh());
   // fix506: mirror the render-cap setting to the native SharedPref so the

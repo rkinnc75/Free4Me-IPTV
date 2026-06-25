@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.46': [
+    'Divider/header entries (the "##### … #####" separator rows) are no longer imported, and existing ones are removed automatically in the background after this update. This trims junk entries and slightly speeds up browsing.',
+  ],
   '2.0.45': [
     'TV: Live TV now has "Favorites" as the top item of the category list (replacing "All channels"), matching Movies and Series. The separate Favorites button has been removed.',
   ],

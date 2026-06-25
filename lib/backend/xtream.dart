@@ -542,6 +542,11 @@ void processXtream(
   }
   for (var live in streams) {
     if (live.name == null || live.name!.trim().isEmpty) continue;
+    // fix546: discard "##### HEADER #####" divider entries at import so they
+    // never enter the DB. They were cosmetic separators with no playable URL;
+    // dropping them removes ~2.5k junk rows on a large catalog and lets the
+    // browse queries drop their per-row is_divider/hide_dividers filter.
+    if (Channel.nameIsDivider(live.name)) continue;
     if (mediaType == MediaType.serie) {
       if (live.seriesId == null || live.seriesId!.isEmpty) continue;
     } else {

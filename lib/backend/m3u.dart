@@ -149,6 +149,9 @@ void commitChannel(
 ) {
   var channel = getChannelFromLines(l1, last, order);
   if (channel == null) return;
+  // fix546: discard "##### HEADER #####" divider entries at import so they
+  // never enter the DB (cosmetic separators, no playable content).
+  if (channel.isDivider) return;
   statements.add(Sql.insertChannel(channel));
   if (headers != null) {
     statements.add(Sql.insertChannelHeaders(headers));

@@ -47,10 +47,13 @@ class VisibilityClause {
       }
     }
 
-    // Divider hiding (fix272): correlated so each source honors its own
-    // hide_dividers setting. Indexed by idx_channel_divider(source_id,is_divider).
-    b.write('\nAND NOT (COALESCE(${p}is_divider,0) = 1 AND '
-        'COALESCE((SELECT hide_dividers FROM sources WHERE id = ${p}source_id),0) = 1)');
+    // fix546: the divider-hiding filter was removed. "##### HEADER #####"
+    // divider rows are now discarded at import (xtream.dart / m3u.dart) and
+    // purged from existing catalogs by Sql.runPendingDividerCleanup(), so no
+    // per-row is_divider/hide_dividers check is needed on every browse query.
+    // (Previously: AND NOT (is_divider=1 AND (SELECT hide_dividers …)=1), a
+    // correlated subquery whose backing idx_channel_divider was already dropped
+    // in fix537.)
 
     // Category-enabled hiding (fix278 → fix365): applied whenever NOT browsing
     // into a specific category (groupId null) — exactly the original shipped

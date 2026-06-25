@@ -1222,6 +1222,32 @@ class Sql {
   /// interrupted run simply retries on a later launch (every step is
   /// idempotent: DROP IF EXISTS, then drop-then-create). Until it completes the
   /// OLD cat_enabled-partial browse indexes remain and browse works normally.
+  /// fix546: one-time deferred cleanup that DELETEs legacy "##### HEADER #####"
+  /// divider rows from existing catalogs (new imports already discard them at
+  /// parse time). Runs OFF the cold-start path (unawaited from main, after first
+  /// frame) — on the 1.43GB field DB the delete touches ~7.5k rows across the
+  /// indexes and took ~5.5s, which must never block startup (the fix542 lesson).
+  /// Gated once by its own app_meta marker; best-effort and idempotent.
+  static Future<void> runPendingDividerCleanup() async {
+    const marker = 'fix546_dividers_purged';
+    try {
+      final db = await DbFactory.db;
+      final done = await db.getOptional(
+        "SELECT value FROM app_meta WHERE key = '$marker'",
+      );
+      if (done != null) return;
+      AppLog.info('fix546: purging legacy divider rows…');
+      final sw = Stopwatch()..start();
+      await db.execute('DELETE FROM channels WHERE COALESCE(is_divider, 0) = 1;');
+      await db.execute(
+        "INSERT OR REPLACE INTO app_meta (key, value) VALUES ('$marker', '1');",
+      );
+      AppLog.info('fix546: divider purge complete (${sw.elapsedMilliseconds}ms).');
+    } catch (e) {
+      AppLog.warn('fix546: divider purge skipped (will retry next launch) — $e');
+    }
+  }
+
   static Future<void> runPendingIndexMaintenance() async {
     const marker = 'fix537_index_rebuild_done';
     // The 5 unused indexes to drop, and the 7 browse indexes rebuilt WITHOUT
