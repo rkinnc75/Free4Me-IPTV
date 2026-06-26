@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.56",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.56",
+  "latest": "2.0.57",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.57",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 TV: searching \"what's on\" (EPG) is now dramatically faster \u2014 results that could take up to a couple of minutes now return in well under a second.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.56/Free4Me-IPTV-2.0.56-arm64.apk"
+  "releaseNotes": "\u2022 TV: search results now look and scroll like the rest of the app \u2014 wider grid cards instead of a single scrolling row, and a search like \"fox\" now shows far more than the old 36-result cap.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.57/Free4Me-IPTV-2.0.57-arm64.apk"
 }
