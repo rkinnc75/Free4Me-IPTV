@@ -143,24 +143,25 @@ class _ChannelTileState extends State<ChannelTile> {
         }
         return KeyEventResult.handled;
       }
-      // fix562 DIAGNOSTIC: log every key event this tile's node receives, and
-      // exactly which branch handles it — to find why the FIRST Up after a
-      // cross-section escape only scrolls without moving focus, even with a
-      // 3-SECOND gap before the press (ruling out any frame/microtask timing
-      // theory — fix561's Duration.zero change is REVERTED here pending this
-      // data, since it could not have been the actual cause).
-      if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowUp) {
-        AppLog.info('ChannelTile.onKeyEvent: UP on "${widget.channel.name}" '
-            'hasUpEscape=${widget.onFocusUpEscape != null} '
-            'nodeHash=${_focusNode.hashCode} hasFocus=${_focusNode.hasFocus}');
+      // fix562: handle Up explicitly, mirroring the Right-arrow branch above.
+      // When a tile has a cross-section escape, fire it. Otherwise drive the
+      // upward move ourselves via focusInDirection() instead of returning
+      // `ignored` and relying on the default traversal pass. The default pass
+      // computes from the tile's cached pre-scroll geometry; right after a
+      // cross-section escape lands focus on a last-row tile, fix560's
+      // ensureVisible() re-centres that tile, so the first Up resolved against
+      // stale geometry and moved nothing (the "needs a second press" bug —
+      // 4 attempts: 558/559/560/561). Driving the move here is geometry-
+      // agnostic on the first press. On now / Coming up never hit this because
+      // their targets aren't ensureVisible-recentred.
+      if (event is KeyDownEvent &&
+          event.logicalKey == LogicalKeyboardKey.arrowUp) {
         if (widget.onFocusUpEscape != null) {
-          AppLog.info('ChannelTile.onKeyEvent: calling onFocusUpEscape for '
-              '"${widget.channel.name}"');
           widget.onFocusUpEscape!.call();
           return KeyEventResult.handled;
         }
-        AppLog.info('ChannelTile.onKeyEvent: no escape, falling through to '
-            'default traversal for "${widget.channel.name}"');
+        FocusScope.of(context).focusInDirection(TraversalDirection.up);
+        return KeyEventResult.handled;
       }
       return KeyEventResult.ignored;
     };
@@ -168,21 +169,12 @@ class _ChannelTileState extends State<ChannelTile> {
       if (mounted) setState(() {});
       if (_focusNode.hasFocus) {
         _maybePrewarm();
-        // fix562 DIAGNOSTIC: log every focus-gain so the log shows the exact
-        // sequence of WHICH tile gained focus on each key press.
-        AppLog.info('ChannelTile: focus GAINED by "${widget.channel.name}" '
-            'nodeHash=${_focusNode.hashCode}');
         // fix560: requestFocus() alone does not scroll the focused widget
         // into view when it sits inside a shrink-wrapped, non-scrolling grid
         // nested in an ancestor Scrollable (the TV search results layout,
         // fix557). Mirrors the proven channel_schedule.dart pattern of
         // calling ensureVisible in a post-frame callback once the newly-
         // focused tile is actually built/laid out.
-        //
-        // fix562: REVERTED fix561's Duration.zero — the 3-second-gap test
-        // proved this was never a frame-timing race, so shortening the
-        // animation could not have been the real fix. Restored to 200ms
-        // pending the diagnostic data above.
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted || !_focusNode.hasFocus) return;
           final ctx = _focusNode.context;

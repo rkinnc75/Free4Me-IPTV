@@ -421,13 +421,6 @@ class _TvSearchViewState extends State<TvSearchView> {
                             final targetCol =
                                 col.clamp(0, prevLastRowNodes.length - 1);
                             final target = prevLastRowNodes[targetCol];
-                            // fix562 DIAGNOSTIC: confirm which node we're
-                            // targeting and its hash, to cross-reference
-                            // against ChannelTile's focus-gained log line.
-                            AppLog.info('TvSearch escape: from "$title" col=$col '
-                                '-> targetCol=$targetCol targetNodeHash='
-                                '${target.hashCode} targetHasFocus='
-                                '${target.hasFocus}');
                             target.requestFocus();
                           }
                         : null,
