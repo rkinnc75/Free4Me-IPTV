@@ -167,6 +167,24 @@ class _ChannelTileState extends State<ChannelTile> {
       if (mounted) setState(() {});
       if (_focusNode.hasFocus) {
         _maybePrewarm();
+        // fix560: requestFocus() alone does not scroll the focused widget
+        // into view when it sits inside a shrink-wrapped, non-scrolling grid
+        // nested in an ancestor Scrollable (the TV search results layout,
+        // fix557) — confirmed on-device: jumping focus across sections left
+        // the target only ~1/5 visible until a second key press. Mirrors the
+        // proven channel_schedule.dart pattern: ensureVisible in a post-frame
+        // callback once the newly-focused tile is actually built/laid out.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || !_focusNode.hasFocus) return;
+          final ctx = _focusNode.context;
+          if (ctx == null) return;
+          Scrollable.ensureVisible(
+            ctx,
+            alignment: 0.5,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+          );
+        });
       }
     });
   }

@@ -75,6 +75,13 @@ class _TvSearchViewState extends State<TvSearchView> {
   void dispose() {
     _debounce?.cancel();
     _controller.dispose();
+    // fix561: dispose the State-level last-row FocusNode cache (these are no
+    // longer created fresh per build, so they must be cleaned up explicitly).
+    for (final nodes in _lastRowNodeCache.values) {
+      for (final n in nodes) {
+        n.dispose();
+      }
+    }
     super.dispose();
   }
 
@@ -275,13 +282,19 @@ class _TvSearchViewState extends State<TvSearchView> {
   /// smaller phone-style layout. All 5 sections (including On now/Coming up,
   /// previously landscape now/next cards) use the same poster tile.
   ///
-  /// fix558: Flutter's default directional focus traversal does not reliably
-  /// cross between multiple stacked GridViews (flutter/flutter#70364) — arrow-
-  /// up from a section's top row could skip straight past the section above
-  /// it to the search field. Each section's LAST tile gets a stable FocusNode;
-  /// every tile in the NEXT section is given an explicit onFocusUpEscape that
-  /// jumps straight to that node when the default traversal finds nothing
-  /// above (which in practice only ever fires for the top row).
+  /// fix558/559/560/561: Flutter's default directional focus traversal does
+  /// not reliably cross between multiple stacked GridViews
+  /// (flutter/flutter#70364) — arrow-up from a section's top row could skip
+  /// straight past the section above it to the search field, or land on a
+  /// far-away widget. fix561 redesigned the escape to be COLUMN-AWARE: each
+  /// section exposes one stable FocusNode per column of its LAST row (a
+  /// `List<FocusNode>`, built once per section and reused across rebuilds via
+  /// a State-level cache keyed by section title — see [_lastRowNodesFor]).
+  /// Every top-row tile's escape callback captures ITS OWN column index and
+  /// requests focus on that same column in the previous section's last row,
+  /// clamped to that section's column count if it's narrower. This keeps the
+  /// landing position visually aligned with where the user came from instead
+  /// of always snapping to column 0.
   List<Widget> _buildShelves() {
     final groups = <(String, List<Channel>)>[
       ('On now', _onNow),
@@ -292,23 +305,35 @@ class _TvSearchViewState extends State<TvSearchView> {
     ];
     final sections = <Widget>[];
     var autofocusNext = true;
-    FocusNode? previousLastNode;
+    String? previousTitle;
     for (final (title, items) in groups) {
       if (items.isEmpty) continue;
-      final lastNode = FocusNode(debugLabel: 'search-section-last-$title');
       sections.add(
         _section(
           title,
           items,
           autofocusFirst: autofocusNext,
-          lastTileFocusNode: lastNode,
-          upEscapeTarget: previousLastNode,
+          previousSectionTitle: previousTitle,
         ),
       );
       autofocusNext = false;
-      previousLastNode = lastNode;
+      previousTitle = title;
     }
     return sections;
+  }
+
+  /// fix561: stable per-section `List<FocusNode>` for "the last row's tiles,
+  /// one per column", cached in State (NOT recreated every _buildShelves()
+  /// call, unlike the fix558/559 single-node approach which WAS recreated
+  /// each build). Grown to match [columns] if the section's column count is
+  /// read before the node at that index exists.
+  final Map<String, List<FocusNode>> _lastRowNodeCache = {};
+  List<FocusNode> _lastRowNodesFor(String title, int columns) {
+    final list = _lastRowNodeCache.putIfAbsent(title, () => []);
+    while (list.length < columns) {
+      list.add(FocusNode(debugLabel: 'search-$title-lastrow-col-${list.length}'));
+    }
+    return list;
   }
 
   /// A titled, wrapping poster grid — same tile size/spacing as
@@ -317,8 +342,7 @@ class _TvSearchViewState extends State<TvSearchView> {
     String title,
     List<Channel> items, {
     bool autofocusFirst = false,
-    required FocusNode lastTileFocusNode,
-    FocusNode? upEscapeTarget,
+    String? previousSectionTitle,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -338,11 +362,7 @@ class _TvSearchViewState extends State<TvSearchView> {
           //
           // fix559: LayoutBuilder gives the actual available width so we can
           // compute the SAME column count SliverGridDelegateWithMaxCrossAxis-
-          // Extent will use internally (ceil(width / (maxExtent+spacing))),
-          // and apply onFocusUpEscape ONLY to the tiles that really are in
-          // row 0 — never to any other row. (The fix558 attempt applied it to
-          // every tile and relied on focusInDirection's return value to gate
-          // it, which doesn't work — see the onFocusUpEscape doc.)
+          // Extent will use internally (ceil(width / (maxExtent+spacing))).
           child: LayoutBuilder(
             builder: (context, constraints) {
               const maxExtent = 130.0;
@@ -352,6 +372,15 @@ class _TvSearchViewState extends State<TvSearchView> {
                         1,
                         items.isEmpty ? 1 : items.length,
                       );
+              final lastRowStart =
+                  items.isEmpty ? 0 : ((items.length - 1) ~/ columns) * columns;
+              // fix561: this section's own last-row node list (for the NEXT
+              // section to target) and, if there IS a previous section, ITS
+              // last-row node list (for THIS section's top row to escape to).
+              final myLastRowNodes = _lastRowNodesFor(title, columns);
+              final prevLastRowNodes = previousSectionTitle == null
+                  ? null
+                  : _lastRowNodeCache[previousSectionTitle];
               return GridView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
@@ -366,7 +395,9 @@ class _TvSearchViewState extends State<TvSearchView> {
                 itemCount: items.length,
                 itemBuilder: (context, i) {
                   final ch = items[i];
+                  final col = i % columns;
                   final isTopRow = i < columns;
+                  final isLastRow = i >= lastRowStart;
                   return ChannelTile(
                     key: ValueKey('search-$title-${ch.id ?? ch.name}-$i'),
                     channel: ch,
@@ -378,14 +409,19 @@ class _TvSearchViewState extends State<TvSearchView> {
                     autofocus: autofocusFirst && i == 0,
                     playlist: items,
                     playlistIndex: i,
-                    // fix559: pin the FocusNode only on the LAST tile so the
-                    // NEXT section's top row can target it directly; give the
-                    // escape callback ONLY to this section's actual top-row
-                    // tiles (computed above), and only when there's a
-                    // previous section to jump to.
-                    focusNode: i == items.length - 1 ? lastTileFocusNode : null,
-                    onFocusUpEscape: (isTopRow && upEscapeTarget != null)
-                        ? () => upEscapeTarget.requestFocus()
+                    // fix561: every LAST-ROW tile gets ITS OWN stable node
+                    // (column-indexed), so the NEXT section can target the
+                    // exact column the user was in. Every TOP-ROW tile's
+                    // escape captures its own column and asks the PREVIOUS
+                    // section's last row for that same column, clamped to
+                    // however many columns that section actually has.
+                    focusNode: isLastRow ? myLastRowNodes[col] : null,
+                    onFocusUpEscape: (isTopRow && prevLastRowNodes != null)
+                        ? () {
+                            final target = prevLastRowNodes[
+                                col.clamp(0, prevLastRowNodes.length - 1)];
+                            target.requestFocus();
+                          }
                         : null,
                   );
                 },
