@@ -38,12 +38,13 @@ class ChannelTile extends StatefulWidget {
   final BuildContext parentContext;
   final Function(Node node) setNode;
   final VoidCallback? onFocusNavbar;
-  /// fix558: called when arrow-up is pressed and Flutter's default directional
-  /// traversal finds NO target above this tile (focusInDirection(up) returns
-  /// false) — e.g. the top row of a section in a multi-grid screen, where
-  /// Flutter's directional policy is known to skip over sibling scrollables
-  /// rather than reliably landing on the section above. Null = no override,
-  /// behavior unchanged (every other ChannelTile caller).
+  /// fix558/559: when set, arrow-up on this tile calls this UNCONDITIONALLY
+  /// instead of asking Flutter's directional traversal to find a target.
+  /// (fix558 originally tried "only escape if focusInDirection finds
+  /// nothing" — but Flutter's policy always finds SOME node by falling back
+  /// to "closest on screen", so that check could never fire. The caller must
+  /// only set this on tiles it knows are a section's actual top row.) Null =
+  /// no override, behavior unchanged (every other ChannelTile caller).
   final VoidCallback? onFocusUpEscape;
   /// fix558: lets a caller pin a stable FocusNode to a specific tile (e.g.
   /// "the last tile in this section") so another widget can target it
@@ -142,20 +143,23 @@ class _ChannelTileState extends State<ChannelTile> {
         }
         return KeyEventResult.handled;
       }
-      // fix558: same pattern as arrow-right above — try the normal directional
-      // traversal first (handles moving between rows WITHIN a section, which
-      // already works), and only fall through to the caller's explicit
-      // escape when Flutter finds no focusable target above (the known
-      // failure mode when multiple GridViews/ListViews are stacked — see
-      // flutter/flutter#70364). No-op (falls through to default handling)
-      // when the caller didn't supply onFocusUpEscape.
+      // fix559 (supersedes the fix558 attempt): do NOT probe
+      // focusInDirection(up) first. Flutter's DirectionalFocusTraversalPolicy
+      // ALWAYS finds a target somewhere on screen when none is in-band —
+      // it falls back to "closest out-of-band node by distance to the center
+      // line", which can be the Settings gear or a tab button clear across
+      // the screen. focusInDirection() returns true for that too, so checking
+      // its return value can never detect "this is the top row" — the fix558
+      // version never fired its escape and the broken long-range jump won.
+      // The caller (TvSearchView) now only ever supplies onFocusUpEscape to
+      // tiles it has computed ARE the section's actual top row, so the
+      // escape can fire unconditionally and skip the directional probe
+      // entirely.
       if (widget.onFocusUpEscape != null &&
           event is KeyDownEvent &&
           event.logicalKey == LogicalKeyboardKey.arrowUp) {
-        if (!FocusScope.of(context).focusInDirection(TraversalDirection.up)) {
-          widget.onFocusUpEscape!.call();
-          return KeyEventResult.handled;
-        }
+        widget.onFocusUpEscape!.call();
+        return KeyEventResult.handled;
       }
       return KeyEventResult.ignored;
     };

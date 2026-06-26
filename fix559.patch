@@ -1,0 +1,184 @@
+diff --git a/lib/channel_tile.dart b/lib/channel_tile.dart
+index 85dd6a9..2efe1ba 100644
+--- a/lib/channel_tile.dart
++++ b/lib/channel_tile.dart
+@@ -38,12 +38,13 @@ class ChannelTile extends StatefulWidget {
+   final BuildContext parentContext;
+   final Function(Node node) setNode;
+   final VoidCallback? onFocusNavbar;
+-  /// fix558: called when arrow-up is pressed and Flutter's default directional
+-  /// traversal finds NO target above this tile (focusInDirection(up) returns
+-  /// false) — e.g. the top row of a section in a multi-grid screen, where
+-  /// Flutter's directional policy is known to skip over sibling scrollables
+-  /// rather than reliably landing on the section above. Null = no override,
+-  /// behavior unchanged (every other ChannelTile caller).
++  /// fix558/559: when set, arrow-up on this tile calls this UNCONDITIONALLY
++  /// instead of asking Flutter's directional traversal to find a target.
++  /// (fix558 originally tried "only escape if focusInDirection finds
++  /// nothing" — but Flutter's policy always finds SOME node by falling back
++  /// to "closest on screen", so that check could never fire. The caller must
++  /// only set this on tiles it knows are a section's actual top row.) Null =
++  /// no override, behavior unchanged (every other ChannelTile caller).
+   final VoidCallback? onFocusUpEscape;
+   /// fix558: lets a caller pin a stable FocusNode to a specific tile (e.g.
+   /// "the last tile in this section") so another widget can target it
+@@ -142,20 +143,23 @@ class _ChannelTileState extends State<ChannelTile> {
+         }
+         return KeyEventResult.handled;
+       }
+-      // fix558: same pattern as arrow-right above — try the normal directional
+-      // traversal first (handles moving between rows WITHIN a section, which
+-      // already works), and only fall through to the caller's explicit
+-      // escape when Flutter finds no focusable target above (the known
+-      // failure mode when multiple GridViews/ListViews are stacked — see
+-      // flutter/flutter#70364). No-op (falls through to default handling)
+-      // when the caller didn't supply onFocusUpEscape.
++      // fix559 (supersedes the fix558 attempt): do NOT probe
++      // focusInDirection(up) first. Flutter's DirectionalFocusTraversalPolicy
++      // ALWAYS finds a target somewhere on screen when none is in-band —
++      // it falls back to "closest out-of-band node by distance to the center
++      // line", which can be the Settings gear or a tab button clear across
++      // the screen. focusInDirection() returns true for that too, so checking
++      // its return value can never detect "this is the top row" — the fix558
++      // version never fired its escape and the broken long-range jump won.
++      // The caller (TvSearchView) now only ever supplies onFocusUpEscape to
++      // tiles it has computed ARE the section's actual top row, so the
++      // escape can fire unconditionally and skip the directional probe
++      // entirely.
+       if (widget.onFocusUpEscape != null &&
+           event is KeyDownEvent &&
+           event.logicalKey == LogicalKeyboardKey.arrowUp) {
+-        if (!FocusScope.of(context).focusInDirection(TraversalDirection.up)) {
+-          widget.onFocusUpEscape!.call();
+-          return KeyEventResult.handled;
+-        }
++        widget.onFocusUpEscape!.call();
++        return KeyEventResult.handled;
+       }
+       return KeyEventResult.ignored;
+     };
+diff --git a/lib/tv/tv_search_view.dart b/lib/tv/tv_search_view.dart
+index 89e92d2..4735b2b 100644
+--- a/lib/tv/tv_search_view.dart
++++ b/lib/tv/tv_search_view.dart
+@@ -335,39 +335,60 @@ class _TvSearchViewState extends State<TvSearchView> {
+           // fix557: shrink-wrapped + non-scrolling — the OUTER ListView (in
+           // build()) owns the page scroll, this grid just lays out its own
+           // rows inline at their natural height.
+-          child: GridView.builder(
+-            shrinkWrap: true,
+-            physics: const NeverScrollableScrollPhysics(),
+-            padding: const EdgeInsets.only(bottom: 10),
+-            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+-              // fix558: matches the Categories/Movies/Series tile update.
+-              maxCrossAxisExtent: 130,
+-              childAspectRatio: 0.838,
+-              mainAxisSpacing: 6,
+-              crossAxisSpacing: 6,
+-            ),
+-            itemCount: items.length,
+-            itemBuilder: (context, i) {
+-              final ch = items[i];
+-              return ChannelTile(
+-                key: ValueKey('search-$title-${ch.id ?? ch.name}-$i'),
+-                channel: ch,
+-                parentContext: context,
+-                setNode: _setNode,
+-                tintColor: _sourceColors[ch.sourceId],
+-                showSourceEdgeBar: true,
+-                poster: true,
+-                autofocus: autofocusFirst && i == 0,
+-                playlist: items,
+-                playlistIndex: i,
+-                // fix558: pin the FocusNode only on the LAST tile so the NEXT
+-                // section can target it directly; give every tile an escape
+-                // callback only when there IS a previous section to jump to
+-                // (upEscapeTarget is null for the first visible section).
+-                focusNode: i == items.length - 1 ? lastTileFocusNode : null,
+-                onFocusUpEscape: upEscapeTarget == null
+-                    ? null
+-                    : () => upEscapeTarget.requestFocus(),
++          //
++          // fix559: LayoutBuilder gives the actual available width so we can
++          // compute the SAME column count SliverGridDelegateWithMaxCrossAxis-
++          // Extent will use internally (ceil(width / (maxExtent+spacing))),
++          // and apply onFocusUpEscape ONLY to the tiles that really are in
++          // row 0 — never to any other row. (The fix558 attempt applied it to
++          // every tile and relied on focusInDirection's return value to gate
++          // it, which doesn't work — see the onFocusUpEscape doc.)
++          child: LayoutBuilder(
++            builder: (context, constraints) {
++              const maxExtent = 130.0;
++              const spacing = 6.0;
++              final columns =
++                  (constraints.maxWidth / (maxExtent + spacing)).ceil().clamp(
++                        1,
++                        items.isEmpty ? 1 : items.length,
++                      );
++              return GridView.builder(
++                shrinkWrap: true,
++                physics: const NeverScrollableScrollPhysics(),
++                padding: const EdgeInsets.only(bottom: 10),
++                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
++                  // fix558: matches the Categories/Movies/Series tile update.
++                  maxCrossAxisExtent: maxExtent,
++                  childAspectRatio: 0.838,
++                  mainAxisSpacing: spacing,
++                  crossAxisSpacing: spacing,
++                ),
++                itemCount: items.length,
++                itemBuilder: (context, i) {
++                  final ch = items[i];
++                  final isTopRow = i < columns;
++                  return ChannelTile(
++                    key: ValueKey('search-$title-${ch.id ?? ch.name}-$i'),
++                    channel: ch,
++                    parentContext: context,
++                    setNode: _setNode,
++                    tintColor: _sourceColors[ch.sourceId],
++                    showSourceEdgeBar: true,
++                    poster: true,
++                    autofocus: autofocusFirst && i == 0,
++                    playlist: items,
++                    playlistIndex: i,
++                    // fix559: pin the FocusNode only on the LAST tile so the
++                    // NEXT section's top row can target it directly; give the
++                    // escape callback ONLY to this section's actual top-row
++                    // tiles (computed above), and only when there's a
++                    // previous section to jump to.
++                    focusNode: i == items.length - 1 ? lastTileFocusNode : null,
++                    onFocusUpEscape: (isTopRow && upEscapeTarget != null)
++                        ? () => upEscapeTarget.requestFocus()
++                        : null,
++                  );
++                },
+               );
+             },
+           ),
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 5d21bc9..31d2beb 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '2.0.59': [
++    'TV: fixed the search D-pad fix from the last update — pressing Up between result sections was landing on Settings or a tab button instead of the section above; now goes directly to the right place every time.',
++  ],
+   '2.0.58': [
+     'TV: wider, less-padded grid cards across Categories/Movies/Series/Search; channel logos no longer get cropped to an unrecognizable blob; D-pad up between search result sections now reliably lands on the section above instead of jumping to the search bar; dimmed the header logo.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index a9a4379..a3e3f86 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 2.0.58+558
++version: 2.0.59+559
+ 
+ environment:
+   sdk: ^3.10.7

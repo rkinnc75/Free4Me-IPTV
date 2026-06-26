@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.59': [
+    'TV: fixed the search D-pad fix from the last update — pressing Up between result sections was landing on Settings or a tab button instead of the section above; now goes directly to the right place every time.',
+  ],
   '2.0.58': [
     'TV: wider, less-padded grid cards across Categories/Movies/Series/Search; channel logos no longer get cropped to an unrecognizable blob; D-pad up between search result sections now reliably lands on the section above instead of jumping to the search bar; dimmed the header logo.',
   ],

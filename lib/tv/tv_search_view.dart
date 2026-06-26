@@ -335,39 +335,60 @@ class _TvSearchViewState extends State<TvSearchView> {
           // fix557: shrink-wrapped + non-scrolling — the OUTER ListView (in
           // build()) owns the page scroll, this grid just lays out its own
           // rows inline at their natural height.
-          child: GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            padding: const EdgeInsets.only(bottom: 10),
-            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              // fix558: matches the Categories/Movies/Series tile update.
-              maxCrossAxisExtent: 130,
-              childAspectRatio: 0.838,
-              mainAxisSpacing: 6,
-              crossAxisSpacing: 6,
-            ),
-            itemCount: items.length,
-            itemBuilder: (context, i) {
-              final ch = items[i];
-              return ChannelTile(
-                key: ValueKey('search-$title-${ch.id ?? ch.name}-$i'),
-                channel: ch,
-                parentContext: context,
-                setNode: _setNode,
-                tintColor: _sourceColors[ch.sourceId],
-                showSourceEdgeBar: true,
-                poster: true,
-                autofocus: autofocusFirst && i == 0,
-                playlist: items,
-                playlistIndex: i,
-                // fix558: pin the FocusNode only on the LAST tile so the NEXT
-                // section can target it directly; give every tile an escape
-                // callback only when there IS a previous section to jump to
-                // (upEscapeTarget is null for the first visible section).
-                focusNode: i == items.length - 1 ? lastTileFocusNode : null,
-                onFocusUpEscape: upEscapeTarget == null
-                    ? null
-                    : () => upEscapeTarget.requestFocus(),
+          //
+          // fix559: LayoutBuilder gives the actual available width so we can
+          // compute the SAME column count SliverGridDelegateWithMaxCrossAxis-
+          // Extent will use internally (ceil(width / (maxExtent+spacing))),
+          // and apply onFocusUpEscape ONLY to the tiles that really are in
+          // row 0 — never to any other row. (The fix558 attempt applied it to
+          // every tile and relied on focusInDirection's return value to gate
+          // it, which doesn't work — see the onFocusUpEscape doc.)
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              const maxExtent = 130.0;
+              const spacing = 6.0;
+              final columns =
+                  (constraints.maxWidth / (maxExtent + spacing)).ceil().clamp(
+                        1,
+                        items.isEmpty ? 1 : items.length,
+                      );
+              return GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                padding: const EdgeInsets.only(bottom: 10),
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  // fix558: matches the Categories/Movies/Series tile update.
+                  maxCrossAxisExtent: maxExtent,
+                  childAspectRatio: 0.838,
+                  mainAxisSpacing: spacing,
+                  crossAxisSpacing: spacing,
+                ),
+                itemCount: items.length,
+                itemBuilder: (context, i) {
+                  final ch = items[i];
+                  final isTopRow = i < columns;
+                  return ChannelTile(
+                    key: ValueKey('search-$title-${ch.id ?? ch.name}-$i'),
+                    channel: ch,
+                    parentContext: context,
+                    setNode: _setNode,
+                    tintColor: _sourceColors[ch.sourceId],
+                    showSourceEdgeBar: true,
+                    poster: true,
+                    autofocus: autofocusFirst && i == 0,
+                    playlist: items,
+                    playlistIndex: i,
+                    // fix559: pin the FocusNode only on the LAST tile so the
+                    // NEXT section's top row can target it directly; give the
+                    // escape callback ONLY to this section's actual top-row
+                    // tiles (computed above), and only when there's a
+                    // previous section to jump to.
+                    focusNode: i == items.length - 1 ? lastTileFocusNode : null,
+                    onFocusUpEscape: (isTopRow && upEscapeTarget != null)
+                        ? () => upEscapeTarget.requestFocus()
+                        : null,
+                  );
+                },
               );
             },
           ),
