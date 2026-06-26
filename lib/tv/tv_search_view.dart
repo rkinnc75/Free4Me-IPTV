@@ -38,6 +38,10 @@ class TvSearchView extends StatefulWidget {
 
 class _TvSearchViewState extends State<TvSearchView> {
   final TextEditingController _controller = TextEditingController();
+  // fix563: own the search field's FocusNode so arrow-up from the very top
+  // row of the results can return focus to it deterministically (instead of
+  // relying on Flutter's directional traversal — flutter/flutter#70364).
+  final FocusNode _searchFieldNode = FocusNode(debugLabel: 'search-field');
   Timer? _debounce;
   int _inv = 0;
   Map<int, int?> _sourceColors = {};
@@ -75,9 +79,11 @@ class _TvSearchViewState extends State<TvSearchView> {
   void dispose() {
     _debounce?.cancel();
     _controller.dispose();
-    // fix561: dispose the State-level last-row FocusNode cache (these are no
-    // longer created fresh per build, so they must be cleaned up explicitly).
-    for (final nodes in _lastRowNodeCache.values) {
+    _searchFieldNode.dispose();
+    // fix563: dispose the State-level per-item FocusNode cache. (_lastRowCache
+    // holds SUBLISTS of these same node objects, so it must NOT be disposed
+    // again here — that would double-dispose and throw.)
+    for (final nodes in _nodeCache.values) {
       for (final n in nodes) {
         n.dispose();
       }
@@ -239,6 +245,7 @@ class _TvSearchViewState extends State<TvSearchView> {
           padding: const EdgeInsets.all(16),
           child: DpadTextField(
             controller: _controller,
+            focusNode: _searchFieldNode,
             enabled: _ready,
             autofocus: true,
             onChanged: _onChanged,
@@ -282,19 +289,18 @@ class _TvSearchViewState extends State<TvSearchView> {
   /// smaller phone-style layout. All 5 sections (including On now/Coming up,
   /// previously landscape now/next cards) use the same poster tile.
   ///
-  /// fix558/559/560/561: Flutter's default directional focus traversal does
-  /// not reliably cross between multiple stacked GridViews
-  /// (flutter/flutter#70364) — arrow-up from a section's top row could skip
-  /// straight past the section above it to the search field, or land on a
-  /// far-away widget. fix561 redesigned the escape to be COLUMN-AWARE: each
-  /// section exposes one stable FocusNode per column of its LAST row (a
-  /// `List<FocusNode>`, built once per section and reused across rebuilds via
-  /// a State-level cache keyed by section title — see [_lastRowNodesFor]).
-  /// Every top-row tile's escape callback captures ITS OWN column index and
-  /// requests focus on that same column in the previous section's last row,
-  /// clamped to that section's column count if it's narrower. This keeps the
-  /// landing position visually aligned with where the user came from instead
-  /// of always snapping to column 0.
+  /// fix558–563: Flutter's default directional focus traversal does not
+  /// reliably cross between multiple stacked GridViews (flutter/flutter#70364)
+  /// — arrow-up from a section's top row could skip straight past the section
+  /// above it to the search field, or land on a far-away widget; and right
+  /// after a programmatic focus jump it could fail to move on the first press
+  /// (fix562's focusInDirection attempt routed through that same failing
+  /// pass). fix563 stops relying on directional traversal for vertical moves:
+  /// every tile owns a stable FocusNode (see [_nodesFor]) and arrow-up moves
+  /// focus by DIRECT NODE REFERENCE (see [_upTargetFor]) — one row up within a
+  /// section, or to the previous section's last row at the same column
+  /// (clamped) when leaving a section's top row. This keeps the landing
+  /// aligned with where the user came from and makes every press deterministic.
   List<Widget> _buildShelves() {
     final groups = <(String, List<Channel>)>[
       ('On now', _onNow),
@@ -322,18 +328,57 @@ class _TvSearchViewState extends State<TvSearchView> {
     return sections;
   }
 
-  /// fix561: stable per-section `List<FocusNode>` for "the last row's tiles,
-  /// one per column", cached in State (NOT recreated every _buildShelves()
-  /// call, unlike the fix558/559 single-node approach which WAS recreated
-  /// each build). Grown to match [columns] if the section's column count is
-  /// read before the node at that index exists.
-  final Map<String, List<FocusNode>> _lastRowNodeCache = {};
-  List<FocusNode> _lastRowNodesFor(String title, int columns) {
-    final list = _lastRowNodeCache.putIfAbsent(title, () => []);
-    while (list.length < columns) {
-      list.add(FocusNode(debugLabel: 'search-$title-lastrow-col-${list.length}'));
+  /// fix563: stable per-section `List<FocusNode>`, ONE PER ITEM (not just the
+  /// last row, as fix561 did). Every search tile now owns a stable node, so
+  /// vertical navigation can move focus by DIRECT NODE REFERENCE instead of
+  /// asking Flutter's directional traversal — which does not reliably cross
+  /// (or, right after a programmatic escape, even move WITHIN) the stacked
+  /// grids (flutter/flutter#70364). Cached in State and reused across
+  /// rebuilds; grown on demand. Reused by index across searches (a FocusNode
+  /// is just a focus target), so a list only ever grows to the largest result
+  /// set seen.
+  final Map<String, List<FocusNode>> _nodeCache = {};
+  List<FocusNode> _nodesFor(String title, int count) {
+    final list = _nodeCache.putIfAbsent(title, () => []);
+    while (list.length < count) {
+      list.add(FocusNode(debugLabel: 'search-$title-item-${list.length}'));
     }
     return list;
+  }
+
+  /// fix563: each section's LAST-ROW node subset, captured when that section
+  /// builds (so it knows its own column count). The NEXT section's top row
+  /// targets these for a deterministic cross-section UP. These are the SAME
+  /// node objects held in [_nodeCache] (a sublist view's contents), so they
+  /// are never disposed separately.
+  final Map<String, List<FocusNode>> _lastRowCache = {};
+
+  /// fix563: the UP target for the search tile at index [i] in a section of
+  /// [columns] columns whose nodes are [myNodes], with [prevLastRow] = the
+  /// previous section's last-row nodes (or null if this is the first section).
+  ///   • interior / lower rows -> the tile one full row above (same section);
+  ///   • this section's TOP row, with a previous section -> that section's
+  ///     last row at the same column (clamped) — the proven cross-section
+  ///     landing;
+  ///   • the FIRST section's top row -> the search field, so leaving the very
+  ///     top of the results is deterministic too (covers a single-row top
+  ///     section, where there is no row above to move to).
+  /// Returning a node's bound `requestFocus` makes the move deterministic and
+  /// independent of Flutter's directional-traversal geometry/history state.
+  VoidCallback? _upTargetFor(
+    int i,
+    int col,
+    int columns,
+    List<FocusNode> myNodes,
+    List<FocusNode>? prevLastRow,
+  ) {
+    if (i >= columns) {
+      return myNodes[i - columns].requestFocus;
+    }
+    if (prevLastRow != null && prevLastRow.isNotEmpty) {
+      return prevLastRow[col.clamp(0, prevLastRow.length - 1)].requestFocus;
+    }
+    return _searchFieldNode.requestFocus;
   }
 
   /// A titled, wrapping poster grid — same tile size/spacing as
@@ -374,13 +419,18 @@ class _TvSearchViewState extends State<TvSearchView> {
                       );
               final lastRowStart =
                   items.isEmpty ? 0 : ((items.length - 1) ~/ columns) * columns;
-              // fix561: this section's own last-row node list (for the NEXT
-              // section to target) and, if there IS a previous section, ITS
-              // last-row node list (for THIS section's top row to escape to).
-              final myLastRowNodes = _lastRowNodesFor(title, columns);
-              final prevLastRowNodes = previousSectionTitle == null
+              // fix563: one stable node per item. Capture THIS section's last
+              // row (for the next section to target) and read the PREVIOUS
+              // section's last row (already captured this frame — a ListView
+              // lays its children out top to bottom) for this section's
+              // top-row cross-section UP.
+              final myNodes = _nodesFor(title, items.length);
+              _lastRowCache[title] = items.isEmpty
+                  ? const <FocusNode>[]
+                  : myNodes.sublist(lastRowStart, items.length);
+              final prevLastRow = previousSectionTitle == null
                   ? null
-                  : _lastRowNodeCache[previousSectionTitle];
+                  : _lastRowCache[previousSectionTitle];
               return GridView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
@@ -396,8 +446,6 @@ class _TvSearchViewState extends State<TvSearchView> {
                 itemBuilder: (context, i) {
                   final ch = items[i];
                   final col = i % columns;
-                  final isTopRow = i < columns;
-                  final isLastRow = i >= lastRowStart;
                   return ChannelTile(
                     key: ValueKey('search-$title-${ch.id ?? ch.name}-$i'),
                     channel: ch,
@@ -409,21 +457,14 @@ class _TvSearchViewState extends State<TvSearchView> {
                     autofocus: autofocusFirst && i == 0,
                     playlist: items,
                     playlistIndex: i,
-                    // fix561: every LAST-ROW tile gets ITS OWN stable node
-                    // (column-indexed), so the NEXT section can target the
-                    // exact column the user was in. Every TOP-ROW tile's
-                    // escape captures its own column and asks the PREVIOUS
-                    // section's last row for that same column, clamped to
-                    // however many columns that section actually has.
-                    focusNode: isLastRow ? myLastRowNodes[col] : null,
-                    onFocusUpEscape: (isTopRow && prevLastRowNodes != null)
-                        ? () {
-                            final targetCol =
-                                col.clamp(0, prevLastRowNodes.length - 1);
-                            final target = prevLastRowNodes[targetCol];
-                            target.requestFocus();
-                          }
-                        : null,
+                    // fix563: every tile owns a stable node, and arrow-UP moves
+                    // focus by DIRECT NODE REFERENCE (see _upTargetFor) rather
+                    // than via Flutter's directional traversal, which is
+                    // unreliable across — and right after a programmatic escape
+                    // into — these stacked grids (flutter/flutter#70364).
+                    focusNode: myNodes[i],
+                    onFocusUpEscape:
+                        _upTargetFor(i, col, columns, myNodes, prevLastRow),
                   );
                 },
               );

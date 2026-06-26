@@ -38,13 +38,17 @@ class ChannelTile extends StatefulWidget {
   final BuildContext parentContext;
   final Function(Node node) setNode;
   final VoidCallback? onFocusNavbar;
-  /// fix558/559: when set, arrow-up on this tile calls this UNCONDITIONALLY
+  /// fix558/559/563: when set, arrow-up on this tile calls this UNCONDITIONALLY
   /// instead of asking Flutter's directional traversal to find a target.
-  /// (fix558 originally tried "only escape if focusInDirection finds
-  /// nothing" — but Flutter's policy always finds SOME node by falling back
-  /// to "closest on screen", so that check could never fire. The caller must
-  /// only set this on tiles it knows are a section's actual top row.) Null =
-  /// no override, behavior unchanged (every other ChannelTile caller).
+  /// (fix558 originally tried "only escape if focusInDirection finds nothing"
+  /// — but Flutter's policy always finds SOME node by falling back to "closest
+  /// on screen", so that check could never fire.) fix563 wires this for EVERY
+  /// search tile — interior rows move to the node one row up, top rows cross
+  /// to the previous section — so vertical navigation never depends on
+  /// Flutter's directional traversal, which is unreliable across these stacked
+  /// grids, and especially right after a programmatic focus jump
+  /// (flutter/flutter#70364). Null = no override (every other ChannelTile
+  /// caller is unchanged).
   final VoidCallback? onFocusUpEscape;
   /// fix558: lets a caller pin a stable FocusNode to a specific tile (e.g.
   /// "the last tile in this section") so another widget can target it
@@ -143,24 +147,19 @@ class _ChannelTileState extends State<ChannelTile> {
         }
         return KeyEventResult.handled;
       }
-      // fix562: handle Up explicitly, mirroring the Right-arrow branch above.
-      // When a tile has a cross-section escape, fire it. Otherwise drive the
-      // upward move ourselves via focusInDirection() instead of returning
-      // `ignored` and relying on the default traversal pass. The default pass
-      // computes from the tile's cached pre-scroll geometry; right after a
-      // cross-section escape lands focus on a last-row tile, fix560's
-      // ensureVisible() re-centres that tile, so the first Up resolved against
-      // stale geometry and moved nothing (the "needs a second press" bug —
-      // 4 attempts: 558/559/560/561). Driving the move here is geometry-
-      // agnostic on the first press. On now / Coming up never hit this because
-      // their targets aren't ensureVisible-recentred.
+      // fix558/563: when the caller supplies an explicit up-target, move focus
+      // there directly instead of asking Flutter's directional traversal.
+      // fix562 tried focusInDirection(up) here, but that routes through the
+      // SAME directional-traversal pass that is unreliable right after a
+      // programmatic focus jump across the search screen's stacked grids
+      // (flutter/flutter#70364), so it did not fix the first-press miss.
+      // fix563 makes TvSearchView supply a deterministic node-reference target
+      // for EVERY tile (see TvSearchView._upTargetFor), so no up press depends
+      // on directional traversal at all.
       if (event is KeyDownEvent &&
-          event.logicalKey == LogicalKeyboardKey.arrowUp) {
-        if (widget.onFocusUpEscape != null) {
-          widget.onFocusUpEscape!.call();
-          return KeyEventResult.handled;
-        }
-        FocusScope.of(context).focusInDirection(TraversalDirection.up);
+          event.logicalKey == LogicalKeyboardKey.arrowUp &&
+          widget.onFocusUpEscape != null) {
+        widget.onFocusUpEscape!.call();
         return KeyEventResult.handled;
       }
       return KeyEventResult.ignored;
