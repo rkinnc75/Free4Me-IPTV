@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.61",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.61",
+  "latest": "2.0.62",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.62",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Internal diagnostics only \u2014 no user-visible change. Added logging to track down the remaining search D-pad navigation quirk (the first Up after jumping sections sometimes needing a second press).",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.61/Free4Me-IPTV-2.0.61-arm64.apk"
+  "releaseNotes": "\u2022 TV: fixed search results D-pad navigation so the first Up press after jumping between sections (e.g. Channels \u2192 Movies) moves focus immediately instead of occasionally needing a second press.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.62/Free4Me-IPTV-2.0.62-arm64.apk"
 }
