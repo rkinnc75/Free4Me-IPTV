@@ -2403,7 +2403,14 @@ class Sql {
       SELECT p.id, p.epg_channel_id, p.source_id, p.title, p.description,
              p.category, p.start_utc, p.stop_utc, p.episode_num
       FROM programmes_fts f
-      INNER JOIN programmes p ON p.id = f.rowid
+      -- fix556: CROSS JOIN (not INNER) forces the FTS virtual table to be the
+      -- OUTER driver. The default plan drove off idx_programs_time_range and did
+      -- one random FTS probe per in-window programme (~hundreds), which on the
+      -- Onn's eMMC turned a search into 30-120s of random I/O (field logs:
+      -- epgProg=119639ms). FTS-first scans one term's posting list sequentially,
+      -- resolves rowids by PK, then sorts ≤200 — measured 4-40ms on the 1.1M-row
+      -- EPG seed vs the previous catastrophe. Results are identical (verified).
+      CROSS JOIN programmes p ON p.id = f.rowid
       WHERE programmes_fts MATCH ?
         AND p.source_id IN (${generatePlaceholders(sourceIds.length)})
         AND p.stop_utc > ?
