@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.57': [
+    'TV: search results now look and scroll like the rest of the app — wider grid cards instead of a single scrolling row, and a search like "fox" now shows far more than the old 36-result cap.',
+  ],
   '2.0.56': [
     'TV: searching "what\'s on" (EPG) is now dramatically faster — results that could take up to a couple of minutes now return in well under a second.',
   ],

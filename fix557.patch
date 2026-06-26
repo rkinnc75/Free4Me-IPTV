@@ -1,0 +1,269 @@
+diff --git a/lib/backend/sql.dart b/lib/backend/sql.dart
+index 1ff3238..66ced5b 100644
+--- a/lib/backend/sql.dart
++++ b/lib/backend/sql.dart
+@@ -777,6 +777,9 @@ class Sql {
+     }
+     var db = await DbFactory.db;
+     var offset = filters.page * pageSize - pageSize;
++    // fix557: per-call override (see Filters.limit doc). Defaults to the
++    // global pageSize for every existing caller.
++    final effLimit = filters.limit ?? pageSize;
+     var mediaTypes = filters.seriesId == null
+         ? filters.mediaTypes!.map((x) => x.index)
+         : [1];
+@@ -793,10 +796,10 @@ class Sql {
+       // path instead.
+       if (filters.searchMethod == SearchMethod.inMemory &&
+           !ChannelSearchCache.cacheSkipped) {
+-        return _searchInMemory(filters, rawQuery, mediaTypes, offset);
++        return _searchInMemory(filters, rawQuery, mediaTypes, offset, effLimit);
+       }
+       if (filters.searchMethod == SearchMethod.likeSubstring) {
+-        return _searchLike(filters, rawQuery, mediaTypes, offset);
++        return _searchLike(filters, rawQuery, mediaTypes, offset, effLimit);
+       }
+     }
+ 
+@@ -966,7 +969,7 @@ class Sql {
+ 
+     sqlQuery += "\nLIMIT ?, ?";
+     params.add(offset);
+-    params.add(pageSize);
++    params.add(effLimit);
+ 
+     // log can tell us which is the bottleneck.
+     final sqlStart = DateTime.now();
+@@ -2648,6 +2651,7 @@ class Sql {
+     String rawQuery,
+     Iterable<int> mediaTypes,
+     int offset,
++    int limit,
+   ) async {
+     // fix375: honor the in-scope sources' uniform sort mode so in-memory
+     // search matches browse for provider/category. null/mixed => default order.
+@@ -2660,7 +2664,7 @@ class Sql {
+       groupId: filters.groupId,
+       seriesId: filters.seriesId,
+       safeMode: filters.safeMode,
+-      limit: pageSize,
++      limit: limit,
+       offset: offset,
+       sortMode: sortMode,
+     );
+@@ -2816,6 +2820,7 @@ class Sql {
+     String rawQuery,
+     Iterable<int> mediaTypes,
+     int offset,
++    int limit,
+   ) async {
+     final db = await DbFactory.db;
+     final terms = rawQuery
+@@ -2879,7 +2884,7 @@ class Sql {
+ 
+     sqlQuery += '\nLIMIT ?, ?';
+     params.add(offset);
+-    params.add(pageSize);
++    params.add(limit);
+ 
+     final rows = await db.getAll(sqlQuery, params);
+     AppLog.info(
+diff --git a/lib/models/filters.dart b/lib/models/filters.dart
+index 3f7d01e..e2c1295 100644
+--- a/lib/models/filters.dart
++++ b/lib/models/filters.dart
+@@ -19,6 +19,13 @@ class Filters {
+   /// from all queries. Mirrors Settings.safeMode.
+   bool safeMode;
+ 
++  /// fix557: optional override for the page size. Null (the default) means
++  /// "use the global `pageSize` constant" — every existing caller (phone
++  /// browse, TV browse/guide) is unaffected. Set this when a caller wants
++  /// more than one page of results in a single query, e.g. TV search, which
++  /// previously silently capped at pageSize (36) with no way to see more.
++  int? limit;
++
+   Filters({
+     this.query,
+     this.sourceIds,
+@@ -32,6 +39,7 @@ class Filters {
+     this.useKeywords = true,
+     this.searchMethod = SearchMethod.inMemory,
+     this.safeMode = false,
++    this.limit,
+   });
+ 
+   /// Returns a shallow copy of this [Filters] with all fields cloned.
+@@ -47,5 +55,6 @@ class Filters {
+         useKeywords: useKeywords,
+         searchMethod: searchMethod,
+         safeMode: safeMode,
++        limit: limit,
+       );
+ }
+diff --git a/lib/tv/tv_search_view.dart b/lib/tv/tv_search_view.dart
+index 0793fb6..755ad82 100644
+--- a/lib/tv/tv_search_view.dart
++++ b/lib/tv/tv_search_view.dart
+@@ -115,6 +115,12 @@ class _TvSearchViewState extends State<TvSearchView> {
+       sourceIds: _sourceIds,
+       searchMethod: s.searchMethod,
+       safeMode: s.safeMode,
++      // fix557: TV search previously inherited the global 36-per-page cap
++      // silently — "fox" showed 34 results while the Live category alone has
++      // 100+. Search isn't a paged browse; raise the ceiling so a real query
++      // returns effectively everything, while still bounding a pathological
++      // 1-2 char query from returning the whole catalog.
++      limit: 1000,
+     ));
+     swName.stop();
+ 
+@@ -262,43 +268,39 @@ class _TvSearchViewState extends State<TvSearchView> {
+     );
+   }
+ 
+-  /// fix509: build the non-empty shelves in priority order; the first non-empty
+-  /// shelf's first card receives initial focus.
++  /// fix557: each section is its own WRAPPING grid (not a horizontal-scroll
++  /// shelf) using the same tile size as Categories/Movies/Series
++  /// (maxCrossAxisExtent 120, AR 0.773, spacing 10 — fix553), so the search
++  /// screen matches the rest of the TV UI instead of looking like a separate,
++  /// smaller phone-style layout. All 5 sections (including On now/Coming up,
++  /// previously landscape now/next cards) use the same poster tile.
+   List<Widget> _buildShelves() {
+-    final groups = <(String, List<Channel>, bool)>[
+-      ('On now', _onNow, false),
+-      ('Coming up', _comingUp, false),
+-      ('Channels', _channels, false),
+-      ('Movies', _movies, true),
+-      ('Series', _series, true),
++    final groups = <(String, List<Channel>)>[
++      ('On now', _onNow),
++      ('Coming up', _comingUp),
++      ('Channels', _channels),
++      ('Movies', _movies),
++      ('Series', _series),
+     ];
+-    final shelves = <Widget>[];
++    final sections = <Widget>[];
+     var autofocusNext = true;
+-    for (final (title, items, poster) in groups) {
++    for (final (title, items) in groups) {
+       if (items.isEmpty) continue;
+-      shelves.add(
+-        _shelf(title, items, poster: poster, autofocusFirst: autofocusNext),
++      sections.add(
++        _section(title, items, autofocusFirst: autofocusNext),
+       );
+       autofocusNext = false;
+     }
+-    return shelves;
++    return sections;
+   }
+ 
+-  /// A horizontal card shelf. [poster] true = portrait poster cards
+-  /// (Movies/Series); false = the landscape now/next card (live groups — its
+-  /// NowNextStrip shows what's on).
+-  Widget _shelf(
++  /// A titled, wrapping poster grid — same tile size/spacing as
++  /// TvCategoriesView / TvBrowseView (fix553) for a consistent TV UI.
++  Widget _section(
+     String title,
+     List<Channel> items, {
+-    required bool poster,
+     bool autofocusFirst = false,
+   }) {
+-    // fix551: size TV search poster cards to match the category grid tiles
+-    // (which widened to ~6-across with 2-line labels) instead of the smaller
+-    // phone-ish cards. Taller poster rows give the wrapped 2-line title room;
+-    // wider cards read at 10ft. Live (now/next) cards unchanged.
+-    final double rowHeight = poster ? 270 : 104;
+-    final double cardWidth = poster ? 168 : 320;
+     return Column(
+       crossAxisAlignment: CrossAxisAlignment.start,
+       children: [
+@@ -309,31 +311,35 @@ class _TvSearchViewState extends State<TvSearchView> {
+             style: Theme.of(context).textTheme.titleMedium,
+           ),
+         ),
+-        SizedBox(
+-          height: rowHeight,
+-          child: ListView.builder(
+-            scrollDirection: Axis.horizontal,
+-            padding: const EdgeInsets.symmetric(horizontal: 12),
++        Padding(
++          padding: const EdgeInsets.symmetric(horizontal: 14),
++          // fix557: shrink-wrapped + non-scrolling — the OUTER ListView (in
++          // build()) owns the page scroll, this grid just lays out its own
++          // rows inline at their natural height.
++          child: GridView.builder(
++            shrinkWrap: true,
++            physics: const NeverScrollableScrollPhysics(),
++            padding: const EdgeInsets.only(bottom: 10),
++            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
++              maxCrossAxisExtent: 120,
++              childAspectRatio: 0.773,
++              mainAxisSpacing: 10,
++              crossAxisSpacing: 10,
++            ),
+             itemCount: items.length,
+             itemBuilder: (context, i) {
+               final ch = items[i];
+-              return Padding(
+-                padding: const EdgeInsets.only(right: 12),
+-                child: SizedBox(
+-                  width: cardWidth,
+-                  child: ChannelTile(
+-                    key: ValueKey('search-$title-${ch.id ?? ch.name}-$i'),
+-                    channel: ch,
+-                    parentContext: context,
+-                    setNode: _setNode,
+-                    tintColor: _sourceColors[ch.sourceId],
+-                    showSourceEdgeBar: true,
+-                    poster: poster,
+-                    autofocus: autofocusFirst && i == 0,
+-                    playlist: items,
+-                    playlistIndex: i,
+-                  ),
+-                ),
++              return ChannelTile(
++                key: ValueKey('search-$title-${ch.id ?? ch.name}-$i'),
++                channel: ch,
++                parentContext: context,
++                setNode: _setNode,
++                tintColor: _sourceColors[ch.sourceId],
++                showSourceEdgeBar: true,
++                poster: true,
++                autofocus: autofocusFirst && i == 0,
++                playlist: items,
++                playlistIndex: i,
+               );
+             },
+           ),
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index f923d79..82ed296 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '2.0.57': [
++    'TV: search results now look and scroll like the rest of the app — wider grid cards instead of a single scrolling row, and a search like "fox" now shows far more than the old 36-result cap.',
++  ],
+   '2.0.56': [
+     'TV: searching "what\'s on" (EPG) is now dramatically faster — results that could take up to a couple of minutes now return in well under a second.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 65ae81e..d218749 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 2.0.56+556
++version: 2.0.57+557
+ 
+ environment:
+   sdk: ^3.10.7

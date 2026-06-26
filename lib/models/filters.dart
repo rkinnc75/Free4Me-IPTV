@@ -19,6 +19,13 @@ class Filters {
   /// from all queries. Mirrors Settings.safeMode.
   bool safeMode;
 
+  /// fix557: optional override for the page size. Null (the default) means
+  /// "use the global `pageSize` constant" — every existing caller (phone
+  /// browse, TV browse/guide) is unaffected. Set this when a caller wants
+  /// more than one page of results in a single query, e.g. TV search, which
+  /// previously silently capped at pageSize (36) with no way to see more.
+  int? limit;
+
   Filters({
     this.query,
     this.sourceIds,
@@ -32,6 +39,7 @@ class Filters {
     this.useKeywords = true,
     this.searchMethod = SearchMethod.inMemory,
     this.safeMode = false,
+    this.limit,
   });
 
   /// Returns a shallow copy of this [Filters] with all fields cloned.
@@ -47,5 +55,6 @@ class Filters {
         useKeywords: useKeywords,
         searchMethod: searchMethod,
         safeMode: safeMode,
+        limit: limit,
       );
 }

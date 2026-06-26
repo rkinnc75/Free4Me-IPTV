@@ -777,6 +777,9 @@ class Sql {
     }
     var db = await DbFactory.db;
     var offset = filters.page * pageSize - pageSize;
+    // fix557: per-call override (see Filters.limit doc). Defaults to the
+    // global pageSize for every existing caller.
+    final effLimit = filters.limit ?? pageSize;
     var mediaTypes = filters.seriesId == null
         ? filters.mediaTypes!.map((x) => x.index)
         : [1];
@@ -793,10 +796,10 @@ class Sql {
       // path instead.
       if (filters.searchMethod == SearchMethod.inMemory &&
           !ChannelSearchCache.cacheSkipped) {
-        return _searchInMemory(filters, rawQuery, mediaTypes, offset);
+        return _searchInMemory(filters, rawQuery, mediaTypes, offset, effLimit);
       }
       if (filters.searchMethod == SearchMethod.likeSubstring) {
-        return _searchLike(filters, rawQuery, mediaTypes, offset);
+        return _searchLike(filters, rawQuery, mediaTypes, offset, effLimit);
       }
     }
 
@@ -966,7 +969,7 @@ class Sql {
 
     sqlQuery += "\nLIMIT ?, ?";
     params.add(offset);
-    params.add(pageSize);
+    params.add(effLimit);
 
     // log can tell us which is the bottleneck.
     final sqlStart = DateTime.now();
@@ -2648,6 +2651,7 @@ class Sql {
     String rawQuery,
     Iterable<int> mediaTypes,
     int offset,
+    int limit,
   ) async {
     // fix375: honor the in-scope sources' uniform sort mode so in-memory
     // search matches browse for provider/category. null/mixed => default order.
@@ -2660,7 +2664,7 @@ class Sql {
       groupId: filters.groupId,
       seriesId: filters.seriesId,
       safeMode: filters.safeMode,
-      limit: pageSize,
+      limit: limit,
       offset: offset,
       sortMode: sortMode,
     );
@@ -2816,6 +2820,7 @@ class Sql {
     String rawQuery,
     Iterable<int> mediaTypes,
     int offset,
+    int limit,
   ) async {
     final db = await DbFactory.db;
     final terms = rawQuery
@@ -2879,7 +2884,7 @@ class Sql {
 
     sqlQuery += '\nLIMIT ?, ?';
     params.add(offset);
-    params.add(pageSize);
+    params.add(limit);
 
     final rows = await db.getAll(sqlQuery, params);
     AppLog.info(

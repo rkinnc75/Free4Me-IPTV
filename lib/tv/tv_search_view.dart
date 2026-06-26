@@ -115,6 +115,12 @@ class _TvSearchViewState extends State<TvSearchView> {
       sourceIds: _sourceIds,
       searchMethod: s.searchMethod,
       safeMode: s.safeMode,
+      // fix557: TV search previously inherited the global 36-per-page cap
+      // silently — "fox" showed 34 results while the Live category alone has
+      // 100+. Search isn't a paged browse; raise the ceiling so a real query
+      // returns effectively everything, while still bounding a pathological
+      // 1-2 char query from returning the whole catalog.
+      limit: 1000,
     ));
     swName.stop();
 
@@ -262,43 +268,39 @@ class _TvSearchViewState extends State<TvSearchView> {
     );
   }
 
-  /// fix509: build the non-empty shelves in priority order; the first non-empty
-  /// shelf's first card receives initial focus.
+  /// fix557: each section is its own WRAPPING grid (not a horizontal-scroll
+  /// shelf) using the same tile size as Categories/Movies/Series
+  /// (maxCrossAxisExtent 120, AR 0.773, spacing 10 — fix553), so the search
+  /// screen matches the rest of the TV UI instead of looking like a separate,
+  /// smaller phone-style layout. All 5 sections (including On now/Coming up,
+  /// previously landscape now/next cards) use the same poster tile.
   List<Widget> _buildShelves() {
-    final groups = <(String, List<Channel>, bool)>[
-      ('On now', _onNow, false),
-      ('Coming up', _comingUp, false),
-      ('Channels', _channels, false),
-      ('Movies', _movies, true),
-      ('Series', _series, true),
+    final groups = <(String, List<Channel>)>[
+      ('On now', _onNow),
+      ('Coming up', _comingUp),
+      ('Channels', _channels),
+      ('Movies', _movies),
+      ('Series', _series),
     ];
-    final shelves = <Widget>[];
+    final sections = <Widget>[];
     var autofocusNext = true;
-    for (final (title, items, poster) in groups) {
+    for (final (title, items) in groups) {
       if (items.isEmpty) continue;
-      shelves.add(
-        _shelf(title, items, poster: poster, autofocusFirst: autofocusNext),
+      sections.add(
+        _section(title, items, autofocusFirst: autofocusNext),
       );
       autofocusNext = false;
     }
-    return shelves;
+    return sections;
   }
 
-  /// A horizontal card shelf. [poster] true = portrait poster cards
-  /// (Movies/Series); false = the landscape now/next card (live groups — its
-  /// NowNextStrip shows what's on).
-  Widget _shelf(
+  /// A titled, wrapping poster grid — same tile size/spacing as
+  /// TvCategoriesView / TvBrowseView (fix553) for a consistent TV UI.
+  Widget _section(
     String title,
     List<Channel> items, {
-    required bool poster,
     bool autofocusFirst = false,
   }) {
-    // fix551: size TV search poster cards to match the category grid tiles
-    // (which widened to ~6-across with 2-line labels) instead of the smaller
-    // phone-ish cards. Taller poster rows give the wrapped 2-line title room;
-    // wider cards read at 10ft. Live (now/next) cards unchanged.
-    final double rowHeight = poster ? 270 : 104;
-    final double cardWidth = poster ? 168 : 320;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -309,31 +311,35 @@ class _TvSearchViewState extends State<TvSearchView> {
             style: Theme.of(context).textTheme.titleMedium,
           ),
         ),
-        SizedBox(
-          height: rowHeight,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          // fix557: shrink-wrapped + non-scrolling — the OUTER ListView (in
+          // build()) owns the page scroll, this grid just lays out its own
+          // rows inline at their natural height.
+          child: GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            padding: const EdgeInsets.only(bottom: 10),
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 120,
+              childAspectRatio: 0.773,
+              mainAxisSpacing: 10,
+              crossAxisSpacing: 10,
+            ),
             itemCount: items.length,
             itemBuilder: (context, i) {
               final ch = items[i];
-              return Padding(
-                padding: const EdgeInsets.only(right: 12),
-                child: SizedBox(
-                  width: cardWidth,
-                  child: ChannelTile(
-                    key: ValueKey('search-$title-${ch.id ?? ch.name}-$i'),
-                    channel: ch,
-                    parentContext: context,
-                    setNode: _setNode,
-                    tintColor: _sourceColors[ch.sourceId],
-                    showSourceEdgeBar: true,
-                    poster: poster,
-                    autofocus: autofocusFirst && i == 0,
-                    playlist: items,
-                    playlistIndex: i,
-                  ),
-                ),
+              return ChannelTile(
+                key: ValueKey('search-$title-${ch.id ?? ch.name}-$i'),
+                channel: ch,
+                parentContext: context,
+                setNode: _setNode,
+                tintColor: _sourceColors[ch.sourceId],
+                showSourceEdgeBar: true,
+                poster: true,
+                autofocus: autofocusFirst && i == 0,
+                playlist: items,
+                playlistIndex: i,
               );
             },
           ),
