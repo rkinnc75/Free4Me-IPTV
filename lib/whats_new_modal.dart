@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.61': [
+    'Internal diagnostics only — no user-visible change. Added logging to track down the remaining search D-pad navigation quirk (the first Up after jumping sections sometimes needing a second press).',
+  ],
   '2.0.60': [
     'TV: search D-pad navigation now scrolls the newly-focused card fully into view, and jumping Up between result sections lands in the same column you were in instead of an unpredictable spot.',
   ],

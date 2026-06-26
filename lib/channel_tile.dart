@@ -143,23 +143,24 @@ class _ChannelTileState extends State<ChannelTile> {
         }
         return KeyEventResult.handled;
       }
-      // fix559 (supersedes the fix558 attempt): do NOT probe
-      // focusInDirection(up) first. Flutter's DirectionalFocusTraversalPolicy
-      // ALWAYS finds a target somewhere on screen when none is in-band —
-      // it falls back to "closest out-of-band node by distance to the center
-      // line", which can be the Settings gear or a tab button clear across
-      // the screen. focusInDirection() returns true for that too, so checking
-      // its return value can never detect "this is the top row" — the fix558
-      // version never fired its escape and the broken long-range jump won.
-      // The caller (TvSearchView) now only ever supplies onFocusUpEscape to
-      // tiles it has computed ARE the section's actual top row, so the
-      // escape can fire unconditionally and skip the directional probe
-      // entirely.
-      if (widget.onFocusUpEscape != null &&
-          event is KeyDownEvent &&
-          event.logicalKey == LogicalKeyboardKey.arrowUp) {
-        widget.onFocusUpEscape!.call();
-        return KeyEventResult.handled;
+      // fix562 DIAGNOSTIC: log every key event this tile's node receives, and
+      // exactly which branch handles it — to find why the FIRST Up after a
+      // cross-section escape only scrolls without moving focus, even with a
+      // 3-SECOND gap before the press (ruling out any frame/microtask timing
+      // theory — fix561's Duration.zero change is REVERTED here pending this
+      // data, since it could not have been the actual cause).
+      if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowUp) {
+        AppLog.info('ChannelTile.onKeyEvent: UP on "${widget.channel.name}" '
+            'hasUpEscape=${widget.onFocusUpEscape != null} '
+            'nodeHash=${_focusNode.hashCode} hasFocus=${_focusNode.hasFocus}');
+        if (widget.onFocusUpEscape != null) {
+          AppLog.info('ChannelTile.onKeyEvent: calling onFocusUpEscape for '
+              '"${widget.channel.name}"');
+          widget.onFocusUpEscape!.call();
+          return KeyEventResult.handled;
+        }
+        AppLog.info('ChannelTile.onKeyEvent: no escape, falling through to '
+            'default traversal for "${widget.channel.name}"');
       }
       return KeyEventResult.ignored;
     };
@@ -167,13 +168,21 @@ class _ChannelTileState extends State<ChannelTile> {
       if (mounted) setState(() {});
       if (_focusNode.hasFocus) {
         _maybePrewarm();
+        // fix562 DIAGNOSTIC: log every focus-gain so the log shows the exact
+        // sequence of WHICH tile gained focus on each key press.
+        AppLog.info('ChannelTile: focus GAINED by "${widget.channel.name}" '
+            'nodeHash=${_focusNode.hashCode}');
         // fix560: requestFocus() alone does not scroll the focused widget
         // into view when it sits inside a shrink-wrapped, non-scrolling grid
         // nested in an ancestor Scrollable (the TV search results layout,
-        // fix557) — confirmed on-device: jumping focus across sections left
-        // the target only ~1/5 visible until a second key press. Mirrors the
-        // proven channel_schedule.dart pattern: ensureVisible in a post-frame
-        // callback once the newly-focused tile is actually built/laid out.
+        // fix557). Mirrors the proven channel_schedule.dart pattern of
+        // calling ensureVisible in a post-frame callback once the newly-
+        // focused tile is actually built/laid out.
+        //
+        // fix562: REVERTED fix561's Duration.zero — the 3-second-gap test
+        // proved this was never a frame-timing race, so shortening the
+        // animation could not have been the real fix. Restored to 200ms
+        // pending the diagnostic data above.
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted || !_focusNode.hasFocus) return;
           final ctx = _focusNode.context;
