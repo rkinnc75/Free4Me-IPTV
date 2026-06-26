@@ -1,0 +1,91 @@
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '2.0.54': [
++    'Internal diagnostics only — no user-visible change. The TV search (“what’s on”) now logs the wall-clock time for each phase (name matches, EPG program search, live-channel resolve) so the cause of the Go-to-results lag is identifiable from the log.',
++  ],
+   '2.0.53': [
+     'TV: Categories now uses a left type-rail (Live TV / Movies / Series) instead of the centered pill row, matching the Movies/Series layout. All three TV grids (Categories / Movies / Series) now share one tile size (~120x155px) for a consistent look.',
+     'TV: the Report-issue dialog opens with Subject focused (so the user can start typing immediately); after Submit the result dialog opens with OK focused.',
+diff --git a/pubspec.yaml b/pubspec.yaml
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 2.0.53+553
++version: 2.0.54+554
+ 
+ environment:
+   sdk: ^3.10.7
+diff --git a/lib/tv/tv_search_view.dart b/lib/tv/tv_search_view.dart
+index e4a1330..7073d25 100644
+--- a/lib/tv/tv_search_view.dart
++++ b/lib/tv/tv_search_view.dart
+@@ -1,6 +1,7 @@
+ import 'dart:async';
+ 
+ import 'package:flutter/material.dart';
++import 'package:open_tv/backend/app_logger.dart';
+ import 'package:open_tv/backend/setting_bounds.dart';
+ import 'package:open_tv/backend/settings_service.dart';
+ import 'package:open_tv/backend/sql.dart';
+@@ -99,8 +100,14 @@ class _TvSearchViewState extends State<TvSearchView> {
+     final inv = ++_inv;
+     setState(() => _loading = true);
+     final s = SettingsService.cached ?? widget.settings;
++    // fix554: instrument the full TV-search wall-clock. Only Sql.search was
++    // logged before; the EPG "what's on" phase (searchPrograms +
++    // getLiveChannelsByEpg) ran serially per query and was invisible. Times
++    // each phase so the field log shows where the Go->results lag actually is.
++    final swTotal = Stopwatch()..start();
+ 
+     // Channel-name matches across all media types.
++    final swName = Stopwatch()..start();
+     final nameResults = await Sql.search(Filters(
+       query: query,
+       viewType: ViewType.all,
+@@ -109,6 +116,7 @@ class _TvSearchViewState extends State<TvSearchView> {
+       searchMethod: s.searchMethod,
+       safeMode: s.safeMode,
+     ));
++    swName.stop();
+ 
+     // EPG "what's on" matches → resolve to the live channels airing them,
+     // within the forward-only window (clamped to the EPG forecast).
+@@ -119,15 +127,19 @@ class _TvSearchViewState extends State<TvSearchView> {
+           SettingBounds.epgSearchHoursMax(widget.settings.epgForecastDays),
+         )
+         .toInt();
++    final swProg = Stopwatch()..start();
+     final programmes = await Sql.searchPrograms(
+       query: query,
+       sourceIds: _sourceIds,
+       nowEpoch: now,
+       windowEndEpoch: now + hours * 3600,
+     );
++    swProg.stop();
+     final epgIds = programmes.map((p) => p.epgChannelId).toSet().toList();
++    final swEpgCh = Stopwatch()..start();
+     final epgChannels =
+         await Sql.getLiveChannelsByEpg(_sourceIds, epgIds, safeMode: s.safeMode);
++    swEpgCh.stop();
+     if (!mounted || inv != _inv) return;
+ 
+     // Merge into 5 groups. EPG title matches answer "what's on" — split the
+@@ -162,6 +174,10 @@ class _TvSearchViewState extends State<TvSearchView> {
+           break;
+       }
+     }
++    AppLog.info('TvSearch._run: query="$query" total=${swTotal.elapsedMilliseconds}ms '
++        '(name=${swName.elapsedMilliseconds}ms/${nameResults.length} '
++        'epgProg=${swProg.elapsedMilliseconds}ms/${programmes.length} '
++        'epgCh=${swEpgCh.elapsedMilliseconds}ms/${epgChannels.length})');
+     setState(() {
+       _onNow = onNow;
+       _comingUp = comingUp;

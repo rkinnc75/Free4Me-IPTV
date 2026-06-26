@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.54': [
+    'Internal diagnostics only — no user-visible change. The TV search (“what’s on”) now logs the wall-clock time for each phase (name matches, EPG program search, live-channel resolve) so the cause of the Go-to-results lag is identifiable from the log.',
+  ],
   '2.0.53': [
     'TV: Categories now uses a left type-rail (Live TV / Movies / Series) instead of the centered pill row, matching the Movies/Series layout. All three TV grids (Categories / Movies / Series) now share one tile size (~120x155px) for a consistent look.',
     'TV: the Report-issue dialog opens with Subject focused (so the user can start typing immediately); after Submit the result dialog opens with OK focused.',

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/setting_bounds.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
@@ -99,8 +100,14 @@ class _TvSearchViewState extends State<TvSearchView> {
     final inv = ++_inv;
     setState(() => _loading = true);
     final s = SettingsService.cached ?? widget.settings;
+    // fix554: instrument the full TV-search wall-clock. Only Sql.search was
+    // logged before; the EPG "what's on" phase (searchPrograms +
+    // getLiveChannelsByEpg) ran serially per query and was invisible. Times
+    // each phase so the field log shows where the Go->results lag actually is.
+    final swTotal = Stopwatch()..start();
 
     // Channel-name matches across all media types.
+    final swName = Stopwatch()..start();
     final nameResults = await Sql.search(Filters(
       query: query,
       viewType: ViewType.all,
@@ -109,6 +116,7 @@ class _TvSearchViewState extends State<TvSearchView> {
       searchMethod: s.searchMethod,
       safeMode: s.safeMode,
     ));
+    swName.stop();
 
     // EPG "what's on" matches → resolve to the live channels airing them,
     // within the forward-only window (clamped to the EPG forecast).
@@ -119,15 +127,19 @@ class _TvSearchViewState extends State<TvSearchView> {
           SettingBounds.epgSearchHoursMax(widget.settings.epgForecastDays),
         )
         .toInt();
+    final swProg = Stopwatch()..start();
     final programmes = await Sql.searchPrograms(
       query: query,
       sourceIds: _sourceIds,
       nowEpoch: now,
       windowEndEpoch: now + hours * 3600,
     );
+    swProg.stop();
     final epgIds = programmes.map((p) => p.epgChannelId).toSet().toList();
+    final swEpgCh = Stopwatch()..start();
     final epgChannels =
         await Sql.getLiveChannelsByEpg(_sourceIds, epgIds, safeMode: s.safeMode);
+    swEpgCh.stop();
     if (!mounted || inv != _inv) return;
 
     // Merge into 5 groups. EPG title matches answer "what's on" — split the
@@ -162,6 +174,10 @@ class _TvSearchViewState extends State<TvSearchView> {
           break;
       }
     }
+    AppLog.info('TvSearch._run: query="$query" total=${swTotal.elapsedMilliseconds}ms '
+        '(name=${swName.elapsedMilliseconds}ms/${nameResults.length} '
+        'epgProg=${swProg.elapsedMilliseconds}ms/${programmes.length} '
+        'epgCh=${swEpgCh.elapsedMilliseconds}ms/${epgChannels.length})');
     setState(() {
       _onNow = onNow;
       _comingUp = comingUp;
