@@ -229,6 +229,12 @@ class _TvSearchViewState extends State<TvSearchView> {
             enabled: _ready,
             autofocus: true,
             onChanged: _onChanged,
+            // fix555: pressing Go/Enter (or D-pad select) runs the search
+            // immediately instead of waiting out the 250ms onChanged debounce.
+            onSubmitted: (q) {
+              _debounce?.cancel();
+              _run(q.trim());
+            },
             decoration: InputDecoration(
               hintText: "Search channels and what's on…",
               prefixIcon: const Icon(Icons.search),

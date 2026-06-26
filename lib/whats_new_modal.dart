@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.55': [
+    'TV: pressing Go/Enter on the search now runs the search immediately instead of waiting a moment after you stop typing.',
+  ],
   '2.0.54': [
     'Internal diagnostics only — no user-visible change. The TV search (“what’s on”) now logs the wall-clock time for each phase (name matches, EPG program search, live-channel resolve) so the cause of the Go-to-results lag is identifiable from the log.',
   ],
