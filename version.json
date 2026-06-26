@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.54",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.54",
+  "latest": "2.0.55",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.55",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Internal diagnostics only \u2014 no user-visible change. The TV search (\u201cwhat\u2019s on\u201d) now logs the wall-clock time for each phase (name matches, EPG program search, live-channel resolve) so the cause of the Go-to-results lag is identifiable from the log.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.54/Free4Me-IPTV-2.0.54-arm64.apk"
+  "releaseNotes": "\u2022 TV: pressing Go/Enter on the search now runs the search immediately instead of waiting a moment after you stop typing.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.55/Free4Me-IPTV-2.0.55-arm64.apk"
 }
