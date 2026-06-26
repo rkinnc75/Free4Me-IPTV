@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.57",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.57",
+  "latest": "2.0.58",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.58",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 TV: search results now look and scroll like the rest of the app \u2014 wider grid cards instead of a single scrolling row, and a search like \"fox\" now shows far more than the old 36-result cap.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.57/Free4Me-IPTV-2.0.57-arm64.apk"
+  "releaseNotes": "\u2022 TV: wider, less-padded grid cards across Categories/Movies/Series/Search; channel logos no longer get cropped to an unrecognizable blob; D-pad up between search result sections now reliably lands on the section above instead of jumping to the search bar; dimmed the header logo.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.58/Free4Me-IPTV-2.0.58-arm64.apk"
 }
