@@ -210,14 +210,15 @@ class _TvCategoriesViewState extends State<TvCategoriesView> {
           child: GridView.builder(
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
             gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              // fix553: unify all three TV grids (Categories/Movies/Series) on
-              // one tile size — wider cards (extent 120), tighter spacing (10),
-              // same rendered HEIGHT as the Movies/Series cards (~155px). AR
-              // 0.773 = 120/155 holds that height. (Was 150/0.74 from fix551.)
-              maxCrossAxisExtent: 120,
-              childAspectRatio: 0.773,
-              mainAxisSpacing: 10,
-              crossAxisSpacing: 10,
+              // fix558: a few px wider (120->130), tighter spacing (10->6) so
+              // less of the screen is padding and cards read larger. AR
+              // 0.838 = 130/155.17 holds the SAME rendered height as before
+              // (the fix553 baseline). Shared across Categories/Movies/Series/
+              // Search so all four TV grids keep matching.
+              maxCrossAxisExtent: 130,
+              childAspectRatio: 0.838,
+              mainAxisSpacing: 6,
+              crossAxisSpacing: 6,
             ),
             itemCount: _groups.length,
             itemBuilder: (context, i) {

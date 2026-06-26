@@ -247,14 +247,14 @@ class _TvBrowseViewState extends State<TvBrowseView> {
             // "movies boxes". maxCrossAxisExtent adapts the column count to the
             // content width; childAspectRatio < 1 keeps the cards portrait.
             gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              // fix553: unified TV grid tile — wider cards (extent 90->120),
-              // tighter spacing (16->10), SAME card height (~155px) preserved by
-              // AR 0.58->0.773 (120/155). Shared with Categories so all three TV
-              // grids match.
-              maxCrossAxisExtent: 120,
-              childAspectRatio: 0.773,
-              mainAxisSpacing: 10,
-              crossAxisSpacing: 10,
+              // fix558: a few px wider (120->130), tighter spacing (10->6) so
+              // less of the screen is padding and cards read larger. AR
+              // 0.838 = 130/155.17 holds the SAME rendered height as before.
+              // Shared across Categories/Movies/Series/Search.
+              maxCrossAxisExtent: 130,
+              childAspectRatio: 0.838,
+              mainAxisSpacing: 6,
+              crossAxisSpacing: 6,
             ),
             itemCount: _items.length,
             itemBuilder: (context, i) {

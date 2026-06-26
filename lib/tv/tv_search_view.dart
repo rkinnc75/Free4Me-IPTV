@@ -274,6 +274,14 @@ class _TvSearchViewState extends State<TvSearchView> {
   /// screen matches the rest of the TV UI instead of looking like a separate,
   /// smaller phone-style layout. All 5 sections (including On now/Coming up,
   /// previously landscape now/next cards) use the same poster tile.
+  ///
+  /// fix558: Flutter's default directional focus traversal does not reliably
+  /// cross between multiple stacked GridViews (flutter/flutter#70364) — arrow-
+  /// up from a section's top row could skip straight past the section above
+  /// it to the search field. Each section's LAST tile gets a stable FocusNode;
+  /// every tile in the NEXT section is given an explicit onFocusUpEscape that
+  /// jumps straight to that node when the default traversal finds nothing
+  /// above (which in practice only ever fires for the top row).
   List<Widget> _buildShelves() {
     final groups = <(String, List<Channel>)>[
       ('On now', _onNow),
@@ -284,12 +292,21 @@ class _TvSearchViewState extends State<TvSearchView> {
     ];
     final sections = <Widget>[];
     var autofocusNext = true;
+    FocusNode? previousLastNode;
     for (final (title, items) in groups) {
       if (items.isEmpty) continue;
+      final lastNode = FocusNode(debugLabel: 'search-section-last-$title');
       sections.add(
-        _section(title, items, autofocusFirst: autofocusNext),
+        _section(
+          title,
+          items,
+          autofocusFirst: autofocusNext,
+          lastTileFocusNode: lastNode,
+          upEscapeTarget: previousLastNode,
+        ),
       );
       autofocusNext = false;
+      previousLastNode = lastNode;
     }
     return sections;
   }
@@ -300,6 +317,8 @@ class _TvSearchViewState extends State<TvSearchView> {
     String title,
     List<Channel> items, {
     bool autofocusFirst = false,
+    required FocusNode lastTileFocusNode,
+    FocusNode? upEscapeTarget,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -321,10 +340,11 @@ class _TvSearchViewState extends State<TvSearchView> {
             physics: const NeverScrollableScrollPhysics(),
             padding: const EdgeInsets.only(bottom: 10),
             gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: 120,
-              childAspectRatio: 0.773,
-              mainAxisSpacing: 10,
-              crossAxisSpacing: 10,
+              // fix558: matches the Categories/Movies/Series tile update.
+              maxCrossAxisExtent: 130,
+              childAspectRatio: 0.838,
+              mainAxisSpacing: 6,
+              crossAxisSpacing: 6,
             ),
             itemCount: items.length,
             itemBuilder: (context, i) {
@@ -340,6 +360,14 @@ class _TvSearchViewState extends State<TvSearchView> {
                 autofocus: autofocusFirst && i == 0,
                 playlist: items,
                 playlistIndex: i,
+                // fix558: pin the FocusNode only on the LAST tile so the NEXT
+                // section can target it directly; give every tile an escape
+                // callback only when there IS a previous section to jump to
+                // (upEscapeTarget is null for the first visible section).
+                focusNode: i == items.length - 1 ? lastTileFocusNode : null,
+                onFocusUpEscape: upEscapeTarget == null
+                    ? null
+                    : () => upEscapeTarget.requestFocus(),
               );
             },
           ),

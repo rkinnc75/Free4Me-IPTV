@@ -57,10 +57,15 @@ class TvTopTabBar extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 // fix529: the real app icon, not the placeholder green TV icon.
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: Image.asset('assets/icon.png',
-                      width: 28, height: 28, fit: BoxFit.cover),
+                // fix558: dimmed to 40% opacity — at full strength it competed
+                // visually with the tabs/Settings gear in the header row.
+                Opacity(
+                  opacity: 0.4,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: Image.asset('assets/icon.png',
+                        width: 28, height: 28, fit: BoxFit.cover),
+                  ),
                 ),
                 const SizedBox(width: 8),
                 const Text(

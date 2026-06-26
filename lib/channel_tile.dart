@@ -38,6 +38,19 @@ class ChannelTile extends StatefulWidget {
   final BuildContext parentContext;
   final Function(Node node) setNode;
   final VoidCallback? onFocusNavbar;
+  /// fix558: called when arrow-up is pressed and Flutter's default directional
+  /// traversal finds NO target above this tile (focusInDirection(up) returns
+  /// false) — e.g. the top row of a section in a multi-grid screen, where
+  /// Flutter's directional policy is known to skip over sibling scrollables
+  /// rather than reliably landing on the section above. Null = no override,
+  /// behavior unchanged (every other ChannelTile caller).
+  final VoidCallback? onFocusUpEscape;
+  /// fix558: lets a caller pin a stable FocusNode to a specific tile (e.g.
+  /// "the last tile in this section") so another widget can target it
+  /// directly via requestFocus(), bypassing directional traversal entirely.
+  /// Null (the default, every other caller) = the tile creates its own
+  /// internal node as before.
+  final FocusNode? focusNode;
   /// When [isHistory] is true, the long-press sheet includes a
   /// "Remove from history" option. [onRemoveHistory] is called after the
   /// entry is deleted so the parent can refresh its list.
@@ -87,6 +100,8 @@ class ChannelTile extends StatefulWidget {
     required this.setNode,
     required this.parentContext,
     this.onFocusNavbar,
+    this.onFocusUpEscape,
+    this.focusNode,
     this.isHistory = false,
     this.onRemoveHistory,
     this.autofocus = false,
@@ -106,7 +121,10 @@ class ChannelTile extends StatefulWidget {
 }
 
 class _ChannelTileState extends State<ChannelTile> {
-  final FocusNode _focusNode = FocusNode();
+  // fix558: use the caller-supplied FocusNode when given (so it can be
+  // targeted directly from outside), else create our own exactly as before.
+  late final FocusNode _focusNode = widget.focusNode ?? FocusNode();
+  late final bool _ownsFocusNode = widget.focusNode == null;
 
   static final Map<int, _PrewarmEntry> _prewarmCache = {};
   static const Duration _prewarmTtl = Duration(minutes: 5);
@@ -123,6 +141,21 @@ class _ChannelTileState extends State<ChannelTile> {
           widget.onFocusNavbar?.call();
         }
         return KeyEventResult.handled;
+      }
+      // fix558: same pattern as arrow-right above — try the normal directional
+      // traversal first (handles moving between rows WITHIN a section, which
+      // already works), and only fall through to the caller's explicit
+      // escape when Flutter finds no focusable target above (the known
+      // failure mode when multiple GridViews/ListViews are stacked — see
+      // flutter/flutter#70364). No-op (falls through to default handling)
+      // when the caller didn't supply onFocusUpEscape.
+      if (widget.onFocusUpEscape != null &&
+          event is KeyDownEvent &&
+          event.logicalKey == LogicalKeyboardKey.arrowUp) {
+        if (!FocusScope.of(context).focusInDirection(TraversalDirection.up)) {
+          widget.onFocusUpEscape!.call();
+          return KeyEventResult.handled;
+        }
       }
       return KeyEventResult.ignored;
     };
@@ -162,7 +195,10 @@ class _ChannelTileState extends State<ChannelTile> {
 
   @override
   void dispose() {
-    _focusNode.dispose();
+    // fix558: only dispose a node we created — a caller-supplied node is the
+    // caller's responsibility (e.g. it's reused across rebuilds to stay a
+    // stable cross-section target).
+    if (_ownsFocusNode) _focusNode.dispose();
     super.dispose();
   }
 
@@ -438,16 +474,39 @@ class _ChannelTileState extends State<ChannelTile> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              widget.channel.image != null
-                  ? CachedNetworkImage(
-                      imageUrl: widget.channel.image!,
-                      memCacheHeight: 360,
-                      fit: BoxFit.cover,
-                      placeholder: (c, u) =>
-                          const ColoredBox(color: Colors.black26),
-                      errorWidget: (c, u, e) => fallback,
-                    )
-                  : fallback,
+              // fix558: channel logos (Live TV) are typically square/circular
+              // brand marks — BoxFit.cover cropped them to their center,
+              // turning a "FOX" wordmark-in-circle into an unreadable "O" (the
+              // edges with the text were cut off). Movie/series posters are
+              // genuine full-bleed portrait artwork and should still cover.
+              // contain + a dark backdrop keeps the whole logo visible with
+              // small letterboxing instead of cropping it.
+              if (widget.channel.image != null)
+                widget.channel.mediaType == MediaType.livestream
+                    ? ColoredBox(
+                        color: Colors.black26,
+                        child: Padding(
+                          padding: const EdgeInsets.all(10),
+                          child: CachedNetworkImage(
+                            imageUrl: widget.channel.image!,
+                            memCacheHeight: 360,
+                            fit: BoxFit.contain,
+                            placeholder: (c, u) =>
+                                const ColoredBox(color: Colors.black26),
+                            errorWidget: (c, u, e) => fallback,
+                          ),
+                        ),
+                      )
+                    : CachedNetworkImage(
+                        imageUrl: widget.channel.image!,
+                        memCacheHeight: 360,
+                        fit: BoxFit.cover,
+                        placeholder: (c, u) =>
+                            const ColoredBox(color: Colors.black26),
+                        errorWidget: (c, u, e) => fallback,
+                      )
+              else
+                fallback,
               // Source-color accent as a thin top strip in poster mode.
               if (widget.showSourceEdgeBar && widget.tintColor != null)
                 Align(
