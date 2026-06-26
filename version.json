@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.58",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.58",
+  "latest": "2.0.59",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.59",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 TV: wider, less-padded grid cards across Categories/Movies/Series/Search; channel logos no longer get cropped to an unrecognizable blob; D-pad up between search result sections now reliably lands on the section above instead of jumping to the search bar; dimmed the header logo.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.58/Free4Me-IPTV-2.0.58-arm64.apk"
+  "releaseNotes": "\u2022 TV: fixed the search D-pad fix from the last update \u2014 pressing Up between result sections was landing on Settings or a tab button instead of the section above; now goes directly to the right place every time.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.59/Free4Me-IPTV-2.0.59-arm64.apk"
 }
