@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.60",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.60",
+  "latest": "2.0.61",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.61",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 TV: search D-pad navigation now scrolls the newly-focused card fully into view, and jumping Up between result sections lands in the same column you were in instead of an unpredictable spot.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.60/Free4Me-IPTV-2.0.60-arm64.apk"
+  "releaseNotes": "\u2022 Internal diagnostics only \u2014 no user-visible change. Added logging to track down the remaining search D-pad navigation quirk (the first Up after jumping sections sometimes needing a second press).",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.61/Free4Me-IPTV-2.0.61-arm64.apk"
 }
