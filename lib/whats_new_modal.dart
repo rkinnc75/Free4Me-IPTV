@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.64': [
+    'Added a developer playback-stats overlay (top-right of full-screen video, shown when debug logging is on) reporting the live decode path, frame rate, dropped-frame rate, A/V sync, bitrate and buffer — and logged for diagnostics.',
+  ],
   '2.0.63': [
     'TV: search results now navigate reliably with the D-pad — arrow-up always moves one row (or to the section above) on the first press. The previous fix did not fully resolve this; this one drives the move directly instead of relying on the system focus search.',
   ],

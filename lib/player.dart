@@ -25,6 +25,7 @@ import 'package:open_tv/player/cast_controller.dart';
 import 'package:open_tv/player/overlay_player_controller.dart';
 import 'package:open_tv/player/pip_controller.dart';
 import 'package:open_tv/player/mpv_engine.dart';
+import 'package:open_tv/player/debug_stats_overlay.dart';
 import 'package:open_tv/player/player_engine.dart';
 import 'package:open_tv/select_dialog.dart';
 
@@ -1369,6 +1370,13 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
               _buildVideoArea(),
               if (_bufferingState != null) _buildBufferingOverlay(),
               if (_surfBanner != null) _buildSurfBanner(),
+              // fix564: live playback-stats panel (top-right), single-cell
+              // full-screen only, shown when debug logging is on. Also writes
+              // each snapshot to the report log for offline review.
+              if (widget.settings.debugLogging &&
+                  widget.settings.multiViewLayout == MultiViewLayout.none &&
+                  _engine is MpvEngine)
+                DebugStatsOverlay(engine: _engine as MpvEngine),
             ],
           ),
         ),

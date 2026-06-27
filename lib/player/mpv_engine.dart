@@ -580,6 +580,47 @@ class MpvEngine implements PlayerEngine {
     }
   }
 
+  /// fix564: read a live snapshot of playback stats for the debug overlay
+  /// (top-right, single-cell full-screen only) and the report log. Pure read —
+  /// every getProperty is guarded; returns {} if the platform player isn't a
+  /// ready NativePlayer. Keys are raw libmpv property names so the caller can
+  /// format/colour them. `estimated-vf-fps` falling below `container-fps`, a
+  /// climbing `decoder-frame-drop-count`, or a large `avsync` are the headline
+  /// stutter signals; `hwdec-current` empty/"no" means software decode.
+  Future<Map<String, String>> readPlaybackStats() async {
+    if (_disposed || _player.platform is! mk.NativePlayer) return const {};
+    final np = _player.platform as mk.NativePlayer;
+    Future<String> g(String p) async {
+      try {
+        return await np.getProperty(p);
+      } catch (_) {
+        return '';
+      }
+    }
+
+    const keys = <String>[
+      'hwdec', // requested
+      'hwdec-current', // actually engaged ('' / 'no' = software)
+      'video-codec',
+      'estimated-vf-fps', // rendered fps
+      'container-fps', // source fps
+      'frame-drop-count', // VO drops (late frames)
+      'decoder-frame-drop-count', // decoder can't keep up — the stutter signal
+      'avsync', // A/V desync, seconds
+      'video-bitrate', // bits/s
+      'demuxer-cache-duration', // seconds buffered ahead
+      'paused-for-cache', // 'yes' while rebuffering
+      'width',
+      'height',
+    ];
+    try {
+      final values = await Future.wait(keys.map(g));
+      return {for (var i = 0; i < keys.length; i++) keys[i]: values[i]};
+    } catch (_) {
+      return const {};
+    }
+  }
+
   /// fix396: start the decode heartbeat. Cheap (cached `_player.state`), every
   /// 4 s, full-screen + debug only. Flags a stalled playhead (position not
   /// advancing) and missing frame size — the exact pattern the Shield log
