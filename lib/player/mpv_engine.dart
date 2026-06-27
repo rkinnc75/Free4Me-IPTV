@@ -1051,43 +1051,25 @@ class MpvEngine implements PlayerEngine {
     await np.setProperty('framedrop', s.devFramedrop.value);
     await np.setProperty('interpolation', s.devInterpolation ? 'yes' : 'no');
     await np.setProperty('deband', s.devDeband ? 'yes' : 'no');
-    // fix565/566: cap full-screen OUTPUT to 30 fps on low-RAM Android. The
-    // fix564 overlay proved 60 fps 1080p judders on the Mali-G310 because each
-    // frame misses the vsync deadline at the texture-upload stage (VO drops
-    // ~13–50/sec) while the decoder stays idle (dec 0); halving the upload rate
-    // clears it with perfect A/V sync. `vf` is otherwise unused, so we own it.
-    // fix565/566/567/568: cap full-screen OUTPUT to ~30 fps on low-RAM Android.
-    // The fix564 overlay proved 60 fps 1080p judders on the Mali-G310 at the
-    // texture-upload stage (VO drops ~13–50/sec, decoder idle); halving the
-    // frames reaching the VO clears it. History of the WRONG mechanisms (all
-    // confirmed on the onn 4K Plus device, not guessed):
-    //   • fix565 'fps=30'        → "Option vf: fps doesn't exist" (bare name).
-    //   • fix566 'lavfi=[fps=30]'→ accepted, then "No option name near '30'".
-    //   • fix567 'lavfi=[fps=fps=30]' → "No such filter: 'fps'".
-    // The `fps` libavfilter filter is simply NOT compiled into media_kit's
-    // bundled libmpv.so (verified in the .so). When the lavfi filter FAILS to
-    // create, mpv deselects the video track → permanent black-screen stall, so
-    // a missing filter is catastrophic, not benign.
-    // fix568/569: use the `select` filter (which IS present in this libmpv) to
-    // pass every other frame. Two device-specific escaping/syntax rules, both
-    // learned the hard way on the onn 4K Plus:
-    //   1. The comma in mod() must be escaped (`\,`) or the lavfi bridge splits
-    //      the graph on it ("No such filter: '2))'") — hence the raw string.
-    //   2. fix568 used the positional `select=not(mod(n\,2))`; this build's
-    //      (older) libavfilter REJECTS positional filter args ("No option name
-    //      near 'not(mod(n,2))'" — same rule that broke fps=30 in fix566).
-    //      fix569 names the option explicitly: `select=expr=...`.
-    // Validated on mpv 0.41 locally (creates + reconfigures the VO). `select`
-    // exists (the fix568 error reached arg-parsing, unlike the absent `fps`
-    // filter's "No such filter"), so with the named option it parses, creates,
-    // and runs; worst case it plays uncapped — it can never stall. '' clears.
-    // Preview/mini cells are excluded (already small + grid-decimated).
-    final capFps = !previewMode &&
-        s.devCapFpsLowRam &&
-        Platform.isAndroid &&
-        await DeviceDetector.isLowRamDevice();
-    await np.setProperty(
-        'vf', capFps ? r'lavfi=[select=expr=not(mod(n\,2))]' : '');
+    // fix565–570: the intended 60→30 fps OUTPUT cap (fix564 proved the
+    // Mali-G310 judders at the texture-upload stage — VO drops ~13–50/sec while
+    // the decoder is idle) was to be done with an mpv `vf` frame-rate filter.
+    // It is NOT achievable on media_kit's bundled libmpv: every candidate
+    // libavfilter filter is ABSENT, each confirmed at runtime on the onn 4K
+    // Plus (not guessed):
+    //   • fps       → "Option vf: fps doesn't exist" / "No such filter: 'fps'"
+    //   • select    → "No such filter: 'select'"
+    //   • framestep → absent
+    // A missing lavfi filter makes mpv DESELECT the video track → permanent
+    // black-screen STALL (not a benign error — it surfaces as "video texture
+    // failed to attach"), so the cap cannot be applied via vf here. fix570:
+    // DISABLE it — always clear `vf`, which is guaranteed safe (no filter is
+    // ever created, so nothing can fail). The devCapFpsLowRam toggle is retained
+    // but inert until the bundled libmpv ships a frame-rate filter (or a
+    // non-filter mechanism is found). player.dart's isVfOptionError suppression
+    // (fix566) stays as defensive cover. Preview/mini cells never set vf.
+    const capFps = false; // fix570: cap disabled — no usable libavfilter filter
+    await np.setProperty('vf', '');
     if (s.devHwdecImageFormat.value != null) {
       await np.setProperty(
           'hwdec-image-format', s.devHwdecImageFormat.value!);
