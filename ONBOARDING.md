@@ -14,11 +14,12 @@ This machine has the full toolchain (`flutter`, `gh`, `adb`, git push, CI) worki
 
 | Item | Value |
 |---|---|
-| Latest release | **v2.1.0+571** (`git tag -l --sort=-creatordate \| head` for absolute truth) |
+| Latest release | **v2.1.6+579** (`git tag -l --sort=-creatordate \| head` for absolute truth) |
 | Releases | https://github.com/rkinnc75/Free4Me-IPTV/releases |
-| Player engine | **media_kit / libmpv only.** ExoPlayer was removed in fix350 — there is no `ExoEngine`/`engine_picker` anymore. |
+| Player engine | **media_kit / libmpv only.** ExoPlayer was removed in fix350 — there is no `ExoEngine`/`engine_picker` anymore. (Media3-default revisited + **backlogged indefinitely** 2026-06-27 — see `docs/media3-engine-scoping.md`.) |
 | libmpv | **Custom LGPL-max build** (commit 66045f3): all 435 non-GPL filters incl. `fps`/`select`/`scale`/`tonemap`, all decoders/demuxers. Wired via `dependency_overrides` → `rkalsky/media-kit` fork. Still LGPLv3 (app stays proprietary). **Do not remove the override block in `pubspec.yaml`.** Full detail: `docs/CUSTOM_LIBMPV.md` (enumerated lists in `docs/LIBMPV_COMPONENTS.md`). |
-| Playback smoothness | `framedrop=decoder` auto-applies on low-RAM Android (onn 4K Plus class) → smooth high-fps. See `runbooks/fix571.md`. An opt-in `vf=fps=30` cap is parked on branch `libmpv-lgplmax-verify` (not shipped). |
+| Playback smoothness | `framedrop=decoder` auto-applies on low-RAM Android (onn 4K Plus class) → smooth high-fps; **on-device validated** (v2.1.0, decoder = 0 VO drops @ 1080p60). See `runbooks/fix571.md`. An opt-in `vf=fps=30` cap is parked on branch `libmpv-lgplmax-verify` (not shipped). |
+| TV remote (player) | D-pad **direct-map** shipped + on-device verified (v2.1.3–4): ▲▼ channel, ◀▶ seek (DVR), OK play-pause + reveal bars. D-pad **navigation of the bars** (Mode B) is NOT done — the v2.1.5 attempt failed (media_kit bars can't host focus nav) and was reverted in v2.1.6; needs a custom focusable overlay. See `runbooks/fix576-579.md`. |
 | `flutter analyze` | 0 errors/warnings (2 tolerated INFOs in `settings_view.dart`). `flutter test` must be green. |
 
 ---
