@@ -82,7 +82,7 @@ dev_dependencies:
 # Stock media_kit_libs_android_video ships only overlay+equalizer filters.
 # Source: rkalsky/libmpv-android-video-build @ vnext jars, wired via the
 # rkalsky/media-kit fork. Foundation only — the fps cap stays OFF here (fix570);
-# enabling it (lavfi=[fps=fps=30]) is a separate change. See GROUND_ZERO.md.
+# enabling it (lavfi=[fps=fps=30]) is a separate change. See docs/CUSTOM_LIBMPV.md.
 dependency_overrides:
   media_kit_libs_android_video:
     git:
