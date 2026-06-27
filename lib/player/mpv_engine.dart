@@ -1051,6 +1051,20 @@ class MpvEngine implements PlayerEngine {
     await np.setProperty('framedrop', s.devFramedrop.value);
     await np.setProperty('interpolation', s.devInterpolation ? 'yes' : 'no');
     await np.setProperty('deband', s.devDeband ? 'yes' : 'no');
+    // fix565: cap full-screen OUTPUT to 30 fps on low-RAM Android. The fix564
+    // overlay proved 60 fps 1080p judders on the Mali-G310 because each frame
+    // misses the vsync deadline at the texture-upload stage (VO drops
+    // ~13–50/sec) while the decoder stays idle (dec 0); halving the upload rate
+    // clears it with perfect A/V sync. `vf` is otherwise unused, so we own it:
+    // set 'fps=30' when capping, '' to clear it. Preview/mini cells are
+    // excluded (already small + grid-decimated). If the overlay shows VO drops
+    // NOT falling, check the mpv log for a vf parse error — fallback form is
+    // 'lavfi=[fps=30]'.
+    final capFps = !previewMode &&
+        s.devCapFpsLowRam &&
+        Platform.isAndroid &&
+        await DeviceDetector.isLowRamDevice();
+    await np.setProperty('vf', capFps ? 'fps=30' : '');
     if (s.devHwdecImageFormat.value != null) {
       await np.setProperty(
           'hwdec-image-format', s.devHwdecImageFormat.value!);
@@ -1077,6 +1091,7 @@ class MpvEngine implements PlayerEngine {
       ' videoSync=${s.devVideoSync.value}'
       ' tscale=${s.devTscale.value}'
       ' framedrop=${s.devFramedrop.value}'
+      ' capFps30=$capFps'
       ' audioSpdif=${s.devAudioSpdif.value ?? "off"}',
     );
   }

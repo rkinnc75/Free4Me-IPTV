@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.65': [
+    'TV: much smoother playback on low-RAM boxes (e.g. onn 4K Plus). 60 fps streams are now capped to 30 fps output on those devices, eliminating the motion judder caused by the GPU not keeping up with full-rate frame uploads. Audio/video stay in sync, and it can be turned off under Settings → Developer.',
+  ],
   '2.0.64': [
     'Added a developer playback-stats overlay (top-right of full-screen video, shown when debug logging is on) reporting the live decode path, frame rate, dropped-frame rate, A/V sync, bitrate and buffer — and logged for diagnostics.',
   ],

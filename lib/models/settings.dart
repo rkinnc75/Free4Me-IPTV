@@ -244,6 +244,15 @@ class Settings {
   /// libmpv `deband` (debanding filter). Default false.
   bool devDeband;
 
+  /// fix565: on low-RAM Android boxes (onn 4K Plus / Amlogic + Mali-G310) cap
+  /// video OUTPUT to 30 fps via a `vf=fps=30` filter. The fix564 overlay proved
+  /// 60 fps 1080p stutters there because each frame misses the vsync deadline
+  /// at the texture-upload stage (VO drops ~13–50/sec) while the decoder stays
+  /// idle (dec 0); halving the upload rate clears the judder with perfect A/V
+  /// sync. No effect on 30 fps content or on non-low-RAM devices. Default true
+  /// (applies on low-RAM only).
+  bool devCapFpsLowRam;
+
   // fix394 review: removed devTargetColorspace — no `target-colorspace`
   // libmpv property exists (the real option is the `target-colorspace-hint`
   // yes/no flag plus `target-prim`/`target-trc`).
@@ -333,6 +342,7 @@ class Settings {
     this.devFramedrop = FrameDropMode.vo,
     this.devInterpolation = false,
     this.devDeband = false,
+    this.devCapFpsLowRam = true,
     this.devHwdecImageFormat = HwdecImageFormat.defaultFmt,
     this.devAudioBufferSecs = 0.2,
     this.devControlsHideSecs = 3,
@@ -481,6 +491,7 @@ class Settings {
     s.devFramedrop = FrameDropMode.vo;
     s.devInterpolation = false;
     s.devDeband = false;
+    s.devCapFpsLowRam = true;
     s.devHwdecImageFormat = HwdecImageFormat.defaultFmt;
     s.devAudioBufferSecs = 0.2;
     s.devControlsHideSecs = 3;

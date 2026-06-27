@@ -1,0 +1,191 @@
+diff --git a/lib/backend/settings_io.dart b/lib/backend/settings_io.dart
+index 89bbdbb..154d5de 100644
+--- a/lib/backend/settings_io.dart
++++ b/lib/backend/settings_io.dart
+@@ -589,6 +589,7 @@ class SettingsIo {
+         'devFramedrop': s.devFramedrop.toJson(),
+         'devInterpolation': s.devInterpolation,
+         'devDeband': s.devDeband,
++        'devCapFpsLowRam': s.devCapFpsLowRam,
+         'devHwdecImageFormat': s.devHwdecImageFormat.toJson(),
+         'devAudioBufferSecs': s.devAudioBufferSecs,
+         'devAudioSpdif': s.devAudioSpdif.toJson(),
+@@ -706,6 +707,9 @@ class SettingsIo {
+     if (m['devInterpolation'] is bool) {
+       s.devInterpolation = m['devInterpolation'];
+     }
++    if (m['devCapFpsLowRam'] is bool) {
++      s.devCapFpsLowRam = m['devCapFpsLowRam'];
++    }
+     if (m['devDeband'] is bool) s.devDeband = m['devDeband'];
+     if (m['devHwdecImageFormat'] is String) {
+       s.devHwdecImageFormat =
+diff --git a/lib/backend/settings_service.dart b/lib/backend/settings_service.dart
+index 0c35207..c134f73 100644
+--- a/lib/backend/settings_service.dart
++++ b/lib/backend/settings_service.dart
+@@ -89,6 +89,7 @@ const devTscaleProp = "devTscale";
+ const devFramedropProp = "devFramedrop";
+ const devInterpolationProp = "devInterpolation";
+ const devDebandProp = "devDeband";
++const devCapFpsLowRamProp = "devCapFpsLowRam";
+ const devHwdecImageFormatProp = "devHwdecImageFormat";
+ const devAudioBufferSecsProp = "devAudioBufferSecs";
+ const devControlsHideSecsProp = "devControlsHideSecs";
+@@ -336,6 +337,10 @@ class SettingsService {
+     if (di != null) {
+       settings.devInterpolation = int.parse(di) == 1;
+     }
++    final dcf = settingsMap[devCapFpsLowRamProp];
++    if (dcf != null) {
++      settings.devCapFpsLowRam = int.parse(dcf) == 1;
++    }
+     final ddb = settingsMap[devDebandProp];
+     if (ddb != null) {
+       settings.devDeband = int.parse(ddb) == 1;
+@@ -478,6 +483,8 @@ class SettingsService {
+         (settings.devInterpolation ? 1 : 0).toString();
+     settingsMap[devDebandProp] =
+         (settings.devDeband ? 1 : 0).toString();
++    settingsMap[devCapFpsLowRamProp] =
++        (settings.devCapFpsLowRam ? 1 : 0).toString();
+     settingsMap[devHwdecImageFormatProp] =
+         settings.devHwdecImageFormat.toJson();
+     settingsMap[devAudioBufferSecsProp] =
+diff --git a/lib/models/settings.dart b/lib/models/settings.dart
+index e5d1ab6..303c61d 100644
+--- a/lib/models/settings.dart
++++ b/lib/models/settings.dart
+@@ -244,6 +244,15 @@ class Settings {
+   /// libmpv `deband` (debanding filter). Default false.
+   bool devDeband;
+ 
++  /// fix565: on low-RAM Android boxes (onn 4K Plus / Amlogic + Mali-G310) cap
++  /// video OUTPUT to 30 fps via a `vf=fps=30` filter. The fix564 overlay proved
++  /// 60 fps 1080p stutters there because each frame misses the vsync deadline
++  /// at the texture-upload stage (VO drops ~13–50/sec) while the decoder stays
++  /// idle (dec 0); halving the upload rate clears the judder with perfect A/V
++  /// sync. No effect on 30 fps content or on non-low-RAM devices. Default true
++  /// (applies on low-RAM only).
++  bool devCapFpsLowRam;
++
+   // fix394 review: removed devTargetColorspace — no `target-colorspace`
+   // libmpv property exists (the real option is the `target-colorspace-hint`
+   // yes/no flag plus `target-prim`/`target-trc`).
+@@ -333,6 +342,7 @@ class Settings {
+     this.devFramedrop = FrameDropMode.vo,
+     this.devInterpolation = false,
+     this.devDeband = false,
++    this.devCapFpsLowRam = true,
+     this.devHwdecImageFormat = HwdecImageFormat.defaultFmt,
+     this.devAudioBufferSecs = 0.2,
+     this.devControlsHideSecs = 3,
+@@ -481,6 +491,7 @@ class Settings {
+     s.devFramedrop = FrameDropMode.vo;
+     s.devInterpolation = false;
+     s.devDeband = false;
++    s.devCapFpsLowRam = true;
+     s.devHwdecImageFormat = HwdecImageFormat.defaultFmt;
+     s.devAudioBufferSecs = 0.2;
+     s.devControlsHideSecs = 3;
+diff --git a/lib/player/mpv_engine.dart b/lib/player/mpv_engine.dart
+index 11457ec..28304fe 100644
+--- a/lib/player/mpv_engine.dart
++++ b/lib/player/mpv_engine.dart
+@@ -1051,6 +1051,20 @@ class MpvEngine implements PlayerEngine {
+     await np.setProperty('framedrop', s.devFramedrop.value);
+     await np.setProperty('interpolation', s.devInterpolation ? 'yes' : 'no');
+     await np.setProperty('deband', s.devDeband ? 'yes' : 'no');
++    // fix565: cap full-screen OUTPUT to 30 fps on low-RAM Android. The fix564
++    // overlay proved 60 fps 1080p judders on the Mali-G310 because each frame
++    // misses the vsync deadline at the texture-upload stage (VO drops
++    // ~13–50/sec) while the decoder stays idle (dec 0); halving the upload rate
++    // clears it with perfect A/V sync. `vf` is otherwise unused, so we own it:
++    // set 'fps=30' when capping, '' to clear it. Preview/mini cells are
++    // excluded (already small + grid-decimated). If the overlay shows VO drops
++    // NOT falling, check the mpv log for a vf parse error — fallback form is
++    // 'lavfi=[fps=30]'.
++    final capFps = !previewMode &&
++        s.devCapFpsLowRam &&
++        Platform.isAndroid &&
++        await DeviceDetector.isLowRamDevice();
++    await np.setProperty('vf', capFps ? 'fps=30' : '');
+     if (s.devHwdecImageFormat.value != null) {
+       await np.setProperty(
+           'hwdec-image-format', s.devHwdecImageFormat.value!);
+@@ -1077,6 +1091,7 @@ class MpvEngine implements PlayerEngine {
+       ' videoSync=${s.devVideoSync.value}'
+       ' tscale=${s.devTscale.value}'
+       ' framedrop=${s.devFramedrop.value}'
++      ' capFps30=$capFps'
+       ' audioSpdif=${s.devAudioSpdif.value ?? "off"}',
+     );
+   }
+diff --git a/lib/settings_view.dart b/lib/settings_view.dart
+index ec79d85..2672d8a 100644
+--- a/lib/settings_view.dart
++++ b/lib/settings_view.dart
+@@ -501,6 +501,20 @@ const _helpDevDeband = (
+       '↓ OFF — no processing; cleanest for high-bitrate sources.',
+ );
+ 
++const _helpDevCapFps = (
++  title: 'Cap 60→30 fps (low-RAM)',
++  body:
++      'On low-RAM Android boxes (e.g. onn 4K Plus), cap 60 fps video output to '
++      '30 fps. These devices decode fine but cannot upload 60 full HD frames '
++      'per second to the display without dropping frames at the output stage, '
++      'which shows as judder during motion. Capping to 30 fps halves that load '
++      'and removes the judder while keeping audio/video in sync.\\n\\n'
++      'Default: ON. Only affects low-RAM devices and 60 fps content.\\n\\n'
++      'Range: ON / OFF.\\n\\n'
++      '↑ ON — smooth, in-sync playback on weak boxes.\\n\\n'
++      '↓ OFF — full 60 fps output; may judder on low-RAM hardware.',
++);
++
+ const _helpDevHwdecImageFormat = (
+   title: 'HW Decoder Image Format',
+   body:
+@@ -4273,6 +4287,15 @@ class _SettingsState extends State<SettingsView> {
+                           updateSettings();
+                         },
+                       ),
++                      _switchTile(
++                        label: "Cap 60→30 fps (low-RAM)",
++                        value: settings.devCapFpsLowRam,
++                        help: _helpDevCapFps,
++                        onChanged: (v) {
++                          setState(() => settings.devCapFpsLowRam = v);
++                          updateSettings();
++                        },
++                      ),
+                       _devEnumTile<HwdecImageFormat>(
+                         label: "HW decoder image format",
+                         value: settings.devHwdecImageFormat,
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index b3b4f83..962226a 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '2.0.65': [
++    'TV: much smoother playback on low-RAM boxes (e.g. onn 4K Plus). 60 fps streams are now capped to 30 fps output on those devices, eliminating the motion judder caused by the GPU not keeping up with full-rate frame uploads. Audio/video stay in sync, and it can be turned off under Settings → Developer.',
++  ],
+   '2.0.64': [
+     'Added a developer playback-stats overlay (top-right of full-screen video, shown when debug logging is on) reporting the live decode path, frame rate, dropped-frame rate, A/V sync, bitrate and buffer — and logged for diagnostics.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 72e5ac8..29bf01a 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 2.0.64+564
++version: 2.0.65+565
+ 
+ environment:
+   sdk: ^3.10.7

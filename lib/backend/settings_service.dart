@@ -89,6 +89,7 @@ const devTscaleProp = "devTscale";
 const devFramedropProp = "devFramedrop";
 const devInterpolationProp = "devInterpolation";
 const devDebandProp = "devDeband";
+const devCapFpsLowRamProp = "devCapFpsLowRam";
 const devHwdecImageFormatProp = "devHwdecImageFormat";
 const devAudioBufferSecsProp = "devAudioBufferSecs";
 const devControlsHideSecsProp = "devControlsHideSecs";
@@ -336,6 +337,10 @@ class SettingsService {
     if (di != null) {
       settings.devInterpolation = int.parse(di) == 1;
     }
+    final dcf = settingsMap[devCapFpsLowRamProp];
+    if (dcf != null) {
+      settings.devCapFpsLowRam = int.parse(dcf) == 1;
+    }
     final ddb = settingsMap[devDebandProp];
     if (ddb != null) {
       settings.devDeband = int.parse(ddb) == 1;
@@ -478,6 +483,8 @@ class SettingsService {
         (settings.devInterpolation ? 1 : 0).toString();
     settingsMap[devDebandProp] =
         (settings.devDeband ? 1 : 0).toString();
+    settingsMap[devCapFpsLowRamProp] =
+        (settings.devCapFpsLowRam ? 1 : 0).toString();
     settingsMap[devHwdecImageFormatProp] =
         settings.devHwdecImageFormat.toJson();
     settingsMap[devAudioBufferSecsProp] =

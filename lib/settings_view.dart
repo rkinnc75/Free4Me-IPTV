@@ -501,6 +501,20 @@ const _helpDevDeband = (
       '↓ OFF — no processing; cleanest for high-bitrate sources.',
 );
 
+const _helpDevCapFps = (
+  title: 'Cap 60→30 fps (low-RAM)',
+  body:
+      'On low-RAM Android boxes (e.g. onn 4K Plus), cap 60 fps video output to '
+      '30 fps. These devices decode fine but cannot upload 60 full HD frames '
+      'per second to the display without dropping frames at the output stage, '
+      'which shows as judder during motion. Capping to 30 fps halves that load '
+      'and removes the judder while keeping audio/video in sync.\\n\\n'
+      'Default: ON. Only affects low-RAM devices and 60 fps content.\\n\\n'
+      'Range: ON / OFF.\\n\\n'
+      '↑ ON — smooth, in-sync playback on weak boxes.\\n\\n'
+      '↓ OFF — full 60 fps output; may judder on low-RAM hardware.',
+);
+
 const _helpDevHwdecImageFormat = (
   title: 'HW Decoder Image Format',
   body:
@@ -4270,6 +4284,15 @@ class _SettingsState extends State<SettingsView> {
                         help: _helpDevDeband,
                         onChanged: (v) {
                           setState(() => settings.devDeband = v);
+                          updateSettings();
+                        },
+                      ),
+                      _switchTile(
+                        label: "Cap 60→30 fps (low-RAM)",
+                        value: settings.devCapFpsLowRam,
+                        help: _helpDevCapFps,
+                        onChanged: (v) {
+                          setState(() => settings.devCapFpsLowRam = v);
                           updateSettings();
                         },
                       ),

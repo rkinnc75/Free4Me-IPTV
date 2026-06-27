@@ -589,6 +589,7 @@ class SettingsIo {
         'devFramedrop': s.devFramedrop.toJson(),
         'devInterpolation': s.devInterpolation,
         'devDeband': s.devDeband,
+        'devCapFpsLowRam': s.devCapFpsLowRam,
         'devHwdecImageFormat': s.devHwdecImageFormat.toJson(),
         'devAudioBufferSecs': s.devAudioBufferSecs,
         'devAudioSpdif': s.devAudioSpdif.toJson(),
@@ -705,6 +706,9 @@ class SettingsIo {
     }
     if (m['devInterpolation'] is bool) {
       s.devInterpolation = m['devInterpolation'];
+    }
+    if (m['devCapFpsLowRam'] is bool) {
+      s.devCapFpsLowRam = m['devCapFpsLowRam'];
     }
     if (m['devDeband'] is bool) s.devDeband = m['devDeband'];
     if (m['devHwdecImageFormat'] is String) {
