@@ -1056,25 +1056,31 @@ class MpvEngine implements PlayerEngine {
     // frame misses the vsync deadline at the texture-upload stage (VO drops
     // ~13–50/sec) while the decoder stays idle (dec 0); halving the upload rate
     // clears it with perfect A/V sync. `vf` is otherwise unused, so we own it.
-    // fix565/566/567: the fix565 form 'fps=30' was rejected outright ("Option
-    // vf: fps doesn't exist." — a bare filter name does not resolve without the
-    // lavfi bridge). fix566 switched to 'lavfi=[fps=30]' but THAT stalled the
-    // box: the set returns success, then at filter-graph configure time this
-    // build's libavfilter rejects the bare positional arg ("No option name near
-    // '30'" → "Creating filter 'lavfi' failed" → the video track is deselected
-    // → no first frame → permanent stall; onn 4K Plus v2.0.66 field log). The
-    // bare positional parses fine in desktop ffmpeg but NOT in this libmpv's
-    // graph parser. fix567: use the fully-explicit option form
-    // 'lavfi=[fps=fps=30]' (filter `fps`, option `fps`=30) which needs no
-    // positional shorthand. libavfilter IS present (avfilter_get_by_name in the
-    // shipped libmpv.so) and the `fps` filter exists (the v2.0.66 error was an
-    // option-parse failure, not a missing-filter one). '' clears the filter.
+    // fix565/566/567/568: cap full-screen OUTPUT to ~30 fps on low-RAM Android.
+    // The fix564 overlay proved 60 fps 1080p judders on the Mali-G310 at the
+    // texture-upload stage (VO drops ~13–50/sec, decoder idle); halving the
+    // frames reaching the VO clears it. History of the WRONG mechanisms (all
+    // confirmed on the onn 4K Plus device, not guessed):
+    //   • fix565 'fps=30'        → "Option vf: fps doesn't exist" (bare name).
+    //   • fix566 'lavfi=[fps=30]'→ accepted, then "No option name near '30'".
+    //   • fix567 'lavfi=[fps=fps=30]' → "No such filter: 'fps'".
+    // The `fps` libavfilter filter is simply NOT compiled into media_kit's
+    // bundled libmpv.so (verified in the .so). When the lavfi filter FAILS to
+    // create, mpv deselects the video track → permanent black-screen stall, so
+    // a missing filter is catastrophic, not benign.
+    // fix568: use the `select` filter (which IS present) to pass every other
+    // frame — `select='not(mod(n,2))'`. The comma in mod() must be escaped for
+    // the lavfi bridge (else libavfilter splits the graph on it: "No such
+    // filter: '2))'"), hence the raw string with `\,`. Validated on mpv 0.41:
+    // the graph creates cleanly and the VO reconfigures. Because `select`
+    // exists, the filter always CREATES — worst case it plays uncapped, it can
+    // never stall like the absent `fps` filter did. '' clears the filter.
     // Preview/mini cells are excluded (already small + grid-decimated).
     final capFps = !previewMode &&
         s.devCapFpsLowRam &&
         Platform.isAndroid &&
         await DeviceDetector.isLowRamDevice();
-    await np.setProperty('vf', capFps ? 'lavfi=[fps=fps=30]' : '');
+    await np.setProperty('vf', capFps ? r'lavfi=[select=not(mod(n\,2))]' : '');
     if (s.devHwdecImageFormat.value != null) {
       await np.setProperty(
           'hwdec-image-format', s.devHwdecImageFormat.value!);
