@@ -39,6 +39,79 @@ class SettingsIo {
     return tag.isEmpty ? stamp : '$tag-$stamp';
   }
 
+  /// fix572: given the basenames in a directory, return which ones are STALE
+  /// export artifacts to purge. Pure (no IO) so it is unit-testable. An export
+  /// artifact is a `free4me-export-*` bundle dir/zip or a `free4me-backup-*.json`
+  /// file (the two timestamped families written to the temp dir). [keepExportDir]
+  /// / [keepBackupFile] are the exact basenames the current export session is
+  /// about to (re)create and must be preserved; pass null to treat all of that
+  /// family as stale (the QR flow keeps its bundle dir but sweeps every orphaned
+  /// backup json, and the save-to-file flow does the reverse). Unrelated temp
+  /// files are never returned.
+  static List<String> staleExportArtifactNames(
+    Iterable<String> names, {
+    String? keepExportDir,
+    String? keepBackupFile,
+  }) {
+    final stale = <String>[];
+    for (final name in names) {
+      final isExport = name.startsWith('free4me-export-');
+      final isBackup =
+          name.startsWith('free4me-backup-') && name.endsWith('.json');
+      if (!isExport && !isBackup) continue; // unrelated — leave it alone
+      if (isExport && name == keepExportDir) continue;
+      if (isBackup && name == keepBackupFile) continue;
+      stale.add(name);
+    }
+    return stale;
+  }
+
+  /// fix572: delete leftover export artifacts from PRIOR export sessions so the
+  /// temp dir doesn't grow without bound. A QR/LAN bundle dir (`_buildExportBundle`)
+  /// can hold multi-hundred-MB DB snapshots and was never cleaned up after the
+  /// download server stopped. Called at the start of each export session, this
+  /// keeps only what the current session is creating. Fail-soft: a listing or
+  /// delete error is logged but never aborts the export. Returns the count
+  /// removed.
+  static Future<int> purgeStaleExportArtifacts({
+    String? keepExportDir,
+    String? keepBackupFile,
+  }) async {
+    final tmp = await getTemporaryDirectory();
+    final List<FileSystemEntity> entries;
+    try {
+      entries = tmp.listSync(followLinks: false);
+    } catch (e) {
+      AppLog.warn('export: could not list temp dir to purge artifacts — $e');
+      return 0;
+    }
+    final byName = {
+      for (final e in entries) e.path.split(Platform.pathSeparator).last: e
+    };
+    final stale = staleExportArtifactNames(
+      byName.keys,
+      keepExportDir: keepExportDir,
+      keepBackupFile: keepBackupFile,
+    );
+    var removed = 0;
+    for (final name in stale) {
+      final entity = byName[name];
+      if (entity == null) continue;
+      try {
+        await entity.delete(recursive: true);
+        removed++;
+      } catch (e) {
+        AppLog.warn('export: failed to purge stale artifact $name — $e');
+      }
+    }
+    if (removed > 0) {
+      AppLog.info('export: purged $removed stale export artifact(s) from temp '
+          '(kept exportDir=${keepExportDir ?? "-"} '
+          'backup=${keepBackupFile ?? "-"})');
+    }
+    return removed;
+  }
+
   /// Channel-attribute restores staged by importFromFile, keyed by
   /// source name. Consumed by applyPendingPreserves once channel
   /// rows are populated by the first source refresh.
@@ -178,6 +251,9 @@ class SettingsIo {
     });
 
     final stamp = await stampWithDevice(); // fix166/fix322
+    // fix572: sweep prior export artifacts (orphaned QR bundle dirs + leftover
+    // backup jsons) before writing this one; keep the file we're about to save.
+    await purgeStaleExportArtifacts(keepBackupFile: 'free4me-backup-$stamp.json');
     final dir = await getTemporaryDirectory();
     final tmpFile = File('${dir.path}/free4me-backup-$stamp.json');
     await tmpFile.writeAsString(payload);

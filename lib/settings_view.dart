@@ -1655,6 +1655,13 @@ class _SettingsState extends State<SettingsView> {
     // (ExportServer is now file-backed). Nothing holds the whole catalogue in
     // memory — fixes the OOM on the 2GB TV box while gathering source data.
     final tmp = await getTemporaryDirectory();
+    // fix572: purge prior sessions' export artifacts before building this one.
+    // These bundle dirs can hold multi-hundred-MB DB snapshots and were never
+    // cleaned up when the download server stopped, so the temp dir grew without
+    // bound. Keep the dir we're about to (re)create; also sweep orphaned backup
+    // jsons left by a crash mid-save.
+    await SettingsIo.purgeStaleExportArtifacts(
+        keepExportDir: 'free4me-export-$stamp');
     final outDir = Directory('${tmp.path}/free4me-export-$stamp');
     if (await outDir.exists()) await outDir.delete(recursive: true);
     await outDir.create(recursive: true);

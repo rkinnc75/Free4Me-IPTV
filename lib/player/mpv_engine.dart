@@ -612,6 +612,8 @@ class MpvEngine implements PlayerEngine {
       'paused-for-cache', // 'yes' while rebuffering
       'width',
       'height',
+      'framedrop', // active frame-drop mode (no/vo/decoder) — "drop video"
+      'video-sync', // active A/V sync mode (audio/display-*) — "sync audio"
     ];
     try {
       final values = await Future.wait(keys.map(g));

@@ -74,7 +74,8 @@ class _DebugStatsOverlayState extends State<DebugStatsOverlay> {
       'avsync="${s['avsync']}" vbitrate="${s['video-bitrate']}" '
       'cache="${s['demuxer-cache-duration']}" '
       'pausedForCache="${s['paused-for-cache']}" '
-      'res=${s['width']}x${s['height']}',
+      'res=${s['width']}x${s['height']} '
+      'framedrop="${s['framedrop']}" videoSync="${s['video-sync']}"',
     );
   }
 
@@ -193,6 +194,13 @@ class _DebugStatsOverlayState extends State<DebugStatsOverlay> {
                   warn: (_stats['paused-for-cache'] ?? '') == 'yes'),
               row('res',
                   '${_stats['width'] ?? '—'}x${_stats['height'] ?? '—'}  ${_stats['video-codec'] ?? ''}'),
+              // Active display/audio tunables in effect — "drop video"
+              // (framedrop) and "sync audio" (video-sync). Reflects the
+              // effective values libmpv is running (after any low-RAM
+              // framedrop auto-upgrade), so a settings sweep is visible
+              // on-screen, not just in logcat.
+              row('mode',
+                  'drop=${_stats['framedrop'] ?? '—'}  sync=${_stats['video-sync'] ?? '—'}'),
             ],
           ),
         ),

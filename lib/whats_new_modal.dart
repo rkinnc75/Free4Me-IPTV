@@ -6,6 +6,14 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.1.1': [
+    'Storage cleanup: exporting (QR/LAN or save-to-file) no longer leaves old '
+        'export files behind. Each new export now clears the previous export '
+        'bundles from temporary storage — these could be large when a database '
+        'snapshot was included — so repeated exports no longer fill up disk space.',
+    'Developer: the playback-stats overlay (and its diagnostic log) now also '
+        'show the active frame-drop and A/V sync modes.',
+  ],
   '2.1.0': [
     'TV: smoother playback on low-RAM boxes (e.g. onn 4K Plus). High-frame-rate streams (50/60 fps) no longer judder — the video engine now drops the rare late frame at the decoder instead of at the screen, so the picture stays smooth at the full frame rate. Applied automatically on low-memory Android TV boxes; capable devices and phones are unchanged. Also refreshes the bundled video engine (libmpv) with a much fuller filter set, laying groundwork for an optional 30 fps cap later.',
   ],
