@@ -24,12 +24,24 @@ LIB  = REPO / "lib"
 
 # ── Methods that ARE in the PlayerEngine interface ────────────────────────────
 # Only these may carry @override in mpv_engine.dart. Everything else is mpv-only.
+# Keep in sync with the abstract PlayerEngine in lib/player/player_engine.dart —
+# every member declared there may legitimately carry @override in mpv_engine.dart.
+# When the interface grows, add the new member name(s) here (the fix336/515/522
+# additions below were the cause of a stale-allowlist false-positive run).
 PLAYER_ENGINE_INTERFACE: set[str] = {
     "buildVideoView", "open", "dispose",
     "bufferingStream", "completedStream", "errorStream", "positionStream",
-    "position", "supportsTrackSelection", "subtitleTracks", "audioTracks",
+    # fix515/fix522: stream-info label (live emission + latched last value)
+    "streamInfoStream", "lastStreamInfo",
+    "position",
+    # fix336: VOD transport — duration/seek + play/pause state
+    "duration", "playingStream", "isPlaying", "pause", "play", "seek",
+    "supportsTrackSelection", "subtitleTracks", "audioTracks",
     "setSubtitleTrack", "setAudioTrack", "setVolume",
-    "handlesOwnFullscreen", "enterFullscreen", "exitFullscreen", "isFullscreen",
+    "handlesOwnFullscreen",
+    # fix360/fix364: live DVR buffer flag
+    "dvrActive",
+    "enterFullscreen", "exitFullscreen", "isFullscreen",
 }
 
 # ── Targeted import rules: (type, required_import_fragment, files_to_check) ──
