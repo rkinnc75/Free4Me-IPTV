@@ -17,7 +17,7 @@ This machine has the full toolchain (`flutter`, `gh`, `adb`, git push, CI) worki
 | Latest release | **v2.1.0+571** (`git tag -l --sort=-creatordate \| head` for absolute truth) |
 | Releases | https://github.com/rkinnc75/Free4Me-IPTV/releases |
 | Player engine | **media_kit / libmpv only.** ExoPlayer was removed in fix350 — there is no `ExoEngine`/`engine_picker` anymore. |
-| libmpv | **Custom LGPL-max build** (commit 66045f3): all 435 non-GPL filters incl. `fps`/`select`/`scale`/`tonemap`, all decoders/demuxers. Wired via `dependency_overrides` → `rkalsky/media-kit` fork. Still LGPLv3 (app stays proprietary). **Do not remove the override block in `pubspec.yaml`.** |
+| libmpv | **Custom LGPL-max build** (commit 66045f3): all 435 non-GPL filters incl. `fps`/`select`/`scale`/`tonemap`, all decoders/demuxers. Wired via `dependency_overrides` → `rkalsky/media-kit` fork. Still LGPLv3 (app stays proprietary). **Do not remove the override block in `pubspec.yaml`.** Full detail: `docs/CUSTOM_LIBMPV.md` (enumerated lists in `docs/LIBMPV_COMPONENTS.md`). |
 | Playback smoothness | `framedrop=decoder` auto-applies on low-RAM Android (onn 4K Plus class) → smooth high-fps. See `runbooks/fix571.md`. An opt-in `vf=fps=30` cap is parked on branch `libmpv-lgplmax-verify` (not shipped). |
 | `flutter analyze` | 0 errors/warnings (2 tolerated INFOs in `settings_view.dart`). `flutter test` must be green. |
 
@@ -69,7 +69,7 @@ A `v*` tag push is the **only** trigger for a build. Commits to `main` alone do 
    ```
 9. **Verify** the run + published release + APK asset (HTTP 200) + `version.json` `latest` on `main`.
 
-**Auth gotcha (important):** `gh` is logged in as **`rkalsky`, which has NO push access** to `rkinnc75/Free4Me-IPTV` (returns 403). Push with the **`.github-token` PAT** (the write-capable credential), exactly as the scripts do — and keep the token out of command output (`sed "s/${PAT}/***/g"`).
+**🔴 Credential rule (do not violate):** Free4Me-IPTV uses the **`rkinnc75` PAT in `.github-token` — and ONLY that.** For any `github.com/rkinnc75/Free4Me-IPTV` operation, authenticate via the inline HTTPS PAT URL (above). **NEVER use the `rkalsky` `gh` account — it has no write access (403).** Do not rely on plain `git push`: `gh auth setup-git` configured the credential helper to resolve to `rkalsky`, so a plain push will fail; always use the explicit `.github-token` PAT URL, and keep the token out of logs (`sed "s/${PAT}/***/g"`). Also use `set -o pipefail` so a `git push | sed` pipeline surfaces git's real exit code (otherwise a rejected push reports false success).
 
 **version.json + tag ordering:** `version.json` must be on `main` before the tag (the in-app updater fetches it from `raw.githubusercontent.com/.../main/version.json`). CI re-syncs `version.json` and re-points the tag *after* the APK uploads (closes the 404 window) — so a tooling commit landing on `main` mid-release is tolerated by CI's retry loop.
 
@@ -126,6 +126,8 @@ A `v*` tag push is the **only** trigger for a build. Commits to `main` alone do 
 | `BUILD-ENV.md` | Exact build toolchain + signing identity. |
 | `CREDENTIALS-AND-SECRETS.md` | PAT + `RELEASE_KEYSTORE_*` setup/recovery. |
 | `DEVELOPMENT-HANDBOOK.md` | Feature architecture + UI copy strings. |
+| `docs/CUSTOM_LIBMPV.md` | The custom LGPL-max libmpv: why, what's enabled, wiring, license, **rebuild steps** after a media_kit/libmpv bump. |
+| `docs/LIBMPV_COMPONENTS.md` | Full enumerated filter/decoder/demuxer/protocol lists in the custom `.so`. |
 | `CHANGELOG.md` / `README.md` | History / project overview. |
 | `runbooks/` | Per-fix runbooks (`fixNNN.md`). |
 | Auto-memory (`MEMORY.md` index) | Loaded automatically each session — freshest cross-cutting state (libmpv saga, framedrop fix, builder gotchas). |
