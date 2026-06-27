@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.1.3': [
+    'TV: the remote D-pad now controls the full-screen player. Up and Down change '
+        'the channel, Left and Right skip back and forward 10 seconds when '
+        'timeshift is on, and OK plays or pauses and brings up the on-screen '
+        'controls. Previously the D-pad did nothing while watching.',
+  ],
   '2.1.2': [
     'The player top bar now shows the stream resolution and codec next to the '
         'channel name (for example ESPN HD (1080p H.264)) once the first frame '
