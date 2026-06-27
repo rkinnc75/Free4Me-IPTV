@@ -27,6 +27,7 @@ import 'package:open_tv/player/pip_controller.dart';
 import 'package:open_tv/player/mpv_engine.dart';
 import 'package:open_tv/player/debug_stats_overlay.dart';
 import 'package:open_tv/player/player_engine.dart';
+import 'package:open_tv/player/player_key_action.dart';
 import 'package:open_tv/select_dialog.dart';
 
 /// fix380: pure predicate extracted for unit testing. Mirrors
@@ -149,6 +150,16 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   Timer? _surfTimer;
   final FocusNode _surfKeyFocus = FocusNode(debugLabel: 'playerChannelKeys');
   static const Duration _surfDebounce = Duration(milliseconds: 650);
+
+  // fix576: D-pad transport on TV. The player Focus holds focus so the remote
+  // arrows map directly to channel/seek and OK toggles play/pause + reveals the
+  // control bars. Revealing reuses the fix367 keyed-remount trick: media_kit
+  // 2.0.1 has no public "show controls" API (visibility is private, tap-driven),
+  // so bumping [_controlsRevealTick] remounts the controls with
+  // [_revealControlsOnMount] = true (visibleOnMount), and they auto-hide via the
+  // existing controlsHoverDuration timer.
+  int _controlsRevealTick = 0;
+  bool _revealControlsOnMount = false;
 
   /// Subscriptions specifically tied to [_engine]'s streams (errorStream,
   /// bufferingStream, completedStream). Tracked separately from
@@ -1136,20 +1147,64 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   }
 
   /// Remote channel keys (Android TV CH+/CH−). Up = up the list, down = down.
-  KeyEventResult _onChannelKey(FocusNode _, KeyEvent event) {
+  /// fix576: toggle play/pause (used by D-pad OK / center).
+  Future<void> _togglePlayPause() async {
+    if (_engine.isPlaying) {
+      await _engine.pause();
+    } else {
+      await _engine.play();
+    }
+  }
+
+  /// fix576: force the control bars visible. media_kit 2.0.1 exposes no public
+  /// "show controls" call, so remount the controls subtree (bump the key) with
+  /// visibleOnMount=true; the flag is cleared next frame so unrelated remounts
+  /// (e.g. DVR turning on) do NOT force-show.
+  void _revealControls() {
+    if (!mounted) return;
+    setState(() {
+      _revealControlsOnMount = true;
+      _controlsRevealTick++;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _revealControlsOnMount = false;
+    });
+  }
+
+  /// fix576: player key handling. On TV the player Focus holds focus, so the
+  /// remote D-pad maps directly: ▲/CH+ = channel up, ▼/CH− = channel down,
+  /// ◀/▶ = seek −/+10s when DVR/seek is active, OK/center = play-pause + reveal
+  /// the control bars. Unhandled keys (Back etc.) are ignored so they bubble to
+  /// the PopScope / normal handling.
+  KeyEventResult _onPlayerKey(FocusNode _, KeyEvent event) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
-    if (!_canSurf) return KeyEventResult.ignored;
-    if (event.logicalKey == LogicalKeyboardKey.channelUp) {
-      _surf(-1);
-      return KeyEventResult.handled;
+    final action = playerKeyAction(
+      event.logicalKey,
+      canSurf: _canSurf,
+      dvrActive: _engine.dvrActive,
+    );
+    switch (action) {
+      case PlayerKeyAction.channelUp:
+        _surf(-1);
+        return KeyEventResult.handled;
+      case PlayerKeyAction.channelDown:
+        _surf(1);
+        return KeyEventResult.handled;
+      case PlayerKeyAction.seekBack:
+        _dvrSeekBy(const Duration(seconds: -10));
+        return KeyEventResult.handled;
+      case PlayerKeyAction.seekForward:
+        _dvrSeekBy(const Duration(seconds: 10));
+        return KeyEventResult.handled;
+      case PlayerKeyAction.playPauseReveal:
+        _togglePlayPause();
+        _revealControls();
+        return KeyEventResult.handled;
+      case PlayerKeyAction.none:
+        return KeyEventResult.ignored;
     }
-    if (event.logicalKey == LogicalKeyboardKey.channelDown) {
-      _surf(1);
-      return KeyEventResult.handled;
-    }
-    return KeyEventResult.ignored;
   }
 
   /// fix404: cycle through fit → stretch → crop → fit on each tap. The
@@ -1387,16 +1442,15 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) => onExit(),
-      // fix397: ancestor Focus to catch the remote CH+/CH− keys (the video
-      // controls take focus; unhandled channel keys bubble up to here). Only
-      // channel keys are consumed — everything else is ignored so existing
-      // d-pad / back handling is untouched.
+      // fix397/fix576: the player Focus catches the remote D-pad + CH keys.
+      // fix576 made it hold focus (autofocus) so D-pad arrows map directly to
+      // channel/seek and OK toggles play-pause + reveals the bars on TV — the
+      // previous bubble-only observer never saw the arrows. Unhandled keys
+      // (Back etc.) are still ignored so they bubble to the PopScope.
       child: Focus(
         focusNode: _surfKeyFocus,
-        // Never take focus itself — it only observes CH+/− keys that bubble up
-        // from the focused video controls, so d-pad navigation is untouched.
-        canRequestFocus: false,
-        onKeyEvent: _onChannelKey,
+        autofocus: true,
+        onKeyEvent: _onPlayerKey,
         child: Scaffold(
           backgroundColor: Colors.black,
           body: Stack(
@@ -1471,7 +1525,10 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     // re-read primaryButtonBar and render the transport row. Cheap: flips false
     // -> true a single time per playback.
     return MaterialVideoControlsTheme(
-      key: ValueKey('mvct-dvr-${_engine.dvrActive}'),
+      // fix576: include the reveal tick so a D-pad OK press remounts the
+      // controls visibleOnMount=true (the only way to force-show on media_kit
+      // 2.0.1, which has no public show-controls API).
+      key: ValueKey('mvct-dvr-${_engine.dvrActive}-$_controlsRevealTick'),
       normal: _mpvThemeData(context),
       fullscreen: _mpvThemeData(context),
       child: _engine.buildVideoView(context),
@@ -1552,6 +1609,9 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     // edge-aligned margins; the wake-on-tap is handled app-side (fix514).
     return MaterialVideoControlsThemeData(
       speedUpOnLongPress: false,
+      // fix576: D-pad OK reveals the bars by remounting with this true (see
+      // _revealControls); false on every other mount so they stay tap/auto.
+      visibleOnMount: _revealControlsOnMount,
       // fix409: control-bar auto-hide timeout (dev setting). 0 = keep until
       // dismissed (a far-future duration so media_kit never auto-hides).
       controlsHoverDuration: widget.settings.devControlsHideSecs <= 0
