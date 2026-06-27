@@ -137,24 +137,48 @@ or partial · ❌ open. File:line evidence in parens.
     full-screen — extend to multi-view/PiP; and if it genuinely fails to appear on
     a specific device, repro that as a render bug.
 
+**G. New requests (2026-06-27)**
+23. ❌ **"Confirm to exit" setting (double-back-to-exit).** When the user presses
+    BACK at the app root (the press that would close the app), show a transient
+    pill/snackbar — "Press back again to exit" — and only exit if BACK is pressed
+    again within ~2 s; otherwise dismiss the pill. Gate behind a Settings toggle
+    (default ON). Prevents accidental exit, especially with a TV remote. Current
+    state: NO app-level back-to-exit guard — `PopScope` is only used mid-operation
+    in settings (`settings_view.dart:848`) and inside the player screen
+    (`player.dart`); the root route exits immediately on BACK. Build: root-level
+    `PopScope(canPop:false)` + a last-back timestamp guard + the pill, plus the
+    setting in `models/settings.dart` and `backend/settings_io.dart`
+    toJson/fromJson (note #11: those round-trip fns drop fields — add this one).
+24. ❔ **(raised, not yet filed) Media3/ExoPlayer HW-decode parity.** A reference
+    app using **AndroidX Media3 1.6.1** (ExoPlayer successor, native MediaCodec →
+    Surface zero-copy HW decode) plays flawlessly on the onn with HW decode on.
+    free4me removed ExoPlayer in fix350 and runs libmpv in **software** on the onn
+    by design (`hwdec_routing.dart`: low-RAM non-Tegra TV → `no`; mediacodec-copy
+    caused A/V desync on weak SoCs, and libmpv surface-mode mediacodec fails
+    silently). A `forceHardware` toggle (fix505) can A/B libmpv mediacodec-copy on
+    the onn. The real parity path is the ExoPlayer/Media3-revert contingency (also
+    relevant to Shield #8). Decide scope before filing.
+
 ### Bottom line & suggested order
-Already done/closeable: **#12, #13, #14, #15, #17** (+ **#1** shipped→validate,
-**#20** known). Confirmed open with a DECIDED approach (ready to implement):
-**#8, #9, #10**. Other open: **#2, #3, #4, #5, #6, #7, #11, #16, #18, #21, #22**
-(#19 cosmetic).
+**Shipped/validated this session (2026-06-27):** **#1** validated (v2.1.0 decoder =
+0 drops, 9.5 min @ 1080p60). **#10** SHIPPED as fix572 in **v2.1.1+572** (export
+purge + diag-overlay drop/sync line).
+
+
+Already done/closeable: **#1, #10, #12, #13, #14, #15, #17** (+ **#20** known).
+Confirmed open with a DECIDED approach (ready to implement): **#8, #9**. Other open:
+**#2, #3, #4, #5, #6, #7, #11, #16, #18, #21, #22, #23** (#19 cosmetic, #24 needs
+scoping).
 
 **Suggested first-pass order (propose a plan before coding each):**
-1. **#1** — validate v2.1.0 on the onn (~10 min). Confirm the shipped
-   `framedrop=decoder` fix is actually smooth (`voDrop≈0`) before building on it.
-2. **#8** — Shield regression, **IF a Shield is in the fleet**: v2.1.0's custom
-   libmpv black-screened the Shield (it was working under stock libmpv). A live
-   regression outranks every enhancement — confirm a Shield is in use, then
-   prioritize it. If no Shield, defer.
-3. **#10** — export-file purge on new QR session (storage/data-loss bug; decided
-   spec; bounded).
-4. **#9** — stream-info append-to-channel-name (long-running annoyance, now a
+1. **#8** — Shield regression: DEFERRED to the 2nd-person Shield tester (no Shield
+   on this desk's ADB). A live regression still outranks enhancements once a Shield
+   is available.
+2. **#9** — stream-info append-to-channel-name (long-running annoyance, now a
    small decided change; not the latch widget).
-5. **#11** — backup drops 3 settings (small data-loss fix).
+3. **#11** — backup drops 3 settings (small data-loss fix). Bundle the #23 setting
+   into the same toJson/fromJson pass.
+4. **#23** — confirm-to-exit pill + setting (small, self-contained UX safety).
 
 Then features (**#7** TV transport controls, **#2** force-30 toggle, **#4/5/6** TV
 Live-view UX) → debt (**#16** R8, **#18** groups key, **#22** overlay, **#21**
