@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 2.0.70+570
+version: 2.0.71+571
 
 environment:
   sdk: ^3.10.7
@@ -75,6 +75,18 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+
+# free4me LGPL-MAX libmpv: override media_kit's native Android libmpv with a
+# custom LGPLv3 build that includes ALL non-GPL libavfilter filters (fps,
+# select, scale, tonemap, ...) + all decoders/demuxers/parsers/protocols.
+# Source: rkalsky/libmpv-android-video-build @ vnext (jars), wired via
+# rkalsky/media-kit fork's media_kit_libs_android_video build.gradle.
+dependency_overrides:
+  media_kit_libs_android_video:
+    git:
+      url: https://github.com/rkalsky/media-kit.git
+      ref: 6ae83bb80ab29ff7b6794dc975c6534d45907825
+      path: libs/android/media_kit_libs_android_video
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

@@ -1051,25 +1051,19 @@ class MpvEngine implements PlayerEngine {
     await np.setProperty('framedrop', s.devFramedrop.value);
     await np.setProperty('interpolation', s.devInterpolation ? 'yes' : 'no');
     await np.setProperty('deband', s.devDeband ? 'yes' : 'no');
-    // fix565–570: the intended 60→30 fps OUTPUT cap (fix564 proved the
-    // Mali-G310 judders at the texture-upload stage — VO drops ~13–50/sec while
-    // the decoder is idle) was to be done with an mpv `vf` frame-rate filter.
-    // It is NOT achievable on media_kit's bundled libmpv: every candidate
-    // libavfilter filter is ABSENT, each confirmed at runtime on the onn 4K
-    // Plus (not guessed):
-    //   • fps       → "Option vf: fps doesn't exist" / "No such filter: 'fps'"
-    //   • select    → "No such filter: 'select'"
-    //   • framestep → absent
-    // A missing lavfi filter makes mpv DESELECT the video track → permanent
-    // black-screen STALL (not a benign error — it surfaces as "video texture
-    // failed to attach"), so the cap cannot be applied via vf here. fix570:
-    // DISABLE it — always clear `vf`, which is guaranteed safe (no filter is
-    // ever created, so nothing can fail). The devCapFpsLowRam toggle is retained
-    // but inert until the bundled libmpv ships a frame-rate filter (or a
-    // non-filter mechanism is found). player.dart's isVfOptionError suppression
-    // (fix566) stays as defensive cover. Preview/mini cells never set vf.
-    const capFps = false; // fix570: cap disabled — no usable libavfilter filter
-    await np.setProperty('vf', '');
+    // fix571: the custom LGPL-max libmpv (rkalsky/libmpv-android-video-build
+    // @ vnext, wired via dependency_overrides) DOES include the `fps` filter
+    // (and all other non-GPL filters) — so the 60→30 fps OUTPUT cap that
+    // fix565–570 could not deliver on the stock libmpv is now viable. The cap
+    // sheds the texture-upload judder fix564 measured on the Mali-G310. Use the
+    // explicit-option bridge form `lavfi=[fps=fps=30]` (this build's libavfilter
+    // rejects positional args; the named option parses). '' clears the filter.
+    // Preview/mini cells are excluded (already small + grid-decimated).
+    final capFps = !previewMode &&
+        s.devCapFpsLowRam &&
+        Platform.isAndroid &&
+        await DeviceDetector.isLowRamDevice();
+    await np.setProperty('vf', capFps ? r'lavfi=[fps=fps=30]' : '');
     if (s.devHwdecImageFormat.value != null) {
       await np.setProperty(
           'hwdec-image-format', s.devHwdecImageFormat.value!);
