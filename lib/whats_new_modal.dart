@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.0.67': [
+    'Fixed playback on low-RAM boxes (e.g. onn 4K Plus) that the previous update could leave on a black screen when opening a channel. The 30 fps smoothing cap is now applied with a filter form the device accepts, so streams start normally and 60 fps content is capped cleanly to 30 fps. It can still be turned off under Settings → Developer.',
+  ],
   '2.0.66': [
     'TV: the 30 fps playback cap for low-RAM boxes (e.g. onn 4K Plus) now actually engages. The previous build requested it in a form the video engine on these devices rejected, so 60 fps streams kept playing at full rate and the judder remained. It is now applied via the correct filter, and a related glitch where the rejected request could briefly reconnect the stream when tuning a channel is fixed.',
   ],

@@ -1056,21 +1056,25 @@ class MpvEngine implements PlayerEngine {
     // frame misses the vsync deadline at the texture-upload stage (VO drops
     // ~13–50/sec) while the decoder stays idle (dec 0); halving the upload rate
     // clears it with perfect A/V sync. `vf` is otherwise unused, so we own it.
-    // fix566: the fix565 form 'fps=30' was REJECTED by this libmpv build
-    // ("Option vf: fps doesn't exist." — the bare filter name does not resolve
-    // without the lavfi bridge; onn 4K Plus v2.0.65 field log), so the cap
-    // never applied AND the error forced a reconnect on every open. Use the
-    // documented bridge form 'lavfi=[fps=30]' (libavfilter IS compiled into the
-    // shipped libmpv.so — verified via `avfilter_get_by_name` + the binary's
-    // own `--vf=lavfi=[...]` help text). A failed set is now swallowed by
-    // player.dart's errorStream handler (isVfOptionError) so it can never
-    // reconnect again; worst case the stream plays uncapped. '' clears the
-    // filter. Preview/mini cells are excluded (already small + grid-decimated).
+    // fix565/566/567: the fix565 form 'fps=30' was rejected outright ("Option
+    // vf: fps doesn't exist." — a bare filter name does not resolve without the
+    // lavfi bridge). fix566 switched to 'lavfi=[fps=30]' but THAT stalled the
+    // box: the set returns success, then at filter-graph configure time this
+    // build's libavfilter rejects the bare positional arg ("No option name near
+    // '30'" → "Creating filter 'lavfi' failed" → the video track is deselected
+    // → no first frame → permanent stall; onn 4K Plus v2.0.66 field log). The
+    // bare positional parses fine in desktop ffmpeg but NOT in this libmpv's
+    // graph parser. fix567: use the fully-explicit option form
+    // 'lavfi=[fps=fps=30]' (filter `fps`, option `fps`=30) which needs no
+    // positional shorthand. libavfilter IS present (avfilter_get_by_name in the
+    // shipped libmpv.so) and the `fps` filter exists (the v2.0.66 error was an
+    // option-parse failure, not a missing-filter one). '' clears the filter.
+    // Preview/mini cells are excluded (already small + grid-decimated).
     final capFps = !previewMode &&
         s.devCapFpsLowRam &&
         Platform.isAndroid &&
         await DeviceDetector.isLowRamDevice();
-    await np.setProperty('vf', capFps ? 'lavfi=[fps=30]' : '');
+    await np.setProperty('vf', capFps ? 'lavfi=[fps=fps=30]' : '');
     if (s.devHwdecImageFormat.value != null) {
       await np.setProperty(
           'hwdec-image-format', s.devHwdecImageFormat.value!);
