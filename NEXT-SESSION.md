@@ -138,18 +138,29 @@ or partial · ❌ open. File:line evidence in parens.
     a specific device, repro that as a render bug.
 
 **G. New requests (2026-06-27)**
-23. ❌ **"Confirm to exit" setting (double-back-to-exit).** When the user presses
-    BACK at the app root (the press that would close the app), show a transient
-    pill/snackbar — "Press back again to exit" — and only exit if BACK is pressed
-    again within ~2 s; otherwise dismiss the pill. Gate behind a Settings toggle
-    (default ON). Prevents accidental exit, especially with a TV remote. Current
-    state: NO app-level back-to-exit guard — `PopScope` is only used mid-operation
-    in settings (`settings_view.dart:848`) and inside the player screen
-    (`player.dart`); the root route exits immediately on BACK. Build: root-level
-    `PopScope(canPop:false)` + a last-back timestamp guard + the pill, plus the
-    setting in `models/settings.dart` and `backend/settings_io.dart`
-    toJson/fromJson (note #11: those round-trip fns drop fields — add this one).
-24. 📋 **FILED + SCOPED — Media3/ExoPlayer HW-decode parity.** Full ADR:
+23. ⚠️ **"Confirm to exit" (double-back-to-exit) — BUILT then REVERTED from
+    v2.1.2; redo for v2.1.3.** A first implementation (setting + `ConfirmToExit`
+    PopScope wrapper at the `_RootPage` root, default ON) was reverted after the
+    pre-release review found a **phone-path defect**: the touch bottom-nav swaps
+    SOLE routes via `Navigator.pushAndRemoveUntil(..., (route)=>false)` (sites:
+    `bottom_nav.dart:97`, `settings_view.dart:627`, `home.dart:531`,
+    `setup.dart:329`) — which removes the root route AND the guard, so after the
+    first view switch a single BACK exits. (TV is unaffected: `TvShell` is a
+    persistent `IndexedStack`, so a root wrap survives there.) **Correct design
+    for v2.1.3:** put the guard inside each PERSISTENT top-level surface, gated on
+    the setting — phone destinations are exactly `Home` and `SettingsView` (both
+    always pushed as sole routes, so a PopScope at their build root only fires at
+    the true exit moment) plus `TvShell` for TV; NOT a single root wrap. A
+    root-level `PopScope` in `MaterialApp.builder` does NOT work (PopScope needs an
+    enclosing route). Add a widget test: `pushAndRemoveUntil` a replacement `Home`,
+    then assert the first system BACK shows the pill instead of `SystemNavigator.pop`.
+    Setting/persistence/backup plumbing is straightforward (mirror `safeMode` in
+    `settings_service.dart`; default-on-absent; add to `settings_io` round-trip —
+    pinned by the fix573 test).
+24. 🅿️ **REVIEWED → BACKLOGGED INDEFINITELY (2026-06-27).** Decision: not pursuing a
+    Media3 default. Revisit only if Phase 0/1 (libmpv HW decode on the onn) fails AND
+    a future need justifies the permanent dual-engine cost. Full ADR below.
+    📋 **FILED + SCOPED — Media3/ExoPlayer HW-decode parity.** Full ADR:
     [`docs/media3-engine-scoping.md`](docs/media3-engine-scoping.md) (9-agent
     workflow: investigate → ADR → adversarial critique, claims tree-verified).
     **Recommendation: do NOT make Media3 the blanket default** ("Media3 default,
@@ -174,12 +185,14 @@ or partial · ❌ open. File:line evidence in parens.
 ### Bottom line & suggested order
 **Shipped/validated this session (2026-06-27):** **#1** validated (v2.1.0 decoder =
 0 drops, 9.5 min @ 1080p60). **#10** SHIPPED as fix572 in **v2.1.1+572** (export
-purge + diag-overlay drop/sync line).
+purge + diag-overlay drop/sync line). **#11** (fix573, backup round-trip) + **#9**
+(fix575, stream-info appended to channel name) SHIPPED in **v2.1.2+575**. **#23**
+built but REVERTED from v2.1.2 (phone bottom-nav defect found in pre-release review) —
+redo for v2.1.3 (see #23 above).
 
-
-Already done/closeable: **#1, #10, #12, #13, #14, #15, #17** (+ **#20** known).
-Confirmed open with a DECIDED approach (ready to implement): **#8, #9**. Other open:
-**#2, #3, #4, #5, #6, #7, #11, #16, #18, #21, #22, #23** (#19 cosmetic; #24 scoped —
+Already done/closeable: **#1, #9, #10, #11, #12, #13, #14, #15, #17** (+ **#20** known).
+Confirmed open with a DECIDED approach: **#8**. Other open:
+**#2, #3, #4, #5, #6, #7, #16, #18, #21, #22, #23** (#19 cosmetic; #24 scoped —
 `docs/media3-engine-scoping.md`, recommend Phase 0/1 libmpv-HW-decode first, NOT a
 Media3 default).
 

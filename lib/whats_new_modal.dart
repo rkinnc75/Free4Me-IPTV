@@ -6,6 +6,15 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.1.2': [
+    'The player top bar now shows the stream resolution and codec next to the '
+        'channel name (for example ESPN HD (1080p H.264)) once the first frame '
+        'arrives. The previous separate label could be pushed off-screen and '
+        'often did not appear.',
+    'Backup and restore now keeps all settings. The multi-view decode mode, the '
+        'control-bar hide delay, and the video zoom mode were previously reset to '
+        'defaults when restoring a backup.',
+  ],
   '2.1.1': [
     'Storage cleanup: exporting (QR/LAN or save-to-file) no longer leaves old '
         'export files behind. Each new export now clears the previous export '
