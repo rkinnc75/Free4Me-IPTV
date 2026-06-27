@@ -7,8 +7,8 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/conn_timing.dart';
 import 'package:open_tv/backend/settings_service.dart';
+import 'package:open_tv/widgets/player_channel_name_label.dart';
 import 'package:open_tv/widgets/player_epg_now_label.dart';
-import 'package:open_tv/widgets/player_stream_info_label.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/channel_tile.dart';
 import 'package:open_tv/error.dart';
@@ -1580,11 +1580,13 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
         const SizedBox(width: 10),
         // fix406: keep the channel name from being squeezed out, then show the
         // current EPG programme (if any) in the remaining space to its right.
+        // fix575: the name now carries the stream-info ("720p H.264") appended
+        // once known — replacing the separate PlayerStreamInfoLabel that the
+        // Expanded EPG label below squeezed off-screen.
         Flexible(
-          child: Text(
-            widget.channel.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          child: PlayerChannelNameLabel(
+            channelName: widget.channel.name,
+            engine: _engine,
           ),
         ),
         const SizedBox(width: 12),
@@ -1594,14 +1596,6 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
             sourceId: widget.channel.sourceId,
           ),
         ),
-        // fix515: stream-info ("720p H.264") — single-cell full-screen only,
-        // same gating as the PiP button below; multi-view cells have their
-        // own constrained layout and weren't part of this feature's scope.
-        if (widget.settings.multiViewLayout == MultiViewLayout.none)
-          PlayerStreamInfoLabel(
-            streamInfoStream: _engine.streamInfoStream,
-            initialLabel: _engine.lastStreamInfo,
-          ),
         if (_castSupported)
           IconButton(
             onPressed: _onCastTap,
