@@ -226,7 +226,19 @@ class _TvBrowseViewState extends State<TvBrowseView> {
 
   Widget _content() {
     if (_items.isEmpty) {
-      return Center(child: Text(_loading ? 'Loading…' : 'No titles'));
+      if (_loading) return const Center(child: Text('Loading…'));
+      // fix581 (#19): Favorites-specific empty copy instead of a bare "No
+      // titles" when the user has not starred anything yet.
+      final isFav = _selectedGroupId == _favGroupId;
+      return Center(
+        child: Text(
+          isFav
+              ? 'No favorites yet.\nMark a title with the star to see it here.'
+              : 'No titles',
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Colors.white70),
+        ),
+      );
     }
     final noun = widget.mediaType == MediaType.serie ? 'series' : 'titles';
     return Column(
