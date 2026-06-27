@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.63",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.63",
+  "latest": "2.0.64",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.64",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 TV: search results now navigate reliably with the D-pad \u2014 arrow-up always moves one row (or to the section above) on the first press. The previous fix did not fully resolve this; this one drives the move directly instead of relying on the system focus search.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.63/Free4Me-IPTV-2.0.63-arm64.apk"
+  "releaseNotes": "\u2022 Added a developer playback-stats overlay (top-right of full-screen video, shown when debug logging is on) reporting the live decode path, frame rate, dropped-frame rate, A/V sync, bitrate and buffer \u2014 and logged for diagnostics.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.64/Free4Me-IPTV-2.0.64-arm64.apk"
 }
