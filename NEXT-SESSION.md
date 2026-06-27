@@ -70,20 +70,33 @@ or partial · ❌ open. File:line evidence in parens.
    in the always-on bottom bar. Glaring UX gap.
 
 **C. Known bugs / stability**
-8. ⚠️ **Shield black-screen — RE-VERIFY.** Root-cause routing fix shipped (fix395,
-   `hwdec_routing.dart:47` Tegra→`mediacodec-copy`) + fix396 diag + fix410
-   Impeller-disable diag. The investigation was awaiting a device log, AND v2.1.0
-   now ships the custom libmpv to ALL devices — re-test on Shield to confirm
-   resolved (don't assume). ExoPlayer revert was the old contingency.
-9. ⚠️ **Stream-info label — RE-VERIFY.** Latch+seed shipped (fix522,
-   `mpv_engine.dart` `lastStreamInfo`), but a memory flagged it still broken on
-   phone after fix522. Confirm on device; if still broken, root-cause beyond the
-   mount-race.
-10. ⚠️ **Export/backup storage — verify.** Log rotation (20 MB + `.old`,
-    `app_logger.dart:23`) and temp-export cleanup ARE in place, and Xtream dumps
-    purge on log-clear — yet an onn data-clear happened 2026-06-26. Find what
-    actually filled storage (likely Xtream dumps accumulating until a manual clear)
-    and add an auto-cap if so.
+8. ❌ **Shield black-screen — REGRESSION in v2.1.0 (custom libmpv).** CONFIRMED
+   2026-06-27: Shield was **WORKING before the new libmpv** — it had been fixed by
+   **fix410 (`EnableImpeller=false`)** + fix395's Tegra→`mediacodec-copy` routing,
+   stable under the STOCK libmpv. The v2.1.0 custom LGPL-max `.so` re-broke it
+   (Shield isn't low-RAM, so fix571's framedrop change doesn't apply — the libmpv
+   swap is the only relevant change). Reproduce on a Shield with debug logging and
+   re-run the fix396 `DECODE`/`HEARTBEAT` decision tree under the custom build
+   (decode vs texture vs compositing) — see memory `shield-blackscreen-investigation`.
+   Options: gate Shield/Tegra back to stock libmpv (the `dependency_overrides` is
+   all-or-nothing today), rebuild the custom `.so` differently for Tegra, or the
+   ExoPlayer-revert contingency.
+9. ❌ **Stream-info label — still broken (phone re-confirmed 2026-06-27); use the
+   simpler approach.** fix522's latch+seed (separate `PlayerStreamInfoLabel` in
+   `topButtonBar`, `player.dart:1601`) did NOT fix it. **DECIDED — do NOT revive
+   the latch widget:** concatenate the stream-info onto the channel-NAME string
+   already rendering in the top bar — e.g. `|4K| ESPN HD` → `|4K| ESPN HD (720p
+   H.264)` (resolution-only like `(1080p)` if codec unavailable); leave the EPG
+   line as-is. Appending to the already-rendering name text sidesteps the
+   `MaterialVideoControlsTheme` frozen-slot listener-race entirely — model it on
+   the self-updating `PlayerEpgNowLabel` / `now_next_strip` pattern. Full note:
+   memory `free4me-pending-player-tv.md`.
+10. ❌ **Export files accumulate — purge on new QR session (confirmed 2026-06-27).**
+    Old timestamped export files remain on disk. **DECIDED fix:** when a NEW QR/LAN
+    export session starts, delete any prior timestamped export files EXCEPT the
+    current session's. (Log rotation 20 MB + `.old` already exists in
+    `app_logger.dart:23`; this is specifically the export/QR-served files —
+    `export_server.dart` / `settings_io.dart`.)
 11. ❌ **Backup/restore drops 3 settings** — `multiViewDecode`,
     `devControlsHideSecs`, `playerZoomMode` are NOT in `settings_io.dart`
     toJson/fromJson → reset to defaults on restore. Small, well-scoped fix.
