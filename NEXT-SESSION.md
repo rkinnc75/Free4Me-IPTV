@@ -149,15 +149,27 @@ or partial · ❌ open. File:line evidence in parens.
     `PopScope(canPop:false)` + a last-back timestamp guard + the pill, plus the
     setting in `models/settings.dart` and `backend/settings_io.dart`
     toJson/fromJson (note #11: those round-trip fns drop fields — add this one).
-24. ❔ **(raised, not yet filed) Media3/ExoPlayer HW-decode parity.** A reference
-    app using **AndroidX Media3 1.6.1** (ExoPlayer successor, native MediaCodec →
-    Surface zero-copy HW decode) plays flawlessly on the onn with HW decode on.
-    free4me removed ExoPlayer in fix350 and runs libmpv in **software** on the onn
-    by design (`hwdec_routing.dart`: low-RAM non-Tegra TV → `no`; mediacodec-copy
-    caused A/V desync on weak SoCs, and libmpv surface-mode mediacodec fails
-    silently). A `forceHardware` toggle (fix505) can A/B libmpv mediacodec-copy on
-    the onn. The real parity path is the ExoPlayer/Media3-revert contingency (also
-    relevant to Shield #8). Decide scope before filing.
+24. 📋 **FILED + SCOPED — Media3/ExoPlayer HW-decode parity.** Full ADR:
+    [`docs/media3-engine-scoping.md`](docs/media3-engine-scoping.md) (9-agent
+    workflow: investigate → ADR → adversarial critique, claims tree-verified).
+    **Recommendation: do NOT make Media3 the blanket default** ("Media3 default,
+    libmpv fallback" reverses the fix350 consolidation AND libmpv can never be
+    dropped — it is the sole engine on 5/6 platforms and the only path for
+    RTMP/MMS/UDP/MKV/AVI/exotic-audio/malformed-TS/DVR/the fps filter — so Media3
+    is strictly additive, no licensing/maintenance win). Ordered plan with gates:
+    **(0, hours)** A/B the existing `forceHardware` knob (fix505) on the onn under
+    the custom build — may dissolve #24 today. **(1, days)** root-cause the onn
+    `hwdec_routing.dart` software routing (predates the custom build + the
+    `framedrop=decoder` 0-drop win); caveat — zero-copy may be unreachable under our
+    texture renderer (0 PlatformViews today). **(2, parallel)** measure real-stream
+    Media3 TS failures (sustained playback, not prepare-at-t0; unbounded-by-design).
+    **(3+, only if 1 fails & 2 favorable)** Media3 engine behind `PlayerEngine` →
+    ship as **Option C** scoped per-format/per-device routing (Android-only;
+    playback-failure fallback, never URL heuristic; FFmpeg audio ext up front),
+    NOT a blanket default. Gotchas the ADR nails: 46 `MpvEngine` couplings across 11
+    files (not 4); the fix350 engine-swap fallback is fully deleted; MP2/AC-3 TS
+    audio needs an NDK FFmpeg ext (common, not exotic). Strongly relates to Shield #8
+    (the ExoPlayer-revert contingency).
 
 ### Bottom line & suggested order
 **Shipped/validated this session (2026-06-27):** **#1** validated (v2.1.0 decoder =
@@ -167,8 +179,9 @@ purge + diag-overlay drop/sync line).
 
 Already done/closeable: **#1, #10, #12, #13, #14, #15, #17** (+ **#20** known).
 Confirmed open with a DECIDED approach (ready to implement): **#8, #9**. Other open:
-**#2, #3, #4, #5, #6, #7, #11, #16, #18, #21, #22, #23** (#19 cosmetic, #24 needs
-scoping).
+**#2, #3, #4, #5, #6, #7, #11, #16, #18, #21, #22, #23** (#19 cosmetic; #24 scoped —
+`docs/media3-engine-scoping.md`, recommend Phase 0/1 libmpv-HW-decode first, NOT a
+Media3 default).
 
 **Suggested first-pass order (propose a plan before coding each):**
 1. **#8** — Shield regression: DEFERRED to the 2nd-person Shield tester (no Shield
