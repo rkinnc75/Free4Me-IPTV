@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.66",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.66",
+  "latest": "2.0.70",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.70",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 TV: the 30 fps playback cap for low-RAM boxes (e.g. onn 4K Plus) now actually engages. The previous build requested it in a form the video engine on these devices rejected, so 60 fps streams kept playing at full rate and the judder remained. It is now applied via the correct filter, and a related glitch where the rejected request could briefly reconnect the stream when tuning a channel is fixed.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.66/Free4Me-IPTV-2.0.66-arm64.apk"
+  "releaseNotes": "\u2022 Fixed playback on low-RAM boxes (e.g. onn 4K Plus) that recent updates could leave on a black screen when opening a channel. Streams now start normally again.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.70/Free4Me-IPTV-2.0.70-arm64.apk"
 }
