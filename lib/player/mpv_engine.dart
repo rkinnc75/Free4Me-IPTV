@@ -1068,19 +1068,26 @@ class MpvEngine implements PlayerEngine {
     // bundled libmpv.so (verified in the .so). When the lavfi filter FAILS to
     // create, mpv deselects the video track → permanent black-screen stall, so
     // a missing filter is catastrophic, not benign.
-    // fix568: use the `select` filter (which IS present) to pass every other
-    // frame — `select='not(mod(n,2))'`. The comma in mod() must be escaped for
-    // the lavfi bridge (else libavfilter splits the graph on it: "No such
-    // filter: '2))'"), hence the raw string with `\,`. Validated on mpv 0.41:
-    // the graph creates cleanly and the VO reconfigures. Because `select`
-    // exists, the filter always CREATES — worst case it plays uncapped, it can
-    // never stall like the absent `fps` filter did. '' clears the filter.
+    // fix568/569: use the `select` filter (which IS present in this libmpv) to
+    // pass every other frame. Two device-specific escaping/syntax rules, both
+    // learned the hard way on the onn 4K Plus:
+    //   1. The comma in mod() must be escaped (`\,`) or the lavfi bridge splits
+    //      the graph on it ("No such filter: '2))'") — hence the raw string.
+    //   2. fix568 used the positional `select=not(mod(n\,2))`; this build's
+    //      (older) libavfilter REJECTS positional filter args ("No option name
+    //      near 'not(mod(n,2))'" — same rule that broke fps=30 in fix566).
+    //      fix569 names the option explicitly: `select=expr=...`.
+    // Validated on mpv 0.41 locally (creates + reconfigures the VO). `select`
+    // exists (the fix568 error reached arg-parsing, unlike the absent `fps`
+    // filter's "No such filter"), so with the named option it parses, creates,
+    // and runs; worst case it plays uncapped — it can never stall. '' clears.
     // Preview/mini cells are excluded (already small + grid-decimated).
     final capFps = !previewMode &&
         s.devCapFpsLowRam &&
         Platform.isAndroid &&
         await DeviceDetector.isLowRamDevice();
-    await np.setProperty('vf', capFps ? r'lavfi=[select=not(mod(n\,2))]' : '');
+    await np.setProperty(
+        'vf', capFps ? r'lavfi=[select=expr=not(mod(n\,2))]' : '');
     if (s.devHwdecImageFormat.value != null) {
       await np.setProperty(
           'hwdec-image-format', s.devHwdecImageFormat.value!);
