@@ -160,13 +160,6 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   // (fix576's keyed-remount + visibleOnMount approach did NOT show them
   // on-device — media_kit preserves the controls state across the theme
   // remount — so fix577 replaced it with the tap.)
-  //
-  // fix578 (Mode B): when [_barsNav] is true, OK has handed control to the
-  // bars — auto-hide is disabled (controlsHoverDuration → days) and focus moves
-  // into the bar buttons so the D-pad traverses them (Flutter directional
-  // focus) and OK activates the focused one. Back exits nav (handled in the
-  // PopScope) rather than leaving the player, and direct-map resumes.
-  bool _barsNav = false;
 
   /// Subscriptions specifically tied to [_engine]'s streams (errorStream,
   /// bufferingStream, completedStream). Tracked separately from
@@ -1181,33 +1174,6 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
         PointerUpEvent(pointer: pointer, position: centre));
   }
 
-  /// fix578 (Mode B): hand control to the bars. Disable auto-hide (the theme
-  /// rebuilds with a days-long controlsHoverDuration once [_barsNav] is true),
-  /// reveal the bars on the NEXT frame (so the synthesized tap arms media_kit's
-  /// hide timer with the new long duration), then move focus into the bar
-  /// buttons so the D-pad traverses them.
-  void _enterBarsNav() {
-    if (_barsNav || !mounted) return;
-    setState(() => _barsNav = true);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_barsNav) return;
-      _revealControls(); // show bars (now non-auto-hiding)
-      // Let the bars become visible, then push focus into them.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _barsNav) FocusScope.of(context).nextFocus();
-      });
-    });
-  }
-
-  /// fix578: leave nav mode — hide the bars, restore auto-hide, and reclaim
-  /// focus so the D-pad direct-maps to channel/seek again.
-  void _exitBarsNav() {
-    if (!_barsNav) return;
-    setState(() => _barsNav = false);
-    _revealControls(); // bars are visible → this tap toggles them off
-    _surfKeyFocus.requestFocus();
-  }
-
   /// fix576: player key handling. On TV the player Focus holds focus, so the
   /// remote D-pad maps directly: ▲/CH+ = channel up, ▼/CH− = channel down,
   /// ◀/▶ = seek −/+10s when DVR/seek is active, OK/center = play-pause + reveal
@@ -1217,11 +1183,6 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
-    // fix578 (Mode B): in nav mode the bars own the D-pad — return ignored so
-    // Flutter's directional focus traversal moves between the bar buttons and
-    // Enter/OK activates the focused one. (Back is handled by the PopScope,
-    // which exits nav instead of the player while _barsNav is true.)
-    if (_barsNav) return KeyEventResult.ignored;
     final action = playerKeyAction(
       event.logicalKey,
       canSurf: _canSurf,
@@ -1242,7 +1203,7 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
         return KeyEventResult.handled;
       case PlayerKeyAction.playPauseReveal:
         _togglePlayPause();
-        _enterBarsNav();
+        _revealControls();
         return KeyEventResult.handled;
       case PlayerKeyAction.none:
         return KeyEventResult.ignored;
@@ -1483,15 +1444,7 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
 
     return PopScope(
       canPop: false,
-      // fix578: Back exits bars-nav first (returns to direct-map) and only
-      // leaves the player once the bars are dismissed.
-      onPopInvokedWithResult: (didPop, result) {
-        if (_barsNav) {
-          _exitBarsNav();
-          return;
-        }
-        onExit();
-      },
+      onPopInvokedWithResult: (didPop, result) => onExit(),
       // fix397/fix576: the player Focus catches the remote D-pad + CH keys.
       // fix576 made it hold focus (autofocus) so D-pad arrows map directly to
       // channel/seek and OK toggles play-pause + reveals the bars on TV — the
@@ -1658,13 +1611,9 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
       speedUpOnLongPress: false,
       // fix409: control-bar auto-hide timeout (dev setting). 0 = keep until
       // dismissed (a far-future duration so media_kit never auto-hides).
-      // fix578: while navigating the bars by D-pad, disable auto-hide so they
-      // stay up until the user backs out (media_kit's timer ignores key/focus
-      // activity, so it would otherwise hide them mid-navigation).
-      controlsHoverDuration:
-          (_barsNav || widget.settings.devControlsHideSecs <= 0)
-              ? const Duration(days: 1)
-              : Duration(seconds: widget.settings.devControlsHideSecs),
+      controlsHoverDuration: widget.settings.devControlsHideSecs <= 0
+          ? const Duration(days: 1)
+          : Duration(seconds: widget.settings.devControlsHideSecs),
       seekOnDoubleTap: widget.channel.mediaType != MediaType.livestream,
       displaySeekBar: widget.channel.mediaType != MediaType.livestream,
       seekBarMargin: const EdgeInsets.only(bottom: 60),

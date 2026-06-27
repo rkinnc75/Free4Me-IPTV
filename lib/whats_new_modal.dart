@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.1.6': [
+    'TV: fixed a problem introduced in 2.1.5 where the remote D-pad could stop '
+        'responding in the player after pressing OK. Channel Up and Down, seek, '
+        'and OK to play or pause work reliably again.',
+  ],
   '2.1.5': [
     'TV: after pressing OK to bring up the player controls, the D-pad now moves '
         'between the on-screen buttons (cast, picture-in-picture, subtitles, audio, '
