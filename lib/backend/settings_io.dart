@@ -12,8 +12,10 @@ import 'package:open_tv/models/dev_mpv_options.dart' show
     VideoSyncMode, TscaleMode, FrameDropMode,
     HwdecImageFormat, AudioSpdifMode;
 import 'package:open_tv/models/device_detector.dart';
+import 'package:open_tv/models/multi_view_decode.dart';
 import 'package:open_tv/models/multi_view_layout.dart';
 import 'package:open_tv/models/settings.dart';
+import 'package:open_tv/models/zoom_mode.dart';
 import 'package:open_tv/models/source.dart';
 import 'package:open_tv/models/source_type.dart';
 import 'package:open_tv/models/view_type.dart';
@@ -669,6 +671,12 @@ class SettingsIo {
         'devHwdecImageFormat': s.devHwdecImageFormat.toJson(),
         'devAudioBufferSecs': s.devAudioBufferSecs,
         'devAudioSpdif': s.devAudioSpdif.toJson(),
+
+        // fix573: three settings were persisted normally but DROPPED from the
+        // backup payload, so a backup/restore silently reset them to defaults.
+        'multiViewDecode': s.multiViewDecode.toJson(),
+        'devControlsHideSecs': s.devControlsHideSecs,
+        'playerZoomMode': s.playerZoomMode.name,
       };
 
   static Settings _settingsFromMap(Map<String, dynamic> m) {
@@ -797,9 +805,31 @@ class SettingsIo {
     if (m['devAudioSpdif'] is String) {
       s.devAudioSpdif = AudioSpdifMode.fromJson(m['devAudioSpdif'] as String);
     }
+    // fix573: restore the three formerly-dropped fields.
+    if (m['multiViewDecode'] is String) {
+      s.multiViewDecode =
+          MultiViewDecode.fromJson(m['multiViewDecode'] as String);
+    }
+    if (m['devControlsHideSecs'] is int) {
+      s.devControlsHideSecs = m['devControlsHideSecs'] as int;
+    }
+    if (m['playerZoomMode'] is String) {
+      s.playerZoomMode = ZoomMode.values.firstWhere(
+        (e) => e.name == m['playerZoomMode'],
+        orElse: () => ZoomMode.fit,
+      );
+    }
 
     return s;
   }
+
+  /// fix573: round-trip a [Settings] through the backup map (serialize →
+  /// restore) for regression tests. The #11/#573 bug was fields silently
+  /// dropped from the payload; this seam lets a test assert each field survives
+  /// without needing the DB / file-picker / platform channels.
+  @visibleForTesting
+  static Settings roundTripForTest(Settings s) =>
+      _settingsFromMap(_settingsToMap(s));
 
   /// Save an arbitrary text string to a user-chosen file location.
   ///
