@@ -127,9 +127,9 @@ To ship `vX.Y.Z` from Cowork:
    ```
    This keeps the repo root clean; all runbooks live in `/runbooks/`.
 
-7. **Commit** all of the above on `main`. Release-build commits use the
-   `vX.Y.Z: release build` convention (exempt from the usual Jira-key
-   rule per `AGENT-HANDOFF-v1.15.7.md` §4).
+7. **Commit** all of the above on `main`, using the `fixNNN:` (or
+   `vX.Y.Z: release build`) convention. This repo has no Jira-key rule
+   (older docs that referenced one were stale; see `ONBOARDING.md` §2).
 8. **Push `main`** (commits to origin/main, not tags yet).
 9. **Tag the pushed commit** on `main`:
    ```bash
@@ -404,7 +404,7 @@ The phone is for **deciding**; the desktop is for **doing**.
 | `/runbooks/` | Fix runbooks: all `fix*.md` and `fix*.patch` files after they've been applied and released. Keeps repo root clean. |
 | `BUILD-ENV.md` | Documents the local Mac build environment that CI mirrors. |
 | `AGENTS.md` | Canonical session guide for AI agents. Updated when state changes. |
-| `AGENT-HANDOFF-v1.15.7.md` | Historical handoff with codebase patterns + invariants. |
+| `ONBOARDING.md` | Canonical coder+builder entry point (current state, ship process, gotchas). |
 | `CLAUDE-WORKFLOW.md` | This file. |
 
 ---
