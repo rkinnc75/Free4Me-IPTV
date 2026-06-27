@@ -121,6 +121,8 @@ A `v*` tag push is the **only** trigger for a build. Commits to `main` alone do 
 | Doc | Read when |
 |---|---|
 | `ONBOARDING.md` (this) | First — coder + builder entry point. |
+| `NEXT-SESSION.md` | Live backlog + kickoff prompt — the pending items to pick from. |
+| `BACKLOG_TV_UI.md` | TV Live-view UX backlog (rail-collapse, 3s dwell-preview, long-press Multi-view) with per-item build notes. |
 | `GROUND_ZERO.md` | Phone-coder handoff / narrative current state. |
 | `CLAUDE-WORKFLOW.md` | Release pipeline detail, failure recovery, `fix290` guard, PAT/keystore bootstrap. |
 | `BUILD-ENV.md` | Exact build toolchain + signing identity. |
