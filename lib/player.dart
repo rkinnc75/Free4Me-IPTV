@@ -42,6 +42,19 @@ bool isSeekProbeError(String err) {
       err.contains('force-seekable=yes');
 }
 
+/// fix566: errors for the `vf` (video-filter) option are NEVER fatal to
+/// playback. `vf` is set ONLY by the low-RAM 30 fps OUTPUT cap (fix565), a pure
+/// optimisation. On libmpv builds where the cap filter cannot be created — a
+/// bare `fps=30` name that doesn't resolve without the lavfi bridge, or a
+/// libavfilter without the `fps` filter — mpv emits an error-level message
+/// ("Option vf: fps doesn't exist." / "could not create filter") that was
+/// reaching errorStream and forcing a spurious reconnect on every open (onn 4K
+/// Plus field log, v2.0.65). Treat it like the seek probe: log, never
+/// reconnect. The stream keeps playing uncapped, which is the correct fallback.
+bool isVfOptionError(String err) {
+  return err.contains('Option vf') || err.contains('could not create filter');
+}
+
 class Player extends StatefulWidget {
   final Channel channel;
   final Settings settings;
@@ -173,6 +186,11 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   // "suppressed seek probe error" log line from firing per user-seek (after
   // grace, every "Cannot seek" rejection was being mislabelled as a probe).
   bool _seekProbeLogged = false;
+
+  // fix566: latched once the vf-cap error has been logged for this open()
+  // (mirrors _seekProbeLogged) so a per-frame/per-retry error storm can't flood
+  // the log. Reset alongside _seekProbeLogged at the top of each open.
+  bool _vfErrorLogged = false;
 
   // Cast state
   // True only when Play Services are present AND the stream format is
@@ -398,6 +416,21 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
           _seekProbeLogged = true;
           AppLog.info(
             'Player: startup seek probe suppressed'
+            ' channel="${widget.channel.name}"',
+          );
+        }
+        return;
+      }
+
+      // fix566: a failed `vf` set (the low-RAM 30 fps cap) is never fatal —
+      // the stream plays fine uncapped. Suppress it so it can't trigger a
+      // reconnect (it did on every open on the onn 4K Plus, v2.0.65 log).
+      if (isVfOptionError(err)) {
+        if (_startupGrace && !_vfErrorLogged) {
+          _vfErrorLogged = true;
+          AppLog.info(
+            'Player: vf cap error suppressed (filter unsupported on this'
+            ' build; playback continues uncapped) — "$err"'
             ' channel="${widget.channel.name}"',
           );
         }
@@ -682,6 +715,7 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   }) async {
     _startupGrace = false; // Reset on every attempt (including retries)
     _seekProbeLogged = false; // fix380: one log per open() for the startup probe
+    _vfErrorLogged = false; // fix566: one vf-cap-error log per open()
     final timeout = Duration(seconds: widget.settings.openTimeoutSecs);
     while (true) {
       if (!mounted || exiting) return;

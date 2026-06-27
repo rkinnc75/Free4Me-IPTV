@@ -1051,20 +1051,26 @@ class MpvEngine implements PlayerEngine {
     await np.setProperty('framedrop', s.devFramedrop.value);
     await np.setProperty('interpolation', s.devInterpolation ? 'yes' : 'no');
     await np.setProperty('deband', s.devDeband ? 'yes' : 'no');
-    // fix565: cap full-screen OUTPUT to 30 fps on low-RAM Android. The fix564
-    // overlay proved 60 fps 1080p judders on the Mali-G310 because each frame
-    // misses the vsync deadline at the texture-upload stage (VO drops
+    // fix565/566: cap full-screen OUTPUT to 30 fps on low-RAM Android. The
+    // fix564 overlay proved 60 fps 1080p judders on the Mali-G310 because each
+    // frame misses the vsync deadline at the texture-upload stage (VO drops
     // ~13–50/sec) while the decoder stays idle (dec 0); halving the upload rate
-    // clears it with perfect A/V sync. `vf` is otherwise unused, so we own it:
-    // set 'fps=30' when capping, '' to clear it. Preview/mini cells are
-    // excluded (already small + grid-decimated). If the overlay shows VO drops
-    // NOT falling, check the mpv log for a vf parse error — fallback form is
-    // 'lavfi=[fps=30]'.
+    // clears it with perfect A/V sync. `vf` is otherwise unused, so we own it.
+    // fix566: the fix565 form 'fps=30' was REJECTED by this libmpv build
+    // ("Option vf: fps doesn't exist." — the bare filter name does not resolve
+    // without the lavfi bridge; onn 4K Plus v2.0.65 field log), so the cap
+    // never applied AND the error forced a reconnect on every open. Use the
+    // documented bridge form 'lavfi=[fps=30]' (libavfilter IS compiled into the
+    // shipped libmpv.so — verified via `avfilter_get_by_name` + the binary's
+    // own `--vf=lavfi=[...]` help text). A failed set is now swallowed by
+    // player.dart's errorStream handler (isVfOptionError) so it can never
+    // reconnect again; worst case the stream plays uncapped. '' clears the
+    // filter. Preview/mini cells are excluded (already small + grid-decimated).
     final capFps = !previewMode &&
         s.devCapFpsLowRam &&
         Platform.isAndroid &&
         await DeviceDetector.isLowRamDevice();
-    await np.setProperty('vf', capFps ? 'fps=30' : '');
+    await np.setProperty('vf', capFps ? 'lavfi=[fps=30]' : '');
     if (s.devHwdecImageFormat.value != null) {
       await np.setProperty(
           'hwdec-image-format', s.devHwdecImageFormat.value!);
