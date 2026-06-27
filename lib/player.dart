@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -151,15 +152,14 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   final FocusNode _surfKeyFocus = FocusNode(debugLabel: 'playerChannelKeys');
   static const Duration _surfDebounce = Duration(milliseconds: 650);
 
-  // fix576: D-pad transport on TV. The player Focus holds focus so the remote
-  // arrows map directly to channel/seek and OK toggles play/pause + reveals the
-  // control bars. Revealing reuses the fix367 keyed-remount trick: media_kit
-  // 2.0.1 has no public "show controls" API (visibility is private, tap-driven),
-  // so bumping [_controlsRevealTick] remounts the controls with
-  // [_revealControlsOnMount] = true (visibleOnMount), and they auto-hide via the
-  // existing controlsHoverDuration timer.
-  int _controlsRevealTick = 0;
-  bool _revealControlsOnMount = false;
+  // fix576/fix577: D-pad transport on TV. The player Focus holds focus so the
+  // remote arrows map directly to channel/seek and OK toggles play/pause +
+  // reveals the control bars. media_kit 2.0.1 has no public show-controls API
+  // (visibility is private, tap-driven), so OK reveals the bars by synthesizing
+  // a centre tap — exactly like a screen tap — and media_kit auto-hides them.
+  // (fix576's keyed-remount + visibleOnMount approach did NOT show them
+  // on-device — media_kit preserves the controls state across the theme
+  // remount — so fix577 replaced it with the tap.)
 
   /// Subscriptions specifically tied to [_engine]'s streams (errorStream,
   /// bufferingStream, completedStream). Tracked separately from
@@ -1156,19 +1156,22 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     }
   }
 
-  /// fix576: force the control bars visible. media_kit 2.0.1 exposes no public
-  /// "show controls" call, so remount the controls subtree (bump the key) with
-  /// visibleOnMount=true; the flag is cleared next frame so unrelated remounts
-  /// (e.g. DVR turning on) do NOT force-show.
+  /// fix577: reveal the control bars by synthesizing a tap at the video centre.
+  /// media_kit 2.0.1 toggles its bars on tap (private state, no public API), so
+  /// this shows them exactly like a screen tap; media_kit then auto-hides them
+  /// after controlsHoverDuration. (fix576's keyed-remount + visibleOnMount did
+  /// not work on-device — the controls state survives the theme remount.)
   void _revealControls() {
     if (!mounted) return;
-    setState(() {
-      _revealControlsOnMount = true;
-      _controlsRevealTick++;
-    });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _revealControlsOnMount = false;
-    });
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return;
+    final centre = box.localToGlobal(box.size.center(Offset.zero));
+    const pointer = 0xF4EE; // arbitrary synthetic pointer id
+    final binding = GestureBinding.instance;
+    binding.handlePointerEvent(
+        PointerDownEvent(pointer: pointer, position: centre));
+    binding.handlePointerEvent(
+        PointerUpEvent(pointer: pointer, position: centre));
   }
 
   /// fix576: player key handling. On TV the player Focus holds focus, so the
@@ -1525,10 +1528,7 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     // re-read primaryButtonBar and render the transport row. Cheap: flips false
     // -> true a single time per playback.
     return MaterialVideoControlsTheme(
-      // fix576: include the reveal tick so a D-pad OK press remounts the
-      // controls visibleOnMount=true (the only way to force-show on media_kit
-      // 2.0.1, which has no public show-controls API).
-      key: ValueKey('mvct-dvr-${_engine.dvrActive}-$_controlsRevealTick'),
+      key: ValueKey('mvct-dvr-${_engine.dvrActive}'),
       normal: _mpvThemeData(context),
       fullscreen: _mpvThemeData(context),
       child: _engine.buildVideoView(context),
@@ -1609,9 +1609,6 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     // edge-aligned margins; the wake-on-tap is handled app-side (fix514).
     return MaterialVideoControlsThemeData(
       speedUpOnLongPress: false,
-      // fix576: D-pad OK reveals the bars by remounting with this true (see
-      // _revealControls); false on every other mount so they stay tap/auto.
-      visibleOnMount: _revealControlsOnMount,
       // fix409: control-bar auto-hide timeout (dev setting). 0 = keep until
       // dismissed (a far-future duration so media_kit never auto-hides).
       controlsHoverDuration: widget.settings.devControlsHideSecs <= 0

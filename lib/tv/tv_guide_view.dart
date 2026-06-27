@@ -6,6 +6,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/models/channel.dart';
+import 'package:open_tv/models/playback_playlist.dart';
 import 'package:open_tv/models/device_detector.dart';
 import 'package:open_tv/models/filters.dart';
 import 'package:open_tv/models/media_type.dart';
@@ -216,11 +217,23 @@ class TvGuideViewState extends State<TvGuideView> {
       if (!mounted) return;
       await OverlayPlayerController.instance.haltMain();
       if (!mounted) return;
+      // fix577: pass the guide's visible channel list so the player can surf
+      // channel +/- (D-pad up/down + CH keys). The guide previously passed no
+      // playlist, so _canSurf was always false and channel-switching did
+      // nothing when a stream was launched from the guide.
+      final list = _visibleChannels;
+      final idx = list.indexOf(ch);
       await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) =>
-              Player(channel: ch, settings: settings, source: source),
+          builder: (_) => Player(
+            channel: ch,
+            settings: settings,
+            source: source,
+            playlist: idx >= 0
+                ? PlaybackPlaylist(channels: list, index: idx)
+                : null,
+          ),
         ),
       );
     } finally {
