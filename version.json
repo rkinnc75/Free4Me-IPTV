@@ -1,8 +1,8 @@
 {
-  "latest": "2.1.4",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.1.4",
+  "latest": "2.1.5",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.1.5",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 TV: channel Up and Down on the remote now work when you start a channel from the guide (previously they did nothing there), and OK now brings up the on-screen controls as well as playing or pausing.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.1.4/Free4Me-IPTV-2.1.4-arm64.apk"
+  "releaseNotes": "\u2022 TV: after pressing OK to bring up the player controls, the D-pad now moves between the on-screen buttons (cast, picture-in-picture, subtitles, audio, aspect) and OK activates the highlighted one. Press Back to return to channel and seek control.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.1.5/Free4Me-IPTV-2.1.5-arm64.apk"
 }
