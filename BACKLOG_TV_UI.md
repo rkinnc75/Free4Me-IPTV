@@ -4,6 +4,10 @@
 Status markers added below; nothing in this file has been removed, only
 annotated.
 
+**Re-verified against v2.1.0 (2026-06-27):** items #5, #6, #7 are still OPEN as
+marked; carry-over #1 (index rebuild) is now DONE (fix523). Full project-wide
+status for ALL backlog items lives in `NEXT-SESSION.md`.
+
 Items 5–7 are TV/live-view UX; they touch the guide screens
 (`tv_guide_view.dart` and the rail), so they should be sequenced after the
 542→545 guide stack and ordered against fix547's Categories type-row (both
@@ -95,10 +99,10 @@ coexistence behavior is already correct.
 
 ## Carry-over backlog (from prior ground zero)
 
-- **#1 import-time index rebuild** — ⚠️ PARTLY ADDRESSED by **fix549**: progress
-  is now surfaced (per-index "Building index N/M…" + per-index timing log).
-  Actual speed-up (batch/defer the recreate) still open; use fix549's timing
-  lines to pick the worst indexes first.
+- **#1 import-time index rebuild** — ✅ **DONE**: fix549 surfaced per-index
+  progress/timing, and **fix523 landed the speed-up** (`PRAGMA temp_store=FILE`
+  + `cache_size` in `sql.dart` before the recreate, ~9 min → ~3 min). Close
+  unless further per-index tuning is wanted.
 - **#2 groups unique-key migration** — ❌ NOT BUILT. `(name, source_id)` lacks
   `media_type`; same-named live+vod categories collapse (≤2 on field data). Low
   impact.
