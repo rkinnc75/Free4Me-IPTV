@@ -1,8 +1,8 @@
 {
-  "latest": "2.1.3",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.1.3",
+  "latest": "2.1.4",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.1.4",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 TV: the remote D-pad now controls the full-screen player. Up and Down change the channel, Left and Right skip back and forward 10 seconds when timeshift is on, and OK plays or pauses and brings up the on-screen controls. Previously the D-pad did nothing while watching.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.1.3/Free4Me-IPTV-2.1.3-arm64.apk"
+  "releaseNotes": "\u2022 TV: channel Up and Down on the remote now work when you start a channel from the guide (previously they did nothing there), and OK now brings up the on-screen controls as well as playing or pausing.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.1.4/Free4Me-IPTV-2.1.4-arm64.apk"
 }
