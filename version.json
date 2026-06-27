@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.64",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.64",
+  "latest": "2.0.65",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.65",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Added a developer playback-stats overlay (top-right of full-screen video, shown when debug logging is on) reporting the live decode path, frame rate, dropped-frame rate, A/V sync, bitrate and buffer \u2014 and logged for diagnostics.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.64/Free4Me-IPTV-2.0.64-arm64.apk"
+  "releaseNotes": "\u2022 TV: much smoother playback on low-RAM boxes (e.g. onn 4K Plus). 60 fps streams are now capped to 30 fps output on those devices, eliminating the motion judder caused by the GPU not keeping up with full-rate frame uploads. Audio/video stay in sync, and it can be turned off under Settings \u2192 Developer.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.65/Free4Me-IPTV-2.0.65-arm64.apk"
 }
