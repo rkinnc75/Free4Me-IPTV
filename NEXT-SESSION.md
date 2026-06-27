@@ -137,13 +137,28 @@ or partial · ❌ open. File:line evidence in parens.
     full-screen — extend to multi-view/PiP; and if it genuinely fails to appear on
     a specific device, repro that as a render bug.
 
-### Bottom line
+### Bottom line & suggested order
 Already done/closeable: **#12, #13, #14, #15, #17** (+ **#1** shipped→validate,
-**#20** known). Need a quick re-verify: **#8, #9, #10**. Genuinely open:
-**#2, #3, #4, #5, #6, #7, #11, #16, #18, #21, #22** (#19 is cosmetic).
-Suggested first picks: **#1** (cheap confirm the shipped fix works), **#7** (TV has
-zero transport controls), **#11** (small, real data-loss), **#8** (regression risk
-from the new libmpv on Shield).
+**#20** known). Confirmed open with a DECIDED approach (ready to implement):
+**#8, #9, #10**. Other open: **#2, #3, #4, #5, #6, #7, #11, #16, #18, #21, #22**
+(#19 cosmetic).
+
+**Suggested first-pass order (propose a plan before coding each):**
+1. **#1** — validate v2.1.0 on the onn (~10 min). Confirm the shipped
+   `framedrop=decoder` fix is actually smooth (`voDrop≈0`) before building on it.
+2. **#8** — Shield regression, **IF a Shield is in the fleet**: v2.1.0's custom
+   libmpv black-screened the Shield (it was working under stock libmpv). A live
+   regression outranks every enhancement — confirm a Shield is in use, then
+   prioritize it. If no Shield, defer.
+3. **#10** — export-file purge on new QR session (storage/data-loss bug; decided
+   spec; bounded).
+4. **#9** — stream-info append-to-channel-name (long-running annoyance, now a
+   small decided change; not the latch widget).
+5. **#11** — backup drops 3 settings (small data-loss fix).
+
+Then features (**#7** TV transport controls, **#2** force-30 toggle, **#4/5/6** TV
+Live-view UX) → debt (**#16** R8, **#18** groups key, **#22** overlay, **#21**
+prune docs, **#19** cosmetic).
 
 ## On-device testing
 
