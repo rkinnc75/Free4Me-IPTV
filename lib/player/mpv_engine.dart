@@ -213,7 +213,7 @@ class MpvEngine implements PlayerEngine {
   }
 
   @override
-  Widget buildVideoView(BuildContext context) {
+  Widget buildVideoView(BuildContext context, {bool suppressControls = false}) {
     return mkvideo.Video(
       key: _videoKey,
       controller: _controller,
@@ -221,6 +221,10 @@ class MpvEngine implements PlayerEngine {
       // contain = letterbox (fit), fill = stretch (stretch), cover = crop.
       // The Player toggles this via [setZoomMode].
       fit: _zoomFit,
+      // fix580: NoVideoControls (== null) renders no built-in controls layer —
+      // the app draws its own focusable overlay on TV+live (Mode B).
+      controls:
+          suppressControls ? mkvideo.NoVideoControls : mkvideo.AdaptiveVideoControls,
     );
   }
 

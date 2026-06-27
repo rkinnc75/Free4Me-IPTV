@@ -8,6 +8,8 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/conn_timing.dart';
 import 'package:open_tv/backend/settings_service.dart';
+import 'package:open_tv/backend/utils.dart';
+import 'package:open_tv/models/device_detector.dart';
 import 'package:open_tv/widgets/player_channel_name_label.dart';
 import 'package:open_tv/widgets/player_epg_now_label.dart';
 import 'package:open_tv/backend/sql.dart';
@@ -160,6 +162,26 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   // (fix576's keyed-remount + visibleOnMount approach did NOT show them
   // on-device — media_kit preserves the controls state across the theme
   // remount — so fix577 replaced it with the tap.)
+  //
+  // fix580 (Mode B): on TV+live, OK opens a CUSTOM focusable control overlay
+  // the D-pad navigates (a native Flutter FocusTraversalGroup of IconButtons —
+  // the proven tv_top_tab_bar pattern — NOT media_kit's bars, which can't host
+  // focus nav: that was the reverted fix578). _tvMode is resolved at RUNTIME
+  // (leanback / no-touch / forceTVMode) so it engages on auto-detected TV boxes
+  // regardless of launch path. _closeOverlay is the SOLE writer of
+  // _navMode=false and ALWAYS reclaims _surfKeyFocus — the keystone against the
+  // fix578 dead-D-pad regression.
+  bool _tvMode = false;
+  bool _navMode = false;
+  Timer? _overlayHideTimer;
+  static const Duration _overlayAutoHide = Duration(seconds: 8);
+  // fix580: first-focus target inside the overlay. autofocus is NOT enough —
+  // _surfKeyFocus already holds primary focus in the same FocusScope, so an
+  // autofocus request would be dropped (FocusManager only honors autofocus when
+  // the scope has no focused child). _openOverlay explicitly requestFocus()es
+  // this node post-frame; that gap is exactly what dead-ended fix577/578.
+  final FocusNode _overlayFirstFocus =
+      FocusNode(debugLabel: 'tvOverlayFirstFocus');
 
   /// Subscriptions specifically tied to [_engine]'s streams (errorStream,
   /// bufferingStream, completedStream). Tracked separately from
@@ -219,6 +241,27 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this); // fix136
+    // fix580: resolve TV-ness SYNCHRONOUSLY at build time (mirrors main.dart
+    // routing) so the custom D-pad overlay engages from the first frame on
+    // auto-detected leanback boxes — not only when the user forced TV mode, and
+    // regardless of which screen launched the player. main.dart resolves
+    // isTV()/hasTouchScreen() at startup, so their caches are populated before
+    // any Player opens; reading the cache avoids the async window where OK would
+    // briefly take the media_kit-bars path (the verified-bad surface). The async
+    // fallback only runs in the unlikely event the cache is not yet seeded.
+    final cachedTv = DeviceDetector.isTvCached;
+    final cachedTouch = Utils.hasTouchScreenCached;
+    if (widget.settings.forceTVMode ||
+        cachedTv == true ||
+        cachedTouch == false) {
+      _tvMode = true;
+    } else if (cachedTv == null || cachedTouch == null) {
+      unawaited(() async {
+        final isTv = await DeviceDetector.isTV();
+        final touch = await Utils.hasTouchScreen();
+        if (mounted && (isTv || !touch)) setState(() => _tvMode = true);
+      }());
+    }
     final adopt = widget.adoptEngine;
     if (adopt is MpvEngine) {
       // fix116: adopt the already-playing engine from the swap. No create,
@@ -865,6 +908,8 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     _startupWatchdog?.cancel(); // fix94
     _stableTimer?.cancel();
     _surfTimer?.cancel(); // fix397
+    _overlayHideTimer?.cancel(); // fix580
+    _overlayFirstFocus.dispose(); // fix580
     _surfKeyFocus.dispose(); // fix397
     for (final s in subscriptions) {
       s.cancel();
@@ -1174,6 +1219,164 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
         PointerUpEvent(pointer: pointer, position: centre));
   }
 
+  // ─── fix580: custom focusable TV control overlay (Mode B) ────────────────
+
+  void _resetOverlayHideTimer() {
+    _overlayHideTimer?.cancel();
+    _overlayHideTimer = Timer(_overlayAutoHide, _closeOverlay);
+  }
+
+  void _openOverlay() {
+    if (_navMode || !mounted) return;
+    setState(() => _navMode = true);
+    _resetOverlayHideTimer();
+    // Move focus INTO the overlay explicitly — autofocus is dropped because
+    // _surfKeyFocus already holds focus in this scope. Post-frame so the
+    // button is mounted. Without this the D-pad is dead until auto-hide
+    // (the fix577/578 on-device failure).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _navMode) _overlayFirstFocus.requestFocus();
+    });
+  }
+
+  /// The SOLE writer of `_navMode = false`. ALWAYS reclaims the player Focus so
+  /// the D-pad direct-map resumes — the keystone against the fix578 regression
+  /// where a stuck nav flag left the entire D-pad dead. Every exit path (Back,
+  /// auto-hide, surface-changing action) routes through here.
+  void _closeOverlay() {
+    _overlayHideTimer?.cancel();
+    if (!_navMode || !mounted) return;
+    setState(() => _navMode = false);
+    _surfKeyFocus.requestFocus();
+  }
+
+  /// A focusable overlay button. Keeps the overlay alive (resets auto-hide) and
+  /// runs [onTap]. media_kit's Material* buttons are deliberately NOT used —
+  /// they are not focusable and read media_kit's controller context, which is
+  /// absent under NoVideoControls.
+  Widget _ovlButton(IconData icon, String tip, VoidCallback onTap,
+          {FocusNode? focusNode}) =>
+      IconButton(
+        focusNode: focusNode,
+        icon: Icon(icon, color: Colors.white, size: 34),
+        tooltip: tip,
+        onPressed: () {
+          _resetOverlayHideTimer();
+          onTap();
+        },
+      );
+
+  Future<void> _openSubtitlesFromOverlay() async {
+    _overlayHideTimer?.cancel(); // don't hide under the dialog
+    await openSubtitlesModal();
+    if (mounted && _navMode) _resetOverlayHideTimer();
+  }
+
+  Future<void> _openAudioFromOverlay() async {
+    _overlayHideTimer?.cancel();
+    await openAudioModal();
+    if (mounted && _navMode) _resetOverlayHideTimer();
+  }
+
+  /// The TV control overlay: a native Flutter [FocusTraversalGroup] of
+  /// focusable [IconButton]s the D-pad navigates geometrically (arrows →
+  /// DirectionalFocusIntent, OK → activate — the same path the TV browse UI
+  /// already uses). Built only when [_navMode] and gated to single-cell live.
+  Widget _buildTvOverlay() {
+    final engine = _engine;
+    final dvr = engine.dvrActive;
+    final tracks = engine.supportsTrackSelection;
+
+    final topBar = Row(
+      children: [
+        _ovlButton(Icons.arrow_back, 'Back', onExit),
+        const SizedBox(width: 8),
+        Flexible(
+          child: IgnorePointer(
+            child: PlayerChannelNameLabel(
+                channelName: widget.channel.name, engine: engine),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: IgnorePointer(
+            child: PlayerEpgNowLabel(
+              epgChannelId: widget.channel.epgChannelId,
+              sourceId: widget.channel.sourceId,
+            ),
+          ),
+        ),
+        if (_castSupported)
+          _ovlButton(
+              _castIcon, _isCasting ? 'Stop casting' : 'Cast', _onCastTap),
+        if (_pipSupported)
+          _ovlButton(Icons.picture_in_picture_alt, 'Picture-in-picture',
+              () => PipController.enterPip()),
+      ],
+    );
+
+    // Play/Pause autofocuses (first-focus) and rebuilds reactively from the
+    // engine's playing stream (no media_kit frozen-state problem here).
+    final playPause = StreamBuilder<bool>(
+      stream: engine.playingStream,
+      initialData: engine.isPlaying,
+      builder: (context, snap) {
+        final playing = snap.data ?? engine.isPlaying;
+        return _ovlButton(
+          playing ? Icons.pause : Icons.play_arrow,
+          playing ? 'Pause' : 'Play',
+          _togglePlayPause,
+          focusNode: _overlayFirstFocus,
+        );
+      },
+    );
+
+    final bottomBar = Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        if (tracks) ...[
+          _ovlButton(Icons.subtitles, 'Subtitles', _openSubtitlesFromOverlay),
+          _ovlButton(Icons.music_note, 'Audio', _openAudioFromOverlay),
+        ],
+        if (_canSurf)
+          _ovlButton(Icons.keyboard_arrow_up, 'Channel up', () => _surf(-1)),
+        if (dvr)
+          _ovlButton(Icons.replay_10, 'Rewind 10s',
+              () => _dvrSeekBy(const Duration(seconds: -10))),
+        playPause,
+        if (dvr) ...[
+          _ovlButton(Icons.forward_10, 'Forward 10s',
+              () => _dvrSeekBy(const Duration(seconds: 10))),
+          _ovlButton(Icons.live_tv, 'Back to live', _dvrGoLive),
+        ],
+        if (_canSurf)
+          _ovlButton(Icons.keyboard_arrow_down, 'Channel down', () => _surf(1)),
+        _ovlButton(Icons.aspect_ratio_outlined, 'Aspect ratio', toggleZoom),
+        _ovlButton(
+            Icons.picture_in_picture, 'Mini-player', _minimizeToOverlay),
+      ],
+    );
+
+    return Positioned.fill(
+      child: FocusTraversalGroup(
+        child: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Colors.black54, Colors.transparent, Colors.black54],
+              stops: [0.0, 0.5, 1.0],
+            ),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Column(
+            children: [topBar, const Spacer(), bottomBar],
+          ),
+        ),
+      ),
+    );
+  }
+
   /// fix576: player key handling. On TV the player Focus holds focus, so the
   /// remote D-pad maps directly: ▲/CH+ = channel up, ▼/CH− = channel down,
   /// ◀/▶ = seek −/+10s when DVR/seek is active, OK/center = play-pause + reveal
@@ -1181,6 +1384,14 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   /// the PopScope / normal handling.
   KeyEventResult _onPlayerKey(FocusNode _, KeyEvent event) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    // fix580: while the custom overlay is open, its FocusTraversalGroup owns the
+    // D-pad — return ignored so arrows traverse the bar buttons and OK activates
+    // the focused one; just keep the overlay alive (reset auto-hide on each key,
+    // incl. KeyRepeat so a held arrow does not expire mid-hold).
+    if (_navMode) {
+      _resetOverlayHideTimer();
       return KeyEventResult.ignored;
     }
     final action = playerKeyAction(
@@ -1203,7 +1414,15 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
         return KeyEventResult.handled;
       case PlayerKeyAction.playPauseReveal:
         _togglePlayPause();
-        _revealControls();
+        // fix580: TV + LIVE → open the custom focusable overlay; phone or
+        // TV+VOD → media_kit's own bars via the synth tap (VOD keeps them).
+        if (_tvMode &&
+            widget.channel.mediaType == MediaType.livestream &&
+            widget.settings.multiViewLayout == MultiViewLayout.none) {
+          _openOverlay();
+        } else {
+          _revealControls();
+        }
         return KeyEventResult.handled;
       case PlayerKeyAction.none:
         return KeyEventResult.ignored;
@@ -1444,7 +1663,15 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
 
     return PopScope(
       canPop: false,
-      onPopInvokedWithResult: (didPop, result) => onExit(),
+      // fix580: Back closes the TV overlay first (returns to direct-map) and
+      // only leaves the player when the overlay is not open.
+      onPopInvokedWithResult: (didPop, result) {
+        if (_navMode) {
+          _closeOverlay();
+        } else {
+          onExit();
+        }
+      },
       // fix397/fix576: the player Focus catches the remote D-pad + CH keys.
       // fix576 made it hold focus (autofocus) so D-pad arrows map directly to
       // channel/seek and OK toggles play-pause + reveals the bars on TV — the
@@ -1468,6 +1695,8 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
                   widget.settings.multiViewLayout == MultiViewLayout.none &&
                   _engine is MpvEngine)
                 DebugStatsOverlay(engine: _engine as MpvEngine),
+              // fix580: custom focusable TV control overlay (Mode B).
+              if (_navMode) _buildTvOverlay(),
             ],
           ),
         ),
@@ -1516,6 +1745,16 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   Widget _buildVideoArea() {
     if (_videoDetached) {
       return const ColoredBox(color: Colors.black, child: SizedBox.expand());
+    }
+    // fix580: on TV + single-cell + live, suppress media_kit's own (non-
+    // focusable, tap-driven) controls — the custom focusable overlay
+    // (_buildTvOverlay) is the control surface there. No MaterialVideoControlsTheme
+    // wrapper / dvr-keyed remount: that read-once workaround is only for
+    // media_kit's bars. Phone/touch and VOD keep the media_kit path below.
+    if (_tvMode &&
+        widget.channel.mediaType == MediaType.livestream &&
+        widget.settings.multiViewLayout == MultiViewLayout.none) {
+      return _engine.buildVideoView(context, suppressControls: true);
     }
     // libmpv path: use media_kit_video's full controls theme.
     // fix367: media_kit's controls state reads primaryButtonBar once at its own

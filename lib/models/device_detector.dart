@@ -8,13 +8,21 @@ import 'package:path_provider/path_provider.dart';
 class DeviceDetector {
   static final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
 
+  // fix580: memoize so callers (e.g. the Player, which must decide TV-ness
+  // synchronously at build time) can read the resolved value without re-running
+  // the platform-channel call. main.dart resolves isTV() at startup, so the
+  // cache is populated before any Player opens.
+  static bool? _isTvCached;
+  static bool? get isTvCached => _isTvCached;
+
   static Future<bool> isTV() async {
+    if (_isTvCached != null) return _isTvCached!;
     if (Platform.isAndroid) {
-      return await _isAndroidTV();
+      return _isTvCached = await _isAndroidTV();
     } else if (Platform.isIOS) {
-      return await _isAppleTV();
+      return _isTvCached = await _isAppleTV();
     }
-    return false;
+    return _isTvCached = false;
   }
 
   static Future<bool> _isAndroidTV() async {

@@ -193,12 +193,18 @@ class Utils {
     });
   }
 
+  // fix580: memoized so the Player can read the resolved value synchronously at
+  // build time (main.dart resolves this at startup, before any Player opens).
+  static bool? _hasTouchCached;
+  static bool? get hasTouchScreenCached => _hasTouchCached;
+
   static Future<bool> hasTouchScreen() async {
+    if (_hasTouchCached != null) return _hasTouchCached!;
     if (Platform.isAndroid) {
       final androidInfo = await DeviceInfoPlugin().androidInfo;
-      return androidInfo.systemFeatures
+      return _hasTouchCached = androidInfo.systemFeatures
           .contains('android.hardware.touchscreen');
     }
-    return true;
+    return _hasTouchCached = true;
   }
 }

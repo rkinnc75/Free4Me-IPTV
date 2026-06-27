@@ -20,7 +20,11 @@ abstract class PlayerEngine {
   /// Returns the widget that renders the video surface.
   /// Must be called after the engine is constructed; the widget can be
   /// embedded anywhere in the build tree.
-  Widget buildVideoView(BuildContext context);
+  ///
+  /// fix580: when [suppressControls] is true the engine renders NO built-in
+  /// controls layer (media_kit `NoVideoControls`) — used on TV+live where the
+  /// app draws its own focusable D-pad overlay (Mode B) instead.
+  Widget buildVideoView(BuildContext context, {bool suppressControls = false});
 
 
   /// Open [url] and start playback.
