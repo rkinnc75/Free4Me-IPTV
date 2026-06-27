@@ -76,6 +76,20 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
 
+# free4me CUSTOM libmpv (LGPL-max): override media_kit's native Android libmpv
+# with a custom LGPLv3 build that includes ALL non-GPL libavfilter filters (fps,
+# select, scale, tonemap, ...) + all decoders/demuxers/parsers/protocols.
+# Stock media_kit_libs_android_video ships only overlay+equalizer filters.
+# Source: rkalsky/libmpv-android-video-build @ vnext jars, wired via the
+# rkalsky/media-kit fork. Foundation only — the fps cap stays OFF here (fix570);
+# enabling it (lavfi=[fps=fps=30]) is a separate change. See GROUND_ZERO.md.
+dependency_overrides:
+  media_kit_libs_android_video:
+    git:
+      url: https://github.com/rkalsky/media-kit.git
+      ref: 6ae83bb80ab29ff7b6794dc975c6534d45907825
+      path: libs/android/media_kit_libs_android_video
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
