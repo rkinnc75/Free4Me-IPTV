@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.1.0': [
+    'TV: smoother playback on low-RAM boxes (e.g. onn 4K Plus). High-frame-rate streams (50/60 fps) no longer judder — the video engine now drops the rare late frame at the decoder instead of at the screen, so the picture stays smooth at the full frame rate. Applied automatically on low-memory Android TV boxes; capable devices and phones are unchanged. Also refreshes the bundled video engine (libmpv) with a much fuller filter set, laying groundwork for an optional 30 fps cap later.',
+  ],
   '2.0.70': [
     'Fixed playback on low-RAM boxes (e.g. onn 4K Plus) that recent updates could leave on a black screen when opening a channel. Streams now start normally again.',
   ],

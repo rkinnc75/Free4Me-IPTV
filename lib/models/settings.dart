@@ -234,7 +234,8 @@ class Settings {
   /// libmpv `tscale` (temporal scaler). Default [TscaleMode.nearest].
   TscaleMode devTscale;
 
-  /// libmpv `framedrop` mode. Default [FrameDropMode.vo] (libmpv upstream).
+  /// libmpv `framedrop` mode. Default [FrameDropMode.vo]; the engine
+  /// auto-upgrades `vo` to `decoder` on low-RAM Android (see dev_mpv_options).
   FrameDropMode devFramedrop;
 
   /// libmpv `interpolation` (motion-compensated frame interpolation).

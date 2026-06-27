@@ -1,8 +1,8 @@
 {
-  "latest": "2.0.70",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.0.70",
+  "latest": "2.1.0",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.1.0",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fixed playback on low-RAM boxes (e.g. onn 4K Plus) that recent updates could leave on a black screen when opening a channel. Streams now start normally again.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.0.70/Free4Me-IPTV-2.0.70-arm64.apk"
+  "releaseNotes": "\u2022 TV: smoother playback on low-RAM boxes (e.g. onn 4K Plus). High-frame-rate streams (50/60 fps) no longer judder \u2014 the video engine now drops the rare late frame at the decoder instead of at the screen, so the picture stays smooth at the full frame rate. Applied automatically on low-memory Android TV boxes; capable devices and phones are unchanged. Also refreshes the bundled video engine (libmpv) with a much fuller filter set, laying groundwork for an optional 30 fps cap later.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.1.0/Free4Me-IPTV-2.1.0-arm64.apk"
 }

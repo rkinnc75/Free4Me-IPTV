@@ -89,10 +89,13 @@ enum TscaleMode {
 
 /// Frame drop mode. Maps to libmpv's `framedrop` property.
 /// Default: [vo] — libmpv's upstream default (drop late frames at the video
-/// output only; still decode them). fix394 review: the original enum used
-/// `yes`, which is not a current mpv `framedrop` choice, and defaulted to
-/// `no`, which is NOT the upstream default (so it silently disabled mpv's
-/// normal VO frame-dropping on every open).
+/// output). On low-RAM / weak-GPU Android (e.g. onn 4K Plus, software decode)
+/// the engine auto-upgrades a `vo` setting to `decoder` at apply time: an
+/// on-device sweep showed `vo` dropping 500–850 frames/min at the
+/// texture-upload stage (visible judder) while `decoder` held 0 VO drops; the
+/// A/V sync mode made no difference. See mpv_engine.dart `_applyMpvOptions`.
+/// fix394 review: the original enum used `yes` (not a current mpv choice) and
+/// defaulted to `no`, which silently disabled mpv's frame-dropping.
 enum FrameDropMode {
   no,
   vo,

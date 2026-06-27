@@ -470,11 +470,14 @@ const _helpDevFramedrop = (
   title: 'Frame Drop Mode',
   body:
       'When and how libmpv is allowed to skip frames to maintain sync.\n\n'
-      'Default: no (never drop decoded frames).\n\n'
+      'Default: vo (libmpv upstream). On low-RAM Android boxes a `vo` setting '
+      'is auto-applied as `decoder` to stop texture-upload judder.\n\n'
       'no — never drop; full quality, may stutter on slow hardware.\n\n'
-      'yes — drop late frames aggressively; smoother on weak devices.\n\n'
-      'decoder — let the decoder skip frames; faster but lower quality.\n\n'
-      'Range: no / yes / decoder.',
+      'vo — drop late frames at the video output (libmpv upstream default).\n\n'
+      'decoder — drop frames at the decoder before the upload stage; on weak '
+      'GPUs this eliminates the texture-upload judder `vo` causes on high-fps '
+      'streams (verified on the onn 4K Plus).\n\n'
+      'Range: no / vo / decoder.',
 );
 
 const _helpDevInterpolation = (
@@ -4706,6 +4709,8 @@ class _SettingsState extends State<SettingsView> {
                   // behind a folded ExpansionTile at the very bottom of the
                   // menu — advanced users opt in; the defaults match
                   // libmpv upstream so the section is a no-op until then.
+                  // (Exception: on low-RAM Android the engine auto-applies
+                  // framedrop=decoder — see mpv_engine _applyMpvOptions.)
                   ExpansionTile(
                     key: const PageStorageKey('developer'),
                     leading: const Icon(Icons.developer_mode),

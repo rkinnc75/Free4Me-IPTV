@@ -1048,7 +1048,18 @@ class MpvEngine implements PlayerEngine {
     await np.setProperty('video-sync-max-video-change',
         s.devVideoSyncMaxVideoChange.toString());
     await np.setProperty('tscale', s.devTscale.value);
-    await np.setProperty('framedrop', s.devFramedrop.value);
+    // fix571: low-RAM / weak-GPU Android (e.g. onn 4K Plus, software decode)
+    // judders with libmpv's default framedrop=vo on high-fps streams — every
+    // frame reaches the upload-bound VO, which drops 500–850/min (visible
+    // stutter, confirmed by on-device sweep). framedrop=decoder sheds frames
+    // before the upload stage and held 0 VO drops. Gate it to low-RAM so
+    // capable devices keep mpv's safer upstream `vo`; an explicit `no`/`decoder`
+    // still wins, and a `vo` setting on low-RAM is auto-upgraded to `decoder`.
+    final lowRamFramedrop = Platform.isAndroid &&
+        s.devFramedrop.value == 'vo' &&
+        await DeviceDetector.isLowRamDevice();
+    final framedropMode = lowRamFramedrop ? 'decoder' : s.devFramedrop.value;
+    await np.setProperty('framedrop', framedropMode);
     await np.setProperty('interpolation', s.devInterpolation ? 'yes' : 'no');
     await np.setProperty('deband', s.devDeband ? 'yes' : 'no');
     // fix565–570: the intended 60→30 fps OUTPUT cap (fix564 proved the
@@ -1095,7 +1106,7 @@ class MpvEngine implements PlayerEngine {
       ' tlsVerify=${ignoreSsl ? "no(source)" : (s.devTlsVerify ? "yes" : "no")}'
       ' videoSync=${s.devVideoSync.value}'
       ' tscale=${s.devTscale.value}'
-      ' framedrop=${s.devFramedrop.value}'
+      ' framedrop=${s.devFramedrop.value}->$framedropMode'
       ' capFps30=$capFps'
       ' audioSpdif=${s.devAudioSpdif.value ?? "off"}',
     );
