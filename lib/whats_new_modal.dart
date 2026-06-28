@@ -6,6 +6,14 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.1': [
+    'TV: in the Live guide, choosing a category now slides the category list into a '
+        'thin edge so the channel area gets more room. Press the left arrow from a '
+        'channel to bring the category list back.',
+    'TV: long-pressing a live channel (in Search or the main list) now offers "Open '
+        'in Multi-view", which starts multi-view with that channel in the first '
+        'open cell.',
+  ],
   '2.2.0': [
     'Fixed: the 60 to 30 fps option could turn itself on for some low-memory '
         'devices after the last update. It is now off by default as intended, so '

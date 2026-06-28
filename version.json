@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.0",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.0",
+  "latest": "2.2.1",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.1",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fixed: the 60 to 30 fps option could turn itself on for some low-memory devices after the last update. It is now off by default as intended, so those boxes play at the full frame rate again.\n\u2022 Categories with the same name in different sections (for example a Live and a Movies category both named Sports) no longer overwrite each other \u2014 each section keeps its own.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.0/Free4Me-IPTV-2.2.0-arm64.apk"
+  "releaseNotes": "\u2022 TV: in the Live guide, choosing a category now slides the category list into a thin edge so the channel area gets more room. Press the left arrow from a channel to bring the category list back.\n\u2022 TV: long-pressing a live channel (in Search or the main list) now offers \"Open in Multi-view\", which starts multi-view with that channel in the first open cell.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.1/Free4Me-IPTV-2.2.1-arm64.apk"
 }
