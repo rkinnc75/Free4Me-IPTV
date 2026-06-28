@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.8': [
+    'TV Live guide redesigned: the preview is now a smaller box in the top-left, '
+        'the program grid fills more of the screen, and the left list switches '
+        'between your categories and the chosen category\'s channels — press Left '
+        'on a channel to go back to the category list.',
+  ],
   '2.2.7': [
     'Backup: a new "Everything (including databases)" download bundles your '
         'channel and EPG databases together with the rest in a single zip (only '

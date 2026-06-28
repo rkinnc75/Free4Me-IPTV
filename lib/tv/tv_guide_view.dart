@@ -21,6 +21,11 @@ import 'package:open_tv/tv/tv_hero_preview.dart';
 
 final _timeFmt = DateFormat.Hm();
 
+/// fix597 (#4 redesign): the left rail SWAPS content. [categories] shows the
+/// provider's live categories; selecting one switches to [channels] — that
+/// category's channel list. D-pad LEFT on a channel returns to [categories].
+enum RailMode { categories, channels }
+
 /// fix503: the Live tab's EPG guide — a category rail (left) scoping a
 /// virtualized channel × time grid (right).
 ///
@@ -67,16 +72,18 @@ class TvGuideViewState extends State<TvGuideView> {
   int _focusSeq = 0; // fix510: guards stale async focus callbacks
   bool _launching = false; // fix510: suppresses preview re-arm during _play
 
-  // fix584 (#4): collapse the category rail to a sliver once a category is
-  // chosen; D-pad LEFT from a channel re-expands it. _railNodes lets LEFT
-  // restore focus to the previously-selected category via EXPLICIT
-  // requestFocus (directional focus is unreliable here — fix558/562/563);
-  // _firstChannelNode lets a category select move focus into the channel list.
-  // NOT reset by reloadGuide()/_init (so a tab re-entry keeps the chosen state).
-  bool _railCollapsed = false;
+  // fix597 (#4 redesign): the left rail swaps categories <-> channels.
+  // _railNodes hold the CATEGORY tiles (stable so LEFT-from-channel can restore
+  // focus to the selected category via EXPLICIT requestFocus — directional
+  // focus is unreliable here, fix558/562/563). _channelNodes hold the CHANNEL
+  // tiles in channels mode. _gridScroll aligns the passive EPG grid to the
+  // focused channel (align-on-focus, not a synced 2nd controller).
+  RailMode _railMode = RailMode.categories;
   final Map<int?, FocusNode> _railNodes = {};
-  final FocusNode _firstChannelNode =
-      FocusNode(debugLabel: 'guideFirstChannel');
+  final Map<int, FocusNode> _channelNodes = {};
+  final ScrollController _gridScroll = ScrollController();
+  Timer? _catFollowTimer; // debounce the category-follow grid reload
+  static const double _rowHeight = 56;
 
   @override
   void initState() {
@@ -89,11 +96,15 @@ class TvGuideViewState extends State<TvGuideView> {
 
   @override
   void dispose() {
+    _catFollowTimer?.cancel();
     _preview.disposeController();
     for (final n in _railNodes.values) {
-      n.dispose(); // fix584 (#4)
+      n.dispose();
     }
-    _firstChannelNode.dispose(); // fix584 (#4)
+    for (final n in _channelNodes.values) {
+      n.dispose(); // fix597
+    }
+    _gridScroll.dispose(); // fix597
     super.dispose();
   }
 
@@ -145,7 +156,7 @@ class TvGuideViewState extends State<TvGuideView> {
     await _loadGuide(null);
   }
 
-  Future<void> _loadGuide(int? groupId, {bool fromUser = false}) async {
+  Future<void> _loadGuide(int? groupId, {bool enterChannels = false}) async {
     final inv = ++_inv;
     // fix541: re-anchor the EPG window to NOW on every load. _windowStart/_End
     // were set ONCE in initState; because the guide is kept alive by the shell's
@@ -206,24 +217,54 @@ class TvGuideViewState extends State<TvGuideView> {
     for (final list in byKey.values) {
       list.sort((a, b) => a.startUtc.compareTo(b.startUtc));
     }
+    // fix597: pre-create the channel FocusNodes so the immediate requestFocus
+    // below lands once the rail rebuilds in channels mode.
+    for (final ch in scoped) {
+      final id = ch.id;
+      if (id != null) {
+        _channelNodes.putIfAbsent(id, () => FocusNode(debugLabel: 'chan-$id'));
+      }
+    }
     setState(() {
       _channels = scoped;
       _progByKey = byKey;
       _loading = false;
-      // fix584 (#4): a user category pick collapses the rail; the initial load
-      // (fromUser:false) leaves it expanded so categories are visible at entry.
-      if (fromUser) _railCollapsed = true;
+      if (enterChannels) _railMode = RailMode.channels;
     });
-    // fix584 (#4): move focus into the channel list after a user pick (the
-    // list rebuilt, so autofocus on row 0 will not re-fire — request it
-    // explicitly). Guarded by inv so a newer load does not steal focus.
-    if (fromUser) {
+    // fix597: on OK-into-channels, move focus to the first channel in the rail.
+    // setState scheduled a frame so the post-frame fires (fix585) once the tiles
+    // are attached; the immediate call sets the intent on the pre-created node
+    // as a backstop. Guarded by inv so a newer load never steals focus.
+    if (enterChannels && scoped.isNotEmpty) {
+      final firstId = scoped.first.id;
+      final node = firstId != null ? _channelNodes[firstId] : null;
+      node?.requestFocus();
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && inv == _inv && scoped.isNotEmpty) {
-          _firstChannelNode.requestFocus();
+        if (mounted && inv == _inv && _railMode == RailMode.channels) {
+          node?.requestFocus();
         }
       });
     }
+  }
+
+  // fix597: OK on a category → (re)load it and switch the rail to channels.
+  void _enterChannels(int? groupId) {
+    unawaited(_preview.stop()); // drop any dwell before the new selection
+    unawaited(_loadGuide(groupId, enterChannels: true));
+  }
+
+  // fix597: focusing a category in the rail follows the grid to that category's
+  // channels (debounced so fast D-pad scrolling doesn't hammer the DB). The
+  // preview is NOT re-armed here — it stays on the last-watched channel.
+  void _onCategoryFocused(int? groupId) {
+    if (_railMode != RailMode.categories) return;
+    if (groupId == _selectedGroupId) return;
+    _catFollowTimer?.cancel();
+    _catFollowTimer = Timer(const Duration(milliseconds: 280), () {
+      if (mounted && _railMode == RailMode.categories) {
+        unawaited(_loadGuide(groupId));
+      }
+    });
   }
 
   /// fix584 (#4): D-pad LEFT from a channel re-expands the rail (if collapsed)
@@ -238,18 +279,21 @@ class TvGuideViewState extends State<TvGuideView> {
     if (e.logicalKey != LogicalKeyboardKey.arrowLeft) {
       return KeyEventResult.ignored;
     }
-    // fix585: focus the rail node IMMEDIATELY. The rail items stay mounted even
-    // when collapsed (OverflowBox keeps _rail() laid out at 210), so the stored
-    // node is always focusable — no post-frame needed. (fix584's post-frame
-    // never fired in the expanded state: no setState → no frame scheduled →
-    // callback queued forever, and the consumed LEFT stranded focus.)
-    final target = _railNodes[_selectedGroupId];
-    if (target != null) {
-      if (_railCollapsed) setState(() => _railCollapsed = false);
-      target.requestFocus();
-      return KeyEventResult.handled;
-    }
-    return KeyEventResult.ignored;
+    if (_railMode != RailMode.channels) return KeyEventResult.ignored;
+    // fix597: LEFT swaps the rail back to categories and restores focus to the
+    // selected category (fallback: Favorites, then any). Category nodes persist
+    // across the swap, so requestFocus sets the intent and lands when the rail
+    // rebuilds — immediate + post-frame backstop (fix585). ALWAYS handled so a
+    // failed target can never fall through to unreliable directional traversal.
+    final target = _railNodes[_selectedGroupId] ??
+        _railNodes[null] ??
+        (_railNodes.isNotEmpty ? _railNodes.values.first : null);
+    setState(() => _railMode = RailMode.categories);
+    target?.requestFocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _railMode == RailMode.categories) target?.requestFocus();
+    });
+    return KeyEventResult.handled;
   }
 
   Future<void> _play(Channel ch) async {
@@ -298,85 +342,134 @@ class TvGuideViewState extends State<TvGuideView> {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    if (!_ready) return const SizedBox.shrink();
+    // fix597 (#4 redesign): top band = 70% preview (left) + channel info
+    // (right); below = swapping rail (left) + passive EPG grid (right). The
+    // grid no longer carries a channel-name column — names live in the rail.
+    return Column(
       children: [
-        // fix584 (#4): animate the rail between full (210) and a thin sliver
-        // (18) once a category is chosen, reclaiming width for the guide. The
-        // rail content is kept laid out at 210 (OverflowBox) and clipped, so
-        // every category FocusNode stays mounted — LEFT-restore can target it.
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-          width: _railCollapsed ? 18 : 210,
-          child: ClipRect(
-            child: OverflowBox(
-              alignment: Alignment.centerLeft,
-              minWidth: 210,
-              maxWidth: 210,
-              child: _rail(),
+        SizedBox(
+          height: 124,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 2),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(width: 210, child: _previewBox(_focused)),
+                const SizedBox(width: 14),
+                Expanded(child: _heroInfo(_focused)),
+              ],
             ),
           ),
         ),
-        const VerticalDivider(width: 1),
-        Expanded(child: _ready ? _guide() : const SizedBox.shrink()),
+        const Divider(height: 1),
+        Expanded(
+          child: Row(
+            children: [
+              SizedBox(width: 210, child: _rail()),
+              const VerticalDivider(width: 1),
+              Expanded(
+                child: Column(
+                  children: [
+                    _timeHeader(),
+                    Expanded(child: _grid()),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
 
+  // fix597: the rail swaps content by mode. categories → the live category
+  // list; channels → the selected category's channel names (which drive the
+  // passive EPG grid via focus). LEFT on a channel returns to categories.
   Widget _rail() {
+    if (_railMode == RailMode.channels) {
+      final chans = _visibleChannels;
+      if (chans.isEmpty) {
+        return Center(child: Text(_loading ? 'Loading…' : 'No channels'));
+      }
+      return ListView.builder(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        itemCount: chans.length,
+        itemBuilder: (context, i) => _channelItem(chans[i]),
+      );
+    }
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 8),
       children: [
-        // fix545: the rail's top item is "Favorites" (replacing "All channels"),
-        // matching the Movies/Series rails. Tapping it shows live favorites (the
-        // all-channels view with the favorites filter on); tapping a category
-        // shows that category. The old standalone "Favorites" pill is removed.
-        _railItem(null, 'Favorites', Icons.star),
+        // fix545: top item is "Favorites" (replacing "All channels").
+        _categoryItem(null, 'Favorites', Icons.star),
         for (final g in _groups)
-          if (g.id != null) _railItem(g.id, g.name, Icons.folder_outlined),
+          if (g.id != null) _categoryItem(g.id, g.name, Icons.folder_outlined),
       ],
     );
   }
 
-  Widget _railItem(int? groupId, String label, IconData icon) {
-    final selected = groupId == _selectedGroupId;
+  Widget _categoryItem(int? groupId, String label, IconData icon) {
     return _FocusTile(
-      selected: selected,
-      // fix584 (#4): stable node so LEFT from a channel can restore focus here.
+      selected: groupId == _selectedGroupId,
+      // Stable node so LEFT-from-channel can restore focus to the selection.
       focusNode: _railNodes[groupId] ??= FocusNode(debugLabel: 'rail-$groupId'),
-      onTap: () => _loadGuide(groupId, fromUser: true),
+      onTap: () => _enterChannels(groupId), // OK → load + switch to channels
+      onFocusGained: (_) => _onCategoryFocused(groupId), // follow the grid
       child: Row(
         children: [
           Icon(icon, size: 18),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(label,
-                maxLines: 1, overflow: TextOverflow.ellipsis),
+            child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
           ),
         ],
       ),
     );
   }
 
-  Widget _guide() {
+  Widget _channelItem(Channel ch) {
+    final id = ch.id;
+    final tint = SourcePalette.tintOver(
+      _sourceColors[ch.sourceId],
+      Theme.of(context).colorScheme.surfaceContainer,
+    );
+    return _FocusTile(
+      selected: identical(ch, _focused),
+      focusNode:
+          id != null ? (_channelNodes[id] ??= FocusNode(debugLabel: 'chan-$id')) : null,
+      onKeyEvent: _onChannelLeftKey, // LEFT → back to categories
+      onTap: () => _play(ch),
+      onFocusGained: (_) => _onChannelFocused(ch),
+      child: Row(
+        children: [
+          Container(width: 5, height: 28, color: _edgeColor(ch.sourceId, tint)),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(ch.name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // fix597: the passive EPG grid — one timeline row per channel (NO name
+  // column; names live in the rail). Attached to _gridScroll so a focused rail
+  // channel scrolls its row into view (align-on-focus). The focused channel's
+  // row is highlighted.
+  Widget _grid() {
     final channels = _visibleChannels;
-    return Column(
-      children: [
-        _hero(),
-        // fix545: the standalone Favorites pill is removed — Favorites is now
-        // the rail's top item (matching Movies/Series).
-        _timeHeader(),
-        Expanded(
-          child: channels.isEmpty
-              ? Center(
-                  child: Text(_loading ? 'Loading guide…' : 'No channels'),
-                )
-              : ListView.builder(
-                  itemCount: channels.length,
-                  itemBuilder: (context, i) => _row(channels[i], i == 0),
-                ),
-        ),
-      ],
+    if (channels.isEmpty) {
+      return Center(child: Text(_loading ? 'Loading guide…' : 'No channels'));
+    }
+    return ListView.builder(
+      controller: _gridScroll,
+      itemCount: channels.length,
+      itemExtent: _rowHeight,
+      itemBuilder: (context, i) => _gridRow(channels[i]),
     );
   }
 
@@ -391,62 +484,49 @@ class TvGuideViewState extends State<TvGuideView> {
           ? _channels.where((c) => c.favorite).toList()
           : _channels;
 
-  // fix510: hero with the focused channel's art + an always-live MUTED preview
-  // cross-faded in once the dwell-gated engine produces a frame.
-  Widget _hero() {
-    final ch = _focused;
-    return SizedBox(
-      height: 168,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            AspectRatio(
-              aspectRatio: 16 / 9,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: Container(
-                  color: Colors.black,
-                  child: ch == null
-                      ? const Center(
+  // fix597: the 70%-size preview box (top-left). Shows the focused channel's
+  // art with the always-live MUTED preview cross-faded in once the dwell-gated
+  // engine produces a frame. In categories mode [ch] is the last-watched
+  // channel (the preview is not re-armed while browsing categories).
+  Widget _previewBox(Channel? ch) {
+    return AspectRatio(
+      aspectRatio: 16 / 9,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          color: Colors.black,
+          child: ch == null
+              ? const Center(
+                  child: Icon(Icons.live_tv, color: Colors.white24, size: 40))
+              : Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (ch.image != null)
+                      CachedNetworkImage(
+                        imageUrl: ch.image!,
+                        fit: BoxFit.contain,
+                        memCacheHeight: 240,
+                        errorWidget: (c, u, e) => const Center(
+                            child: Icon(Icons.live_tv,
+                                color: Colors.white24, size: 40)),
+                      )
+                    else
+                      const Center(
                           child: Icon(Icons.live_tv,
-                              color: Colors.white24, size: 40))
-                      : Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            if (ch.image != null)
-                              CachedNetworkImage(
-                                imageUrl: ch.image!,
-                                fit: BoxFit.contain,
-                                memCacheHeight: 240,
-                                errorWidget: (c, u, e) => const Center(
-                                    child: Icon(Icons.live_tv,
-                                        color: Colors.white24, size: 40)),
-                              )
-                            else
-                              const Center(
-                                  child: Icon(Icons.live_tv,
-                                      color: Colors.white24, size: 40)),
-                            ListenableBuilder(
-                              listenable: _preview,
-                              builder: (context, _) {
-                                final v = _preview.buildVideoView(context);
-                                return AnimatedOpacity(
-                                  opacity: _preview.isLive ? 1 : 0,
-                                  duration: const Duration(milliseconds: 250),
-                                  child: v ?? const SizedBox.shrink(),
-                                );
-                              },
-                            ),
-                          ],
-                        ),
+                              color: Colors.white24, size: 40)),
+                    ListenableBuilder(
+                      listenable: _preview,
+                      builder: (context, _) {
+                        final v = _preview.buildVideoView(context);
+                        return AnimatedOpacity(
+                          opacity: _preview.isLive ? 1 : 0,
+                          duration: const Duration(milliseconds: 250),
+                          child: v ?? const SizedBox.shrink(),
+                        );
+                      },
+                    ),
+                  ],
                 ),
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(child: _heroInfo(ch)),
-          ],
         ),
       ),
     );
@@ -535,11 +615,27 @@ class TvGuideViewState extends State<TvGuideView> {
     );
   }
 
-  // fix510: a channel tile gained focus → update the hero + arm the dwell.
+  // fix597: align the passive EPG grid so the focused channel's row is in view.
+  void _scrollGridTo(Channel ch) {
+    if (!_gridScroll.hasClients) return;
+    final idx = _visibleChannels.indexOf(ch);
+    if (idx < 0) return;
+    final target = (idx * _rowHeight - _rowHeight * 2)
+        .clamp(0.0, _gridScroll.position.maxScrollExtent);
+    _gridScroll.animateTo(target,
+        duration: const Duration(milliseconds: 180), curve: Curves.easeOut);
+  }
+
+  // fix510/597: a channel tile in the rail gained focus → highlight + scroll
+  // its grid row, update the preview/info, and arm the dwell. Guarded to
+  // channels mode so a stale focus event can't drive the preview while browsing
+  // categories (the preview stays on the last-watched channel there).
   Future<void> _onChannelFocused(Channel ch) async {
+    if (_railMode != RailMode.channels) return;
     final seq = ++_focusSeq;
     final prev = _focused;
     if (mounted) setState(() => _focused = ch);
+    _scrollGridTo(ch);
     // Same channel re-focus, or a full-screen launch is in progress → don't
     // (re-)arm a preview.
     if (prev != null && identical(prev, ch)) return;
@@ -590,59 +686,34 @@ class TvGuideViewState extends State<TvGuideView> {
       ));
     }
     return Padding(
-      padding: const EdgeInsets.fromLTRB(150, 6, 8, 4),
+      // fix597: align with the grid rows' left edge (no 144px name column now).
+      padding: const EdgeInsets.fromLTRB(4, 6, 8, 4),
       child: Row(children: ticks),
     );
   }
 
-  Widget _row(Channel ch, bool autofocus) {
+  // fix597: a passive timeline row (no name column, no focus). The focused
+  // channel (driven by the rail) is highlighted; tapping a programme plays.
+  Widget _gridRow(Channel ch) {
     final progs = _progByKey['${ch.sourceId}|${ch.epgChannelId}'] ?? const [];
     final nowEpoch = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    final tint = SourcePalette.tintOver(
-      _sourceColors[ch.sourceId],
-      Theme.of(context).colorScheme.surfaceContainer,
-    );
-    return SizedBox(
+    final focused = identical(ch, _focused);
+    return Container(
       key: ValueKey('guide-row-${ch.sourceId}-${ch.id ?? ch.name}'),
-      height: 56,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Frozen channel column with the per-source edge bar (fix501 style).
-          SizedBox(
-            width: 144,
-            child: _FocusTile(
-              selected: false,
-              // fix584 (#4): row 0 holds a stable node so a category select can
-              // move focus here; LEFT on any channel re-expands the rail.
-              focusNode: autofocus ? _firstChannelNode : null,
-              onKeyEvent: _onChannelLeftKey,
-              onTap: () => _play(ch),
-              autofocus: autofocus,
-              onFocusGained: (_) => _onChannelFocused(ch),
-              child: Row(
-                children: [
-                  Container(width: 5, color: _edgeColor(ch.sourceId, tint)),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(ch.name,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12)),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Expanded(
-            child: LayoutBuilder(builder: (context, c) {
-              return Stack(children: [
-                for (final p in progs) _block(p, c.maxWidth, nowEpoch, ch),
-                _nowLine(c.maxWidth, nowEpoch),
-              ]);
-            }),
-          ),
-        ],
+      height: _rowHeight,
+      decoration: focused
+          ? BoxDecoration(
+              color:
+                  Theme.of(context).colorScheme.primary.withValues(alpha: 0.14))
+          : null,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: LayoutBuilder(builder: (context, c) {
+          return Stack(children: [
+            for (final p in progs) _block(p, c.maxWidth, nowEpoch, ch),
+            _nowLine(c.maxWidth, nowEpoch),
+          ]);
+        }),
       ),
     );
   }
@@ -714,7 +785,6 @@ class TvGuideViewState extends State<TvGuideView> {
 /// focus standard) used by the rail + the frozen channel column.
 class _FocusTile extends StatefulWidget {
   final bool selected;
-  final bool autofocus;
   final VoidCallback onTap;
   final Widget child;
   final ValueChanged<bool>? onFocusGained;
@@ -728,7 +798,6 @@ class _FocusTile extends StatefulWidget {
     required this.selected,
     required this.onTap,
     required this.child,
-    this.autofocus = false,
     this.onFocusGained,
     this.focusNode,
     this.onKeyEvent,
@@ -752,8 +821,7 @@ class _FocusTileState extends State<_FocusTile> {
             : Colors.transparent,
         borderRadius: BorderRadius.circular(8),
         child: InkWell(
-          focusNode: widget.focusNode, // fix584 (#4)
-          autofocus: widget.autofocus,
+          focusNode: widget.focusNode,
           onTap: widget.onTap,
           onFocusChange: (v) {
             setState(() => _focused = v);

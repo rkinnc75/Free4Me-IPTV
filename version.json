@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.7",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.7",
+  "latest": "2.2.8",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.8",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Backup: a new \"Everything (including databases)\" download bundles your channel and EPG databases together with the rest in a single zip (only when you choose to include credentials). The regular backup zip also compresses smaller now.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.7/Free4Me-IPTV-2.2.7-arm64.apk"
+  "releaseNotes": "\u2022 TV Live guide redesigned: the preview is now a smaller box in the top-left, the program grid fills more of the screen, and the left list switches between your categories and the chosen category's channels \u2014 press Left on a channel to go back to the category list.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.8/Free4Me-IPTV-2.2.8-arm64.apk"
 }
