@@ -68,15 +68,34 @@ class EpgService {
     }
   }
 
+  /// fix601: minimum interval between launch stale-refreshes. A source can be
+  /// "stale" (nothing airing now) yet have a perfectly fresh download — e.g. a
+  /// provider whose XMLTV simply doesn't cover this instant, or a feed with
+  /// gaps. Without this guard, isStale() would be true on EVERY launch and we'd
+  /// re-download a 100k-programme feed each time. Cap to once per hour.
+  static const int _staleRefreshMinIntervalSec = 3600;
+
   /// fix600: foreground EPG refresh on launch IF the forecast has lapsed. Cheap
   /// no-op when fresh or no EPG source is configured. Self-heals the onn (where
-  /// the background task often never fires).
+  /// the background task often never fires). fix601: debounced against the last
+  /// refresh so a feed that's perpetually "stale at now" can't trigger a
+  /// download storm on every launch.
   static Future<void> refreshIfStale() async {
     final eligible = (await Sql.getSources())
         .where((s) => s.enabled && resolveEpgUrl(s) != null)
         .toList(growable: false);
     if (eligible.isEmpty) return;
     if (!await isStale()) return;
+    final last = await Sql.getLatestEpgRefresh();
+    if (last != null) {
+      final ageSec =
+          DateTime.now().millisecondsSinceEpoch ~/ 1000 - last;
+      if (ageSec < _staleRefreshMinIntervalSec) {
+        AppLog.info('EPG: stale but last refresh was ${ageSec}s ago '
+            '(< ${_staleRefreshMinIntervalSec}s) — skipping launch refresh');
+        return;
+      }
+    }
     AppLog.info('EPG: no programme airing now — foreground refresh (stale)');
     await refreshAllSources(background: false);
   }

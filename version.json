@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.11",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.11",
+  "latest": "2.2.12",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.12",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Program guide stays current: the app now refreshes the EPG on launch when the schedule has run out, and refreshing a source also refreshes its guide \u2014 so \"On now\" and the guide grid keep showing live data instead of going blank.\n\u2022 TV search: after you type, press Down to jump straight to the first result card.\n\u2022 TV Live guide: hold OK/Select on a channel to open its menu \u2014 including \"Open in Multi-view\" \u2014 without needing a touchscreen.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.11/Free4Me-IPTV-2.2.11-arm64.apk"
+  "releaseNotes": "\u2022 TV Live guide: fixed the channel menu (hold OK/Select) sometimes opening for the wrong channel \u2014 or not opening \u2014 after the list changed; and favoriting from the menu now updates the star immediately and keeps your place in the list.\n\u2022 Program guide: the on-launch guide refresh no longer re-downloads on every open when a provider simply has no listing for the current moment.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.12/Free4Me-IPTV-2.2.12-arm64.apk"
 }

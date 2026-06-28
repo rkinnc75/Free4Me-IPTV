@@ -6,6 +6,14 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.12': [
+    'TV Live guide: fixed the channel menu (hold OK/Select) sometimes opening for '
+        'the wrong channel — or not opening — after the list changed; and '
+        'favoriting from the menu now updates the star immediately and keeps your '
+        'place in the list.',
+    'Program guide: the on-launch guide refresh no longer re-downloads on every '
+        'open when a provider simply has no listing for the current moment.',
+  ],
   '2.2.11': [
     'Program guide stays current: the app now refreshes the EPG on launch when '
         'the schedule has run out, and refreshing a source also refreshes its '

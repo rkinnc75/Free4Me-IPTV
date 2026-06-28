@@ -85,6 +85,7 @@ class TvGuideViewState extends State<TvGuideView> {
   final Map<int, FocusNode> _channelNodes = {};
   final ScrollController _gridScroll = ScrollController();
   Timer? _catFollowTimer; // debounce the category-follow grid reload
+  Timer? _epgReloadTimer; // fix601: coalesce epgVersion bumps into one reload
   static const double _rowHeight = 56;
 
   @override
@@ -104,6 +105,7 @@ class TvGuideViewState extends State<TvGuideView> {
   @override
   void dispose() {
     EpgService.epgVersion.removeListener(_onEpgVersionChanged); // fix600
+    _epgReloadTimer?.cancel(); // fix601
     _catFollowTimer?.cancel();
     _preview.disposeController();
     for (final n in _railNodes.values) {
@@ -253,7 +255,13 @@ class TvGuideViewState extends State<TvGuideView> {
   // exactly as the user left them.
   void _onEpgVersionChanged() {
     if (!mounted || !_ready) return;
-    unawaited(_reloadGridProgrammes());
+    // fix601: refreshAllSources bumps epgVersion once PER source — coalesce so
+    // an N-source refresh triggers one grid reload, not N concurrent
+    // getGridPrograms reads racing each other.
+    _epgReloadTimer?.cancel();
+    _epgReloadTimer = Timer(const Duration(milliseconds: 400), () {
+      if (mounted) unawaited(_reloadGridProgrammes());
+    });
   }
 
   Future<void> _reloadGridProgrammes() async {
@@ -479,6 +487,15 @@ class TvGuideViewState extends State<TvGuideView> {
       Theme.of(context).colorScheme.surfaceContainer,
     );
     return _FocusTile(
+      // fix601: key by channel id so a list shrink/reorder (e.g. a favorite
+      // toggle that drops a channel) re-pairs State↔node BY CHANNEL instead of
+      // by index. Without this, ListView.builder reuses the State at each index
+      // and only swaps its widget — so the held-OK handler (installed once in
+      // initState, bound to the node) desyncs: it stays on the old node while
+      // the tile now renders a different channel, and the channel that slid up
+      // gets no handler. Keys make the removed channel's State dispose (clearing
+      // its node handler) and survivors keep their correct pairing.
+      key: ValueKey('gch-${ch.id ?? ch.name}'),
       selected: identical(ch, _focused),
       // fix598: first channel autofocuses when the rail remounts into channels
       // mode (OK on a category) — lands focus at the top + fires _onChannelFocused
@@ -561,8 +578,35 @@ class TvGuideViewState extends State<TvGuideView> {
                       : 'Add to favorites'),
                   onTap: () async {
                     Navigator.of(ctx).pop();
-                    await Sql.favoriteChannel(id, !ch.favorite);
-                    if (mounted) unawaited(_loadGuide(_selectedGroupId));
+                    final next = !ch.favorite;
+                    // fix601: reflect the toggle in the in-memory model + UI
+                    // immediately (mirrors channel_tile.favorite); the async
+                    // reload below replaces the objects but this keeps the star
+                    // correct if the menu is reopened before it lands.
+                    setState(() => ch.favorite = next);
+                    await Sql.favoriteChannel(id, next);
+                    if (!mounted) return;
+                    await _loadGuide(_selectedGroupId);
+                    // fix601: in the Favorites view, un-favoriting drops the
+                    // focused channel from _visibleChannels, so focus would be
+                    // stranded (the enterChannels post-frame re-grab doesn't run
+                    // here). Re-anchor: keep focus on the toggled channel if it
+                    // survived the reload (a real category keeps it), else fall
+                    // to the new first channel. Mirrors the fix599 discipline.
+                    if (!mounted || _railMode != RailMode.channels) return;
+                    final stillThere = _visibleChannels.any((c) => c.id == id);
+                    final targetId = stillThere
+                        ? id
+                        : (_visibleChannels.isNotEmpty
+                            ? _visibleChannels.first.id
+                            : null);
+                    if (targetId != null) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted && _railMode == RailMode.channels) {
+                          _channelNodes[targetId]?.requestFocus();
+                        }
+                      });
+                    }
                   },
                 ),
             ],
@@ -917,6 +961,7 @@ class _FocusTile extends StatefulWidget {
   /// Requires [focusNode] (the hold detector binds to its onKeyEvent).
   final Future<void> Function()? onLongPress;
   const _FocusTile({
+    super.key,
     required this.selected,
     required this.onTap,
     required this.child,

@@ -254,15 +254,15 @@ class _TvSearchViewState extends State<TvSearchView> {
             focusNode: _searchFieldNode,
             enabled: _ready,
             autofocus: true,
-            // fix600: D-pad DOWN from the search field lands on the FIRST
-            // result card (first non-empty shelf, item 0) by direct node
+            // fix600/fix601: D-pad DOWN from the search field lands on the
+            // FIRST result card (first non-empty shelf, item 0) by direct node
             // reference — deterministic, unlike nextFocus() across the stacked
-            // result grids. Returns false (→ default traversal) when there are
-            // no results yet.
+            // result grids. ALWAYS consume the key: with no results there is no
+            // focusable widget below the field, so falling through to
+            // nextFocus() would strand focus on the tab bar. Staying put (a
+            // no-op) keeps the user in the field they're typing in.
             onArrowDown: () {
-              final n = _firstResultNode();
-              if (n == null) return false;
-              n.requestFocus();
+              _firstResultNode()?.requestFocus();
               return true;
             },
             onChanged: _onChanged,
