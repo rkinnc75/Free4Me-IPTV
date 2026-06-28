@@ -6,6 +6,16 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.1.9': [
+    'TV: a "Cap 60 to 30 fps" option (Settings, Playback) now works for low-memory '
+        'boxes that still show motion judder on 60 fps streams. It is off by '
+        'default, since the automatic frame-drop mode already keeps most boxes '
+        'smooth at the full frame rate.',
+    'The 1080p render cap and the frame-rate cap are now grouped together under '
+        'Playback as the low-memory performance options.',
+    'TV: the Favorites view now shows a clearer message when you have not added '
+        'any favorites yet.',
+  ],
   '2.1.7': [
     'TV: after pressing OK in the player, the D-pad now moves a highlight between '
         'the on-screen buttons (cast, picture-in-picture, subtitles, audio, aspect, '
