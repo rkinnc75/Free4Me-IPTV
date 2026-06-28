@@ -1,8 +1,8 @@
 {
-  "latest": "2.1.9",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.1.9",
+  "latest": "2.2.0",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.0",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 TV: a \"Cap 60 to 30 fps\" option (Settings, Playback) now works for low-memory boxes that still show motion judder on 60 fps streams. It is off by default, since the automatic frame-drop mode already keeps most boxes smooth at the full frame rate.\n\u2022 The 1080p render cap and the frame-rate cap are now grouped together under Playback as the low-memory performance options.\n\u2022 TV: the Favorites view now shows a clearer message when you have not added any favorites yet.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.1.9/Free4Me-IPTV-2.1.9-arm64.apk"
+  "releaseNotes": "\u2022 Fixed: the 60 to 30 fps option could turn itself on for some low-memory devices after the last update. It is now off by default as intended, so those boxes play at the full frame rate again.\n\u2022 Categories with the same name in different sections (for example a Live and a Movies category both named Sports) no longer overwrite each other \u2014 each section keeps its own.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.0/Free4Me-IPTV-2.2.0-arm64.apk"
 }

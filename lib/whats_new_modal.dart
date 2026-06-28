@@ -6,6 +6,14 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.0': [
+    'Fixed: the 60 to 30 fps option could turn itself on for some low-memory '
+        'devices after the last update. It is now off by default as intended, so '
+        'those boxes play at the full frame rate again.',
+    'Categories with the same name in different sections (for example a Live and '
+        'a Movies category both named Sports) no longer overwrite each other — '
+        'each section keeps its own.',
+  ],
   '2.1.9': [
     'TV: a "Cap 60 to 30 fps" option (Settings, Playback) now works for low-memory '
         'boxes that still show motion judder on 60 fps streams. It is off by '
