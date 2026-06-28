@@ -238,11 +238,18 @@ class TvGuideViewState extends State<TvGuideView> {
     if (e.logicalKey != LogicalKeyboardKey.arrowLeft) {
       return KeyEventResult.ignored;
     }
-    if (_railCollapsed) setState(() => _railCollapsed = false);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _railNodes[_selectedGroupId]?.requestFocus();
-    });
-    return KeyEventResult.handled;
+    // fix585: focus the rail node IMMEDIATELY. The rail items stay mounted even
+    // when collapsed (OverflowBox keeps _rail() laid out at 210), so the stored
+    // node is always focusable — no post-frame needed. (fix584's post-frame
+    // never fired in the expanded state: no setState → no frame scheduled →
+    // callback queued forever, and the consumed LEFT stranded focus.)
+    final target = _railNodes[_selectedGroupId];
+    if (target != null) {
+      if (_railCollapsed) setState(() => _railCollapsed = false);
+      target.requestFocus();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
   }
 
   Future<void> _play(Channel ch) async {
