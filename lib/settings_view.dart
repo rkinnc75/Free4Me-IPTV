@@ -1672,6 +1672,8 @@ class _SettingsState extends State<SettingsView> {
 
     // Files to include in the zip, by on-disk path + archive name.
     final toZip = <String, String>{};
+    // fix594: DB snapshot paths (credential-gated), for the "Everything" zip.
+    final dbPaths = <String, String>{};
 
     Future<void> addTextFile(String key, String filename, String label,
         String content, String contentType) async {
@@ -1763,6 +1765,7 @@ class _SettingsState extends State<SettingsView> {
           // log + settings), preserving the fix328 OOM-avoidance design.
           await _streamCopyFile(src, destPath);
           final len = await File(destPath).length();
+          dbPaths[destPath] = destName; // fix594: for the "Everything" zip
           items.add(ExportItem(
             key: 'db-$dbName',
             filename: destName,
@@ -1786,7 +1789,11 @@ class _SettingsState extends State<SettingsView> {
       final encoder = ZipFileEncoder();
       encoder.create(zipPath);
       for (final entry in toZip.entries) {
-        await encoder.addFile(File(entry.key), entry.value);
+        // fix594: deflate the text bundle at max (level 9) — the source dumps
+        // dominate and compress well; previously the package default (bestSpeed)
+        // was used. addFile streams the input, so a small 32KB deflate window =
+        // max compression can't OOM.
+        await encoder.addFile(File(entry.key), entry.value, 9);
       }
       await encoder.close();
       final len = await File(zipPath).length();
@@ -1795,6 +1802,37 @@ class _SettingsState extends State<SettingsView> {
         filename: zipName,
         label: 'All files (zip)',
         filePath: zipPath,
+        sizeBytes: len,
+        contentType: 'application/zip',
+      ));
+    }
+
+    // fix594: an optional "Everything (incl. databases)" zip — the small zip's
+    // contents PLUS the SQLite DBs in ONE download. Text files deflate at 9; the
+    // DBs are added at level 0 (stored, not compressed) since SQLite barely
+    // compresses and deflating a multi-hundred-MB DB is pure cost. addFile
+    // streams the input (archive 4.x) so neither path holds the file in heap.
+    // Credential-gated (the DB embeds Xtream user/pass), same as the standalone
+    // DB downloads. The small zip above is left exactly as-is.
+    if (includeCredentials && dbPaths.isNotEmpty && toZip.isNotEmpty) {
+      onStep?.call('Building full archive (incl. databases)…');
+      final allName = 'free4me-export-all-$stamp.zip';
+      final allPath = '${outDir.path}/$allName';
+      final allEnc = ZipFileEncoder();
+      allEnc.create(allPath);
+      for (final entry in toZip.entries) {
+        await allEnc.addFile(File(entry.key), entry.value, 9); // text → max
+      }
+      for (final entry in dbPaths.entries) {
+        await allEnc.addFile(File(entry.key), entry.value, 0); // DB → stored
+      }
+      await allEnc.close();
+      final len = await File(allPath).length();
+      items.add(ExportItem(
+        key: 'bundle-all',
+        filename: allName,
+        label: 'Everything incl. databases (zip)',
+        filePath: allPath,
         sizeBytes: len,
         contentType: 'application/zip',
       ));
@@ -1966,6 +2004,14 @@ class _SettingsState extends State<SettingsView> {
       // write-time redaction), then base64 for JSON transport.
       final scrubbed = AppLog.scrubSecrets(await AppLog.readLog());
       final logB64 = base64Encode(utf8.encode(scrubbed));
+      // fix596: include a SCRUBBED settings export alongside the log so settings
+      // are available for review. Same builder + scrub the backup/restore export
+      // uses — includeCredentials:false omits creds, and scrubSecrets strips any
+      // residual host/user/pass. (Worker must store this as a 2nd report file.)
+      final settingsRaw =
+          await SettingsIo.buildBackupPayload(includeCredentials: false);
+      final settingsB64 =
+          base64Encode(utf8.encode(AppLog.scrubSecrets(settingsRaw)));
       final clientId = await DeviceDetector.reportClientId();
       final device = await DeviceDetector.deviceLabel();
       final info = await PackageInfo.fromPlatform();
@@ -1978,6 +2024,7 @@ class _SettingsState extends State<SettingsView> {
               'subject': subject,
               'details': details,
               'log': logB64,
+              'settings': settingsB64, // fix596: scrubbed settings backup
               'device': device,
               'version': '${info.version}+${info.buildNumber}',
               'clientId': clientId,

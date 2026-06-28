@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.6",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.6",
+  "latest": "2.2.7",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.7",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fixed a crash in multi-view: after streams reconnected, the picture cells could slip onto hardware decoding and overwhelm lower-memory boxes. They now stay on the safe decoder.\n\u2022 Search: \"On now\" and \"Coming up\" results work again \u2014 the programme-guide search index is rebuilt automatically if it was empty.\n\u2022 Removed the experimental dwell preview from the Movies/Series grids (live preview stays in the TV guide).",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.6/Free4Me-IPTV-2.2.6-arm64.apk"
+  "releaseNotes": "\u2022 Backup: a new \"Everything (including databases)\" download bundles your channel and EPG databases together with the rest in a single zip (only when you choose to include credentials). The regular backup zip also compresses smaller now.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.7/Free4Me-IPTV-2.2.7-arm64.apk"
 }

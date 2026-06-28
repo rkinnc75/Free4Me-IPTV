@@ -2427,6 +2427,25 @@ class Sql {
       ORDER BY p.start_utc ASC
       LIMIT ?
     ''', [matchExpr, ...sourceIds, nowEpoch, windowEndEpoch, limit]);
+    // fix595: when the windowed result is EMPTY, log whether the trigram FTS
+    // matched any programme TITLE at all (ignoring the now->window filter). This
+    // attributes an empty "On now"/"Coming up" shelf to either (a) no programme
+    // is titled like the query — expected for channel/network names like "fox"
+    // — or (b) titles matched but none are in the live window. Only runs on the
+    // empty path, so normal searches pay nothing.
+    if (rows.isEmpty) {
+      try {
+        final ftsOnly = await db.getAll(
+            'SELECT count(*) c FROM programmes_fts WHERE programmes_fts MATCH ?',
+            [matchExpr]);
+        final ftsCount =
+            ftsOnly.isNotEmpty ? (ftsOnly.first['c'] as int? ?? 0) : 0;
+        AppLog.info('Sql.searchPrograms: q="$query" match=$matchExpr '
+            'ftsTitleMatches=$ftsCount windowed=0');
+      } catch (e) {
+        AppLog.warn('Sql.searchPrograms: diag count failed — $e');
+      }
+    }
     return rows.map(_rowToProgram).toList();
   }
 

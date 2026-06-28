@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.7': [
+    'Backup: a new "Everything (including databases)" download bundles your '
+        'channel and EPG databases together with the rest in a single zip (only '
+        'when you choose to include credentials). The regular backup zip also '
+        'compresses smaller now.',
+  ],
   '2.2.6': [
     'Fixed a crash in multi-view: after streams reconnected, the picture cells '
         'could slip onto hardware decoding and overwhelm lower-memory boxes. '
