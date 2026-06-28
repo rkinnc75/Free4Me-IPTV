@@ -17,7 +17,14 @@ narrative (skim only if useful).
 - **GitHub credential: use the `rkinnc75` PAT in `.github-token` ONLY. NEVER the
   `rkalsky` `gh` account** (it 403s on this repo). Always push via the inline PAT
   URL with `set -o pipefail` (a bare `git push | sed` reports a rejected push as
-  false success).
+  false success). The inline-PAT push is covered by a NARROW allow rule in
+  `.claude/settings.local.json` — do NOT grep `~/.git-credentials`, force a
+  credential helper, or add a broad `Bash(git push:*)` rule (the auto-classifier
+  blocks all three).
+- **Push ONE tag at a time** (`git push <url> main` then `git push <url> vX.Y.Z`).
+  NEVER `git push --tags`: GitHub only fires the release workflow for ≤3 NEW tags
+  pushed at once, so a 4th new tag is silently skipped (this stranded v2.2.2 — its
+  tag exists but never released).
 - Commits: `fixNNN: <subject>` convention. No Jira keys. No AI co-author trailers.
 - A release ships ONLY when a `vX.Y.Z` tag is pushed — and only after the version
   bump (`pubspec.yaml`), changelog (`lib/whats_new_modal.dart`, apostrophe-free),
@@ -29,19 +36,33 @@ narrative (skim only if useful).
 - Root-cause before fixing. SQL inside Dart strings is invisible to `flutter
   analyze` — run the app for DB/SQL changes.
 
-## Where we are (v2.1.6+579, shipped + verified)
+## Where we are (v2.2.5+590, shipped — backlog cleared minus #24)
 
 - Custom LGPL-max libmpv on `main` (435 filters incl. `fps`). See
   `docs/CUSTOM_LIBMPV.md` (+ `docs/LIBMPV_COMPONENTS.md`).
 - `framedrop=decoder` auto-applies on low-RAM Android (onn 4K Plus) → smooth
   high-fps at default settings. See `runbooks/fix571.md`. **Validated on-device.**
-- The fps-output-cap (`vf=lavfi=[fps=fps=30]`) is parked OFF on branch
-  `libmpv-lgplmax-verify` (the custom libmpv has the filter; untested in-app).
-- **Shipped this session (2026-06-27):** v2.1.1 export purge + diag drop/sync line
-  (fix572) · v2.1.2 backup-fields fix573 + stream-info-on-name fix575 · v2.1.3–4
-  TV player D-pad direct-map (fix576/577, on-device verified) · v2.1.5 Mode B
-  attempt (fix578) → **reverted** v2.1.6 (fix579) as a regression. Media3 engine
-  (#24) scoped → backlogged indefinitely (`docs/media3-engine-scoping.md`).
+- The fps-output-cap is wired behind the OFF-by-default `forceCapFps30LowRam_v2`
+  setting (fix582/583, v2.2.0); verified vfFps follows the toggle on-device.
+- **Backlog cleared (2026-06-28), all shipped:**
+  - v2.2.3 — fix585 #4 (Live-guide rail collapse + LEFT re-expand) · fix586 #6
+    (held-OK opens the channel menu on TV — see memory `free4me-tv-longpress-menu`)
+    · fix587 #23 (confirm-to-exit, `ConfirmExitScope`).
+  - v2.2.4 — fix589 #5 (browse dwell preview, reuses `TvHeroPreview`, setting
+    `tvBrowseDwellPreview` default OFF) · fix588 #22 (compact diag overlay in
+    multi-view cells).
+  - v2.2.5 — fix590 #16 (R8 minify+shrinkResources; `android/app/proguard-rules.pro`,
+    `-dontobfuscate` first pass). **R8 runtime VERIFIED on-device:** launch +
+    SP-YES 1080p60 h264 playback (voDrop=0), no JNI/ClassNotFound errors.
+  - #24 (Media3-as-default) scoped → backlogged indefinitely
+    (`docs/media3-engine-scoping.md`).
+- **On-device verified (onn, v2.2.4/2.2.5):** #4 full collapse→LEFT→re-expand
+  cycle · #6 quick-OK-plays (no regression) + long-press menu + "Open in
+  Multi-view" item · #16 R8 launch+playback. **Still to confirm on the real
+  remote (ADB can't inject a timed key-hold; settings-toggle nav is flaky):** the
+  #6 held-OK GESTURE, #5 dwell preview + RAM (`dumpsys meminfo`; opt-in/OFF), #22
+  compact overlay in a live 2×2, #23 enabled double-back. Runbooks fix585–590
+  carry the exact steps.
 
 ## Backlog (status-audited against HEAD 2026-06-27)
 
@@ -52,24 +73,24 @@ or partial · ❌ open. File:line evidence in parens.
 1. ✅ **DONE — validated v2.1.0 on the onn (2026-06-27).** `framedrop=decoder`
    confirmed smooth on a live 1080p60 stream (SP-YES): voDrop 0(+0) over 9.5 min,
    software decode. Note `hwdec=no` on the onn (software by design — see #8/#24).
-2. ❌ **Force-30fps opt-in toggle** — still disabled on `main` (`mpv_engine.dart`
-   `const capFps=false`, `vf=''`); real work parked on branch
-   `libmpv-lgplmax-verify`. The custom libmpv now HAS the `fps` filter, so this is
-   the main open playback task: re-enable behind `devCapFpsLowRam` (default OFF),
-   verify `vf=lavfi=[fps=fps=30]` on-device, then sweep decoder vs 30fps-cap on
-   LIVE sport.
-3. ❌ **Settings "Performance / low-RAM" group** — render cap (`cap1080pOnLowRam`,
-   Playback §, `settings_view.dart:~2825`) and framedrop/capFps (Developer §,
-   `~4262`) are still in SEPARATE sections; no unified group.
+2. ✅ **Force-30fps opt-in toggle** — SHIPPED fix582/583 (v2.2.0) behind the
+   OFF-by-default `forceCapFps30LowRam_v2` setting (`vf=lavfi=[fps=fps=30]` on the
+   custom libmpv). On-device: vfFps follows the toggle (60 default, 30 when on).
+3. ✅ **Settings "Performance / low-RAM" group** — SHIPPED v2.1.9: render cap +
+   frame-rate cap grouped under Playback as the low-memory performance options.
 
 **B. TV Live-view UX** *(details + build notes in `BACKLOG_TV_UI.md`; build 5→6→7)*
-4. ❌ **Collapse category rail on select** — rail still FIXED 210px
-   (`tv_browse_view.dart:191`); no collapse/sliver/D-pad-LEFT re-expand.
-5. ❌ **Auto-preview on 3 s dwell in Live browse** — does NOT exist. (`tv_hero_preview.dart`
-   is a DIFFERENT feature: 700/1100 ms muted preview in the EPG *guide*, not Live
-   browse.) RAM risk on the 2 GB onn — one shared reused player.
-6. ❌ **Long-press menu → Multi-view entry** — menu has fav/category/mini-player/
-   history (`channel_tile.dart:331-366`); Multi-view entry still missing.
+4. ✅ **Collapse category rail on select** — SHIPPED fix584/585 (v2.2.1/2.2.3) in
+   `tv_guide_view.dart`: select a category → rail collapses to a sliver + focus to
+   channels; LEFT from a channel re-expands + focuses the selected category.
+   On-device verified.
+5. ✅ **Auto-preview on 3 s dwell** — SHIPPED fix589 (v2.2.4) for the Movies/Series
+   browse grid (`tv_browse_view.dart`), reusing `TvHeroPreview`. Setting
+   `tvBrowseDwellPreview` default OFF (RAM-sensitive). On-device RAM check still
+   pending (opt-in).
+6. ✅ **Long-press menu → Multi-view entry** — SHIPPED fix584 (item) + fix586
+   (held-OK opens the menu on TV; onLongPress is touch-only — see memory
+   `free4me-tv-longpress-menu`). Menu + item verified on-device.
 7. ✅/⚠️ **TV player D-pad — direct-map DONE + verified; bar-nav (Mode B) deferred.**
    Shipped fix576/577 (v2.1.3–4), on-device verified: ▲▼ = channel up/down,
    ◀▶ = seek ∓10s (when DVR active), OK = play-pause + reveal the bars (synth tap).
