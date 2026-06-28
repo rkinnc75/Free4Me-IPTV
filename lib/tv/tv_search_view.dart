@@ -254,6 +254,17 @@ class _TvSearchViewState extends State<TvSearchView> {
             focusNode: _searchFieldNode,
             enabled: _ready,
             autofocus: true,
+            // fix600: D-pad DOWN from the search field lands on the FIRST
+            // result card (first non-empty shelf, item 0) by direct node
+            // reference — deterministic, unlike nextFocus() across the stacked
+            // result grids. Returns false (→ default traversal) when there are
+            // no results yet.
+            onArrowDown: () {
+              final n = _firstResultNode();
+              if (n == null) return false;
+              n.requestFocus();
+              return true;
+            },
             onChanged: _onChanged,
             // fix555: pressing Go/Enter (or D-pad select) runs the search
             // immediately instead of waiting out the 250ms onChanged debounce.
@@ -307,28 +318,47 @@ class _TvSearchViewState extends State<TvSearchView> {
   /// section, or to the previous section's last row at the same column
   /// (clamped) when leaving a section's top row. This keeps the landing
   /// aligned with where the user came from and makes every press deterministic.
+  /// fix509/fix600: the five shelves in display order. Single source of truth
+  /// for both [_buildShelves] and [_firstResultNode] (the DOWN-from-field
+  /// target) so "first card" always means the first item of the first
+  /// non-empty shelf as actually rendered.
+  List<(String, List<Channel>)> _orderedGroups() => [
+        ('On now', _onNow),
+        ('Coming up', _comingUp),
+        ('Channels', _channels),
+        ('Movies', _movies),
+        ('Series', _series),
+      ];
+
+  /// fix600: the FocusNode of the first result card (first non-empty shelf,
+  /// item 0), or null if there are no results. The shelf must have built for
+  /// its nodes to exist — true whenever a result card is on screen.
+  FocusNode? _firstResultNode() {
+    for (final (title, items) in _orderedGroups()) {
+      if (items.isEmpty) continue;
+      final nodes = _nodeCache[title];
+      if (nodes != null && nodes.isNotEmpty) return nodes.first;
+      return null;
+    }
+    return null;
+  }
+
   List<Widget> _buildShelves() {
-    final groups = <(String, List<Channel>)>[
-      ('On now', _onNow),
-      ('Coming up', _comingUp),
-      ('Channels', _channels),
-      ('Movies', _movies),
-      ('Series', _series),
-    ];
     final sections = <Widget>[];
-    var autofocusNext = true;
     String? previousTitle;
-    for (final (title, items) in groups) {
+    for (final (title, items) in _orderedGroups()) {
       if (items.isEmpty) continue;
       sections.add(
         _section(
           title,
           items,
-          autofocusFirst: autofocusNext,
+          // fix600: the field keeps focus after a search (so the user can keep
+          // typing); pressing DOWN moves to the first card. So tiles must NOT
+          // autofocus — that would yank focus out of the field mid-type.
+          autofocusFirst: false,
           previousSectionTitle: previousTitle,
         ),
       );
-      autofocusNext = false;
       previousTitle = title;
     }
     return sections;

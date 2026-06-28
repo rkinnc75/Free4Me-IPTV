@@ -32,6 +32,12 @@ class DpadTextField extends StatelessWidget {
   final int? maxLines;
   final FocusNode? focusNode;
   final bool enabled;
+  // fix600: optional deterministic D-pad DOWN target. When provided and it
+  // returns true, it OVERRIDES the default node.nextFocus() — which relies on
+  // Flutter's directional traversal and does not reliably reach a specific
+  // widget across stacked grids (flutter/flutter#70364). Return false to fall
+  // back to nextFocus() (e.g. when there is no target yet).
+  final bool Function()? onArrowDown;
 
   const DpadTextField({
     super.key,
@@ -47,6 +53,7 @@ class DpadTextField extends StatelessWidget {
     this.maxLines = 1,
     this.focusNode,
     this.enabled = true,
+    this.onArrowDown,
   });
 
   KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
@@ -59,6 +66,11 @@ class DpadTextField extends StatelessWidget {
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.arrowDown) {
+      // fix600: prefer the explicit DOWN target (e.g. the first search result
+      // card) over directional traversal, which is unreliable here.
+      if (onArrowDown != null && onArrowDown!()) {
+        return KeyEventResult.handled;
+      }
       node.nextFocus();
       return KeyEventResult.handled;
     }

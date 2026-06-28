@@ -6,6 +6,16 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.11': [
+    'Program guide stays current: the app now refreshes the EPG on launch when '
+        'the schedule has run out, and refreshing a source also refreshes its '
+        'guide — so "On now" and the guide grid keep showing live data instead of '
+        'going blank.',
+    'TV search: after you type, press Down to jump straight to the first result '
+        'card.',
+    'TV Live guide: hold OK/Select on a channel to open its menu — including '
+        '"Open in Multi-view" — without needing a touchscreen.',
+  ],
   '2.2.10': [
     'TV Live guide: focus now reliably lands on the first channel when you open a '
         'category, and returns to that category when you press Left (fixes focus '

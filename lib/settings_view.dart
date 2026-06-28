@@ -889,6 +889,23 @@ class _SettingsState extends State<SettingsView> {
             status = msg.length > 60 ? '${msg.substring(0, 60)}…' : msg;
           }),
         );
+        // fix600: also refresh this source's EPG so the guide/On-now have a
+        // current forecast — the channel refresh alone left the EPG stale
+        // (the onn's background EPG task is unreliable).
+        final epgUrl = EpgService.resolveEpgUrl(source);
+        if (epgUrl != null) {
+          await EpgService.refreshSource(
+            source,
+            epgUrl: epgUrl,
+            onProgress: (p) {
+              final msg = p.statusMessage ??
+                  'EPG: ${p.programsInserted} programmes…';
+              setSt(() {
+                status = msg.length > 60 ? '${msg.substring(0, 60)}…' : msg;
+              });
+            },
+          );
+        }
         AppLog.info('Settings: refresh "${source.name}" — done');
         setSt(() {
           done = true;

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:open_tv/backend/epg_service.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/models/channel.dart';
@@ -14,6 +15,7 @@ import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/program.dart';
 import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/view_type.dart';
+import 'package:open_tv/multi_view_screen.dart';
 import 'package:open_tv/player.dart';
 import 'package:open_tv/player/overlay_player_controller.dart';
 import 'package:open_tv/source_color_picker.dart';
@@ -91,11 +93,17 @@ class TvGuideViewState extends State<TvGuideView> {
     _preview = TvHeroPreview();
     _windowStart = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     _windowEnd = _windowStart + _windowHours * 3600;
+    // fix600: a foreground EPG refresh (launch stale-check or source refresh)
+    // bumps EpgService.epgVersion. Re-fetch the current grid's programmes so the
+    // new forecast appears without the user switching tabs. Channels/focus are
+    // left untouched (programmes-only reload).
+    EpgService.epgVersion.addListener(_onEpgVersionChanged);
     _init();
   }
 
   @override
   void dispose() {
+    EpgService.epgVersion.removeListener(_onEpgVersionChanged); // fix600
     _catFollowTimer?.cancel();
     _preview.disposeController();
     for (final n in _railNodes.values) {
@@ -237,6 +245,44 @@ class TvGuideViewState extends State<TvGuideView> {
         }
       });
     }
+  }
+
+  // fix600: an EPG refresh completed elsewhere (launch stale-check or a Settings
+  // source refresh). Re-fetch ONLY the programmes for the channels already on
+  // screen and rebuild the grid — channels, focus, and the rail mode are left
+  // exactly as the user left them.
+  void _onEpgVersionChanged() {
+    if (!mounted || !_ready) return;
+    unawaited(_reloadGridProgrammes());
+  }
+
+  Future<void> _reloadGridProgrammes() async {
+    final inv = _inv; // don't bump — a concurrent _loadGuide must win
+    if (_channels.isEmpty) return;
+    // re-anchor the window to NOW (same rationale as _loadGuide/fix541).
+    _windowStart = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    _windowEnd = _windowStart + _windowHours * 3600;
+    final epgIdsBySource = <int, List<String>>{};
+    for (final ch in _channels) {
+      final epg = ch.epgChannelId;
+      if (epg != null) {
+        (epgIdsBySource[ch.sourceId] ??= []).add(epg);
+      }
+    }
+    final programmes = await Sql.getGridPrograms(
+      epgIdsBySource: epgIdsBySource,
+      windowStartEpoch: _windowStart,
+      windowEndEpoch: _windowEnd,
+    );
+    if (!mounted || inv != _inv) return; // a real reload superseded us
+    final byKey = <String, List<Program>>{};
+    for (final p in programmes) {
+      (byKey['${p.sourceId}|${p.epgChannelId}'] ??= []).add(p);
+    }
+    for (final list in byKey.values) {
+      list.sort((a, b) => a.startUtc.compareTo(b.startUtc));
+    }
+    setState(() => _progByKey = byKey);
   }
 
   // fix597: OK on a category → (re)load it and switch the rail to channels.
@@ -442,6 +488,10 @@ class TvGuideViewState extends State<TvGuideView> {
           id != null ? (_channelNodes[id] ??= FocusNode(debugLabel: 'chan-$id')) : null,
       onKeyEvent: _onChannelLeftKey, // LEFT → back to categories
       onTap: () => _play(ch),
+      // fix600 (#6): held-OK opens the channel context menu — same "Open in
+      // Multi-view" entry the Search/Movies tiles have (channel_tile), which was
+      // previously unreachable from the Live guide.
+      onLongPress: () => _showChannelMenu(ch),
       onFocusGained: (_) => _onChannelFocused(ch),
       child: Row(
         children: [
@@ -455,6 +505,70 @@ class TvGuideViewState extends State<TvGuideView> {
           ),
         ],
       ),
+    );
+  }
+
+  // fix600 (#6): the Live-guide channel context menu (held-OK). Mirrors
+  // channel_tile's long-press sheet — Open-in-Multi-view (live + has URL) and
+  // favorite toggle. TV remotes can't fire InkWell.onLongPress, so _FocusTile
+  // detects a held select and calls this.
+  Future<void> _showChannelMenu(Channel ch) async {
+    final id = ch.id;
+    final isLive = ch.mediaType == MediaType.livestream &&
+        (ch.url?.isNotEmpty ?? false);
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Text(ch.name,
+                    style: Theme.of(ctx).textTheme.labelLarge,
+                    textAlign: TextAlign.center),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.play_arrow),
+                title: const Text('Play'),
+                autofocus: true,
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  _play(ch);
+                },
+              ),
+              if (isLive)
+                ListTile(
+                  leading: const Icon(Icons.grid_view),
+                  title: const Text('Open in Multi-view'),
+                  onTap: () async {
+                    Navigator.of(ctx).pop();
+                    final s = SettingsService.cached ?? widget.settings;
+                    await MultiViewScreen.openWithChannel(
+                        context, s, _sourceIds, ch);
+                  },
+                ),
+              if (id != null)
+                ListTile(
+                  leading: Icon(
+                    ch.favorite ? Icons.star : Icons.star_border,
+                    color: Colors.amber,
+                  ),
+                  title: Text(ch.favorite
+                      ? 'Remove from favorites'
+                      : 'Add to favorites'),
+                  onTap: () async {
+                    Navigator.of(ctx).pop();
+                    await Sql.favoriteChannel(id, !ch.favorite);
+                    if (mounted) unawaited(_loadGuide(_selectedGroupId));
+                  },
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -797,6 +911,11 @@ class _FocusTile extends StatefulWidget {
   /// fix584 (#4): observe keys bubbling from the tile (e.g. LEFT on a channel
   /// to re-expand the rail). Returns handled to stop directional traversal.
   final KeyEventResult Function(KeyEvent)? onKeyEvent;
+  /// fix600 (#6): held-OK context menu. When set, a quick OK still fires
+  /// [onTap] (on key-UP) and a hold >= 450ms fires this — same gesture model as
+  /// channel_tile's held-OK menu (TV remotes can't fire InkWell.onLongPress).
+  /// Requires [focusNode] (the hold detector binds to its onKeyEvent).
+  final Future<void> Function()? onLongPress;
   const _FocusTile({
     required this.selected,
     required this.onTap,
@@ -805,6 +924,7 @@ class _FocusTile extends StatefulWidget {
     this.onFocusGained,
     this.focusNode,
     this.onKeyEvent,
+    this.onLongPress,
   });
 
   @override
@@ -813,6 +933,60 @@ class _FocusTile extends StatefulWidget {
 
 class _FocusTileState extends State<_FocusTile> {
   bool _focused = false;
+  // fix600 (#6): held-OK detection (mirrors channel_tile/fix586). Bound to the
+  // caller-supplied node's onKeyEvent so it pre-empts InkWell's ActivateIntent
+  // (which would otherwise fire onTap on key-DOWN, before a hold can register).
+  Timer? _selectHoldTimer;
+  bool _selectActed = false;
+  static const Duration _selectHoldDelay = Duration(milliseconds: 450);
+
+  @override
+  void initState() {
+    super.initState();
+    _installHoldHandler();
+  }
+
+  void _installHoldHandler() {
+    final node = widget.focusNode;
+    if (node == null || widget.onLongPress == null) return;
+    node.onKeyEvent = (n, event) {
+      final k = event.logicalKey;
+      final isSelect = k == LogicalKeyboardKey.select ||
+          k == LogicalKeyboardKey.enter ||
+          k == LogicalKeyboardKey.numpadEnter ||
+          k == LogicalKeyboardKey.gameButtonA;
+      if (!isSelect) return KeyEventResult.ignored; // LEFT etc. bubble up
+      if (event is KeyDownEvent) {
+        _selectActed = false;
+        _selectHoldTimer?.cancel();
+        _selectHoldTimer = Timer(_selectHoldDelay, () {
+          if (!mounted || !n.hasFocus) return;
+          _selectActed = true;
+          widget.onLongPress?.call();
+        });
+        return KeyEventResult.handled;
+      }
+      if (event is KeyUpEvent) {
+        _selectHoldTimer?.cancel();
+        _selectHoldTimer = null;
+        final acted = _selectActed;
+        _selectActed = false;
+        if (!acted) widget.onTap();
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.handled; // swallow repeats; the timer drives the menu
+    };
+  }
+
+  @override
+  void dispose() {
+    _selectHoldTimer?.cancel();
+    // Clear the handler we installed so a recycled node (channel nodes persist
+    // in _channelNodes across rail swaps) doesn't keep this disposed State's
+    // closure. The next _FocusTile re-installs in initState.
+    if (widget.onLongPress != null) widget.focusNode?.onKeyEvent = null;
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

@@ -113,6 +113,11 @@ Future<void> main() async {
     unawaited(Sql.runPendingDividerCleanup());
   }
   unawaited(EpgService.scheduleBackgroundRefresh());
+  // fix600: the background EPG task is unreliable on TV boxes (Amlogic/onn kill
+  // background work) so the forecast can lapse → empty guide grid + empty "On
+  // now". Foreground-refresh on launch IF the EPG is stale (no programme airing
+  // now). Non-blocking; the guide reloads via EpgService.epgVersion on finish.
+  unawaited(EpgService.refreshIfStale());
   // fix506: mirror the render-cap setting to the native SharedPref so the
   // 1080p cap decision is correct on the NEXT launch.
   unawaited(RenderCap.setEnabled(settings.cap1080pOnLowRam));

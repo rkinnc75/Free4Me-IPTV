@@ -2,6 +2,7 @@ import 'dart:math' show min;
 
 import 'package:flutter/foundation.dart';
 import 'package:open_tv/backend/app_logger.dart';
+import 'package:open_tv/backend/db_factory.dart';
 import 'package:open_tv/backend/epg_matcher.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
@@ -43,6 +44,43 @@ void callbackDispatcher() {
 }
 
 class EpgService {
+  /// fix600: bumped after every successful per-source EPG refresh. Views (the
+  /// Live guide) listen and reload so a foreground/launch refresh becomes
+  /// visible without a manual tab switch.
+  static final ValueNotifier<int> epgVersion = ValueNotifier<int>(0);
+
+  /// fix600: true when NO programme is airing right now — i.e. the EPG forecast
+  /// has lapsed (stale). The onn's Workmanager auto-refresh is unreliable, so we
+  /// use this to trigger a foreground refresh on launch.
+  static Future<bool> isStale() async {
+    try {
+      final db = await EpgDbFactory.db;
+      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final rows = await db.getAll(
+        'SELECT count(*) c FROM programmes WHERE start_utc <= ? AND stop_utc > ?',
+        [now, now],
+      );
+      final airing = rows.isNotEmpty ? (rows.first['c'] as int? ?? 0) : 0;
+      return airing == 0;
+    } catch (e) {
+      AppLog.warn('EPG: isStale check failed — $e');
+      return false; // never trigger a refresh on a check error
+    }
+  }
+
+  /// fix600: foreground EPG refresh on launch IF the forecast has lapsed. Cheap
+  /// no-op when fresh or no EPG source is configured. Self-heals the onn (where
+  /// the background task often never fires).
+  static Future<void> refreshIfStale() async {
+    final eligible = (await Sql.getSources())
+        .where((s) => s.enabled && resolveEpgUrl(s) != null)
+        .toList(growable: false);
+    if (eligible.isEmpty) return;
+    if (!await isStale()) return;
+    AppLog.info('EPG: no programme airing now — foreground refresh (stale)');
+    await refreshAllSources(background: false);
+  }
+
   /// Register (or re-register) the periodic background EPG refresh task.
   static Future<void> scheduleBackgroundRefresh() async {
     final settings = await SettingsService.getSettings();
@@ -297,6 +335,7 @@ class EpgService {
       forceAll: forceRematch,
       onProgress: onProgress,
     );
+    epgVersion.value++; // fix600: notify listeners (guide) to reflect new EPG
   }
 
   /// Determines the EPG URL to use for a source:
