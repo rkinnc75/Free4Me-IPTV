@@ -597,14 +597,19 @@ class Sql {
       updateGroups() {
     return (SqliteWriteContext tx, Map<String, String> memory) async {
       final sourceId = int.parse(memory['sourceId']!);
+      // fix583 (#18): group by (name, media_type) and conflict on
+      // (name, source_id, media_type) so a same-named category in different
+      // media types (e.g. a Live "Sports" and a Movies "Sports") produces two
+      // distinct group rows instead of collapsing/colliding into one. Matches
+      // the migration-40 unique index groups(name, source_id, media_type).
       await tx.execute('''
         INSERT INTO groups (name, image, source_id, media_type)
         SELECT group_name, image, ?, media_type
         FROM channels
         WHERE source_id = ?
-        GROUP BY group_name
-        ON CONFLICT(name, source_id) DO UPDATE SET
-          media_type = excluded.media_type
+        GROUP BY group_name, media_type
+        ON CONFLICT(name, source_id, media_type) DO UPDATE SET
+          image = excluded.image
       ''', [sourceId, sourceId]);
       // fix298: re-apply the categories that were disabled before this refresh
       // (captured by wipeSource). Newly-appeared categories keep DEFAULT 1.
@@ -637,6 +642,7 @@ class Sql {
         FROM groups g
         WHERE g.name = channels.group_name
           AND g.source_id = ?
+          AND g.media_type IS channels.media_type
           AND channels.source_id = ?
       ''', [sourceId, sourceId]);
       // fix365/fix517: denormalize the category-enabled flag so the browse

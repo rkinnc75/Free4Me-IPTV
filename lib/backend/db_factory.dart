@@ -961,6 +961,21 @@ class DbFactory {
           'CREATE TABLE IF NOT EXISTS app_meta'
           ' (key TEXT PRIMARY KEY, value TEXT);',
         );
+      }))
+      ..add(SqliteMigration(40, (tx) async {
+        // fix583 (#18): the groups unique index was (name, source_id), but
+        // `media_type` was added to groups later (migration 33) and never added
+        // to the constraint — so a Live category and a Movie/Series category
+        // with the SAME name collided on insert (the second was silently
+        // dropped). Recreate the index to include media_type so same-named
+        // categories across media types coexist. The 3-column index is LESS
+        // restrictive than the old 2-column one, so it cannot fail on existing
+        // data. Runs on every install (fresh runs the whole chain).
+        await tx.execute('DROP INDEX IF EXISTS index_group_unique;');
+        await tx.execute(
+          'CREATE UNIQUE INDEX index_group_unique '
+          'ON groups(name, source_id, media_type);',
+        );
       }));
     await migrations.migrate(db);
     // fix542: the heavy fix537 index maintenance (drop 5 dead indexes, rebuild

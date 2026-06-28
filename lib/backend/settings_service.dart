@@ -89,7 +89,13 @@ const devTscaleProp = "devTscale";
 const devFramedropProp = "devFramedrop";
 const devInterpolationProp = "devInterpolation";
 const devDebandProp = "devDeband";
-const devCapFpsLowRamProp = "devCapFpsLowRam";
+// fix583: re-keyed (was "devCapFpsLowRam"). fix582 wired the force-30 cap that
+// had been INERT since fix570 — but existing low-RAM installs had persisted the
+// old default-true, so they suddenly capped to 30 fps. No persisted value of the
+// inert setting reflects a real user choice, so re-keying orphans the old value
+// → every install reloads at the new default (OFF). The wired toggle still binds
+// to settings.devCapFpsLowRam; only its storage key changed.
+const devCapFpsLowRamProp = "forceCapFps30LowRam_v2";
 const devHwdecImageFormatProp = "devHwdecImageFormat";
 const devAudioBufferSecsProp = "devAudioBufferSecs";
 const devControlsHideSecsProp = "devControlsHideSecs";
