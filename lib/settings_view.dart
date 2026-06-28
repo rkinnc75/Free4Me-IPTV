@@ -508,14 +508,17 @@ const _helpDevCapFps = (
   title: 'Cap 60→30 fps (low-RAM)',
   body:
       'On low-RAM Android boxes (e.g. onn 4K Plus), cap 60 fps video output to '
-      '30 fps. These devices decode fine but cannot upload 60 full HD frames '
-      'per second to the display without dropping frames at the output stage, '
-      'which shows as judder during motion. Capping to 30 fps halves that load '
-      'and removes the judder while keeping audio/video in sync.\\n\\n'
-      'Default: ON. Only affects low-RAM devices and 60 fps content.\\n\\n'
+      '30 fps. Most low-RAM judder is already handled automatically by the '
+      'decoder frame-drop mode, which keeps the full frame rate with no '
+      'dropped frames — so leave this OFF unless a 60 fps stream still judders. '
+      'When on, capping to 30 fps halves the display-upload load while keeping '
+      'audio and video in sync.\\n\\n'
+      'Default: OFF (opt-in). Only affects low-RAM devices and 60 fps '
+      'content.\\n\\n'
       'Range: ON / OFF.\\n\\n'
-      '↑ ON — smooth, in-sync playback on weak boxes.\\n\\n'
-      '↓ OFF — full 60 fps output; may judder on low-RAM hardware.',
+      '↑ ON — 30 fps output; smoothest on weak boxes that still judder.\\n\\n'
+      '↓ OFF — full frame rate (recommended; the decoder frame-drop mode '
+      'already prevents judder on most low-RAM boxes).',
 );
 
 const _helpDevHwdecImageFormat = (
@@ -2848,6 +2851,19 @@ class _SettingsState extends State<SettingsView> {
                           RenderCap.setEnabled(v);
                         },
                       ),
+                      // fix582 (#3): force-30 cap co-located with the render cap
+                      // (both low-RAM performance toggles), moved out of the
+                      // Developer section for discoverability. Now functional —
+                      // the custom libmpv has the `fps` filter (fix582 / #2).
+                      _switchTile(
+                        label: "Cap 60→30 fps (low-RAM)",
+                        value: settings.devCapFpsLowRam,
+                        help: _helpDevCapFps,
+                        onChanged: (v) {
+                          setState(() => settings.devCapFpsLowRam = v);
+                          updateSettings();
+                        },
+                      ),
                       // fix510: live video preview in the TV guide hero.
                       _switchTile(
                         label: "Live preview in TV guide",
@@ -4297,15 +4313,8 @@ class _SettingsState extends State<SettingsView> {
                           updateSettings();
                         },
                       ),
-                      _switchTile(
-                        label: "Cap 60→30 fps (low-RAM)",
-                        value: settings.devCapFpsLowRam,
-                        help: _helpDevCapFps,
-                        onChanged: (v) {
-                          setState(() => settings.devCapFpsLowRam = v);
-                          updateSettings();
-                        },
-                      ),
+                      // fix582 (#3): "Cap 60→30 fps" moved to Settings → Playback
+                      // (Performance / low-RAM), next to the render cap.
                       _devEnumTile<HwdecImageFormat>(
                         label: "HW decoder image format",
                         value: settings.devHwdecImageFormat,

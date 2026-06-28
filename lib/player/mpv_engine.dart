@@ -1068,25 +1068,21 @@ class MpvEngine implements PlayerEngine {
     await np.setProperty('framedrop', framedropMode);
     await np.setProperty('interpolation', s.devInterpolation ? 'yes' : 'no');
     await np.setProperty('deband', s.devDeband ? 'yes' : 'no');
-    // fix565–570: the intended 60→30 fps OUTPUT cap (fix564 proved the
-    // Mali-G310 judders at the texture-upload stage — VO drops ~13–50/sec while
-    // the decoder is idle) was to be done with an mpv `vf` frame-rate filter.
-    // It is NOT achievable on media_kit's bundled libmpv: every candidate
-    // libavfilter filter is ABSENT, each confirmed at runtime on the onn 4K
-    // Plus (not guessed):
-    //   • fps       → "Option vf: fps doesn't exist" / "No such filter: 'fps'"
-    //   • select    → "No such filter: 'select'"
-    //   • framestep → absent
-    // A missing lavfi filter makes mpv DESELECT the video track → permanent
-    // black-screen STALL (not a benign error — it surfaces as "video texture
-    // failed to attach"), so the cap cannot be applied via vf here. fix570:
-    // DISABLE it — always clear `vf`, which is guaranteed safe (no filter is
-    // ever created, so nothing can fail). The devCapFpsLowRam toggle is retained
-    // but inert until the bundled libmpv ships a frame-rate filter (or a
-    // non-filter mechanism is found). player.dart's isVfOptionError suppression
-    // (fix566) stays as defensive cover. Preview/mini cells never set vf.
-    const capFps = false; // fix570: cap disabled — no usable libavfilter filter
-    await np.setProperty('vf', '');
+    // fix582 (#2): 60→30 fps OUTPUT cap. fix565–570 wanted this via an mpv `vf`
+    // frame-rate filter but the BUNDLED libmpv had NO `fps`/`select`/`framestep`
+    // filter (a missing lavfi filter makes mpv deselect the video track → a
+    // black-screen stall), so fix570 hard-disabled it. The custom LGPL-max
+    // libmpv now bundled (vnext, via dependency_overrides) DOES include `fps`
+    // (and all non-GPL filters) — verified on-device (vfFps=30, voDrop=0) on the
+    // libmpv-lgplmax-verify branch. So the cap is re-enabled, OPT-IN via
+    // devCapFpsLowRam (default OFF: framedrop=decoder already holds full-rate
+    // 0-drop on low-RAM, so the 30 fps cap is only for boxes that still judder),
+    // low-RAM + non-preview only. Form `lavfi=[fps=fps=30]` (no commas to
+    // escape); player.dart's isVfOptionError suppression (fix566) stays as cover.
+    final capFps = !previewMode &&
+        s.devCapFpsLowRam &&
+        await DeviceDetector.isLowRamDevice();
+    await np.setProperty('vf', capFps ? r'lavfi=[fps=fps=30]' : '');
     if (s.devHwdecImageFormat.value != null) {
       await np.setProperty(
           'hwdec-image-format', s.devHwdecImageFormat.value!);

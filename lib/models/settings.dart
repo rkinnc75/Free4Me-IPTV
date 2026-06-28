@@ -343,7 +343,7 @@ class Settings {
     this.devFramedrop = FrameDropMode.vo,
     this.devInterpolation = false,
     this.devDeband = false,
-    this.devCapFpsLowRam = true,
+    this.devCapFpsLowRam = false, // fix582 (#2): force-30 cap is opt-in OFF
     this.devHwdecImageFormat = HwdecImageFormat.defaultFmt,
     this.devAudioBufferSecs = 0.2,
     this.devControlsHideSecs = 3,
@@ -492,7 +492,7 @@ class Settings {
     s.devFramedrop = FrameDropMode.vo;
     s.devInterpolation = false;
     s.devDeband = false;
-    s.devCapFpsLowRam = true;
+    s.devCapFpsLowRam = false; // fix582 (#2): force-30 cap is opt-in OFF
     s.devHwdecImageFormat = HwdecImageFormat.defaultFmt;
     s.devAudioBufferSecs = 0.2;
     s.devControlsHideSecs = 3;
