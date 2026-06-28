@@ -5,6 +5,7 @@ import 'package:open_tv/models/filters.dart';
 import 'package:open_tv/models/home_manager.dart';
 import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/settings.dart';
+import 'package:open_tv/confirm_exit_scope.dart';
 import 'package:open_tv/models/view_type.dart';
 import 'package:open_tv/settings_view.dart';
 import 'package:open_tv/tv/tv_browse_view.dart';
@@ -263,7 +264,11 @@ class _TvShellState extends State<TvShell> {
     // a dark scrim so foreground text/tiles stay readable. The Scaffold and its
     // content are transparent so the image shows through; only the guide's
     // small now-line element paints its own color (intended).
-    return Stack(
+    // fix587 (#23): confirm-to-exit guard around the whole TV shell (no-op
+    // unless the setting is on and Back would exit the app).
+    return ConfirmExitScope(
+      enabled: widget.settings.confirmToExit,
+      child: Stack(
       fit: StackFit.expand,
       children: [
         const Image(
@@ -300,6 +305,7 @@ class _TvShellState extends State<TvShell> {
           ),
         ),
       ],
+      ),
     );
   }
 }

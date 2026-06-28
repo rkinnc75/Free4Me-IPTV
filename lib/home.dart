@@ -23,6 +23,7 @@ import 'package:open_tv/models/no_push_animation_material_page_route.dart';
 import 'package:open_tv/models/node.dart';
 import 'package:open_tv/models/node_type.dart';
 import 'package:open_tv/models/settings.dart';
+import 'package:open_tv/confirm_exit_scope.dart';
 import 'package:open_tv/models/view_type.dart';
 import 'package:open_tv/error.dart';
 import 'package:open_tv/whats_new_modal.dart';
@@ -601,7 +602,11 @@ class _HomeState extends State<Home> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    // fix587 (#23): confirm-to-exit guard (no-op unless the setting is on and
+    // this is the app's last route — see ConfirmExitScope).
+    return ConfirmExitScope(
+      enabled: SettingsService.cached?.confirmToExit ?? false,
+      child: Scaffold(
       appBar: widget.home.node != null
           ? AppBar(
               title: Text(widget.home.node.toString()),
@@ -980,6 +985,7 @@ class _HomeState extends State<Home> {
             child: const Icon(Icons.arrow_upward),
           ),
         ),
+      ),
       ),
     );
   }

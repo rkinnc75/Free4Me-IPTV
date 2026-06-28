@@ -138,6 +138,16 @@ class _ChannelTileState extends State<ChannelTile> {
   late final FocusNode _focusNode = widget.focusNode ?? FocusNode();
   late final bool _ownsFocusNode = widget.focusNode == null;
 
+  // fix586 (#6): TV remotes cannot fire InkWell.onLongPress (it is a touch
+  // gesture), so the context menu — and its "Open in Multi-view" entry — was
+  // unreachable by D-pad. We now detect a HELD select/OK: a quick press still
+  // activates (play/toggle), a hold >= _selectHoldDelay opens the long-press
+  // menu. Implemented with a timer rather than KeyRepeatEvent so it does not
+  // depend on the box delivering key-repeat for DPAD_CENTER.
+  Timer? _selectHoldTimer;
+  bool _selectActed = false;
+  static const Duration _selectHoldDelay = Duration(milliseconds: 450);
+
   static final Map<int, _PrewarmEntry> _prewarmCache = {};
   static const Duration _prewarmTtl = Duration(minutes: 5);
 
@@ -167,6 +177,37 @@ class _ChannelTileState extends State<ChannelTile> {
           event.logicalKey == LogicalKeyboardKey.arrowUp &&
           widget.onFocusUpEscape != null) {
         widget.onFocusUpEscape!.call();
+        return KeyEventResult.handled;
+      }
+      // fix586 (#6): held-OK opens the long-press menu; quick-OK activates.
+      // We consume the select keys here so InkWell's default ActivateIntent
+      // (which would fire onTap on key-down) never runs — the play/toggle is
+      // deferred to key-up so we can distinguish a tap from a hold.
+      final k = event.logicalKey;
+      final isSelect = k == LogicalKeyboardKey.select ||
+          k == LogicalKeyboardKey.enter ||
+          k == LogicalKeyboardKey.numpadEnter ||
+          k == LogicalKeyboardKey.gameButtonA;
+      if (isSelect) {
+        if (event is KeyDownEvent) {
+          _selectActed = false;
+          _selectHoldTimer?.cancel();
+          _selectHoldTimer = Timer(_selectHoldDelay, () {
+            if (!mounted || !_focusNode.hasFocus) return;
+            _selectActed = true;
+            _onLongPress();
+          });
+          return KeyEventResult.handled;
+        }
+        if (event is KeyUpEvent) {
+          _selectHoldTimer?.cancel();
+          _selectHoldTimer = null;
+          final acted = _selectActed;
+          _selectActed = false;
+          if (!acted) _activate();
+          return KeyEventResult.handled;
+        }
+        // KeyRepeatEvent: swallow; the hold timer drives the menu.
         return KeyEventResult.handled;
       }
       return KeyEventResult.ignored;
@@ -224,11 +265,23 @@ class _ChannelTileState extends State<ChannelTile> {
 
   @override
   void dispose() {
+    _selectHoldTimer?.cancel();
     // fix558: only dispose a node we created — a caller-supplied node is the
     // caller's responsibility (e.g. it's reused across rebuilds to stay a
     // stable cross-section target).
     if (_ownsFocusNode) _focusNode.dispose();
     super.dispose();
+  }
+
+  // fix586 (#6): the InkWell's primary action, shared by touch onTap and the
+  // quick-press D-pad path. categoryToggleMode toggles the category's enabled
+  // flag; everything else plays the channel.
+  Future<void> _activate() async {
+    if (widget.categoryToggleMode && widget.onToggleEnabled != null) {
+      await widget.onToggleEnabled!(!(widget.channel.groupEnabled ?? true));
+    } else {
+      await play();
+    }
   }
 
   Future<void> _onLongPress() async {
@@ -645,10 +698,7 @@ class _ChannelTileState extends State<ChannelTile> {
         focusNode: _focusNode,
         autofocus: widget.autofocus,
         onLongPress: _onLongPress,
-        onTap: widget.categoryToggleMode && widget.onToggleEnabled != null
-            ? () async => await widget
-                .onToggleEnabled!(!(widget.channel.groupEnabled ?? true))
-            : () async => await play(),
+        onTap: _activate,
         child: widget.poster
             ? _buildPoster(context)
             : Row(

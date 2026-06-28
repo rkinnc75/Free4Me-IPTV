@@ -41,6 +41,7 @@ import 'package:open_tv/loading.dart';
 import 'package:open_tv/models/home_manager.dart';
 import 'package:open_tv/models/id_data.dart';
 import 'package:open_tv/models/settings.dart';
+import 'package:open_tv/confirm_exit_scope.dart';
 import 'package:open_tv/models/source.dart';
 import 'package:open_tv/models/source_type.dart';
 import 'package:open_tv/models/view_type.dart';
@@ -3282,6 +3283,24 @@ class _SettingsState extends State<SettingsView> {
                           );
                         },
                       ),
+                      // fix587 (#23): require a second Back to leave the app.
+                      _switchTile(
+                        label: 'Confirm to exit',
+                        value: settings.confirmToExit,
+                        help: (
+                          title: 'Confirm to Exit',
+                          body:
+                              'When on, pressing Back on the main screen shows '
+                              '"Press Back again to exit" and only a second Back '
+                              'within two seconds closes the app. Helps avoid '
+                              'exiting by accident with a TV remote.\n\nOff by '
+                              'default — Back exits immediately.',
+                        ),
+                        onChanged: (v) async {
+                          setState(() => settings.confirmToExit = v);
+                          await updateSettings();
+                        },
+                      ),
                       // Stream scanner
                       _bufferSlider(
                         label: "Streams per scan",
@@ -4518,6 +4537,16 @@ class _SettingsState extends State<SettingsView> {
 
   @override
   Widget build(BuildContext context) {
+    // fix587 (#23): confirm-to-exit guard. No-op unless the setting is on AND
+    // Back would exit the app (ConfirmExitScope's !Navigator.canPop() guard),
+    // so on TV — where Settings is a sub-route — Back still returns normally.
+    return ConfirmExitScope(
+      enabled: settings.confirmToExit,
+      child: _buildSettingsBody(context),
+    );
+  }
+
+  Widget _buildSettingsBody(BuildContext context) {
     // fix512: Android-TV rail (groups) + pane (settings) layout. Reuses the
     // exact same settings widgets as the phone ExpansionTiles via the getters.
     if (widget.tvRailPane) return _buildTvRailPane();

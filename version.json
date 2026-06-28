@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.2",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.2",
+  "latest": "2.2.3",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.3",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 TV: fixed the left arrow not returning to the category list from a channel in the Live guide. Pressing left now reliably brings the category list back and highlights the current category.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.2/Free4Me-IPTV-2.2.2-arm64.apk"
+  "releaseNotes": "\u2022 TV: you can now open a channel's menu with the remote \u2014 hold OK/Select on a channel for a moment to open it (a quick press still plays). This makes \"Open in Multi-view\" and the other options reachable without a touchscreen.\n\u2022 New setting \"Confirm to exit\" (Settings \u203a General): when on, pressing Back on the main screen asks for a second Back before closing the app, so you don't exit by accident. Off by default.\n\u2022 TV: fixed the left arrow not returning to the category list from a channel in the Live guide. Pressing left now reliably brings the category list back and highlights the current category.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.3/Free4Me-IPTV-2.2.3-arm64.apk"
 }

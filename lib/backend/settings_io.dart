@@ -656,6 +656,7 @@ class SettingsIo {
         'contentTypeFilter': s.contentTypeFilter.index,
         'searchMethod': s.searchMethod.index,
         'safeMode': s.safeMode,
+        'confirmToExit': s.confirmToExit, // fix587 (#23)
 
         // fix394: Developer / libmpv advanced tunables (schema v4).
         'devDemuxerReadaheadSecs': s.devDemuxerReadaheadSecs,
@@ -762,6 +763,7 @@ class SettingsIo {
           SearchMethod.inMemory;
     }
     if (m['safeMode'] is bool) s.safeMode = m['safeMode'];
+    if (m['confirmToExit'] is bool) s.confirmToExit = m['confirmToExit']; // fix587
 
     // fix394: Developer / libmpv advanced tunables. Each guard is `is num`
     // / `is bool` / `is String` — when the field is missing (older backup,

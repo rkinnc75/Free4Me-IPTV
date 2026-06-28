@@ -202,6 +202,11 @@ class Settings {
   /// any term from [safeModeBlocklist] are excluded from all views.
   bool safeMode;
 
+  /// fix587 (#23): when true, pressing Back at a top-level screen requires a
+  /// second Back within a short window to exit the app ("Press back again to
+  /// exit"). Default false — Back exits immediately as before.
+  bool confirmToExit;
+
   // ─── fix394: Developer / libmpv advanced tunables ────────────────────────
   // Defaults match libmpv upstream exactly so the Developer section is a
   // no-op until the user opts in. See lib/models/dev_mpv_options.dart for
@@ -331,6 +336,7 @@ class Settings {
     this.contentTypeFilter = ContentTypeFilter.all,
     this.searchMethod = SearchMethod.inMemory,
     this.safeMode = false,
+    this.confirmToExit = false,
 
     // fix394: Developer / libmpv advanced tunables — defaults match libmpv
     // upstream exactly. See lib/models/dev_mpv_options.dart.

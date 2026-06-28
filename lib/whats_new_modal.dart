@@ -6,7 +6,13 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
-  '2.2.2': [
+  '2.2.3': [
+    'TV: you can now open a channel\'s menu with the remote — hold OK/Select on a '
+        'channel for a moment to open it (a quick press still plays). This makes '
+        '"Open in Multi-view" and the other options reachable without a touchscreen.',
+    'New setting "Confirm to exit" (Settings › General): when on, pressing Back on '
+        'the main screen asks for a second Back before closing the app, so you '
+        'don\'t exit by accident. Off by default.',
     'TV: fixed the left arrow not returning to the category list from a channel '
         'in the Live guide. Pressing left now reliably brings the category list '
         'back and highlights the current category.',
