@@ -1126,6 +1126,35 @@ class EpgDbFactory {
     // the explicit Sql.checkpointAndTruncateWal() calls control flushing.
     await db.execute('PRAGMA wal_autocheckpoint = 8000');
 
+    // fix593: self-heal the programme-title FTS. programmes_fts is only
+    // (re)built after an XMLTV refresh (epg_service) — never on a plain source
+    // refresh or app start. If programmes were loaded but the FTS is empty (or
+    // out of sync), EPG title search returns 0 and the search "On now"/"Coming
+    // up" shelves are silently always empty (diag 2026-06-28: epgProg=.../0 on
+    // every query while the guide showed NOW/NEXT). Rebuild once if the counts
+    // disagree. The counts are cheap; the rebuild only runs when actually stale.
+    try {
+      final progCount = (await db.get('SELECT count(*) c FROM programmes'))['c']
+              as int? ??
+          0;
+      final ftsCount =
+          (await db.get('SELECT count(*) c FROM programmes_fts'))['c'] as int? ??
+              0;
+      AppLog.info('EpgDb: programmes=$progCount programmes_fts=$ftsCount');
+      if (progCount > 0 && ftsCount != progCount) {
+        AppLog.warn('EpgDb: programmes_fts stale (fts=$ftsCount vs '
+            'programmes=$progCount) — rebuilding (fix593)');
+        await db
+            .execute("INSERT INTO programmes_fts(programmes_fts) VALUES('rebuild');");
+        final after =
+            (await db.get('SELECT count(*) c FROM programmes_fts'))['c'] as int? ??
+                0;
+        AppLog.info('EpgDb: programmes_fts rebuilt — now $after rows');
+      }
+    } catch (e) {
+      AppLog.warn('EpgDb: programmes_fts self-heal check failed — $e');
+    }
+
     return db;
   }
 

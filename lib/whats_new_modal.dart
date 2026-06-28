@@ -6,6 +6,15 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.6': [
+    'Fixed a crash in multi-view: after streams reconnected, the picture cells '
+        'could slip onto hardware decoding and overwhelm lower-memory boxes. '
+        'They now stay on the safe decoder.',
+    'Search: "On now" and "Coming up" results work again — the programme-guide '
+        'search index is rebuilt automatically if it was empty.',
+    'Removed the experimental dwell preview from the Movies/Series grids (live '
+        'preview stays in the TV guide).',
+  ],
   '2.2.5': [
     'Under the hood: the release build is now code- and resource-shrunk (R8), '
         'trimming unused code for a leaner app. No feature changes.',

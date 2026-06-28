@@ -197,7 +197,12 @@ class _TvSearchViewState extends State<TvSearchView> {
     AppLog.info('TvSearch._run: query="$query" total=${swTotal.elapsedMilliseconds}ms '
         '(name=${swName.elapsedMilliseconds}ms/${nameResults.length} '
         'epgProg=${swProg.elapsedMilliseconds}ms/${programmes.length} '
-        'epgCh=${swEpgCh.elapsedMilliseconds}ms/${epgChannels.length})');
+        'epgCh=${swEpgCh.elapsedMilliseconds}ms/${epgChannels.length}) '
+        // fix592: per-shelf breakdown so a "missing series/movies" report is
+        // diagnosable from the log (which media types the name match returned).
+        'shelves[onNow=${onNow.length} comingUp=${comingUp.length} '
+        'channels=${channels.length} movies=${movies.length} '
+        'series=${series.length}]');
     setState(() {
       _onNow = onNow;
       _comingUp = comingUp;

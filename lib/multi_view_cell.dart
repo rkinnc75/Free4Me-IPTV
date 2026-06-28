@@ -101,6 +101,10 @@ class _MultiViewCellState extends State<MultiViewCell> {
   /// does not need another DB read.
   Map<String, String>? _lastHttpHeaders;
 
+  /// fix591: ignoreSsl for the current stream, cached so the quick re-open can
+  /// re-apply mpv options (esp. hwdec) without re-reading the DB.
+  bool _lastIgnoreSsl = false;
+
   /// Per-cell transient retry counter. Resets to 0 on a fresh
   /// [_startEngine] call and on 15 s of stable playback after an error.
   int _transientRetries = 0;
@@ -268,6 +272,16 @@ class _MultiViewCellState extends State<MultiViewCell> {
           '$_maxQuickReopens) cell=${widget.cellIndex} channel="${ch.name}"',
         );
         try {
+          // fix591: re-apply mpv options BEFORE re-opening. The previous quick
+          // re-open called open() alone, so hwdec was not re-asserted and mpv
+          // reverted to its hardware default (auto-safe -> mediacodec-copy).
+          // On a connection-cycling provider the 2x2 cells crept onto hardware
+          // MediaCodec, and 4 concurrent sessions exhausted the codec/GPU on
+          // the 2 GB onn -> native crash (diag 2026-06-28). reapplyOptions
+          // re-pins hwdec=no (software, per multiViewDecode=auto on low-RAM).
+          if (eng is MpvEngine) {
+            await eng.reapplyOptions(url: ch.url ?? '', ignoreSsl: _lastIgnoreSsl);
+          }
           await eng.open(
               url: ch.url ?? '', headers: _lastHttpHeaders, isLive: true);
           // fix346: clear the de-dup flag only now that the re-open has
@@ -455,10 +469,11 @@ class _MultiViewCellState extends State<MultiViewCell> {
     // defaults (cache-secs=10, no network-timeout, default UA) instead of
     // the app-tuned values (liveCacheSecs=45, network-timeout=30,
     // miniDemuxerMaxMB for the demuxer cap, etc.).
+    _lastIgnoreSsl = _ignoreSslFromHeaders(chHeaders); // fix591
     if (engine is MpvEngine) {
       await engine.reapplyOptions(
         url: ch.url ?? '',
-        ignoreSsl: _ignoreSslFromHeaders(chHeaders),
+        ignoreSsl: _lastIgnoreSsl,
       );
       if (!mounted || generation != _openGeneration) {
         unawaited(engine.dispose().catchError((Object e) {

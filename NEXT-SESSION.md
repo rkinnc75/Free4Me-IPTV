@@ -64,6 +64,33 @@ narrative (skim only if useful).
   compact overlay in a live 2×2, #23 enabled double-back. Runbooks fix585–590
   carry the exact steps.
 
+## Pending — proposed (REVIEW before implementing)
+
+- **Audio/Music content level.** Add a 4th top-level content type ("Audio/Music")
+  alongside Live / Movies / Series — browsable AND toggle-able per source in the
+  category management (same enable/deselect UX as the existing 3, cf. fix278
+  categoryToggle). **Review questions first:**
+  - *Identification:* there is NO native audio/music marker. `MediaType` is only
+    {livestream, movie, serie, group}; Xtream `getLiveStreams` lumps radio/music
+    into `livestream`, music videos land in `movie`. Realistic detection =
+    category/group-NAME keyword heuristic (Music/Radio/FM/Audio/…), modeled on
+    `safeModeBlocklist`. Stream-probing for audio-only tracks is accurate but too
+    expensive at ~149k channels. Confirm the heuristic is acceptable.
+  - *Scope:* a real new `MediaType` value touches the whole pipeline — enum +
+    DB migration, xtream/m3u classification, browse views, category management,
+    content-type filter. Decide: a true new media level vs. a derived *view/tag*
+    over existing livestream/movie rows (lower-risk, no migration).
+  - **User: review findings + pick the approach before any code.** (Added
+    2026-06-28.) See memory `free4me-audio-music-level`.
+
+- **Diagnostic report: bundle a settings export.** The report currently uploads
+  only the log (`reports/<ts>.log` in the -private repo). Add a SECOND file — a
+  settings export (the `settings_io` toJson) — so settings are available for
+  review alongside the log "just in case settings matter." MUST scrub source
+  private info (username / password / host) — the log already redacts these
+  (`<Dino_HOST>` / `<Dino_USER>` / `<Dino_PASS>`); reuse that scrubber for the
+  settings file. (Added 2026-06-28, Rich.)
+
 ## Backlog (status-audited against HEAD 2026-06-27)
 
 Legend: ✅ done/close · 🔧 done-in-code, needs on-device validation · ⚠️ re-verify

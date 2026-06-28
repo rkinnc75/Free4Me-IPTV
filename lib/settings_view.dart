@@ -2886,26 +2886,6 @@ class _SettingsState extends State<SettingsView> {
                           updateSettings();
                         },
                       ),
-                      // fix589 (#5): dwell preview in the Movies/Series browse grid.
-                      _switchTile(
-                        label: "Preview on dwell in browse",
-                        value: settings.tvBrowseDwellPreview,
-                        help: (
-                          title: 'Preview on dwell in browse',
-                          body:
-                              'In the TV Movies / Series grid, pausing on a card '
-                              'for about 3 seconds starts a muted preview of that '
-                              'title in a corner. Uses a single shared player and '
-                              'stops as soon as you move to the category list or '
-                              'leave the grid. Off by default — most useful on '
-                              'boxes with memory to spare (the onn 4K stays off '
-                              'unless you turn it on here).',
-                        ),
-                        onChanged: (v) {
-                          setState(() => settings.tvBrowseDwellPreview = v);
-                          updateSettings();
-                        },
-                      ),
                       _switchTile(
                         label: "Pre-warm streams on focus",
                         value: settings.preWarmOnFocus,

@@ -657,7 +657,6 @@ class SettingsIo {
         'searchMethod': s.searchMethod.index,
         'safeMode': s.safeMode,
         'confirmToExit': s.confirmToExit, // fix587 (#23)
-        'tvBrowseDwellPreview': s.tvBrowseDwellPreview, // fix589 (#5)
 
         // fix394: Developer / libmpv advanced tunables (schema v4).
         'devDemuxerReadaheadSecs': s.devDemuxerReadaheadSecs,
@@ -765,9 +764,6 @@ class SettingsIo {
     }
     if (m['safeMode'] is bool) s.safeMode = m['safeMode'];
     if (m['confirmToExit'] is bool) s.confirmToExit = m['confirmToExit']; // fix587
-    if (m['tvBrowseDwellPreview'] is bool) {
-      s.tvBrowseDwellPreview = m['tvBrowseDwellPreview']; // fix589 (#5)
-    }
 
     // fix394: Developer / libmpv advanced tunables. Each guard is `is num`
     // / `is bool` / `is String` — when the field is missing (older backup,
