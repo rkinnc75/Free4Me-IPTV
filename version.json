@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.4",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.4",
+  "latest": "2.2.5",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.5",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 TV: in the Movies and Series grids, pausing on a title for about 3 seconds now plays a muted preview in the corner. Off by default \u2014 turn on \"Preview on dwell in browse\" in Settings (best on boxes with memory to spare).\n\u2022 Multi-view: when debug logging is on, each cell now shows a small playback-stats readout (resolution, frame rate, dropped frames) sized to fit.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.4/Free4Me-IPTV-2.2.4-arm64.apk"
+  "releaseNotes": "\u2022 Under the hood: the release build is now code- and resource-shrunk (R8), trimming unused code for a leaner app. No feature changes.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.5/Free4Me-IPTV-2.2.5-arm64.apk"
 }

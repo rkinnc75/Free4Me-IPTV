@@ -78,6 +78,17 @@ android {
             // those builds are not safe to distribute as updates to existing
             // installs.
             signingConfig = hasReleaseKeystore ? signingConfigs.release : signingConfigs.debug
+
+            // fix590 (#16): R8 code + resource shrinking. proguard-rules.pro
+            // keeps the JNI / reflection / manifest-referenced classes that R8
+            // would otherwise strip or rename (media_kit, Cast, workmanager,
+            // foreground-task, the plus plugins, MainActivity/Application).
+            // -dontobfuscate is set in the rules file for this FIRST pass so a
+            // crash can never be a renamed-symbol mismatch; revisit renaming
+            // only after on-device soak.
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 }
