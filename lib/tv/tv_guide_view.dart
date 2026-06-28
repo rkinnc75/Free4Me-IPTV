@@ -221,12 +221,22 @@ class TvGuideViewState extends State<TvGuideView> {
       _channels = scoped;
       _progByKey = byKey;
       _loading = false;
-      // fix598: entering channels mode remounts the rail (it's keyed by mode),
-      // so the first channel's `autofocus` lands focus at the top and fires
-      // onFocusGained (which highlights the grid + arms the preview). No fragile
-      // cross-rebuild requestFocus — that was the on-device focus-stranding bug.
       if (enterChannels) _railMode = RailMode.channels;
     });
+    // fix599: the rail remount + first-channel autofocus is best-effort, but on
+    // the swap the focused category tile unmounts and focus escapes UP to the
+    // nav before autofocus claims the new tile (verified on-device v2.2.9). FORCE
+    // focus to the first channel in a post-frame — it fires reliably (setState
+    // scheduled the frame) and runs AFTER the unmount/escape settles, so it
+    // overrides the nav grab.
+    if (enterChannels && scoped.isNotEmpty) {
+      final firstId = scoped.first.id;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _railMode == RailMode.channels && firstId != null) {
+          _channelNodes[firstId]?.requestFocus();
+        }
+      });
+    }
   }
 
   // fix597: OK on a category → (re)load it and switch the rail to channels.
@@ -262,11 +272,15 @@ class TvGuideViewState extends State<TvGuideView> {
       return KeyEventResult.ignored;
     }
     if (_railMode != RailMode.channels) return KeyEventResult.ignored;
-    // fix598: swap to categories — the rail remounts (keyed by mode) and the
-    // SELECTED category's `autofocus` (_categoryItem) restores focus there. No
-    // cross-rebuild requestFocus (that stranded/mis-targeted focus on-device).
-    // ALWAYS handled so LEFT never falls through to directional traversal.
+    // fix598/599: swap to categories. The SELECTED category's autofocus is
+    // best-effort; FORCE focus to it in a post-frame (same escape-to-nav race as
+    // entering channels). ALWAYS handled so LEFT never falls through to
+    // directional traversal.
     setState(() => _railMode = RailMode.categories);
+    final target = _railNodes[_selectedGroupId] ?? _railNodes[null];
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _railMode == RailMode.categories) target?.requestFocus();
+    });
     return KeyEventResult.handled;
   }
 

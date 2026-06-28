@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.9",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.9",
+  "latest": "2.2.10",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.10",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 TV Live guide: fixed focus when switching the left list \u2014 choosing a category now reliably lands on the first channel, and pressing Left on a channel returns to the category you were in.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.9/Free4Me-IPTV-2.2.9-arm64.apk"
+  "releaseNotes": "\u2022 TV Live guide: focus now reliably lands on the first channel when you open a category, and returns to that category when you press Left (fixes focus jumping to the top menu).",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.10/Free4Me-IPTV-2.2.10-arm64.apk"
 }

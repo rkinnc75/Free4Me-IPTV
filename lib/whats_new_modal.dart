@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.10': [
+    'TV Live guide: focus now reliably lands on the first channel when you open a '
+        'category, and returns to that category when you press Left (fixes focus '
+        'jumping to the top menu).',
+  ],
   '2.2.9': [
     'TV Live guide: fixed focus when switching the left list — choosing a '
         'category now reliably lands on the first channel, and pressing Left on a '
