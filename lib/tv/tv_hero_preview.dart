@@ -44,6 +44,7 @@ class TvHeroPreview extends ChangeNotifier {
     required Settings settings,
     required int dwellMs,
     required bool liveEnabled,
+    bool isLive = true, // fix589 (#5): browse VOD previews open non-live
   }) {
     if (_disposed) return;
     _dwell?.cancel();
@@ -53,11 +54,11 @@ class TvHeroPreview extends ChangeNotifier {
     }
     _dwell = Timer(
       Duration(milliseconds: dwellMs),
-      () => unawaited(_warm(ch, settings)),
+      () => unawaited(_warm(ch, settings, isLive)),
     );
   }
 
-  Future<void> _warm(Channel ch, Settings settings) async {
+  Future<void> _warm(Channel ch, Settings settings, bool isLive) async {
     if (_disposed) return;
     final g = ++_gen;
     // Tear down the previous engine FIRST (serialized texture release) so only
@@ -109,7 +110,7 @@ class TvHeroPreview extends ChangeNotifier {
           notifyListeners(); // cross-fade video over the art
         }
       });
-      await engine.open(url: ch.url ?? '', isLive: true);
+      await engine.open(url: ch.url ?? '', isLive: isLive);
       // If superseded during open, the newer _warm already tore this engine
       // down — do nothing here.
       if (g != _gen || _disposed) return;

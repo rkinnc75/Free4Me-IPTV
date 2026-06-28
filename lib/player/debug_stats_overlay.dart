@@ -17,7 +17,17 @@ import 'package:open_tv/player/mpv_engine.dart';
 /// D-pad focus or touches.
 class DebugStatsOverlay extends StatefulWidget {
   final MpvEngine engine;
-  const DebugStatsOverlay({super.key, required this.engine});
+
+  /// fix588 (#22): when true, render a reduced 2-line panel (res + fps + drops)
+  /// at a smaller font, sized for a multi-view / PiP cell where the full 8-row
+  /// panel does not fit. The 1 Hz poll + STATS log line are unchanged.
+  final bool compact;
+
+  const DebugStatsOverlay({
+    super.key,
+    required this.engine,
+    this.compact = false,
+  });
 
   @override
   State<DebugStatsOverlay> createState() => _DebugStatsOverlayState();
@@ -153,6 +163,52 @@ class _DebugStatsOverlayState extends State<DebugStatsOverlay> {
     final cur = (_stats['hwdec-current'] ?? '').trim();
     final hwLine =
         '${_stats['hwdec'] ?? '—'} -> ${cur.isEmpty ? '(software)' : cur}';
+
+    // fix588 (#22): compact variant for small multi-view / PiP cells. Two short
+    // lines — resolution+codec and fps+drops — at the top-left so it clears the
+    // cell's own top-right volume badge and bottom info bar.
+    if (widget.compact) {
+      const cStyle = TextStyle(
+        color: Colors.white,
+        fontSize: 8,
+        fontFamily: 'monospace',
+        height: 1.25,
+        fontWeight: FontWeight.w600,
+      );
+      final dropWarn = _voDropDelta > 0 || _decDropDelta > 0;
+      return Positioned(
+        top: 4,
+        left: 4,
+        child: IgnorePointer(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.6),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${_stats['width'] ?? '—'}x${_stats['height'] ?? '—'} '
+                  '${_stats['video-codec'] ?? ''}',
+                  style: cStyle,
+                ),
+                Text(
+                  '${_fps(_stats['estimated-vf-fps'])}fps  '
+                  'd ${_stats['frame-drop-count'] ?? '—'}/'
+                  '${_stats['decoder-frame-drop-count'] ?? '—'}',
+                  style: cStyle.copyWith(
+                    color: dropWarn ? const Color(0xFFFFC107) : Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
     return Positioned(
       top: 8,

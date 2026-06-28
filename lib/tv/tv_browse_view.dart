@@ -13,6 +13,7 @@ import 'package:open_tv/models/node.dart';
 import 'package:open_tv/models/node_type.dart';
 import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/view_type.dart';
+import 'package:open_tv/tv/tv_hero_preview.dart';
 
 /// fix507: the TV Movies / Series browse screen.
 ///
@@ -65,6 +66,15 @@ class _TvBrowseViewState extends State<TvBrowseView> {
   int _inv = 0;
   final ScrollController _gridController = ScrollController();
 
+  // fix589 (#5): single-engine, muted, dwell-gated browse preview. Reuses the
+  // proven TvHeroPreview controller (teardown-before-allocate, gen-token,
+  // forceSoftwareDecode). Opt-in via settings.tvBrowseDwellPreview (default
+  // OFF; RAM-sensitive on the 2 GB onn). One instance owned by this view.
+  final TvHeroPreview _preview = TvHeroPreview();
+  static const int _dwellMs = 3000;
+
+  Settings get _liveSettings => SettingsService.cached ?? widget.settings;
+
   @override
   void initState() {
     super.initState();
@@ -73,6 +83,7 @@ class _TvBrowseViewState extends State<TvBrowseView> {
 
   @override
   void dispose() {
+    _preview.disposeController();
     _gridController.dispose();
     super.dispose();
   }
@@ -121,6 +132,7 @@ class _TvBrowseViewState extends State<TvBrowseView> {
   static const int _favGroupId = -1;
 
   Future<void> _loadItems(int? groupId, String label) async {
+    unawaited(_preview.stop()); // fix589 (#5): drop any preview on category switch
     final inv = ++_inv;
     setState(() {
       _loading = true;
@@ -241,7 +253,13 @@ class _TvBrowseViewState extends State<TvBrowseView> {
       );
     }
     final noun = widget.mediaType == MediaType.serie ? 'series' : 'titles';
-    return Column(
+    // fix589 (#5): Stack so the muted dwell preview can float as a corner PiP
+    // over the grid. The grid is wrapped in a non-focusable Focus whose
+    // onFocusChange tears the preview down the instant focus leaves the grid
+    // (to the rail / navbar) — tile-to-tile stays within the subtree.
+    return Stack(
+      children: [
+        Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
@@ -252,7 +270,13 @@ class _TvBrowseViewState extends State<TvBrowseView> {
           ),
         ),
         Expanded(
-          child: GridView.builder(
+          child: Focus(
+            canRequestFocus: false,
+            skipTraversal: true,
+            onFocusChange: (has) {
+              if (!has) unawaited(_preview.stop());
+            },
+            child: GridView.builder(
             controller: _gridController,
             padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
             // fix508: portrait poster wall (cover image + title) — the mockup
@@ -283,11 +307,53 @@ class _TvBrowseViewState extends State<TvBrowseView> {
                 autofocus: i == 0,
                 playlist: _items,
                 playlistIndex: i,
+                // fix589 (#5): arm the dwell preview for this tile. Movies open
+                // non-live (seekable VOD); any livestream tiles open live.
+                onFocusGained: (c) => _preview.onChannelFocused(
+                  c,
+                  settings: _liveSettings,
+                  dwellMs: _dwellMs,
+                  liveEnabled: _liveSettings.tvBrowseDwellPreview,
+                  isLive: c.mediaType == MediaType.livestream,
+                ),
               );
             },
           ),
+            ),
         ),
       ],
+        ),
+        _buildPreviewPip(),
+      ],
+    );
+  }
+
+  // fix589 (#5): muted dwell preview as a corner PiP over the grid. Rebuilds via
+  // the controller's ChangeNotifier when the preview goes live / falls back.
+  Widget _buildPreviewPip() {
+    return ListenableBuilder(
+      listenable: _preview,
+      builder: (context, _) {
+        final video = _preview.buildVideoView(context);
+        if (video == null) return const SizedBox.shrink();
+        return Positioned(
+          top: 12,
+          right: 12,
+          child: IgnorePointer(
+            child: Container(
+              width: 300,
+              height: 169, // 16:9
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: Colors.black,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.white24, width: 2),
+              ),
+              child: video,
+            ),
+          ),
+        );
+      },
     );
   }
 

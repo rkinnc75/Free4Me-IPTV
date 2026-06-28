@@ -87,6 +87,11 @@ class ChannelTile extends StatefulWidget {
   /// settings/sourceIds — there is no shared opener). Null = entry hidden.
   final Future<void> Function(Channel channel)? onOpenMultiView;
 
+  /// fix589 (#5): fired when this tile GAINS focus (D-pad dwell preview in the
+  /// TV browse grid). Emitted from the existing focus listener — no extra
+  /// listener. Null everywhere except the browse grid.
+  final void Function(Channel channel)? onFocusGained;
+
   /// fix397: the full ordered list this tile belongs to + this tile's index,
   /// so full-screen playback can surf channel +/- through the same list. Null
   /// list = no surf context (single-channel launch).
@@ -122,6 +127,7 @@ class ChannelTile extends StatefulWidget {
     this.onFavoriteGroup, // fix308: category tiles only
     this.onOpenCategory, // fix308: channel long-press category link
     this.onOpenMultiView, // fix584 (#6): long-press → Multi-view (live only)
+    this.onFocusGained, // fix589 (#5): browse-grid dwell preview
     this.playlist, // fix397
     this.playlistIndex = 0, // fix397
     this.poster = false, // fix508: TV portrait poster layout
@@ -215,6 +221,7 @@ class _ChannelTileState extends State<ChannelTile> {
     _focusNode.addListener(() {
       if (mounted) setState(() {});
       if (_focusNode.hasFocus) {
+        widget.onFocusGained?.call(widget.channel); // fix589 (#5)
         _maybePrewarm();
         // fix560: requestFocus() alone does not scroll the focused widget
         // into view when it sits inside a shrink-wrapped, non-scrolling grid

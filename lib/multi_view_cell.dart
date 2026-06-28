@@ -11,6 +11,7 @@ import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/source.dart';
 import 'package:open_tv/player.dart';
+import 'package:open_tv/player/debug_stats_overlay.dart';
 import 'package:open_tv/player/mpv_engine.dart';
 import 'package:open_tv/player/player_engine.dart';
 import 'package:open_tv/widgets/now_next_strip.dart';
@@ -1171,6 +1172,15 @@ class _MultiViewCellState extends State<MultiViewCell> {
                 ),
               ),
             ),
+
+            // fix588 (#22): compact playback-stats overlay (top-left, clears the
+            // volume badge + info bar) when debug logging is on. The full panel
+            // is suppressed in multi-view; this is its cell-sized counterpart.
+            if (widget.settings.debugLogging && _engine is MpvEngine)
+              DebugStatsOverlay(
+                engine: _engine as MpvEngine,
+                compact: true,
+              ),
           ],
         ),
       ),

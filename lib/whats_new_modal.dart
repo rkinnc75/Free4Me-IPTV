@@ -6,6 +6,14 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.4': [
+    'TV: in the Movies and Series grids, pausing on a title for about 3 seconds '
+        'now plays a muted preview in the corner. Off by default — turn on '
+        '"Preview on dwell in browse" in Settings (best on boxes with memory to '
+        'spare).',
+    'Multi-view: when debug logging is on, each cell now shows a small playback-'
+        'stats readout (resolution, frame rate, dropped frames) sized to fit.',
+  ],
   '2.2.3': [
     'TV: you can now open a channel\'s menu with the remote — hold OK/Select on a '
         'channel for a moment to open it (a quick press still plays). This makes '

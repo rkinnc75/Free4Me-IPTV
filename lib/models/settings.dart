@@ -207,6 +207,12 @@ class Settings {
   /// exit"). Default false — Back exits immediately as before.
   bool confirmToExit;
 
+  /// fix589 (#5): when true, dwelling ~3 s on a tile in the TV Movies/Series
+  /// browse grid auto-starts a muted single-engine preview (reuses the proven
+  /// TvHeroPreview controller). Default false — RAM-sensitive on the 2 GB onn,
+  /// so it stays opt-in. Distinct from [tvHeroLivePreview] (the Live EPG guide).
+  bool tvBrowseDwellPreview;
+
   // ─── fix394: Developer / libmpv advanced tunables ────────────────────────
   // Defaults match libmpv upstream exactly so the Developer section is a
   // no-op until the user opts in. See lib/models/dev_mpv_options.dart for
@@ -337,6 +343,7 @@ class Settings {
     this.searchMethod = SearchMethod.inMemory,
     this.safeMode = false,
     this.confirmToExit = false,
+    this.tvBrowseDwellPreview = false,
 
     // fix394: Developer / libmpv advanced tunables — defaults match libmpv
     // upstream exactly. See lib/models/dev_mpv_options.dart.

@@ -79,6 +79,7 @@ const searchMethodProp = "searchMethod";
 
 const safeModeProp = "safeMode";
 const confirmToExitProp = "confirmToExit"; // fix587 (#23)
+const tvBrowseDwellPreviewProp = "tvBrowseDwellPreview"; // fix589 (#5)
 
 // fix394: Developer / libmpv advanced tunables.
 const devDemuxerReadaheadSecsProp = "devDemuxerReadaheadSecs";
@@ -312,6 +313,9 @@ class SettingsService {
     final cte = settingsMap[confirmToExitProp]; // fix587 (#23)
     if (cte != null) settings.confirmToExit = int.parse(cte) == 1;
 
+    final bdp = settingsMap[tvBrowseDwellPreviewProp]; // fix589 (#5)
+    if (bdp != null) settings.tvBrowseDwellPreview = int.parse(bdp) == 1;
+
     // fix394: Developer / libmpv advanced tunables. Each gate is
     // `prop != null` so a missing persisted value (older backup, or never
     // set) leaves the constructor default in place.
@@ -475,6 +479,8 @@ class SettingsService {
     settingsMap[safeModeProp] = (settings.safeMode ? 1 : 0).toString();
     settingsMap[confirmToExitProp] =
         (settings.confirmToExit ? 1 : 0).toString(); // fix587 (#23)
+    settingsMap[tvBrowseDwellPreviewProp] =
+        (settings.tvBrowseDwellPreview ? 1 : 0).toString(); // fix589 (#5)
 
     // fix394: Developer / libmpv advanced tunables. Bools are stored as
     // 0/1 (matching the existing convention for `forceTVMode`,
