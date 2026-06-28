@@ -869,6 +869,20 @@ class _HomeState extends State<Home> {
                                     parentContext: context,
                                     setNode: setNode,
                                     isHistory: isHistory,
+                                    // fix584 (#6): long-press → Multi-view for
+                                    // live channels (uses this view's sourceIds).
+                                    onOpenMultiView: (ch) async {
+                                      final s = SettingsService.cached ??
+                                          await SettingsService.getSettings();
+                                      if (!context.mounted) return;
+                                      await MultiViewScreen.openWithChannel(
+                                        context,
+                                        s,
+                                        widget.home.filters.sourceIds ??
+                                            const [],
+                                        ch,
+                                      );
+                                    },
                                     autofocus: index == 0,
                                     // fix397: hand the tile the full result list
                                     // + its position so full-screen playback can

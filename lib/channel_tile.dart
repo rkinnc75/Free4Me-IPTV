@@ -81,6 +81,12 @@ class ChannelTile extends StatefulWidget {
   /// Categories list filtered to that category name. Null disables the tap.
   final void Function(String categoryName)? onOpenCategory;
 
+  /// fix584 (#6): long-press → "Open in Multi-view" for a LIVE channel. The
+  /// caller supplies a closure that opens MultiViewScreen with this channel
+  /// pre-assigned to the first free cell (each call site threads its own
+  /// settings/sourceIds — there is no shared opener). Null = entry hidden.
+  final Future<void> Function(Channel channel)? onOpenMultiView;
+
   /// fix397: the full ordered list this tile belongs to + this tile's index,
   /// so full-screen playback can surf channel +/- through the same list. Null
   /// list = no surf context (single-channel launch).
@@ -115,6 +121,7 @@ class ChannelTile extends StatefulWidget {
     this.onToggleEnabled, // fix278: category tiles only
     this.onFavoriteGroup, // fix308: category tiles only
     this.onOpenCategory, // fix308: channel long-press category link
+    this.onOpenMultiView, // fix584 (#6): long-press → Multi-view (live only)
     this.playlist, // fix397
     this.playlistIndex = 0, // fix397
     this.poster = false, // fix508: TV portrait poster layout
@@ -351,6 +358,18 @@ class _ChannelTileState extends State<ChannelTile> {
                     onTap: () async {
                       Navigator.pop(ctx);
                       await _watchInMiniPlayer();
+                    },
+                  ),
+                // fix584 (#6): open this live channel in Multi-view. Live-only
+                // (matches mini-player) and only when the caller wired an opener.
+                if (widget.channel.mediaType == MediaType.livestream &&
+                    widget.onOpenMultiView != null)
+                  ListTile(
+                    leading: const Icon(Icons.grid_view),
+                    title: const Text('Open in Multi-view'),
+                    onTap: () async {
+                      Navigator.pop(ctx);
+                      await widget.onOpenMultiView!(widget.channel);
                     },
                   ),
                 if (widget.isHistory && widget.channel.id != null)

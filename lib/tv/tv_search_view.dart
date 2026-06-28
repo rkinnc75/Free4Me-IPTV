@@ -15,6 +15,7 @@ import 'package:open_tv/models/node.dart';
 import 'package:open_tv/models/node_type.dart';
 import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/view_type.dart';
+import 'package:open_tv/multi_view_screen.dart';
 import 'package:open_tv/widgets/dpad_text_field.dart';
 
 /// fix502 / fix509: TV "what's on" search.
@@ -465,6 +466,12 @@ class _TvSearchViewState extends State<TvSearchView> {
                     focusNode: myNodes[i],
                     onFocusUpEscape:
                         _upTargetFor(i, col, columns, myNodes, prevLastRow),
+                    // fix584 (#6): long-press → Multi-view (live channels only).
+                    onOpenMultiView: (ch) async {
+                      final s = SettingsService.cached ?? widget.settings;
+                      await MultiViewScreen.openWithChannel(
+                          context, s, _sourceIds, ch);
+                    },
                   );
                 },
               );

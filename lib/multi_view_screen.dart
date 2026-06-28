@@ -11,6 +11,7 @@ import 'package:open_tv/models/multi_view_layout.dart';
 import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/source.dart';
 import 'package:open_tv/multi_view_cell.dart';
+import 'package:open_tv/player/overlay_player_controller.dart';
 
 /// Full-screen multi-view grid. Each cell is an independent stream.
 /// One cell holds audio focus at a time; the others play muted.
@@ -24,12 +25,47 @@ class MultiViewScreen extends StatefulWidget {
     required this.settings,
     required this.source,
     required this.sourceIds,
+    this.initialChannel, // fix584 (#6): pre-assign this channel after restore
   });
 
   final MultiViewLayout layout;
   final Settings settings;
   final Source? source;
   final List<int> sourceIds;
+
+  /// fix584 (#6): when opened from a channel's long-press "Open in Multi-view",
+  /// this channel is dropped into the first empty cell (cell 0 if all full)
+  /// after the saved layout is restored.
+  final Channel? initialChannel;
+
+  /// fix584 (#6): open Multi-view from a long-pressed LIVE channel, dropping it
+  /// into the first free cell. Each caller passes its OWN [sourceIds] (there is
+  /// no shared opener state). Uses the last-used layout, defaulting to 2×2 when
+  /// none has been chosen yet. Closes any mini-player overlay first.
+  static Future<void> openWithChannel(
+    BuildContext context,
+    Settings settings,
+    List<int> sourceIds,
+    Channel channel,
+  ) async {
+    if (sourceIds.isEmpty) return;
+    final layout = settings.multiViewLayout == MultiViewLayout.none
+        ? MultiViewLayout.twoByTwo
+        : settings.multiViewLayout;
+    await OverlayPlayerController.instance.stopOverlay();
+    if (!context.mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => MultiViewScreen(
+          layout: layout,
+          settings: settings,
+          source: null,
+          sourceIds: sourceIds,
+          initialChannel: channel,
+        ),
+      ),
+    );
+  }
 
   @override
   State<MultiViewScreen> createState() => _MultiViewScreenState();
@@ -51,7 +87,11 @@ class _MultiViewScreenState extends State<MultiViewScreen> {
   void initState() {
     super.initState();
     _channels = List.filled(_cellCount, null);
-    _restoreChannels();
+    // fix584 (#6): seed the long-pressed channel AFTER restore completes (covers
+    // every _restoreChannels exit path: auto-restore-off, no-saved, restored).
+    unawaited(_restoreChannels().then((_) {
+      if (mounted) _seedInitialChannel();
+    }));
     _initAudioSession();
   }
 
@@ -227,6 +267,17 @@ class _MultiViewScreenState extends State<MultiViewScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(msg), duration: const Duration(seconds: 8)),
     );
+  }
+
+  /// fix584 (#6): drop [widget.initialChannel] into the first empty cell
+  /// (preserving the restored layout); fall back to cell 0 if all are full.
+  /// Reuses _setChannel so it persists + records history like a manual pick.
+  void _seedInitialChannel() {
+    final ch = widget.initialChannel;
+    if (ch == null) return;
+    var idx = _channels.indexWhere((c) => c == null);
+    if (idx < 0) idx = 0;
+    _setChannel(idx, ch);
   }
 
   void _setChannel(int index, Channel channel) {

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:open_tv/backend/settings_service.dart';
@@ -66,6 +67,17 @@ class TvGuideViewState extends State<TvGuideView> {
   int _focusSeq = 0; // fix510: guards stale async focus callbacks
   bool _launching = false; // fix510: suppresses preview re-arm during _play
 
+  // fix584 (#4): collapse the category rail to a sliver once a category is
+  // chosen; D-pad LEFT from a channel re-expands it. _railNodes lets LEFT
+  // restore focus to the previously-selected category via EXPLICIT
+  // requestFocus (directional focus is unreliable here — fix558/562/563);
+  // _firstChannelNode lets a category select move focus into the channel list.
+  // NOT reset by reloadGuide()/_init (so a tab re-entry keeps the chosen state).
+  bool _railCollapsed = false;
+  final Map<int?, FocusNode> _railNodes = {};
+  final FocusNode _firstChannelNode =
+      FocusNode(debugLabel: 'guideFirstChannel');
+
   @override
   void initState() {
     super.initState();
@@ -78,6 +90,10 @@ class TvGuideViewState extends State<TvGuideView> {
   @override
   void dispose() {
     _preview.disposeController();
+    for (final n in _railNodes.values) {
+      n.dispose(); // fix584 (#4)
+    }
+    _firstChannelNode.dispose(); // fix584 (#4)
     super.dispose();
   }
 
@@ -129,7 +145,7 @@ class TvGuideViewState extends State<TvGuideView> {
     await _loadGuide(null);
   }
 
-  Future<void> _loadGuide(int? groupId) async {
+  Future<void> _loadGuide(int? groupId, {bool fromUser = false}) async {
     final inv = ++_inv;
     // fix541: re-anchor the EPG window to NOW on every load. _windowStart/_End
     // were set ONCE in initState; because the guide is kept alive by the shell's
@@ -194,7 +210,39 @@ class TvGuideViewState extends State<TvGuideView> {
       _channels = scoped;
       _progByKey = byKey;
       _loading = false;
+      // fix584 (#4): a user category pick collapses the rail; the initial load
+      // (fromUser:false) leaves it expanded so categories are visible at entry.
+      if (fromUser) _railCollapsed = true;
     });
+    // fix584 (#4): move focus into the channel list after a user pick (the
+    // list rebuilt, so autofocus on row 0 will not re-fire — request it
+    // explicitly). Guarded by inv so a newer load does not steal focus.
+    if (fromUser) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && inv == _inv && scoped.isNotEmpty) {
+          _firstChannelNode.requestFocus();
+        }
+      });
+    }
+  }
+
+  /// fix584 (#4): D-pad LEFT from a channel re-expands the rail (if collapsed)
+  /// and restores focus to the selected category. ALWAYS handled and ALWAYS an
+  /// explicit requestFocus to the stored node — never a fall-through to
+  /// directional traversal, which is unreliable across these grids
+  /// (fix558/562/563) and would strand focus.
+  KeyEventResult _onChannelLeftKey(KeyEvent e) {
+    if (e is! KeyDownEvent && e is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (e.logicalKey != LogicalKeyboardKey.arrowLeft) {
+      return KeyEventResult.ignored;
+    }
+    if (_railCollapsed) setState(() => _railCollapsed = false);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _railNodes[_selectedGroupId]?.requestFocus();
+    });
+    return KeyEventResult.handled;
   }
 
   Future<void> _play(Channel ch) async {
@@ -245,7 +293,23 @@ class TvGuideViewState extends State<TvGuideView> {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        SizedBox(width: 210, child: _rail()),
+        // fix584 (#4): animate the rail between full (210) and a thin sliver
+        // (18) once a category is chosen, reclaiming width for the guide. The
+        // rail content is kept laid out at 210 (OverflowBox) and clipped, so
+        // every category FocusNode stays mounted — LEFT-restore can target it.
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+          width: _railCollapsed ? 18 : 210,
+          child: ClipRect(
+            child: OverflowBox(
+              alignment: Alignment.centerLeft,
+              minWidth: 210,
+              maxWidth: 210,
+              child: _rail(),
+            ),
+          ),
+        ),
         const VerticalDivider(width: 1),
         Expanded(child: _ready ? _guide() : const SizedBox.shrink()),
       ],
@@ -271,7 +335,9 @@ class TvGuideViewState extends State<TvGuideView> {
     final selected = groupId == _selectedGroupId;
     return _FocusTile(
       selected: selected,
-      onTap: () => _loadGuide(groupId),
+      // fix584 (#4): stable node so LEFT from a channel can restore focus here.
+      focusNode: _railNodes[groupId] ??= FocusNode(debugLabel: 'rail-$groupId'),
+      onTap: () => _loadGuide(groupId, fromUser: true),
       child: Row(
         children: [
           Icon(icon, size: 18),
@@ -540,6 +606,10 @@ class TvGuideViewState extends State<TvGuideView> {
             width: 144,
             child: _FocusTile(
               selected: false,
+              // fix584 (#4): row 0 holds a stable node so a category select can
+              // move focus here; LEFT on any channel re-expands the rail.
+              focusNode: autofocus ? _firstChannelNode : null,
+              onKeyEvent: _onChannelLeftKey,
               onTap: () => _play(ch),
               autofocus: autofocus,
               onFocusGained: (_) => _onChannelFocused(ch),
@@ -641,12 +711,20 @@ class _FocusTile extends StatefulWidget {
   final VoidCallback onTap;
   final Widget child;
   final ValueChanged<bool>? onFocusGained;
+  /// fix584 (#4): caller-supplied node so another widget can requestFocus this
+  /// tile directly (rail categories + the first channel row).
+  final FocusNode? focusNode;
+  /// fix584 (#4): observe keys bubbling from the tile (e.g. LEFT on a channel
+  /// to re-expand the rail). Returns handled to stop directional traversal.
+  final KeyEventResult Function(KeyEvent)? onKeyEvent;
   const _FocusTile({
     required this.selected,
     required this.onTap,
     required this.child,
     this.autofocus = false,
     this.onFocusGained,
+    this.focusNode,
+    this.onKeyEvent,
   });
 
   @override
@@ -659,7 +737,7 @@ class _FocusTileState extends State<_FocusTile> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Padding(
+    Widget tile = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       child: Material(
         color: widget.selected
@@ -667,6 +745,7 @@ class _FocusTileState extends State<_FocusTile> {
             : Colors.transparent,
         borderRadius: BorderRadius.circular(8),
         child: InkWell(
+          focusNode: widget.focusNode, // fix584 (#4)
           autofocus: widget.autofocus,
           onTap: widget.onTap,
           onFocusChange: (v) {
@@ -687,6 +766,16 @@ class _FocusTileState extends State<_FocusTile> {
           ),
         ),
       ),
+    );
+    final onKey = widget.onKeyEvent;
+    if (onKey == null) return tile;
+    // fix584 (#4): non-focusable observer — catches keys bubbling from the
+    // focused InkWell (e.g. LEFT) without taking focus or joining traversal.
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onKeyEvent: (_, e) => onKey(e),
+      child: tile,
     );
   }
 }
