@@ -217,34 +217,16 @@ class TvGuideViewState extends State<TvGuideView> {
     for (final list in byKey.values) {
       list.sort((a, b) => a.startUtc.compareTo(b.startUtc));
     }
-    // fix597: pre-create the channel FocusNodes so the immediate requestFocus
-    // below lands once the rail rebuilds in channels mode.
-    for (final ch in scoped) {
-      final id = ch.id;
-      if (id != null) {
-        _channelNodes.putIfAbsent(id, () => FocusNode(debugLabel: 'chan-$id'));
-      }
-    }
     setState(() {
       _channels = scoped;
       _progByKey = byKey;
       _loading = false;
+      // fix598: entering channels mode remounts the rail (it's keyed by mode),
+      // so the first channel's `autofocus` lands focus at the top and fires
+      // onFocusGained (which highlights the grid + arms the preview). No fragile
+      // cross-rebuild requestFocus — that was the on-device focus-stranding bug.
       if (enterChannels) _railMode = RailMode.channels;
     });
-    // fix597: on OK-into-channels, move focus to the first channel in the rail.
-    // setState scheduled a frame so the post-frame fires (fix585) once the tiles
-    // are attached; the immediate call sets the intent on the pre-created node
-    // as a backstop. Guarded by inv so a newer load never steals focus.
-    if (enterChannels && scoped.isNotEmpty) {
-      final firstId = scoped.first.id;
-      final node = firstId != null ? _channelNodes[firstId] : null;
-      node?.requestFocus();
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && inv == _inv && _railMode == RailMode.channels) {
-          node?.requestFocus();
-        }
-      });
-    }
   }
 
   // fix597: OK on a category → (re)load it and switch the rail to channels.
@@ -280,19 +262,11 @@ class TvGuideViewState extends State<TvGuideView> {
       return KeyEventResult.ignored;
     }
     if (_railMode != RailMode.channels) return KeyEventResult.ignored;
-    // fix597: LEFT swaps the rail back to categories and restores focus to the
-    // selected category (fallback: Favorites, then any). Category nodes persist
-    // across the swap, so requestFocus sets the intent and lands when the rail
-    // rebuilds — immediate + post-frame backstop (fix585). ALWAYS handled so a
-    // failed target can never fall through to unreliable directional traversal.
-    final target = _railNodes[_selectedGroupId] ??
-        _railNodes[null] ??
-        (_railNodes.isNotEmpty ? _railNodes.values.first : null);
+    // fix598: swap to categories — the rail remounts (keyed by mode) and the
+    // SELECTED category's `autofocus` (_categoryItem) restores focus there. No
+    // cross-rebuild requestFocus (that stranded/mis-targeted focus on-device).
+    // ALWAYS handled so LEFT never falls through to directional traversal.
     setState(() => _railMode = RailMode.categories);
-    target?.requestFocus();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _railMode == RailMode.categories) target?.requestFocus();
-    });
     return KeyEventResult.handled;
   }
 
@@ -392,13 +366,19 @@ class TvGuideViewState extends State<TvGuideView> {
       if (chans.isEmpty) {
         return Center(child: Text(_loading ? 'Loading…' : 'No channels'));
       }
+      // fix598: distinct key per mode so a categories↔channels SWAP remounts
+      // the list — that makes `autofocus` on the target tile fire reliably
+      // (autofocus only fires on first mount; my earlier cross-rebuild
+      // requestFocus was the fragile part that stranded focus on-device).
       return ListView.builder(
+        key: const ValueKey('rail-channels'),
         padding: const EdgeInsets.symmetric(vertical: 8),
         itemCount: chans.length,
-        itemBuilder: (context, i) => _channelItem(chans[i]),
+        itemBuilder: (context, i) => _channelItem(chans[i], i == 0),
       );
     }
     return ListView(
+      key: const ValueKey('rail-categories'),
       padding: const EdgeInsets.symmetric(vertical: 8),
       children: [
         // fix545: top item is "Favorites" (replacing "All channels").
@@ -410,9 +390,13 @@ class TvGuideViewState extends State<TvGuideView> {
   }
 
   Widget _categoryItem(int? groupId, String label, IconData icon) {
+    final isSelected = groupId == _selectedGroupId;
     return _FocusTile(
-      selected: groupId == _selectedGroupId,
-      // Stable node so LEFT-from-channel can restore focus to the selection.
+      selected: isSelected,
+      // fix598: the selected category autofocuses when the rail (re)mounts into
+      // categories mode (app start + LEFT-from-channel), restoring focus to the
+      // category the user was in. Stable node kept for identity.
+      autofocus: isSelected,
       focusNode: _railNodes[groupId] ??= FocusNode(debugLabel: 'rail-$groupId'),
       onTap: () => _enterChannels(groupId), // OK → load + switch to channels
       onFocusGained: (_) => _onCategoryFocused(groupId), // follow the grid
@@ -428,7 +412,7 @@ class TvGuideViewState extends State<TvGuideView> {
     );
   }
 
-  Widget _channelItem(Channel ch) {
+  Widget _channelItem(Channel ch, bool first) {
     final id = ch.id;
     final tint = SourcePalette.tintOver(
       _sourceColors[ch.sourceId],
@@ -436,6 +420,10 @@ class TvGuideViewState extends State<TvGuideView> {
     );
     return _FocusTile(
       selected: identical(ch, _focused),
+      // fix598: first channel autofocuses when the rail remounts into channels
+      // mode (OK on a category) — lands focus at the top + fires _onChannelFocused
+      // (which arms the preview on multi-connection sources).
+      autofocus: first,
       focusNode:
           id != null ? (_channelNodes[id] ??= FocusNode(debugLabel: 'chan-$id')) : null,
       onKeyEvent: _onChannelLeftKey, // LEFT → back to categories
@@ -785,6 +773,7 @@ class TvGuideViewState extends State<TvGuideView> {
 /// focus standard) used by the rail + the frozen channel column.
 class _FocusTile extends StatefulWidget {
   final bool selected;
+  final bool autofocus;
   final VoidCallback onTap;
   final Widget child;
   final ValueChanged<bool>? onFocusGained;
@@ -798,6 +787,7 @@ class _FocusTile extends StatefulWidget {
     required this.selected,
     required this.onTap,
     required this.child,
+    this.autofocus = false,
     this.onFocusGained,
     this.focusNode,
     this.onKeyEvent,
@@ -822,6 +812,7 @@ class _FocusTileState extends State<_FocusTile> {
         borderRadius: BorderRadius.circular(8),
         child: InkWell(
           focusNode: widget.focusNode,
+          autofocus: widget.autofocus,
           onTap: widget.onTap,
           onFocusChange: (v) {
             setState(() => _focused = v);
