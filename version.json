@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.24",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.24",
+  "latest": "2.2.25",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.25",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Search Perf Test is more accurate: cold and warm now run the exact same set of searches (so the only difference is caching), and the test queries are cleaned up to drop leading punctuation that produced misleading results.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.24/Free4Me-IPTV-2.2.24-arm64.apk"
+  "releaseNotes": "\u2022 Refreshing all sources is dramatically faster: rebuilding the search index at the end no longer reprocesses the entire catalog \u2014 it now updates only the sources that refreshed, cutting a step that could take over an hour down to under a minute.\n\u2022 New Developer setting \"Import fetch timeout\" (default 60s): gives slow providers more time to respond during a refresh, so a source that is just slow no longer fails \u2014 separate from the playback network timeout.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.25/Free4Me-IPTV-2.2.25-arm64.apk"
 }
