@@ -1,0 +1,597 @@
+diff --git a/lib/backend/search_perf_test.dart b/lib/backend/search_perf_test.dart
+new file mode 100644
+index 0000000..b7276c6
+--- /dev/null
++++ b/lib/backend/search_perf_test.dart
+@@ -0,0 +1,242 @@
++import 'package:open_tv/backend/app_logger.dart';
++import 'package:open_tv/backend/channel_search_cache.dart';
++import 'package:open_tv/backend/db_factory.dart';
++import 'package:open_tv/backend/sql.dart';
++import 'package:open_tv/models/filters.dart';
++import 'package:open_tv/models/media_type.dart';
++import 'package:open_tv/models/settings.dart';
++import 'package:open_tv/models/view_type.dart';
++
++/// fix612: on-device search-method benchmark.
++///
++/// Runs every [SearchMethod] against the user's REAL catalog and reports a
++/// COLD first-hit number and a WARM median. The recommendation is driven by
++/// the warm median (the fair, reproducible steady-state cost); the cold
++/// number is shown but caveated — Android's OS file cache cannot be flushed
++/// from Dart, so once any method touches the catalog file the index pages are
++/// warm for every method that runs after it. We can drop SQLite's OWN page
++/// cache between methods (cache_size reset) but not the OS page cache, so the
++/// cold figure is a loose "first search after refresh" indicator, not an
++/// apples-to-apples cross-method comparison.
++class SearchMethodPerfResult {
++  final SearchMethod method;
++
++  /// Cold first-hit query time (ms). For [SearchMethod.inMemory] this INCLUDES
++  /// the cache build time (the real cost of the first search after a refresh).
++  final double coldMs;
++
++  /// Median of the warm runs (ms). Drives the recommendation.
++  final double warmMedianMs;
++
++  /// True if the method ran but returned no rows for any probe (e.g. the
++  /// in-memory cache was skipped on a low-RAM device and fell through). Shown
++  /// so a 0ms-but-useless result isn't mistaken for "fastest".
++  final bool degraded;
++
++  const SearchMethodPerfResult({
++    required this.method,
++    required this.coldMs,
++    required this.warmMedianMs,
++    required this.degraded,
++  });
++}
++
++class SearchPerfTest {
++  /// Hard cap on how many channel names we sample to build the probe queries —
++  /// keeps the test fast on a 1M+ row catalog (the SELECT is the only
++  /// catalog-size-bound part of setup).
++  static const int _nameSampleCap = 2000;
++
++  /// 5 queries x 3 shapes = 15 warm runs per method.
++  static const int _queriesPerShape = 5;
++
++  /// Run the full benchmark. [onProgress] reports a human string per phase.
++  static Future<List<SearchMethodPerfResult>> run({
++    required List<int> enabledSourceIds,
++    required bool safeMode,
++    void Function(String)? onProgress,
++  }) async {
++    if (enabledSourceIds.isEmpty) {
++      throw Exception('No enabled sources — add or enable a source first.');
++    }
++    onProgress?.call('Sampling channel names…');
++    final probes = await _buildProbes();
++    if (probes.oneWord.isEmpty) {
++      throw Exception('Not enough channel data to build a test.');
++    }
++
++    final results = <SearchMethodPerfResult>[];
++    try {
++      for (final method in SearchMethod.values) {
++        onProgress?.call('Testing ${_label(method)}…');
++        results.add(await _benchmarkMethod(
++          method: method,
++          probes: probes,
++          enabledSourceIds: enabledSourceIds,
++          safeMode: safeMode,
++        ));
++      }
++    } finally {
++      // The benchmark rebuilds the in-memory cache for its own timing. Leave it
++      // invalidated so the next REAL search lazily rebuilds against whatever
++      // method the user ends up on (same lazy path the method-picker uses).
++      ChannelSearchCache.invalidate();
++    }
++    return results;
++  }
++
++  /// The fastest method by warm median, ignoring degraded results.
++  static SearchMethod recommend(List<SearchMethodPerfResult> results) {
++    final viable = results.where((r) => !r.degraded).toList();
++    final pool = viable.isEmpty ? results : viable;
++    pool.sort((a, b) => a.warmMedianMs.compareTo(b.warmMedianMs));
++    return pool.first.method;
++  }
++
++  static Future<SearchMethodPerfResult> _benchmarkMethod({
++    required SearchMethod method,
++    required _Probes probes,
++    required List<int> enabledSourceIds,
++    required bool safeMode,
++  }) async {
++    // Drop SQLite's own page cache so the cold run pays a fresh read (best we
++    // can do — the OS file cache is out of reach from Dart).
++    await _dropSqlitePageCache();
++
++    Filters mk(String q) => Filters(
++          query: q,
++          sourceIds: List.of(enabledSourceIds),
++          mediaTypes: const [MediaType.livestream, MediaType.movie, MediaType.serie],
++          viewType: ViewType.all,
++          searchMethod: method,
++          safeMode: safeMode,
++          useKeywords: method == SearchMethod.ftsAnd,
++          limit: 50,
++        );
++
++    var degraded = false;
++
++    // ── COLD ──
++    // inMemory: cold = build + first query. Force a fresh build so the number
++    // reflects the real first-search-after-refresh cost.
++    double coldMs;
++    if (method == SearchMethod.inMemory) {
++      final sw = Stopwatch()..start();
++      ChannelSearchCache.invalidate();
++      await ChannelSearchCache.rebuild();
++      final rows = await Sql.search(mk(probes.oneWord.first));
++      sw.stop();
++      coldMs = sw.elapsedMicroseconds / 1000.0;
++      if (ChannelSearchCache.cacheSkipped || rows.isEmpty) degraded = true;
++    } else {
++      final sw = Stopwatch()..start();
++      final rows = await Sql.search(mk(probes.oneWord.first));
++      sw.stop();
++      coldMs = sw.elapsedMicroseconds / 1000.0;
++      if (rows.isEmpty) degraded = true;
++    }
++
++    // ── WARM ── 15 runs across the three shapes; median.
++    final warmTimes = <double>[];
++    final shapes = [probes.oneWord, probes.multiWord, probes.prefix];
++    var anyRows = false;
++    for (final shape in shapes) {
++      for (var i = 0; i < _queriesPerShape; i++) {
++        final q = shape[i % shape.length];
++        final sw = Stopwatch()..start();
++        final rows = await Sql.search(mk(q));
++        sw.stop();
++        warmTimes.add(sw.elapsedMicroseconds / 1000.0);
++        if (rows.isNotEmpty) anyRows = true;
++      }
++    }
++    if (!anyRows) degraded = true;
++    warmTimes.sort();
++    final median = warmTimes.isEmpty
++        ? 0.0
++        : warmTimes[warmTimes.length ~/ 2];
++
++    AppLog.info(
++      'SearchPerfTest: ${_label(method)} cold=${coldMs.toStringAsFixed(1)}ms '
++      'warmMedian=${median.toStringAsFixed(1)}ms degraded=$degraded',
++    );
++
++    return SearchMethodPerfResult(
++      method: method,
++      coldMs: coldMs,
++      warmMedianMs: median,
++      degraded: degraded,
++    );
++  }
++
++  /// Reset SQLite's page cache by shrinking cache_size to a single page then
++  /// restoring it — this forces the pager to evict its cached pages. Not a true
++  /// cold read: the OS file cache persists and is out of reach from Dart, so
++  /// methods that run later still read warm OS pages (the cold figure is
++  /// caveated in the UI for exactly this reason). The -2000 restore matches the
++  /// browse default used elsewhere in sql.dart.
++  static Future<void> _dropSqlitePageCache() async {
++    final db = await DbFactory.db;
++    await db.execute('PRAGMA cache_size = 1;');
++    await db.execute('PRAGMA cache_size = -2000;');
++  }
++
++  /// Sample real channel names (capped) and derive probe queries of each shape:
++  /// one-word, multi-word, and a short prefix.
++  static Future<_Probes> _buildProbes() async {
++    final db = await DbFactory.db;
++    final rows = await db.getAll(
++      'SELECT name FROM channels WHERE name IS NOT NULL LIMIT ?',
++      [_nameSampleCap],
++    );
++    final names = rows
++        .map((r) => (r['name'] as String).trim())
++        .where((n) => n.isNotEmpty)
++        .toList();
++
++    final oneWord = <String>[];
++    final multiWord = <String>[];
++    final prefix = <String>[];
++
++    for (final name in names) {
++      final words =
++          name.split(RegExp(r'\s+')).where((w) => w.length >= 2).toList();
++      if (words.isEmpty) continue;
++      if (oneWord.length < _queriesPerShape) oneWord.add(words.first);
++      if (words.length >= 2 && multiWord.length < _queriesPerShape) {
++        multiWord.add('${words[0]} ${words[1]}');
++      }
++      if (prefix.length < _queriesPerShape) {
++        final w = words.first;
++        prefix.add(w.length >= 3 ? w.substring(0, 3) : w);
++      }
++      if (oneWord.length >= _queriesPerShape &&
++          multiWord.length >= _queriesPerShape &&
++          prefix.length >= _queriesPerShape) {
++        break;
++      }
++    }
++    // Fallbacks so a thin catalog still runs (mirror one-word into the others).
++    if (multiWord.isEmpty) multiWord.addAll(oneWord);
++    if (prefix.isEmpty) prefix.addAll(oneWord);
++    return _Probes(oneWord: oneWord, multiWord: multiWord, prefix: prefix);
++  }
++
++  static String _label(SearchMethod m) => switch (m) {
++        SearchMethod.ftsAnd => 'FTS AND',
++        SearchMethod.ftsPhrase => 'FTS Phrase',
++        SearchMethod.likeSubstring => 'LIKE Scan',
++        SearchMethod.inMemory => 'In-Memory',
++      };
++}
++
++class _Probes {
++  final List<String> oneWord;
++  final List<String> multiWord;
++  final List<String> prefix;
++  const _Probes({
++    required this.oneWord,
++    required this.multiWord,
++    required this.prefix,
++  });
++}
+diff --git a/lib/settings_view.dart b/lib/settings_view.dart
+index 7aa3782..294b8a2 100644
+--- a/lib/settings_view.dart
++++ b/lib/settings_view.dart
+@@ -25,6 +25,7 @@ import 'package:open_tv/views/epg_channel_mapping.dart';
+ import 'package:open_tv/backend/render_cap.dart';
+ import 'package:open_tv/backend/settings_service.dart';
+ import 'package:open_tv/backend/sql.dart';
++import 'package:open_tv/widgets/search_perf_dialog.dart';
+ import 'package:open_tv/source_color_picker.dart';
+ import 'package:open_tv/backend/stream_scanner.dart';
+ import 'package:open_tv/backend/update_checker.dart';
+@@ -1309,6 +1310,40 @@ class _SettingsState extends State<SettingsView> {
+     _refreshSetState?.call(() {});
+   }
+ 
++  /// fix612: run the on-device search benchmark and, if the user picks a
++  /// method, persist it via the same path as the manual method picker.
++  Future<void> _runSearchPerfTest() async {
++    final enabledIds = sources
++        .where((s) => s.enabled)
++        .map((s) => s.id!)
++        .toList();
++    if (enabledIds.isEmpty) {
++      if (!mounted) return;
++      ScaffoldMessenger.of(context).showSnackBar(
++        const SnackBar(
++          content: Text('Enable at least one source first.'),
++        ),
++      );
++      return;
++    }
++    final chosen = await showSearchPerfDialog(
++      context,
++      enabledSourceIds: enabledIds,
++      safeMode: settings.safeMode,
++    );
++    if (chosen == null || !mounted) return;
++    if (chosen != settings.searchMethod) {
++      setState(() {
++        settings.searchMethod = chosen;
++        updateSettings();
++      });
++      if (!mounted) return;
++      ScaffoldMessenger.of(context).showSnackBar(
++        SnackBar(content: Text('Search method set to ${_searchMethodShortLabel(chosen)}.')),
++      );
++    }
++  }
++
+   Future<void> updateSettings() async {
+     await Error.tryAsyncNoLoading(
+       () async => await SettingsService.updateSettings(settings),
+@@ -4128,6 +4163,19 @@ class _SettingsState extends State<SettingsView> {
+   ];
+ 
+   List<Widget> get _developerChildren => [
++                      // fix612: on-device search-method benchmark. Runs every
++                      // method against the user's real catalog and offers to
++                      // switch to the fastest.
++                      ListTile(
++                        leading: const Icon(Icons.speed),
++                        title: const Text('Run Search Perf Test'),
++                        subtitle: const Text(
++                          'Benchmark each search method on this device and '
++                          'switch to the fastest.',
++                        ),
++                        onTap: _runSearchPerfTest,
++                      ),
++                      const Divider(height: 1),
+                       // ── Refined buffering (moved from Buffering) ──
+                       _bufferSlider(
+                         label: "VOD/Movie demuxer max (MB)",
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 3bde11b..2f9aa10 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '2.2.23': [
++    'Developer options now has a "Run Search Perf Test" button: it benchmarks '
++        'every search method against your own channel list on this device, '
++        'shows how each performs, and lets you switch to the fastest one with a '
++        'tap.',
++  ],
+   '2.2.22': [
+     'Refreshing all sources no longer stops at the first source that fails: '
+         'each source is retried once, and if it still cannot be reached the '
+diff --git a/lib/widgets/search_perf_dialog.dart b/lib/widgets/search_perf_dialog.dart
+new file mode 100644
+index 0000000..63e82b1
+--- /dev/null
++++ b/lib/widgets/search_perf_dialog.dart
+@@ -0,0 +1,240 @@
++import 'package:flutter/material.dart';
++import 'package:open_tv/backend/app_logger.dart';
++import 'package:open_tv/backend/search_perf_test.dart';
++import 'package:open_tv/models/settings.dart';
++
++/// fix612: runs [SearchPerfTest] and presents the results. Each method is
++/// tappable to switch to it; the fastest (by warm median) is pre-selected.
++/// Returns the [SearchMethod] the user chose to apply, or null if they
++/// cancelled without changing anything.
++Future<SearchMethod?> showSearchPerfDialog(
++  BuildContext context, {
++  required List<int> enabledSourceIds,
++  required bool safeMode,
++}) {
++  return showDialog<SearchMethod>(
++    context: context,
++    barrierDismissible: false,
++    builder: (_) => _SearchPerfDialog(
++      enabledSourceIds: enabledSourceIds,
++      safeMode: safeMode,
++    ),
++  );
++}
++
++String _methodLabel(SearchMethod m) => switch (m) {
++      SearchMethod.ftsAnd => 'FTS AND',
++      SearchMethod.ftsPhrase => 'FTS Phrase',
++      SearchMethod.likeSubstring => 'LIKE Scan',
++      SearchMethod.inMemory => 'In-Memory',
++    };
++
++class _SearchPerfDialog extends StatefulWidget {
++  final List<int> enabledSourceIds;
++  final bool safeMode;
++  const _SearchPerfDialog({
++    required this.enabledSourceIds,
++    required this.safeMode,
++  });
++
++  @override
++  State<_SearchPerfDialog> createState() => _SearchPerfDialogState();
++}
++
++class _SearchPerfDialogState extends State<_SearchPerfDialog> {
++  bool _running = true;
++  String _status = 'Starting…';
++  Object? _error;
++  List<SearchMethodPerfResult> _results = const [];
++  SearchMethod? _selected;
++
++  @override
++  void initState() {
++    super.initState();
++    _run();
++  }
++
++  Future<void> _run() async {
++    try {
++      final results = await SearchPerfTest.run(
++        enabledSourceIds: widget.enabledSourceIds,
++        safeMode: widget.safeMode,
++        onProgress: (s) {
++          if (mounted) setState(() => _status = s);
++        },
++      );
++      final best = SearchPerfTest.recommend(results);
++      if (mounted) {
++        setState(() {
++          _results = results;
++          _selected = best;
++          _running = false;
++        });
++      }
++    } catch (e) {
++      AppLog.warn('SearchPerfTest: failed — $e');
++      if (mounted) {
++        setState(() {
++          _error = e;
++          _running = false;
++        });
++      }
++    }
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    return AlertDialog(
++      title: const Text('Search performance'),
++      content: _running
++          ? _buildRunning()
++          : _error != null
++              ? Text('Could not run the test:\n$_error')
++              : _buildResults(context),
++      actions: _running
++          ? null
++          : _error != null
++              ? [
++                  TextButton(
++                    onPressed: () => Navigator.of(context).pop(),
++                    child: const Text('Close'),
++                  ),
++                ]
++              : [
++                  TextButton(
++                    onPressed: () => Navigator.of(context).pop(),
++                    child: const Text('Cancel'),
++                  ),
++                  FilledButton(
++                    autofocus: true,
++                    onPressed: () => Navigator.of(context).pop(_selected),
++                    child: Text('Use ${_methodLabel(_selected!)}'),
++                  ),
++                ],
++    );
++  }
++
++  Widget _buildRunning() {
++    return Column(
++      mainAxisSize: MainAxisSize.min,
++      children: [
++        const SizedBox(height: 8),
++        const CircularProgressIndicator(),
++        const SizedBox(height: 16),
++        Text(_status, textAlign: TextAlign.center),
++        const SizedBox(height: 8),
++        Text(
++          'Testing each method against your channels…',
++          style: Theme.of(context).textTheme.bodySmall,
++          textAlign: TextAlign.center,
++        ),
++      ],
++    );
++  }
++
++  Widget _buildResults(BuildContext context) {
++    final best = SearchPerfTest.recommend(_results);
++    return SingleChildScrollView(
++      child: Column(
++        mainAxisSize: MainAxisSize.min,
++        crossAxisAlignment: CrossAxisAlignment.start,
++        children: [
++          Text(
++            'Tap a method to select it. The fastest by warm (steady-state) '
++            'time is pre-selected.',
++            style: Theme.of(context).textTheme.bodySmall,
++          ),
++          const SizedBox(height: 12),
++          ..._results.map((r) => _resultRow(context, r, r.method == best)),
++          const SizedBox(height: 12),
++          Text(
++            'Warm = median of repeated searches (drives the recommendation). '
++            'Cold = first search after a refresh; compare cold loosely — the '
++            'system keeps data cached after the first method runs, so later '
++            'methods read warmer.',
++            style: Theme.of(context).textTheme.bodySmall?.copyWith(
++                  fontStyle: FontStyle.italic,
++                ),
++          ),
++        ],
++      ),
++    );
++  }
++
++  Widget _resultRow(
++    BuildContext context,
++    SearchMethodPerfResult r,
++    bool isBest,
++  ) {
++    final isSelected = r.method == _selected;
++    return Card(
++      margin: const EdgeInsets.symmetric(vertical: 3),
++      color: isSelected
++          ? Theme.of(context).colorScheme.primaryContainer
++          : null,
++      child: InkWell(
++        onTap: () => setState(() => _selected = r.method),
++        child: Padding(
++          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
++          child: Row(
++            children: [
++              Icon(
++                isSelected
++                    ? Icons.radio_button_checked
++                    : Icons.radio_button_unchecked,
++                size: 20,
++              ),
++              const SizedBox(width: 10),
++              Expanded(
++                child: Column(
++                  crossAxisAlignment: CrossAxisAlignment.start,
++                  children: [
++                    Row(
++                      children: [
++                        Text(
++                          _methodLabel(r.method),
++                          style: Theme.of(context)
++                              .textTheme
++                              .bodyMedium
++                              ?.copyWith(fontWeight: FontWeight.w600),
++                        ),
++                        if (isBest) ...[
++                          const SizedBox(width: 6),
++                          _chip(context, 'Fastest'),
++                        ],
++                        if (r.degraded) ...[
++                          const SizedBox(width: 6),
++                          _chip(context, 'No results'),
++                        ],
++                      ],
++                    ),
++                    const SizedBox(height: 2),
++                    Text(
++                      'Warm ${r.warmMedianMs.toStringAsFixed(0)} ms'
++                      '   ·   Cold ${r.coldMs.toStringAsFixed(0)} ms',
++                      style: Theme.of(context).textTheme.bodySmall,
++                    ),
++                  ],
++                ),
++              ),
++            ],
++          ),
++        ),
++      ),
++    );
++  }
++
++  Widget _chip(BuildContext context, String label) {
++    return Container(
++      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
++      decoration: BoxDecoration(
++        color: Theme.of(context).colorScheme.secondaryContainer,
++        borderRadius: BorderRadius.circular(6),
++      ),
++      child: Text(
++        label,
++        style: Theme.of(context).textTheme.labelSmall,
++      ),
++    );
++  }
++}
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 84cc667..cc383d3 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 2.2.22+611
++version: 2.2.23+612
+ 
+ environment:
+   sdk: ^3.10.7

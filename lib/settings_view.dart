@@ -25,6 +25,7 @@ import 'package:open_tv/views/epg_channel_mapping.dart';
 import 'package:open_tv/backend/render_cap.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
+import 'package:open_tv/widgets/search_perf_dialog.dart';
 import 'package:open_tv/source_color_picker.dart';
 import 'package:open_tv/backend/stream_scanner.dart';
 import 'package:open_tv/backend/update_checker.dart';
@@ -1307,6 +1308,40 @@ class _SettingsState extends State<SettingsView> {
   void _updateRefreshDialog(String status) {
     _refreshStatus = status;
     _refreshSetState?.call(() {});
+  }
+
+  /// fix612: run the on-device search benchmark and, if the user picks a
+  /// method, persist it via the same path as the manual method picker.
+  Future<void> _runSearchPerfTest() async {
+    final enabledIds = sources
+        .where((s) => s.enabled)
+        .map((s) => s.id!)
+        .toList();
+    if (enabledIds.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Enable at least one source first.'),
+        ),
+      );
+      return;
+    }
+    final chosen = await showSearchPerfDialog(
+      context,
+      enabledSourceIds: enabledIds,
+      safeMode: settings.safeMode,
+    );
+    if (chosen == null || !mounted) return;
+    if (chosen != settings.searchMethod) {
+      setState(() {
+        settings.searchMethod = chosen;
+        updateSettings();
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Search method set to ${_searchMethodShortLabel(chosen)}.')),
+      );
+    }
   }
 
   Future<void> updateSettings() async {
@@ -4128,6 +4163,19 @@ class _SettingsState extends State<SettingsView> {
   ];
 
   List<Widget> get _developerChildren => [
+                      // fix612: on-device search-method benchmark. Runs every
+                      // method against the user's real catalog and offers to
+                      // switch to the fastest.
+                      ListTile(
+                        leading: const Icon(Icons.speed),
+                        title: const Text('Run Search Perf Test'),
+                        subtitle: const Text(
+                          'Benchmark each search method on this device and '
+                          'switch to the fastest.',
+                        ),
+                        onTap: _runSearchPerfTest,
+                      ),
+                      const Divider(height: 1),
                       // ── Refined buffering (moved from Buffering) ──
                       _bufferSlider(
                         label: "VOD/Movie demuxer max (MB)",

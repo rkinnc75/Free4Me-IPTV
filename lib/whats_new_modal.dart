@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.23': [
+    'Developer options now has a "Run Search Perf Test" button: it benchmarks '
+        'every search method against your own channel list on this device, '
+        'shows how each performs, and lets you switch to the fastest one with a '
+        'tap.',
+  ],
   '2.2.22': [
     'Refreshing all sources no longer stops at the first source that fails: '
         'each source is retried once, and if it still cannot be reached the '
