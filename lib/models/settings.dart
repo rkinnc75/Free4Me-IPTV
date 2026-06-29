@@ -227,6 +227,13 @@ class Settings {
   /// libmpv `network-timeout` (seconds). Default 30.
   int devNetworkTimeoutSecs;
 
+  /// fix614: Xtream IMPORT fetch timeout (seconds) per content-type request,
+  /// plumbed into AppHttp.getWithRetry. SEPARATE from devNetworkTimeoutSecs
+  /// (which is libmpv playback). Default 60 — a slow provider (e.g. Trex,
+  /// measured ~56s to respond) was failing the previous hardcoded 20s. Range
+  /// 0–120; 0 means "use the AppHttp default".
+  int devImportFetchTimeoutSecs;
+
   /// libmpv `tls-verify`. Defaults to false (off): certificate verification
   /// is disabled by default because many IPTV providers serve HTTPS with
   /// self-signed certs. The per-channel `ignoreSsl` (read from import
@@ -346,6 +353,7 @@ class Settings {
     // upstream exactly. See lib/models/dev_mpv_options.dart.
     this.devDemuxerReadaheadSecs = 1.5,
     this.devNetworkTimeoutSecs = 30,
+    this.devImportFetchTimeoutSecs = 60,
     this.devTlsVerify = false,
     this.devVideoSync = VideoSyncMode.audio,
     this.devVideoSyncMaxVideoChange = 1.0,
@@ -495,6 +503,7 @@ class Settings {
     // reported with an A/V issue).
     s.devDemuxerReadaheadSecs = 1.5;
     s.devNetworkTimeoutSecs = 30;
+    s.devImportFetchTimeoutSecs = 60;
     s.devTlsVerify = false;
     s.devVideoSync = VideoSyncMode.audio;
     s.devVideoSyncMaxVideoChange = 1.0;

@@ -410,6 +410,19 @@ const _helpDevNetworkTimeoutSecs = (
       'on very slow first-segment delivery.',
 );
 
+const _helpDevImportFetchTimeoutSecs = (
+  title: 'Import Fetch Timeout (seconds)',
+  body:
+      'How long each Xtream import request (live / VOD / series) waits for the '
+      'provider before giving up. SEPARATE from Network Timeout, which is for '
+      'playback. A slow provider can take ~1 minute to respond, especially '
+      'when several sources refresh at once.\n\n'
+      'Default: 60 s. Range: 0–120 s (0 = use the built-in default).\n\n'
+      '↑ Increasing — survives slow providers during a multi-source refresh.\n\n'
+      '↓ Decreasing — fails a dead provider faster, but may falsely fail a '
+      'slow one.',
+);
+
 const _helpDevTlsVerify = (
   title: 'TLS Verify',
   body:
@@ -4304,6 +4317,20 @@ class _SettingsState extends State<SettingsView> {
                         onChanged: (v) {
                           setState(
                             () => settings.devNetworkTimeoutSecs = v.round(),
+                          );
+                          updateSettings();
+                        },
+                      ),
+                      _bufferSlider(
+                        label: "Import fetch timeout (seconds, 0 = default)",
+                        value: settings.devImportFetchTimeoutSecs.toDouble(),
+                        min: 0,
+                        max: 120,
+                        divisions: 120,
+                        help: _helpDevImportFetchTimeoutSecs,
+                        onChanged: (v) {
+                          setState(
+                            () => settings.devImportFetchTimeoutSecs = v.round(),
                           );
                           updateSettings();
                         },

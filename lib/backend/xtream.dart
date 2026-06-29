@@ -12,6 +12,7 @@ import 'package:open_tv/models/source.dart';
 import 'package:open_tv/models/xtream_types.dart';
 import 'package:sqlite_async/sqlite_async.dart';
 import 'package:open_tv/backend/http_client.dart';
+import 'package:open_tv/backend/settings_service.dart';
 
 const String getLiveStreams = "get_live_streams";
 const String getVods = "get_vod_streams";
@@ -332,7 +333,18 @@ Future<dynamic> getXtreamHttpData(
 ]) async {
   try {
     final url = buildXtreamUrl(source, action, extraQueryParams);
-    final response = await AppHttp.getWithRetry(url);
+    // fix614: honour the user-tunable import fetch timeout (default 60s).
+    // SettingsService.cached is populated at startup; fall back to a fresh load
+    // if somehow null. 0 means "use AppHttp's own default".
+    final settings =
+        SettingsService.cached ?? await SettingsService.getSettings();
+    final timeoutSecs = settings.devImportFetchTimeoutSecs;
+    final response = await AppHttp.getWithRetry(
+      url,
+      timeout: timeoutSecs > 0
+          ? Duration(seconds: timeoutSecs)
+          : const Duration(seconds: 20),
+    );
     if (response == null) return null;
     // fix222: when debug logging is on, dump the raw response body to a file in
     // the app dir so it can be exported and replayed in a sandbox for true

@@ -6,6 +6,15 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.25': [
+    'Refreshing all sources is dramatically faster: rebuilding the search index '
+        'at the end no longer reprocesses the entire catalog — it now updates '
+        'only the sources that refreshed, cutting a step that could take over an '
+        'hour down to under a minute.',
+    'New Developer setting "Import fetch timeout" (default 60s): gives slow '
+        'providers more time to respond during a refresh, so a source that is '
+        'just slow no longer fails — separate from the playback network timeout.',
+  ],
   '2.2.24': [
     'Search Perf Test is more accurate: cold and warm now run the exact same '
         'set of searches (so the only difference is caching), and the test '

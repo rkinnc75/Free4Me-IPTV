@@ -1,0 +1,362 @@
+diff --git a/lib/backend/settings_io.dart b/lib/backend/settings_io.dart
+index 3882b74..7d82ecc 100644
+--- a/lib/backend/settings_io.dart
++++ b/lib/backend/settings_io.dart
+@@ -661,6 +661,7 @@ class SettingsIo {
+         // fix394: Developer / libmpv advanced tunables (schema v4).
+         'devDemuxerReadaheadSecs': s.devDemuxerReadaheadSecs,
+         'devNetworkTimeoutSecs': s.devNetworkTimeoutSecs,
++        'devImportFetchTimeoutSecs': s.devImportFetchTimeoutSecs,
+         'devTlsVerify': s.devTlsVerify,
+         'devVideoSync': s.devVideoSync.toJson(),
+         'devVideoSyncMaxVideoChange': s.devVideoSyncMaxVideoChange,
+@@ -776,6 +777,10 @@ class SettingsIo {
+       s.devNetworkTimeoutSecs =
+           (m['devNetworkTimeoutSecs'] as num).toInt();
+     }
++    if (m['devImportFetchTimeoutSecs'] is num) {
++      s.devImportFetchTimeoutSecs =
++          (m['devImportFetchTimeoutSecs'] as num).toInt();
++    }
+     if (m['devTlsVerify'] is bool) s.devTlsVerify = m['devTlsVerify'];
+     if (m['devVideoSync'] is String) {
+       s.devVideoSync = VideoSyncMode.fromJson(m['devVideoSync'] as String);
+diff --git a/lib/backend/settings_service.dart b/lib/backend/settings_service.dart
+index 36b362b..8e8bb04 100644
+--- a/lib/backend/settings_service.dart
++++ b/lib/backend/settings_service.dart
+@@ -99,6 +99,7 @@ const confirmToExitProp = "confirmToExit"; // fix587 (#23)
+ // fix394: Developer / libmpv advanced tunables.
+ const devDemuxerReadaheadSecsProp = "devDemuxerReadaheadSecs";
+ const devNetworkTimeoutSecsProp = "devNetworkTimeoutSecs";
++const devImportFetchTimeoutSecsProp = "devImportFetchTimeoutSecs";
+ const devTlsVerifyProp = "devTlsVerify";
+ const devVideoSyncProp = "devVideoSync";
+ const devVideoSyncMaxVideoChangeProp = "devVideoSyncMaxVideoChange";
+@@ -341,6 +342,10 @@ class SettingsService {
+     if (dnt != null) {
+       settings.devNetworkTimeoutSecs = int.tryParse(dnt) ?? 30;
+     }
++    final dift = settingsMap[devImportFetchTimeoutSecsProp];
++    if (dift != null) {
++      settings.devImportFetchTimeoutSecs = int.tryParse(dift) ?? 60;
++    }
+     final dtv = settingsMap[devTlsVerifyProp];
+     if (dtv != null) {
+       settings.devTlsVerify = int.parse(dtv) == 1;
+@@ -503,6 +508,8 @@ class SettingsService {
+         settings.devDemuxerReadaheadSecs.toString();
+     settingsMap[devNetworkTimeoutSecsProp] =
+         settings.devNetworkTimeoutSecs.toString();
++    settingsMap[devImportFetchTimeoutSecsProp] =
++        settings.devImportFetchTimeoutSecs.toString();
+     settingsMap[devTlsVerifyProp] =
+         (settings.devTlsVerify ? 1 : 0).toString();
+     settingsMap[devVideoSyncProp] = settings.devVideoSync.toJson();
+diff --git a/lib/backend/sql.dart b/lib/backend/sql.dart
+index 009ab06..efb92d8 100644
+--- a/lib/backend/sql.dart
++++ b/lib/backend/sql.dart
+@@ -258,7 +258,17 @@ class Sql {
+   /// [body] completed and `channels` reflects the new state, which may not
+   /// hold if it threw partway through).
+   static Future<void> withSuspendedFtsTriggers(
+-      Future<void> Function() body, {int? refreshedSourceId}) async {
++      Future<void> Function() body,
++      {int? refreshedSourceId,
++      // fix614: when supplied AND [body] succeeds, this replaces the global
++      // end-of-batch FTS rebuild. refreshAllSources passes a closure that
++      // targeted-reindexes only the sources that actually refreshed — measured
++      // ~51s for the full 857K-row catalog vs ~66min for the global rebuild.
++      // Ignored on the error path (body threw): a global rebuild is still the
++      // only safe recovery when `channels` may be half-written. Also ignored
++      // when this is a pass-through inner call (triggers already suspended) or
++      // when a single-source targeted path (refreshedSourceId) already applies.
++      Future<void> Function()? batchTargetedRebuild}) async {
+     final db = await DbFactory.db;
+     final existing = await db.getAll(
+       "SELECT name FROM sqlite_master WHERE type = 'trigger' "
+@@ -336,6 +346,21 @@ class Sql {
+           await reconcileFtsTriggers(true, skipRebuild: true);
+           AppLog.info('Sql.withSuspendedFtsTriggers: FTS triggers restored'
+               ' + targeted re-index (source=$refreshedSourceId)');
++        } else if (batchTargetedRebuild != null && bodySucceeded) {
++          // fix614: batch path — targeted-reindex only the refreshed sources
++          // instead of a full-catalog rebuild. body() succeeded, so `channels`
++          // is consistent for those sources. Search is still gated during the
++          // reindex (it briefly drops+reinserts rows) and the flag is always
++          // cleared. Triggers are restored WITHOUT a global rebuild.
++          ftsRebuilding.value = true;
++          try {
++            await batchTargetedRebuild();
++            await reconcileFtsTriggers(true, skipRebuild: true);
++          } finally {
++            ftsRebuilding.value = false;
++          }
++          AppLog.info('Sql.withSuspendedFtsTriggers: FTS triggers restored'
++              ' + batch targeted re-index');
+         } else {
+           // Either targeted wasn't applicable (large source / large
+           // fraction / no sourceId given), or body() threw before finishing
+@@ -360,6 +385,54 @@ class Sql {
+     }
+   }
+ 
++  /// fix614: targeted FTS re-index for a set of sources, used by the batch
++  /// refresh in place of the full-catalog global rebuild. For each source it
++  /// deletes that source's existing FTS rows (by rowid, chunked at 900 for the
++  /// 999 bind-parameter limit) and reinserts them from the now-current
++  /// `channels` rows. Cost is proportional to the SUM of the refreshed sources'
++  /// rows, not the whole catalog, and it skips the global rebuild's full
++  /// re-tokenization of every row (incl. the prefix='2 3' index). Measured on
++  /// the production 857K-row catalog: ~51s for all four sources vs the global
++  /// rebuild running for tens of minutes.
++  ///
++  /// Caller contract: only pass sources whose refresh SUCCEEDED — their
++  /// `channels` rows must reflect the new state. A source that failed its fetch
++  /// never wiped its channels, so its existing FTS rows stay valid and it must
++  /// be OMITTED here (not reindexed). Assumes the FTS triggers are currently
++  /// suspended (the batch wrapper owns that) so these writes don't re-fire
++  /// per-row maintenance; the caller restores triggers with skipRebuild after.
++  static Future<void> reindexFtsSources(List<int> sourceIds) async {
++    if (sourceIds.isEmpty) return;
++    final db = await DbFactory.db;
++    final sw = Stopwatch()..start();
++    for (final sourceId in sourceIds) {
++      final idRows = await db.getAll(
++        'SELECT id FROM channels WHERE source_id = ?',
++        [sourceId],
++      );
++      final ids = idRows.map((r) => r['id'] as int).toList();
++      for (var i = 0; i < ids.length; i += 900) {
++        final end = i + 900 > ids.length ? ids.length : i + 900;
++        final chunk = ids.sublist(i, end);
++        await db.execute(
++          'DELETE FROM channels_fts WHERE rowid IN '
++          '(${generatePlaceholders(chunk.length)})',
++          chunk,
++        );
++      }
++      await db.execute(
++        'INSERT INTO channels_fts(rowid, name) '
++        'SELECT id, name FROM channels WHERE source_id = ?',
++        [sourceId],
++      );
++      AppLog.info('Sql.reindexFtsSources: source=$sourceId '
++          'rows=${ids.length}');
++    }
++    sw.stop();
++    AppLog.info('Sql.reindexFtsSources: ${sourceIds.length} source(s) '
++        'targeted-reindexed in ${sw.elapsedMilliseconds}ms');
++  }
++
+   /// fix514: deliberately conservative dual threshold (see the long comment
+   /// above) — targeted re-index is ONLY used when the refreshed source is
+   /// small on BOTH axes. A source must clear both caps; failing either one
+diff --git a/lib/backend/utils.dart b/lib/backend/utils.dart
+index 75dd3bb..57d574e 100644
+--- a/lib/backend/utils.dart
++++ b/lib/backend/utils.dart
+@@ -158,9 +158,10 @@ class Utils {
+     // every source inserts trigger-free and the FTS index is rebuilt exactly
+     // ONCE at the end — not once per source. The per-source wrap in xtream.dart
+     // hits the _ftsTriggersSuspended early-return and becomes a pass-through,
+-    // and M3U (which has no per-source wrap) is still covered because this
+-    // outer call always ends in a full global rebuild. No refreshedSourceId →
+-    // the end rebuild reindexes every source, including M3U.
++    // and M3U (which has no per-source wrap) is still covered because the
++    // fix614 batch targeted re-index below reindexes every SUCCEEDED source by
++    // source_id regardless of type (M3U included). On the error path (body
++    // threw) the wrapper falls back to a full global rebuild for safety.
+     //
+     // fix518: drop the channels browse indexes ONCE around the whole loop and
+     // rebuild them once at the end (not per source) — the per-row index
+@@ -169,6 +170,13 @@ class Utils {
+     // both the shared FTS-trigger suspend and this index drop/recreate, and
+     // SQLite serializes writes anyway, so concurrency bought nothing on the
+     // DB-write-bound refresh.
++    // fix614: collect the ids of sources that SUCCEEDED so the end-of-batch FTS
++    // step can targeted-reindex only those (≈51s) instead of a full-catalog
++    // rebuild (≈66min). Declared out here so the targeted closure passed to
++    // withSuspendedFtsTriggers — which runs in its finally, AFTER the loop —
++    // can read the final set. A source that failed its fetch never wiped its
++    // channels, so its existing FTS rows stay valid and it is correctly omitted.
++    final succeededIds = <int>[];
+     await Sql.withSuspendedFtsTriggers(() async {
+       await Sql.withDroppedBrowseIndexes(() async {
+         // fix611: one source failing must NEVER stop the rest from
+@@ -208,6 +216,9 @@ class Utils {
+               }
+             }
+           }
++          if (lastError == null && s.id != null) {
++            succeededIds.add(s.id!);
++          }
+           if (lastError != null) {
+             failures[s] = lastError;
+             AppLog.warn(
+@@ -233,7 +244,18 @@ class Utils {
+           onProgress: onSourceStatus == null || enabled.isEmpty
+               ? null
+               : (msg) => onSourceStatus(enabled.last, msg));
+-    });
++    },
++        // fix614: replace the global end-of-batch FTS rebuild with a targeted
++        // per-source re-index of just the sources that succeeded. Runs in the
++        // wrapper's finally (after the loop), so succeededIds is fully
++        // populated. If the body throws, the wrapper ignores this and does the
++        // safe global rebuild instead.
++        batchTargetedRebuild: () async {
++          if (onSourceStatus != null && enabled.isNotEmpty) {
++            onSourceStatus(enabled.last, 'Updating search index…');
++          }
++          await Sql.reindexFtsSources(succeededIds);
++        });
+   }
+ 
+   // fix580: memoized so the Player can read the resolved value synchronously at
+diff --git a/lib/backend/xtream.dart b/lib/backend/xtream.dart
+index 0d2c601..a47cca5 100644
+--- a/lib/backend/xtream.dart
++++ b/lib/backend/xtream.dart
+@@ -12,6 +12,7 @@ import 'package:open_tv/models/source.dart';
+ import 'package:open_tv/models/xtream_types.dart';
+ import 'package:sqlite_async/sqlite_async.dart';
+ import 'package:open_tv/backend/http_client.dart';
++import 'package:open_tv/backend/settings_service.dart';
+ 
+ const String getLiveStreams = "get_live_streams";
+ const String getVods = "get_vod_streams";
+@@ -332,7 +333,18 @@ Future<dynamic> getXtreamHttpData(
+ ]) async {
+   try {
+     final url = buildXtreamUrl(source, action, extraQueryParams);
+-    final response = await AppHttp.getWithRetry(url);
++    // fix614: honour the user-tunable import fetch timeout (default 60s).
++    // SettingsService.cached is populated at startup; fall back to a fresh load
++    // if somehow null. 0 means "use AppHttp's own default".
++    final settings =
++        SettingsService.cached ?? await SettingsService.getSettings();
++    final timeoutSecs = settings.devImportFetchTimeoutSecs;
++    final response = await AppHttp.getWithRetry(
++      url,
++      timeout: timeoutSecs > 0
++          ? Duration(seconds: timeoutSecs)
++          : const Duration(seconds: 20),
++    );
+     if (response == null) return null;
+     // fix222: when debug logging is on, dump the raw response body to a file in
+     // the app dir so it can be exported and replayed in a sandbox for true
+diff --git a/lib/models/settings.dart b/lib/models/settings.dart
+index 94aecba..173ada2 100644
+--- a/lib/models/settings.dart
++++ b/lib/models/settings.dart
+@@ -227,6 +227,13 @@ class Settings {
+   /// libmpv `network-timeout` (seconds). Default 30.
+   int devNetworkTimeoutSecs;
+ 
++  /// fix614: Xtream IMPORT fetch timeout (seconds) per content-type request,
++  /// plumbed into AppHttp.getWithRetry. SEPARATE from devNetworkTimeoutSecs
++  /// (which is libmpv playback). Default 60 — a slow provider (e.g. Trex,
++  /// measured ~56s to respond) was failing the previous hardcoded 20s. Range
++  /// 0–120; 0 means "use the AppHttp default".
++  int devImportFetchTimeoutSecs;
++
+   /// libmpv `tls-verify`. Defaults to false (off): certificate verification
+   /// is disabled by default because many IPTV providers serve HTTPS with
+   /// self-signed certs. The per-channel `ignoreSsl` (read from import
+@@ -346,6 +353,7 @@ class Settings {
+     // upstream exactly. See lib/models/dev_mpv_options.dart.
+     this.devDemuxerReadaheadSecs = 1.5,
+     this.devNetworkTimeoutSecs = 30,
++    this.devImportFetchTimeoutSecs = 60,
+     this.devTlsVerify = false,
+     this.devVideoSync = VideoSyncMode.audio,
+     this.devVideoSyncMaxVideoChange = 1.0,
+@@ -495,6 +503,7 @@ class Settings {
+     // reported with an A/V issue).
+     s.devDemuxerReadaheadSecs = 1.5;
+     s.devNetworkTimeoutSecs = 30;
++    s.devImportFetchTimeoutSecs = 60;
+     s.devTlsVerify = false;
+     s.devVideoSync = VideoSyncMode.audio;
+     s.devVideoSyncMaxVideoChange = 1.0;
+diff --git a/lib/settings_view.dart b/lib/settings_view.dart
+index 294b8a2..faabb12 100644
+--- a/lib/settings_view.dart
++++ b/lib/settings_view.dart
+@@ -410,6 +410,19 @@ const _helpDevNetworkTimeoutSecs = (
+       'on very slow first-segment delivery.',
+ );
+ 
++const _helpDevImportFetchTimeoutSecs = (
++  title: 'Import Fetch Timeout (seconds)',
++  body:
++      'How long each Xtream import request (live / VOD / series) waits for the '
++      'provider before giving up. SEPARATE from Network Timeout, which is for '
++      'playback. A slow provider can take ~1 minute to respond, especially '
++      'when several sources refresh at once.\n\n'
++      'Default: 60 s. Range: 0–120 s (0 = use the built-in default).\n\n'
++      '↑ Increasing — survives slow providers during a multi-source refresh.\n\n'
++      '↓ Decreasing — fails a dead provider faster, but may falsely fail a '
++      'slow one.',
++);
++
+ const _helpDevTlsVerify = (
+   title: 'TLS Verify',
+   body:
+@@ -4308,6 +4321,20 @@ class _SettingsState extends State<SettingsView> {
+                           updateSettings();
+                         },
+                       ),
++                      _bufferSlider(
++                        label: "Import fetch timeout (seconds, 0 = default)",
++                        value: settings.devImportFetchTimeoutSecs.toDouble(),
++                        min: 0,
++                        max: 120,
++                        divisions: 120,
++                        help: _helpDevImportFetchTimeoutSecs,
++                        onChanged: (v) {
++                          setState(
++                            () => settings.devImportFetchTimeoutSecs = v.round(),
++                          );
++                          updateSettings();
++                        },
++                      ),
+                       _bufferSlider(
+                         label: "Controls auto-hide (seconds, 0 = stay)",
+                         value: settings.devControlsHideSecs.toDouble(),
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 8a11be1..1e18739 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,15 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '2.2.25': [
++    'Refreshing all sources is dramatically faster: rebuilding the search index '
++        'at the end no longer reprocesses the entire catalog — it now updates '
++        'only the sources that refreshed, cutting a step that could take over an '
++        'hour down to under a minute.',
++    'New Developer setting "Import fetch timeout" (default 60s): gives slow '
++        'providers more time to respond during a refresh, so a source that is '
++        'just slow no longer fails — separate from the playback network timeout.',
++  ],
+   '2.2.24': [
+     'Search Perf Test is more accurate: cold and warm now run the exact same '
+         'set of searches (so the only difference is caching), and the test '
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 07b8391..2ace59c 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 2.2.24+613
++version: 2.2.25+614
+ 
+ environment:
+   sdk: ^3.10.7
+

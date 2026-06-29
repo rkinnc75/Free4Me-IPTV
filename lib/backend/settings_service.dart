@@ -99,6 +99,7 @@ const confirmToExitProp = "confirmToExit"; // fix587 (#23)
 // fix394: Developer / libmpv advanced tunables.
 const devDemuxerReadaheadSecsProp = "devDemuxerReadaheadSecs";
 const devNetworkTimeoutSecsProp = "devNetworkTimeoutSecs";
+const devImportFetchTimeoutSecsProp = "devImportFetchTimeoutSecs";
 const devTlsVerifyProp = "devTlsVerify";
 const devVideoSyncProp = "devVideoSync";
 const devVideoSyncMaxVideoChangeProp = "devVideoSyncMaxVideoChange";
@@ -341,6 +342,10 @@ class SettingsService {
     if (dnt != null) {
       settings.devNetworkTimeoutSecs = int.tryParse(dnt) ?? 30;
     }
+    final dift = settingsMap[devImportFetchTimeoutSecsProp];
+    if (dift != null) {
+      settings.devImportFetchTimeoutSecs = int.tryParse(dift) ?? 60;
+    }
     final dtv = settingsMap[devTlsVerifyProp];
     if (dtv != null) {
       settings.devTlsVerify = int.parse(dtv) == 1;
@@ -503,6 +508,8 @@ class SettingsService {
         settings.devDemuxerReadaheadSecs.toString();
     settingsMap[devNetworkTimeoutSecsProp] =
         settings.devNetworkTimeoutSecs.toString();
+    settingsMap[devImportFetchTimeoutSecsProp] =
+        settings.devImportFetchTimeoutSecs.toString();
     settingsMap[devTlsVerifyProp] =
         (settings.devTlsVerify ? 1 : 0).toString();
     settingsMap[devVideoSyncProp] = settings.devVideoSync.toJson();

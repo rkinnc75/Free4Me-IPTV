@@ -661,6 +661,7 @@ class SettingsIo {
         // fix394: Developer / libmpv advanced tunables (schema v4).
         'devDemuxerReadaheadSecs': s.devDemuxerReadaheadSecs,
         'devNetworkTimeoutSecs': s.devNetworkTimeoutSecs,
+        'devImportFetchTimeoutSecs': s.devImportFetchTimeoutSecs,
         'devTlsVerify': s.devTlsVerify,
         'devVideoSync': s.devVideoSync.toJson(),
         'devVideoSyncMaxVideoChange': s.devVideoSyncMaxVideoChange,
@@ -775,6 +776,10 @@ class SettingsIo {
     if (m['devNetworkTimeoutSecs'] is num) {
       s.devNetworkTimeoutSecs =
           (m['devNetworkTimeoutSecs'] as num).toInt();
+    }
+    if (m['devImportFetchTimeoutSecs'] is num) {
+      s.devImportFetchTimeoutSecs =
+          (m['devImportFetchTimeoutSecs'] as num).toInt();
     }
     if (m['devTlsVerify'] is bool) s.devTlsVerify = m['devTlsVerify'];
     if (m['devVideoSync'] is String) {

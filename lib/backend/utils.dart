@@ -158,9 +158,10 @@ class Utils {
     // every source inserts trigger-free and the FTS index is rebuilt exactly
     // ONCE at the end — not once per source. The per-source wrap in xtream.dart
     // hits the _ftsTriggersSuspended early-return and becomes a pass-through,
-    // and M3U (which has no per-source wrap) is still covered because this
-    // outer call always ends in a full global rebuild. No refreshedSourceId →
-    // the end rebuild reindexes every source, including M3U.
+    // and M3U (which has no per-source wrap) is still covered because the
+    // fix614 batch targeted re-index below reindexes every SUCCEEDED source by
+    // source_id regardless of type (M3U included). On the error path (body
+    // threw) the wrapper falls back to a full global rebuild for safety.
     //
     // fix518: drop the channels browse indexes ONCE around the whole loop and
     // rebuild them once at the end (not per source) — the per-row index
@@ -169,6 +170,13 @@ class Utils {
     // both the shared FTS-trigger suspend and this index drop/recreate, and
     // SQLite serializes writes anyway, so concurrency bought nothing on the
     // DB-write-bound refresh.
+    // fix614: collect the ids of sources that SUCCEEDED so the end-of-batch FTS
+    // step can targeted-reindex only those (≈51s) instead of a full-catalog
+    // rebuild (≈66min). Declared out here so the targeted closure passed to
+    // withSuspendedFtsTriggers — which runs in its finally, AFTER the loop —
+    // can read the final set. A source that failed its fetch never wiped its
+    // channels, so its existing FTS rows stay valid and it is correctly omitted.
+    final succeededIds = <int>[];
     await Sql.withSuspendedFtsTriggers(() async {
       await Sql.withDroppedBrowseIndexes(() async {
         // fix611: one source failing must NEVER stop the rest from
@@ -208,6 +216,9 @@ class Utils {
               }
             }
           }
+          if (lastError == null && s.id != null) {
+            succeededIds.add(s.id!);
+          }
           if (lastError != null) {
             failures[s] = lastError;
             AppLog.warn(
@@ -233,7 +244,18 @@ class Utils {
           onProgress: onSourceStatus == null || enabled.isEmpty
               ? null
               : (msg) => onSourceStatus(enabled.last, msg));
-    });
+    },
+        // fix614: replace the global end-of-batch FTS rebuild with a targeted
+        // per-source re-index of just the sources that succeeded. Runs in the
+        // wrapper's finally (after the loop), so succeededIds is fully
+        // populated. If the body throws, the wrapper ignores this and does the
+        // safe global rebuild instead.
+        batchTargetedRebuild: () async {
+          if (onSourceStatus != null && enabled.isNotEmpty) {
+            onSourceStatus(enabled.last, 'Updating search index…');
+          }
+          await Sql.reindexFtsSources(succeededIds);
+        });
   }
 
   // fix580: memoized so the Player can read the resolved value synchronously at
