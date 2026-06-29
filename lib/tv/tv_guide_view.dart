@@ -1047,6 +1047,13 @@ class _FocusTileState extends State<_FocusTile> {
           focusNode: widget.focusNode,
           autofocus: widget.autofocus,
           onTap: widget.onTap,
+          // fix602: also wire the TOUCH long-press to the same menu (parity with
+          // channel_tile). The remote path is the held-OK key detector above;
+          // this adds the touch gesture for touchscreens AND makes the menu
+          // reachable by a synthetic touch long-press for on-device testing (a
+          // sustained D-pad hold can't be injected via adb on a non-rooted box).
+          onLongPress:
+              widget.onLongPress == null ? null : () => widget.onLongPress!(),
           onFocusChange: (v) {
             setState(() => _focused = v);
             if (v) widget.onFocusGained?.call(true);

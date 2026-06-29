@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.12",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.12",
+  "latest": "2.2.13",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.13",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 TV Live guide: fixed the channel menu (hold OK/Select) sometimes opening for the wrong channel \u2014 or not opening \u2014 after the list changed; and favoriting from the menu now updates the star immediately and keeps your place in the list.\n\u2022 Program guide: the on-launch guide refresh no longer re-downloads on every open when a provider simply has no listing for the current moment.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.12/Free4Me-IPTV-2.2.12-arm64.apk"
+  "releaseNotes": "\u2022 TV Live guide: the channel menu can now also be opened with a touch long-press (in addition to holding OK/Select on the remote).",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.13/Free4Me-IPTV-2.2.13-arm64.apk"
 }
