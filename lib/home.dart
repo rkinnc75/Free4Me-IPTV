@@ -6,6 +6,7 @@ import 'package:open_tv/backend/background_task_service.dart';
 import 'package:open_tv/backend/channel_search_cache.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
+import 'package:open_tv/memory.dart';
 import 'package:open_tv/backend/search_query_gate.dart';
 import 'package:open_tv/backend/stream_scanner.dart';
 import 'package:open_tv/models/multi_view_layout.dart';
@@ -74,10 +75,25 @@ class _HomeState extends State<Home> {
   final ValueNotifier<({int done, int total})> _scanProgress =
       ValueNotifier(const (done: 0, total: 0));
 
+  // fix611: true when the active search method is FTS-backed (the only methods
+  // that use channels_fts and are therefore affected by a rebuild).
+  bool get _usesFts =>
+      widget.home.filters.searchMethod == SearchMethod.ftsPhrase ||
+      widget.home.filters.searchMethod == SearchMethod.ftsAnd;
+
+  // fix611: search is blocked while the FTS index is rebuilding AND the active
+  // method needs it. likeSubstring / inMemory ignore the rebuild entirely.
+  bool get _ftsRebuildBlocking => _usesFts && ftsRebuilding.value;
+
+  void _onFtsRebuildingChanged() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_scrollListener);
+    ftsRebuilding.addListener(_onFtsRebuildingChanged);
     initializeAsync();
   }
 
@@ -351,6 +367,7 @@ class _HomeState extends State<Home> {
       OverlayPlayerController.instance.removeListener(_onOverlayChanged);
       _overlayListenerAttached = false;
     }
+    ftsRebuilding.removeListener(_onFtsRebuildingChanged);
     _scrollController.dispose();
     searchController.dispose();
     _debounce?.cancel();
@@ -638,7 +655,7 @@ class _HomeState extends State<Home> {
                               ).textTheme.titleMedium?.fontSize ?? 16,
                             ),
                             controller: searchController,
-                            enabled: _searchReady,
+                            enabled: _searchReady && !_ftsRebuildBlocking,
                             onChanged: (query) {
                               // relative to the burst so we can see how long the
                               // user has been typing before the debounce fires,
@@ -709,9 +726,11 @@ class _HomeState extends State<Home> {
                               );
                             },
                             decoration: InputDecoration(
-                              hintText: _searchReady
-                                  ? 'Search…'
-                                  : 'Preparing search…',
+                              hintText: _ftsRebuildBlocking
+                                  ? 'Search updating…'
+                                  : _searchReady
+                                      ? 'Search…'
+                                      : 'Preparing search…',
                               hintStyle: TextStyle(
                                 fontSize: Theme.of(
                                   context,

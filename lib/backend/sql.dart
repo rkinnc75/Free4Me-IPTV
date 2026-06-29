@@ -8,6 +8,7 @@ import 'package:open_tv/backend/group_search_gate.dart';
 import 'package:open_tv/backend/playback_analyzer.dart';
 import 'package:open_tv/backend/channel_search_cache.dart';
 import 'package:open_tv/backend/db_factory.dart';
+import 'package:open_tv/memory.dart';
 import 'package:open_tv/models/channel.dart';
 import 'package:open_tv/models/channel_http_headers.dart';
 import 'package:open_tv/models/channel_preserve.dart';
@@ -342,7 +343,16 @@ class Sql {
           // have already removed this source's OLD entries with nothing
           // reinserted yet, so a global rebuild is the only safe way to
           // leave search consistent.
-          await reconcileFtsTriggers(true);
+          // fix611: this branch runs the full-catalog FTS rebuild — the
+          // multi-minute cost on a 1M+ row catalog. Signal the search UI to
+          // disable FTS-backed search for its duration, and ALWAYS clear the
+          // flag (try/finally) so a throw here never strands search disabled.
+          ftsRebuilding.value = true;
+          try {
+            await reconcileFtsTriggers(true);
+          } finally {
+            ftsRebuilding.value = false;
+          }
           AppLog.info('Sql.withSuspendedFtsTriggers: FTS triggers restored'
               ' + index rebuilt');
         }

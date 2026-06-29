@@ -49,6 +49,10 @@ Future<void> showSourcesRefreshDialog(BuildContext context) async {
   int sourceTotal = 0;
   bool done = false;
   Object? error;
+  // fix611: per-source failures collected during the batch. A single source
+  // failing no longer aborts the whole refresh (see Utils.refreshAllSources);
+  // the dialog reports a partial-success summary instead of "Refresh failed".
+  final List<String> failedSources = [];
   int rowsDone = 0;
   int rowsTotal = 0;
   DateTime? saveStartedAt;
@@ -179,6 +183,9 @@ Future<void> showSourcesRefreshDialog(BuildContext context) async {
                     '${msg.length > 60 ? "${msg.substring(0, 60)}…" : msg}';
               });
             },
+            onSourceFailed: (Source source, Object err) {
+              setSt(() => failedSources.add(source.name));
+            },
           );
         },
       );
@@ -200,6 +207,15 @@ Future<void> showSourcesRefreshDialog(BuildContext context) async {
         title = 'Nothing to refresh';
         status = 'No enabled sources were found.';
         AppLog.info('SourcesRefreshDialog: no enabled sources');
+      } else if (failedSources.isNotEmpty) {
+        // fix611: some sources failed but others succeeded — report both
+        // instead of a misleading all-or-nothing result.
+        final okCount = sourceTotal - failedSources.length;
+        title = okCount > 0 ? 'Partly loaded' : 'Refresh failed';
+        status = okCount > 0
+            ? '$okCount of $sourceTotal sources ready. '
+                'Could not refresh: ${failedSources.join(", ")}.'
+            : 'Could not refresh: ${failedSources.join(", ")}.';
       } else {
         title = 'Loaded';
         status = sourceTotal == 1

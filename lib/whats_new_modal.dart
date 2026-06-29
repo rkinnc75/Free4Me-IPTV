@@ -6,6 +6,16 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.22': [
+    'Refreshing all sources no longer stops at the first source that fails: '
+        'each source is retried once, and if it still cannot be reached the '
+        'refresh skips it and continues with the rest, then tells you which '
+        'sources could not be refreshed.',
+    'While the search index rebuilds at the end of a large refresh, the search '
+        'box now shows "Search updating..." and re-enables itself the moment it '
+        'finishes (or if the refresh hits an error) — only when you use an '
+        'index-based search method.',
+  ],
   '2.2.21': [
     'TV: returning to Live TV now reopens the category and channels you were '
         'viewing, instead of resetting to the top — unless you changed which '

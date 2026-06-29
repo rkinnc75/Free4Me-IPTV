@@ -142,6 +142,7 @@ class Utils {
     void Function(int index, int total, Source source)? onSourceStart,
     void Function(Source source, String status)? onSourceStatus,
     void Function(Source source, int done, int total)? onSourceRowProgress,
+    void Function(Source source, Object error)? onSourceFailed,
   }) async {
     final enabled = (await Sql.getSources())
         .where((s) => s.enabled)
@@ -170,16 +171,58 @@ class Utils {
     // DB-write-bound refresh.
     await Sql.withSuspendedFtsTriggers(() async {
       await Sql.withDroppedBrowseIndexes(() async {
+        // fix611: one source failing must NEVER stop the rest from
+        // refreshing. Each source gets up to TWO attempts (the original try +
+        // one retry — distinct from xtream.dart's per-content-type retry); if
+        // both fail, record it via onSourceFailed and CONTINUE to the next
+        // source. The whole-batch FTS-trigger suspend + browse-index drop stay
+        // owned by the outer wrappers, so a mid-loop failure still ends in the
+        // single end-of-batch rebuild.
+        final failures = <Source, Object>{};
         for (var i = 0; i < enabled.length; i++) {
           final s = enabled[i];
           onSourceStart?.call(i + 1, enabled.length, s);
-          await refreshSource(
-            s,
-            onProgress:
-                onSourceStatus == null ? null : (msg) => onSourceStatus(s, msg),
-            onRowProgress: onSourceRowProgress == null
-                ? null
-                : (done, total) => onSourceRowProgress(s, done, total),
+          const maxAttempts = 2;
+          Object? lastError;
+          for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+              await refreshSource(
+                s,
+                onProgress: onSourceStatus == null
+                    ? null
+                    : (msg) => onSourceStatus(s, msg),
+                onRowProgress: onSourceRowProgress == null
+                    ? null
+                    : (done, total) => onSourceRowProgress(s, done, total),
+              );
+              lastError = null;
+              break;
+            } catch (e) {
+              lastError = e;
+              if (attempt < maxAttempts) {
+                AppLog.warn(
+                  'Utils.refreshAllSources: source "${s.name}" attempt'
+                  ' $attempt/$maxAttempts failed — $e; retrying',
+                );
+                onSourceStatus?.call(s, 'Retrying "${s.name}"...');
+              }
+            }
+          }
+          if (lastError != null) {
+            failures[s] = lastError;
+            AppLog.warn(
+              'Utils.refreshAllSources: source "${s.name}" failed after'
+              ' $maxAttempts attempt(s) — $lastError; continuing with'
+              ' remaining source(s)',
+            );
+            onSourceFailed?.call(s, lastError);
+          }
+        }
+        if (failures.isNotEmpty) {
+          AppLog.warn(
+            'Utils.refreshAllSources: ${failures.length} of'
+            ' ${enabled.length} source(s) failed:'
+            ' ${failures.keys.map((s) => s.name).join(", ")}',
           );
         }
       },

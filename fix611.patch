@@ -1,0 +1,271 @@
+diff --git a/lib/backend/sql.dart b/lib/backend/sql.dart
+index c5eb160..009ab06 100644
+--- a/lib/backend/sql.dart
++++ b/lib/backend/sql.dart
+@@ -8,6 +8,7 @@ import 'package:open_tv/backend/group_search_gate.dart';
+ import 'package:open_tv/backend/playback_analyzer.dart';
+ import 'package:open_tv/backend/channel_search_cache.dart';
+ import 'package:open_tv/backend/db_factory.dart';
++import 'package:open_tv/memory.dart';
+ import 'package:open_tv/models/channel.dart';
+ import 'package:open_tv/models/channel_http_headers.dart';
+ import 'package:open_tv/models/channel_preserve.dart';
+@@ -342,7 +343,16 @@ class Sql {
+           // have already removed this source's OLD entries with nothing
+           // reinserted yet, so a global rebuild is the only safe way to
+           // leave search consistent.
+-          await reconcileFtsTriggers(true);
++          // fix611: this branch runs the full-catalog FTS rebuild — the
++          // multi-minute cost on a 1M+ row catalog. Signal the search UI to
++          // disable FTS-backed search for its duration, and ALWAYS clear the
++          // flag (try/finally) so a throw here never strands search disabled.
++          ftsRebuilding.value = true;
++          try {
++            await reconcileFtsTriggers(true);
++          } finally {
++            ftsRebuilding.value = false;
++          }
+           AppLog.info('Sql.withSuspendedFtsTriggers: FTS triggers restored'
+               ' + index rebuilt');
+         }
+diff --git a/lib/backend/utils.dart b/lib/backend/utils.dart
+index c968f5d..75dd3bb 100644
+--- a/lib/backend/utils.dart
++++ b/lib/backend/utils.dart
+@@ -142,6 +142,7 @@ class Utils {
+     void Function(int index, int total, Source source)? onSourceStart,
+     void Function(Source source, String status)? onSourceStatus,
+     void Function(Source source, int done, int total)? onSourceRowProgress,
++    void Function(Source source, Object error)? onSourceFailed,
+   }) async {
+     final enabled = (await Sql.getSources())
+         .where((s) => s.enabled)
+@@ -170,16 +171,58 @@ class Utils {
+     // DB-write-bound refresh.
+     await Sql.withSuspendedFtsTriggers(() async {
+       await Sql.withDroppedBrowseIndexes(() async {
++        // fix611: one source failing must NEVER stop the rest from
++        // refreshing. Each source gets up to TWO attempts (the original try +
++        // one retry — distinct from xtream.dart's per-content-type retry); if
++        // both fail, record it via onSourceFailed and CONTINUE to the next
++        // source. The whole-batch FTS-trigger suspend + browse-index drop stay
++        // owned by the outer wrappers, so a mid-loop failure still ends in the
++        // single end-of-batch rebuild.
++        final failures = <Source, Object>{};
+         for (var i = 0; i < enabled.length; i++) {
+           final s = enabled[i];
+           onSourceStart?.call(i + 1, enabled.length, s);
+-          await refreshSource(
+-            s,
+-            onProgress:
+-                onSourceStatus == null ? null : (msg) => onSourceStatus(s, msg),
+-            onRowProgress: onSourceRowProgress == null
+-                ? null
+-                : (done, total) => onSourceRowProgress(s, done, total),
++          const maxAttempts = 2;
++          Object? lastError;
++          for (var attempt = 1; attempt <= maxAttempts; attempt++) {
++            try {
++              await refreshSource(
++                s,
++                onProgress: onSourceStatus == null
++                    ? null
++                    : (msg) => onSourceStatus(s, msg),
++                onRowProgress: onSourceRowProgress == null
++                    ? null
++                    : (done, total) => onSourceRowProgress(s, done, total),
++              );
++              lastError = null;
++              break;
++            } catch (e) {
++              lastError = e;
++              if (attempt < maxAttempts) {
++                AppLog.warn(
++                  'Utils.refreshAllSources: source "${s.name}" attempt'
++                  ' $attempt/$maxAttempts failed — $e; retrying',
++                );
++                onSourceStatus?.call(s, 'Retrying "${s.name}"...');
++              }
++            }
++          }
++          if (lastError != null) {
++            failures[s] = lastError;
++            AppLog.warn(
++              'Utils.refreshAllSources: source "${s.name}" failed after'
++              ' $maxAttempts attempt(s) — $lastError; continuing with'
++              ' remaining source(s)',
++            );
++            onSourceFailed?.call(s, lastError);
++          }
++        }
++        if (failures.isNotEmpty) {
++          AppLog.warn(
++            'Utils.refreshAllSources: ${failures.length} of'
++            ' ${enabled.length} source(s) failed:'
++            ' ${failures.keys.map((s) => s.name).join(", ")}',
+           );
+         }
+       },
+diff --git a/lib/home.dart b/lib/home.dart
+index bde86f7..34bdbb4 100644
+--- a/lib/home.dart
++++ b/lib/home.dart
+@@ -6,6 +6,7 @@ import 'package:open_tv/backend/background_task_service.dart';
+ import 'package:open_tv/backend/channel_search_cache.dart';
+ import 'package:open_tv/backend/settings_service.dart';
+ import 'package:open_tv/backend/sql.dart';
++import 'package:open_tv/memory.dart';
+ import 'package:open_tv/backend/search_query_gate.dart';
+ import 'package:open_tv/backend/stream_scanner.dart';
+ import 'package:open_tv/models/multi_view_layout.dart';
+@@ -74,10 +75,25 @@ class _HomeState extends State<Home> {
+   final ValueNotifier<({int done, int total})> _scanProgress =
+       ValueNotifier(const (done: 0, total: 0));
+ 
++  // fix611: true when the active search method is FTS-backed (the only methods
++  // that use channels_fts and are therefore affected by a rebuild).
++  bool get _usesFts =>
++      widget.home.filters.searchMethod == SearchMethod.ftsPhrase ||
++      widget.home.filters.searchMethod == SearchMethod.ftsAnd;
++
++  // fix611: search is blocked while the FTS index is rebuilding AND the active
++  // method needs it. likeSubstring / inMemory ignore the rebuild entirely.
++  bool get _ftsRebuildBlocking => _usesFts && ftsRebuilding.value;
++
++  void _onFtsRebuildingChanged() {
++    if (mounted) setState(() {});
++  }
++
+   @override
+   void initState() {
+     super.initState();
+     _scrollController.addListener(_scrollListener);
++    ftsRebuilding.addListener(_onFtsRebuildingChanged);
+     initializeAsync();
+   }
+ 
+@@ -351,6 +367,7 @@ class _HomeState extends State<Home> {
+       OverlayPlayerController.instance.removeListener(_onOverlayChanged);
+       _overlayListenerAttached = false;
+     }
++    ftsRebuilding.removeListener(_onFtsRebuildingChanged);
+     _scrollController.dispose();
+     searchController.dispose();
+     _debounce?.cancel();
+@@ -638,7 +655,7 @@ class _HomeState extends State<Home> {
+                               ).textTheme.titleMedium?.fontSize ?? 16,
+                             ),
+                             controller: searchController,
+-                            enabled: _searchReady,
++                            enabled: _searchReady && !_ftsRebuildBlocking,
+                             onChanged: (query) {
+                               // relative to the burst so we can see how long the
+                               // user has been typing before the debounce fires,
+@@ -709,9 +726,11 @@ class _HomeState extends State<Home> {
+                               );
+                             },
+                             decoration: InputDecoration(
+-                              hintText: _searchReady
+-                                  ? 'Search…'
+-                                  : 'Preparing search…',
++                              hintText: _ftsRebuildBlocking
++                                  ? 'Search updating…'
++                                  : _searchReady
++                                      ? 'Search…'
++                                      : 'Preparing search…',
+                               hintStyle: TextStyle(
+                                 fontSize: Theme.of(
+                                   context,
+diff --git a/lib/memory.dart b/lib/memory.dart
+index fc73141..3d5ebae 100644
+--- a/lib/memory.dart
++++ b/lib/memory.dart
+@@ -1 +1,13 @@
++import 'package:flutter/foundation.dart';
++
+ Set<int> refreshedSeries = {};
++
++/// fix611: true while a full-catalog FTS index rebuild runs at the end of a
++/// bulk source refresh. The search UI watches this and disables the search
++/// field (showing "Search updating...") ONLY when the active search method is
++/// FTS-backed (ftsPhrase / ftsAnd); likeSubstring and inMemory do not use
++/// channels_fts and stay usable. Set true by Sql.withSuspendedFtsTriggers
++/// immediately before the global FTS rebuild and cleared in its finally, so it
++/// is restored to false even when the refresh body throws. A ValueNotifier so
++/// widgets can listen without a heavier state-management dependency.
++final ValueNotifier<bool> ftsRebuilding = ValueNotifier<bool>(false);
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 09ed70f..3bde11b 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,16 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '2.2.22': [
++    'Refreshing all sources no longer stops at the first source that fails: '
++        'each source is retried once, and if it still cannot be reached the '
++        'refresh skips it and continues with the rest, then tells you which '
++        'sources could not be refreshed.',
++    'While the search index rebuilds at the end of a large refresh, the search '
++        'box now shows "Search updating..." and re-enables itself the moment it '
++        'finishes (or if the refresh hits an error) — only when you use an '
++        'index-based search method.',
++  ],
+   '2.2.21': [
+     'TV: returning to Live TV now reopens the category and channels you were '
+         'viewing, instead of resetting to the top — unless you changed which '
+diff --git a/lib/widgets/sources_refresh_dialog.dart b/lib/widgets/sources_refresh_dialog.dart
+index 9c2ed1a..10deca3 100644
+--- a/lib/widgets/sources_refresh_dialog.dart
++++ b/lib/widgets/sources_refresh_dialog.dart
+@@ -49,6 +49,10 @@ Future<void> showSourcesRefreshDialog(BuildContext context) async {
+   int sourceTotal = 0;
+   bool done = false;
+   Object? error;
++  // fix611: per-source failures collected during the batch. A single source
++  // failing no longer aborts the whole refresh (see Utils.refreshAllSources);
++  // the dialog reports a partial-success summary instead of "Refresh failed".
++  final List<String> failedSources = [];
+   int rowsDone = 0;
+   int rowsTotal = 0;
+   DateTime? saveStartedAt;
+@@ -179,6 +183,9 @@ Future<void> showSourcesRefreshDialog(BuildContext context) async {
+                     '${msg.length > 60 ? "${msg.substring(0, 60)}…" : msg}';
+               });
+             },
++            onSourceFailed: (Source source, Object err) {
++              setSt(() => failedSources.add(source.name));
++            },
+           );
+         },
+       );
+@@ -200,6 +207,15 @@ Future<void> showSourcesRefreshDialog(BuildContext context) async {
+         title = 'Nothing to refresh';
+         status = 'No enabled sources were found.';
+         AppLog.info('SourcesRefreshDialog: no enabled sources');
++      } else if (failedSources.isNotEmpty) {
++        // fix611: some sources failed but others succeeded — report both
++        // instead of a misleading all-or-nothing result.
++        final okCount = sourceTotal - failedSources.length;
++        title = okCount > 0 ? 'Partly loaded' : 'Refresh failed';
++        status = okCount > 0
++            ? '$okCount of $sourceTotal sources ready. '
++                'Could not refresh: ${failedSources.join(", ")}.'
++            : 'Could not refresh: ${failedSources.join(", ")}.';
+       } else {
+         title = 'Loaded';
+         status = sourceTotal == 1
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 43b9cd7..84cc667 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 2.2.21+610
++version: 2.2.22+611
+ 
+ environment:
+   sdk: ^3.10.7
