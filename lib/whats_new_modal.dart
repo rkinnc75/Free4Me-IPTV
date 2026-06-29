@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.19': [
+    'Very large channel lists (250k+) freeze the app less at startup: redundant '
+        'search-index rebuilds after a restart are gone, indexes build with far '
+        'less disk thrashing, and the guide refresh now waits for startup work to '
+        'finish instead of piling on. (More startup speedups to come.)',
+  ],
   '2.2.18': [
     'Under the hood: the diagnostic-report tooling is now shared across the app '
         'and reachable faster when diagnostic logging is enabled. No change for '

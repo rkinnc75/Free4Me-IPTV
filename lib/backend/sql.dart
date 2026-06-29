@@ -1285,7 +1285,7 @@ class Sql {
     ];
     const rebuilt = <String, String>{
       'idx_channels_browse_mt':
-          'CREATE INDEX idx_channels_browse_mt ON channels( media_type,'
+          'CREATE INDEX IF NOT EXISTS idx_channels_browse_mt ON channels( media_type,'
               ' (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0'
               ' WHEN COALESCE(favorite,0)=1 THEN 1'
               ' WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2'
@@ -1294,7 +1294,7 @@ class Sql {
               ' name COLLATE NOCASE )'
               ' WHERE url IS NOT NULL AND series_id IS NULL',
       'idx_channels_browse_mt_safe':
-          'CREATE INDEX idx_channels_browse_mt_safe ON channels( media_type,'
+          'CREATE INDEX IF NOT EXISTS idx_channels_browse_mt_safe ON channels( media_type,'
               ' (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0'
               ' WHEN COALESCE(favorite,0)=1 THEN 1'
               ' WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2'
@@ -1304,20 +1304,20 @@ class Sql {
               ' WHERE url IS NOT NULL AND series_id IS NULL'
               ' AND COALESCE(is_adult,0) = 0',
       'idx_browse_prov':
-          'CREATE INDEX idx_browse_prov ON channels( media_type,'
+          'CREATE INDEX IF NOT EXISTS idx_browse_prov ON channels( media_type,'
               ' (CASE WHEN COALESCE(favorite,0)=1 THEN 0 ELSE 1 END),'
               ' (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0 ELSE 1 END),'
               ' provider_order, name COLLATE NOCASE )'
               ' WHERE url IS NOT NULL AND series_id IS NULL',
       'idx_browse_prov_safe':
-          'CREATE INDEX idx_browse_prov_safe ON channels( media_type,'
+          'CREATE INDEX IF NOT EXISTS idx_browse_prov_safe ON channels( media_type,'
               ' (CASE WHEN COALESCE(favorite,0)=1 THEN 0 ELSE 1 END),'
               ' (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0 ELSE 1 END),'
               ' provider_order, name COLLATE NOCASE )'
               ' WHERE url IS NOT NULL AND series_id IS NULL'
               ' AND COALESCE(is_adult,0) = 0',
       'idx_browse_src_mt':
-          'CREATE INDEX idx_browse_src_mt ON channels( source_id, media_type,'
+          'CREATE INDEX IF NOT EXISTS idx_browse_src_mt ON channels( source_id, media_type,'
               ' (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0'
               ' WHEN COALESCE(favorite,0)=1 THEN 1'
               ' WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2'
@@ -1326,7 +1326,7 @@ class Sql {
               ' name COLLATE NOCASE )'
               ' WHERE url IS NOT NULL AND series_id IS NULL',
       'idx_browse_src_mt_safe':
-          'CREATE INDEX idx_browse_src_mt_safe ON channels( source_id, media_type,'
+          'CREATE INDEX IF NOT EXISTS idx_browse_src_mt_safe ON channels( source_id, media_type,'
               ' (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0'
               ' WHEN COALESCE(favorite,0)=1 THEN 1'
               ' WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2'
@@ -1336,7 +1336,7 @@ class Sql {
               ' WHERE url IS NOT NULL AND series_id IS NULL'
               ' AND COALESCE(is_adult,0) = 0',
       'idx_channels_browse_enabled':
-          'CREATE INDEX idx_channels_browse_enabled ON channels( source_id,'
+          'CREATE INDEX IF NOT EXISTS idx_channels_browse_enabled ON channels( source_id,'
               ' (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0'
               ' WHEN COALESCE(favorite,0)=1 THEN 1'
               ' WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2'

@@ -633,7 +633,7 @@ class DbFactory {
       // source sorts in its own (uniform, now-indexed) mode.
       ..add(SqliteMigration(33, (tx) async {
         await tx.execute('''
-          CREATE INDEX idx_browse_prov ON channels(
+          CREATE INDEX IF NOT EXISTS idx_browse_prov ON channels(
             media_type,
             (CASE WHEN COALESCE(favorite,0)=1 THEN 0 ELSE 1 END),
             (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1
@@ -644,7 +644,7 @@ class DbFactory {
           WHERE url IS NOT NULL AND series_id IS NULL AND cat_enabled = 1;
         ''');
         await tx.execute('''
-          CREATE INDEX idx_browse_cat ON channels(
+          CREATE INDEX IF NOT EXISTS idx_browse_cat ON channels(
             media_type,
             (CASE WHEN COALESCE(favorite,0)=1 THEN 0 ELSE 1 END),
             (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1
@@ -977,7 +977,21 @@ class DbFactory {
           'ON groups(name, source_id, media_type);',
         );
       }));
+    // fix608 (#2): bound memory so any migration that rebuilds a browse index
+    // over an ALREADY-POPULATED channels table — a user upgrading with a huge
+    // catalog (e.g. 272k channels on a Shield, where it disk-spilled ~75s/index
+    // and froze startup) — merge-sorts within a 32 MiB cap instead of spilling
+    // on SQLite's ~2 MiB default. The import path (Sql.withDroppedBrowseIndexes)
+    // already does this; this covers the migration path. Connection-scoped on
+    // the single sqlite_async writer; restored to the normal browse cap after.
+    try {
+      await db.execute('PRAGMA temp_store = FILE;');
+      await db.execute('PRAGMA cache_size = -32768;');
+    } catch (_) {}
     await migrations.migrate(db);
+    try {
+      await db.execute('PRAGMA cache_size = -2000;');
+    } catch (_) {}
     // fix542: the heavy fix537 index maintenance (drop 5 dead indexes, rebuild
     // 7 browse indexes without cat_enabled, then VACUUM) is NO LONGER run on
     // this cold-start path — it blacked-out/ANR-killed the app on open for the

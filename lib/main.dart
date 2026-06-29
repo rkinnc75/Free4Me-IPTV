@@ -63,8 +63,11 @@ Future<void> main() async {
 
   // unawaited — startup continues immediately; the cache is ready by the time
   // the user first types in the search box.
+  // fix608 (#1): collect the heavy startup DB warm-ups so the foreground
+  // stale-EPG refresh (fix600) can be deferred until they finish — see below.
+  final warmups = <Future<void>>[];
   if (settings.searchMethod == SearchMethod.inMemory) {
-    unawaited(ChannelSearchCache.ensureBuilt().then((_) {
+    warmups.add(ChannelSearchCache.ensureBuilt().then((_) {
       AppLog.info('main: ChannelSearchCache warm-up complete');
     }));
   }
@@ -99,7 +102,7 @@ Future<void> main() async {
   // pulls those pages into cache so the user's first Home.load is fast. Off the
   // render path (unawaited); skipped when there are no sources yet.
   if (hasSources) {
-    unawaited(Sql.warmBrowseCache(settings).then((ms) {
+    warmups.add(Sql.warmBrowseCache(settings).then((ms) {
       AppLog.info('main: browse cache warm-up complete (${ms}ms)');
     }).catchError((e) {
       AppLog.warn('main: browse warm-up failed — $e');
@@ -108,7 +111,7 @@ Future<void> main() async {
     // rebuild cat_enabled-free browse indexes + VACUUM) HERE, off the cold-start
     // critical path (unawaited, after first frame), so it can never block
     // startup / black-screen the app on a large catalog. Gated to run once.
-    unawaited(Sql.runPendingIndexMaintenance());
+    warmups.add(Sql.runPendingIndexMaintenance());
     // fix546: purge legacy divider rows once, also off the cold-start path.
     unawaited(Sql.runPendingDividerCleanup());
   }
@@ -117,7 +120,14 @@ Future<void> main() async {
   // background work) so the forecast can lapse → empty guide grid + empty "On
   // now". Foreground-refresh on launch IF the EPG is stale (no programme airing
   // now). Non-blocking; the guide reloads via EpgService.epgVersion on finish.
-  unawaited(EpgService.refreshIfStale());
+  // fix608 (#1): DEFER it until the startup DB warm-ups (cache build + browse
+  // warm + index maintenance) finish — on a huge catalog those saturate SQLite
+  // for 1–3 min (the Shield startup freeze), and firing a 100k-programme EPG
+  // download into that pile made it worse. Each warm-up swallows its own error
+  // so Future.wait always settles; whenComplete runs the refresh either way.
+  Future.wait(warmups.map((f) => f.catchError((_) {}))).whenComplete(() {
+    unawaited(EpgService.refreshIfStale());
+  });
   // fix506: mirror the render-cap setting to the native SharedPref so the
   // 1080p cap decision is correct on the NEXT launch.
   unawaited(RenderCap.setEnabled(settings.cap1080pOnLowRam));
