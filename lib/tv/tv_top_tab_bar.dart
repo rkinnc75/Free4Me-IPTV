@@ -16,6 +16,11 @@ class TvTab {
   final List<MediaType> mediaTypes;
   final ViewType viewType;
   final bool isSearch;
+  // fix607: this tab has a held-OK long-press action (Live TV → diagnostic
+  // report; History → clear history). Only these tabs get the held-OK detector;
+  // the rest keep plain quick-switch (so a held OK still switches them — fixes
+  // the "held-OK on Movies/Series swallowed, tab fails to switch" regression).
+  final bool longPress;
 
   const TvTab({
     required this.label,
@@ -23,6 +28,7 @@ class TvTab {
     required this.mediaTypes,
     required this.viewType,
     this.isSearch = false,
+    this.longPress = false,
   });
 }
 
@@ -89,8 +95,13 @@ class TvTopTabBar extends StatelessWidget {
                       selected: i == selectedIndex,
                       autofocus: i == selectedIndex,
                       onTap: () => onSelected(i),
-                      onLongPress:
-                          onLongPress == null ? null : () => onLongPress!(i),
+                      // fix607: only tabs that declare a long-press action get
+                      // one — otherwise a held OK on Movies/Series/etc. would be
+                      // swallowed (no switch). Tabs without it use plain
+                      // quick-switch (the held-OK detector isn't installed).
+                      onLongPress: (onLongPress == null || !tabs[i].longPress)
+                          ? null
+                          : () => onLongPress!(i),
                     ),
                 ],
               ),
@@ -204,7 +215,10 @@ class _TabButtonState extends State<_TabButton> {
           autofocus: widget.autofocus,
           borderRadius: BorderRadius.circular(999),
           onTap: widget.onTap,
-          onLongPress: widget.onLongPress,
+          // fix607: NO touch onLongPress — the long-press action (diagnostic
+          // submit / clear history) is reachable ONLY via the held-OK D-pad
+          // detector above. A touch long-press here would silently fire the
+          // diagnostic POST with no confirmation (footgun on touch builds).
           onFocusChange: (value) => setState(() => _focused = value),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 150),

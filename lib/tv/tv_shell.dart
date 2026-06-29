@@ -43,6 +43,7 @@ class _TvShellState extends State<TvShell> {
       color: Color(0xFF4E9FE5),
       mediaTypes: [MediaType.livestream],
       viewType: ViewType.all,
+      longPress: true, // fix607: held-OK → diagnostic report (gated)
     ),
     TvTab(
       label: 'Movies',
@@ -75,6 +76,7 @@ class _TvShellState extends State<TvShell> {
       color: Color(0xFF4CAF78),
       mediaTypes: [MediaType.livestream, MediaType.movie, MediaType.serie],
       viewType: ViewType.history,
+      longPress: true, // fix607: held-OK → clear history (now reachable by remote)
     ),
     // Search tab: the dedicated grouped EPG + channel "what's on" search
     // (fix502). mediaTypes/viewType are unused for this tab.
@@ -88,6 +90,8 @@ class _TvShellState extends State<TvShell> {
   ];
 
   late int _index;
+  // fix607: in-flight guard for the Live-TV held-OK diagnostic submit.
+  bool _diagSubmitting = false;
   // fix524: bumped to force the History tab body to rebuild after a clear.
   int _historyGen = 0;
   // fix534: bumped on tab re-select / return-from-Settings to force the cached
@@ -228,20 +232,27 @@ class _TvShellState extends State<TvShell> {
     if (i == 0) {
       final s = SettingsService.cached;
       if (s == null || !s.debugLogging || s.logUserPass) return;
-      final subject = DateTime.now().toIso8601String();
+      // fix607: re-entrancy guard — a repeated held-OK while the ~30s POST is
+      // outstanding would open multiple duplicate reports.
+      if (_diagSubmitting) return;
+      _diagSubmitting = true;
       final messenger = ScaffoldMessenger.of(context);
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Sending diagnostic report…')),
-      );
-      final r =
-          await IssueReporter.submit(subject: subject, details: '');
-      if (!mounted) return;
-      messenger.hideCurrentSnackBar();
-      messenger.showSnackBar(SnackBar(
-        content: Text(r.success
-            ? 'Diagnostic report sent.'
-            : 'Report failed: ${r.errorMsg ?? 'error'}'),
-      ));
+      try {
+        final subject = DateTime.now().toIso8601String();
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Sending diagnostic report…')),
+        );
+        final r = await IssueReporter.submit(subject: subject, details: '');
+        if (!mounted) return;
+        messenger.hideCurrentSnackBar();
+        messenger.showSnackBar(SnackBar(
+          content: Text(r.success
+              ? 'Diagnostic report sent.'
+              : 'Report failed: ${r.errorMsg ?? 'error'}'),
+        ));
+      } finally {
+        _diagSubmitting = false;
+      }
       return;
     }
     if (_tabs[i].viewType != ViewType.history) return;
