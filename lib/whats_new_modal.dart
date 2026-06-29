@@ -6,6 +6,18 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.14': [
+    'TV Live guide: fixed choosing a category accidentally starting the first '
+        'channel full-screen. Opening a category now just shows its channels.',
+    'TV Live guide: the channel menu (hold OK/Select) is more reliable — it no '
+        'longer flashes then starts playing, and a quick press still just plays.',
+    'TV Live guide: the program rows now line up with the channel list, and '
+        'favorited channels show a star.',
+    'TV Live guide: scrolling the category list no longer changes the program '
+        'grid — that only happens when you open a category.',
+    'TV search: pressing Enter (or Down) jumps to the first result; an empty '
+        'search keeps the cursor in the search box.',
+  ],
   '2.2.13': [
     'TV Live guide: the channel menu can now also be opened with a touch '
         'long-press (in addition to holding OK/Select on the remote).',

@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.13",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.13",
+  "latest": "2.2.14",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.14",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 TV Live guide: the channel menu can now also be opened with a touch long-press (in addition to holding OK/Select on the remote).",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.13/Free4Me-IPTV-2.2.13-arm64.apk"
+  "releaseNotes": "\u2022 TV Live guide: fixed choosing a category accidentally starting the first channel full-screen. Opening a category now just shows its channels.\n\u2022 TV Live guide: the channel menu (hold OK/Select) is more reliable \u2014 it no longer flashes then starts playing, and a quick press still just plays.\n\u2022 TV Live guide: the program rows now line up with the channel list, and favorited channels show a star.\n\u2022 TV Live guide: scrolling the category list no longer changes the program grid \u2014 that only happens when you open a category.\n\u2022 TV search: pressing Enter (or Down) jumps to the first result; an empty search keeps the cursor in the search box.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.14/Free4Me-IPTV-2.2.14-arm64.apk"
 }

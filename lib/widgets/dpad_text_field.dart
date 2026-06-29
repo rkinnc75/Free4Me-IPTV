@@ -38,6 +38,12 @@ class DpadTextField extends StatelessWidget {
   // widget across stacked grids (flutter/flutter#70364). Return false to fall
   // back to nextFocus() (e.g. when there is no target yet).
   final bool Function()? onArrowDown;
+  // fix603: when true, pressing Enter/Select does NOT yield focus via
+  // node.nextFocus() after onSubmitted — the caller keeps/redirects focus
+  // itself (e.g. the search view focuses the first result card once the async
+  // search returns). Default false preserves the move-to-next-field behaviour
+  // used by forms (settings, setup, channel-picker).
+  final bool submitKeepsFocus;
 
   const DpadTextField({
     super.key,
@@ -54,6 +60,7 @@ class DpadTextField extends StatelessWidget {
     this.focusNode,
     this.enabled = true,
     this.onArrowDown,
+    this.submitKeepsFocus = false,
   });
 
   KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
@@ -77,11 +84,15 @@ class DpadTextField extends StatelessWidget {
     if (key == LogicalKeyboardKey.select ||
         key == LogicalKeyboardKey.enter ||
         key == LogicalKeyboardKey.numpadEnter) {
-      // Submit the current text and yield focus so the user can return to
-      // navigating the rest of the screen with the D-pad.
+      // Submit the current text and (by default) yield focus so the user can
+      // return to navigating the rest of the screen with the D-pad. fix603: the
+      // search view keeps focus (submitKeepsFocus) and redirects to the first
+      // result card itself once the async search returns — node.nextFocus()
+      // here would escape to the tab bar (and strand focus when there are no
+      // results).
       final text = controller?.text ?? '';
       onSubmitted?.call(text);
-      node.nextFocus();
+      if (!submitKeepsFocus) node.nextFocus();
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;

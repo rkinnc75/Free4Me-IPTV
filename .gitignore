@@ -176,3 +176,13 @@ free4me_log_*.txt
 # Ignoring it also shields it from apply_fix.sh's `git clean -fd` and the
 # `git add -A` sweep, so a fix release can't delete or accidentally commit it.
 GROUND_ZERO.md
+
+# free4me diagnostic / backup exports — these CONTAIN CREDENTIALS (Xtream
+# user/pass/host live in db.sqlite) plus the full source dump. Never commit
+# them; also shields them from apply_fix.sh's `git add -A` / `git clean -fd`.
+free4me-export*
+free4me-db.sqlite*
+free4me-epg.sqlite*
+free4me-settings*.json
+free4me-source-dump*.txt
+free4me_log*.txt

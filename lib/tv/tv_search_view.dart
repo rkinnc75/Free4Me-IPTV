@@ -49,6 +49,10 @@ class _TvSearchViewState extends State<TvSearchView> {
   List<int> _sourceIds = [];
   bool _ready = false;
   bool _loading = false;
+  // fix603: set when the user explicitly submits (Enter/Go) so the first result
+  // card is focused once the async search returns. NOT set by the debounced
+  // type-ahead, so typing never yanks focus out of the field.
+  bool _pendingFocusFirst = false;
   // fix509: five logical groups.
   List<Channel> _onNow = [];
   List<Channel> _comingUp = [];
@@ -99,6 +103,7 @@ class _TvSearchViewState extends State<TvSearchView> {
 
   Future<void> _run(String query) async {
     if (query.length < 2) {
+      _pendingFocusFirst = false; // fix603: nothing to focus
       if (mounted) {
         setState(() {
           _onNow = [];
@@ -112,6 +117,12 @@ class _TvSearchViewState extends State<TvSearchView> {
       return;
     }
     final inv = ++_inv;
+    // fix603: capture-and-clear the submit's focus-first intent for THIS run
+    // only. If we read the shared flag at the end instead, a submit that gets
+    // superseded (inv != _inv early-return) would leave the flag set, and the
+    // NEXT type-ahead run would then yank focus to the first card mid-typing.
+    final focusFirst = _pendingFocusFirst;
+    _pendingFocusFirst = false;
     setState(() => _loading = true);
     final s = SettingsService.cached ?? widget.settings;
     // fix554: instrument the full TV-search wall-clock. Only Sql.search was
@@ -211,6 +222,14 @@ class _TvSearchViewState extends State<TvSearchView> {
       _series = series;
       _loading = false;
     });
+    // fix603: an explicit submit (Enter/Go) lands focus on the first result
+    // card once results are built. Post-frame so the shelves (and their nodes)
+    // exist. If there are no results, focus simply stays in the field.
+    if (focusFirst) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _firstResultNode()?.requestFocus();
+      });
+    }
   }
 
   void _setNode(Node node) {
@@ -266,10 +285,16 @@ class _TvSearchViewState extends State<TvSearchView> {
               return true;
             },
             onChanged: _onChanged,
+            // fix603: keep focus on submit; we redirect to the first card when
+            // results land (below). Without this the field escaped to the tab
+            // bar on Enter (and stranded focus when there were no results).
+            submitKeepsFocus: true,
             // fix555: pressing Go/Enter (or D-pad select) runs the search
             // immediately instead of waiting out the 250ms onChanged debounce.
+            // fix603: mark a pending focus-first so results land on the first card.
             onSubmitted: (q) {
               _debounce?.cancel();
+              _pendingFocusFirst = true;
               _run(q.trim());
             },
             decoration: InputDecoration(

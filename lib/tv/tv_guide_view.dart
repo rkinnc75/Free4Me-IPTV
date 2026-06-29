@@ -84,7 +84,13 @@ class TvGuideViewState extends State<TvGuideView> {
   final Map<int?, FocusNode> _railNodes = {};
   final Map<int, FocusNode> _channelNodes = {};
   final ScrollController _gridScroll = ScrollController();
-  Timer? _catFollowTimer; // debounce the category-follow grid reload
+  // fix603 (#15): the channel rail and the EPG grid drifted out of vertical
+  // alignment — the rail used variable-height tiles + top padding while the grid
+  // used a fixed itemExtent with none, so channel N didn't line up with its EPG
+  // row N. Now both use _rowHeight with no padding, and the grid MIRRORS the
+  // rail's scroll (the rail is the focus master; the grid is passive) so row N
+  // always lines up with channel N.
+  final ScrollController _railScroll = ScrollController();
   Timer? _epgReloadTimer; // fix601: coalesce epgVersion bumps into one reload
   static const double _rowHeight = 56;
 
@@ -99,14 +105,28 @@ class TvGuideViewState extends State<TvGuideView> {
     // new forecast appears without the user switching tabs. Channels/focus are
     // left untouched (programmes-only reload).
     EpgService.epgVersion.addListener(_onEpgVersionChanged);
+    // fix603 (#15): keep the passive EPG grid vertically locked to the channel
+    // rail (the rail scrolls on D-pad focus; the grid follows).
+    _railScroll.addListener(_syncGridToRail);
     _init();
+  }
+
+  // fix603 (#15): mirror the rail's scroll offset onto the grid so channel N and
+  // EPG row N stay aligned. One-way (rail→grid) — the rail is the focus master,
+  // the grid has no focus/controller-driven scroll of its own — so there is no
+  // feedback loop. Both lists have identical item count + itemExtent + viewport
+  // height, so a matching offset means matching rows.
+  void _syncGridToRail() {
+    if (!_gridScroll.hasClients || !_railScroll.hasClients) return;
+    final target =
+        _railScroll.offset.clamp(0.0, _gridScroll.position.maxScrollExtent);
+    if ((_gridScroll.offset - target).abs() > 0.5) _gridScroll.jumpTo(target);
   }
 
   @override
   void dispose() {
     EpgService.epgVersion.removeListener(_onEpgVersionChanged); // fix600
     _epgReloadTimer?.cancel(); // fix601
-    _catFollowTimer?.cancel();
     _preview.disposeController();
     for (final n in _railNodes.values) {
       n.dispose();
@@ -114,6 +134,8 @@ class TvGuideViewState extends State<TvGuideView> {
     for (final n in _channelNodes.values) {
       n.dispose(); // fix597
     }
+    _railScroll.removeListener(_syncGridToRail); // fix603
+    _railScroll.dispose(); // fix603
     _gridScroll.dispose(); // fix597
     super.dispose();
   }
@@ -242,8 +264,13 @@ class TvGuideViewState extends State<TvGuideView> {
     if (enterChannels && scoped.isNotEmpty) {
       final firstId = scoped.first.id;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _railMode == RailMode.channels && firstId != null) {
-          _channelNodes[firstId]?.requestFocus();
+        if (mounted && _railMode == RailMode.channels) {
+          // fix603 (#15): start both lists at the top so the focused first
+          // channel and its EPG row are aligned (a persistent controller can
+          // otherwise restore a stale offset on remount).
+          if (_railScroll.hasClients) _railScroll.jumpTo(0);
+          if (_gridScroll.hasClients) _gridScroll.jumpTo(0);
+          if (firstId != null) _channelNodes[firstId]?.requestFocus();
         }
       });
     }
@@ -297,20 +324,6 @@ class TvGuideViewState extends State<TvGuideView> {
   void _enterChannels(int? groupId) {
     unawaited(_preview.stop()); // drop any dwell before the new selection
     unawaited(_loadGuide(groupId, enterChannels: true));
-  }
-
-  // fix597: focusing a category in the rail follows the grid to that category's
-  // channels (debounced so fast D-pad scrolling doesn't hammer the DB). The
-  // preview is NOT re-armed here — it stays on the last-watched channel.
-  void _onCategoryFocused(int? groupId) {
-    if (_railMode != RailMode.categories) return;
-    if (groupId == _selectedGroupId) return;
-    _catFollowTimer?.cancel();
-    _catFollowTimer = Timer(const Duration(milliseconds: 280), () {
-      if (mounted && _railMode == RailMode.categories) {
-        unawaited(_loadGuide(groupId));
-      }
-    });
   }
 
   /// fix584 (#4): D-pad LEFT from a channel re-expands the rail (if collapsed)
@@ -405,19 +418,23 @@ class TvGuideViewState extends State<TvGuideView> {
           ),
         ),
         const Divider(height: 1),
+        // fix603 (#15): the time header now spans a top row with a 210px spacer
+        // ABOVE the rail, so the rail and grid bodies BOTH start at the same Y.
+        // Previously the header lived only above the grid, pushing every EPG row
+        // down by the header height relative to its channel in the rail.
+        Row(
+          children: [
+            const SizedBox(width: 210),
+            const SizedBox(width: 1),
+            Expanded(child: _timeHeader()),
+          ],
+        ),
         Expanded(
           child: Row(
             children: [
               SizedBox(width: 210, child: _rail()),
               const VerticalDivider(width: 1),
-              Expanded(
-                child: Column(
-                  children: [
-                    _timeHeader(),
-                    Expanded(child: _grid()),
-                  ],
-                ),
-              ),
+              Expanded(child: _grid()),
             ],
           ),
         ),
@@ -438,11 +455,23 @@ class TvGuideViewState extends State<TvGuideView> {
       // the list — that makes `autofocus` on the target tile fire reliably
       // (autofocus only fires on first mount; my earlier cross-rebuild
       // requestFocus was the fragile part that stranded focus on-device).
-      return ListView.builder(
-        key: const ValueKey('rail-channels'),
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        itemCount: chans.length,
-        itemBuilder: (context, i) => _channelItem(chans[i], i == 0),
+      // fix603 (#15): clamp the rail's text scale so a large accessibility font
+      // size can't push a 2-line channel name past the hard 56px itemExtent box
+      // (which would paint RenderFlex overflow stripes). The grid rows are
+      // already height-bounded (Positioned blocks), so clamping just the rail
+      // keeps the two aligned.
+      return MediaQuery.withClampedTextScaling(
+        maxScaleFactor: 1.2,
+        child: ListView.builder(
+          key: const ValueKey('rail-channels'),
+          controller: _railScroll, // fix603 (#15): mirror onto the grid
+          // fix603 (#15): NO padding + fixed itemExtent == the grid's, so channel
+          // row N lines up exactly with EPG row N (was variable-height + 8px top
+          // padding, which drifted the two apart).
+          itemExtent: _rowHeight,
+          itemCount: chans.length,
+          itemBuilder: (context, i) => _channelItem(chans[i], i == 0),
+        ),
       );
     }
     return ListView(
@@ -467,7 +496,10 @@ class TvGuideViewState extends State<TvGuideView> {
       autofocus: isSelected,
       focusNode: _railNodes[groupId] ??= FocusNode(debugLabel: 'rail-$groupId'),
       onTap: () => _enterChannels(groupId), // OK → load + switch to channels
-      onFocusGained: (_) => _onCategoryFocused(groupId), // follow the grid
+      // fix603 (#10): NO grid-follow on category focus. Browsing the category
+      // list must not reload the EPG grid (it showed "the focused category's
+      // programmes but no channels", which is confusing — you're still picking
+      // a category, not viewing it). The grid changes only on OK-enter.
       child: Row(
         children: [
           Icon(icon, size: 18),
@@ -520,6 +552,14 @@ class TvGuideViewState extends State<TvGuideView> {
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 12)),
           ),
+          // fix603 (#14): favorites had NO visible marker anywhere. Show a star
+          // on favorited channels (the toggle already persists; only the
+          // indicator was missing).
+          if (ch.favorite)
+            const Padding(
+              padding: EdgeInsets.only(left: 4),
+              child: Icon(Icons.star, size: 14, color: Colors.amber),
+            ),
         ],
       ),
     );
@@ -775,17 +815,6 @@ class TvGuideViewState extends State<TvGuideView> {
     );
   }
 
-  // fix597: align the passive EPG grid so the focused channel's row is in view.
-  void _scrollGridTo(Channel ch) {
-    if (!_gridScroll.hasClients) return;
-    final idx = _visibleChannels.indexOf(ch);
-    if (idx < 0) return;
-    final target = (idx * _rowHeight - _rowHeight * 2)
-        .clamp(0.0, _gridScroll.position.maxScrollExtent);
-    _gridScroll.animateTo(target,
-        duration: const Duration(milliseconds: 180), curve: Curves.easeOut);
-  }
-
   // fix510/597: a channel tile in the rail gained focus → highlight + scroll
   // its grid row, update the preview/info, and arm the dwell. Guarded to
   // channels mode so a stale focus event can't drive the preview while browsing
@@ -795,7 +824,10 @@ class TvGuideViewState extends State<TvGuideView> {
     final seq = ++_focusSeq;
     final prev = _focused;
     if (mounted) setState(() => _focused = ch);
-    _scrollGridTo(ch);
+    // fix603 (#15): no explicit grid scroll here — the rail auto-scrolls on
+    // D-pad focus (traversal ensureVisible) and the grid mirrors it
+    // (_syncGridToRail), so the rows stay aligned without a second animation
+    // fighting the mirror.
     // Same channel re-focus, or a full-screen launch is in progress → don't
     // (re-)arm a preview.
     if (prev != null && identical(prev, ch)) return;
@@ -978,12 +1010,21 @@ class _FocusTile extends StatefulWidget {
 
 class _FocusTileState extends State<_FocusTile> {
   bool _focused = false;
-  // fix600 (#6): held-OK detection (mirrors channel_tile/fix586). Bound to the
-  // caller-supplied node's onKeyEvent so it pre-empts InkWell's ActivateIntent
-  // (which would otherwise fire onTap on key-DOWN, before a hold can register).
+  // fix603 (#6): held-OK detection. Bound to the caller-supplied node's
+  // onKeyEvent so it pre-empts InkWell's ActivateIntent (which would otherwise
+  // fire onTap on key-DOWN). Rewritten from fix600/602 to fix two reported bugs:
+  //  • _selectDown guards against a stray KeyUp with NO matching KeyDown on THIS
+  //    tile — the OK that selects a CATEGORY releases AFTER focus has moved to
+  //    the first channel, and without this guard that orphan KeyUp fired onTap
+  //    and auto-PLAYED the channel on every category-enter.
+  //  • The menu now opens on RELEASE (not mid-hold): opening it mid-hold moved
+  //    focus to the modal while OK was still held, so the release/repeats leaked
+  //    into the menu ("flashes menu then plays" + play/pause cycling). The timer
+  //    only MARKS the hold as long enough; the KeyUp decides menu-vs-play.
   Timer? _selectHoldTimer;
-  bool _selectActed = false;
-  static const Duration _selectHoldDelay = Duration(milliseconds: 450);
+  bool _selectDown = false;
+  bool _heldLong = false;
+  static const Duration _selectHoldDelay = Duration(milliseconds: 600);
 
   @override
   void initState() {
@@ -1002,24 +1043,37 @@ class _FocusTileState extends State<_FocusTile> {
           k == LogicalKeyboardKey.gameButtonA;
       if (!isSelect) return KeyEventResult.ignored; // LEFT etc. bubble up
       if (event is KeyDownEvent) {
-        _selectActed = false;
+        // A KeyDown always starts a fresh gesture ON this tile.
+        _selectDown = true;
+        _heldLong = false;
         _selectHoldTimer?.cancel();
         _selectHoldTimer = Timer(_selectHoldDelay, () {
-          if (!mounted || !n.hasFocus) return;
-          _selectActed = true;
-          widget.onLongPress?.call();
+          // Only mark the hold long enough — do NOT open the menu yet (that
+          // would move focus to the modal mid-hold and leak the held key).
+          if (mounted && n.hasFocus) _heldLong = true;
         });
         return KeyEventResult.handled;
       }
       if (event is KeyUpEvent) {
         _selectHoldTimer?.cancel();
         _selectHoldTimer = null;
-        final acted = _selectActed;
-        _selectActed = false;
-        if (!acted) widget.onTap();
+        // Ignore an orphan KeyUp (no KeyDown on this tile) — e.g. the OK that
+        // entered the category, releasing after focus moved here. This is what
+        // caused the auto-play-on-enter bug. (Consequence, by design: a single
+        // OK held THROUGH category-enter can't open the first channel's menu —
+        // that hold belonged to the category-enter gesture; release and re-hold.)
+        if (!_selectDown) return KeyEventResult.handled;
+        _selectDown = false;
+        final long = _heldLong;
+        _heldLong = false;
+        if (long) {
+          widget.onLongPress?.call(); // open the menu on release
+        } else {
+          widget.onTap(); // quick press → play/activate
+        }
         return KeyEventResult.handled;
       }
-      return KeyEventResult.handled; // swallow repeats; the timer drives the menu
+      return KeyEventResult.handled; // swallow repeats; the timer marks the hold
     };
   }
 
@@ -1067,7 +1121,11 @@ class _FocusTileState extends State<_FocusTile> {
                 width: 3,
               ),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            // fix603 (#15): vertical 8→4 so a 2-line channel name + chrome fits
+            // inside the channel rail's hard 56px itemExtent box (added for grid
+            // alignment) without a RenderFlex overflow. 18px chrome leaves a
+            // ~38px content budget (2-line fontSize-12 ≈ 28px).
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             child: widget.child,
           ),
         ),
