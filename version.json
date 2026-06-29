@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.22",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.22",
+  "latest": "2.2.23",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.23",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Refreshing all sources no longer stops at the first source that fails: each source is retried once, and if it still cannot be reached the refresh skips it and continues with the rest, then tells you which sources could not be refreshed.\n\u2022 While the search index rebuilds at the end of a large refresh, the search box now shows \"Search updating...\" and re-enables itself the moment it finishes (or if the refresh hits an error) \u2014 only when you use an index-based search method.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.22/Free4Me-IPTV-2.2.22-arm64.apk"
+  "releaseNotes": "\u2022 Developer options now has a \"Run Search Perf Test\" button: it benchmarks every search method against your own channel list on this device, shows how each performs, and lets you switch to the fastest one with a tap.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.23/Free4Me-IPTV-2.2.23-arm64.apk"
 }
