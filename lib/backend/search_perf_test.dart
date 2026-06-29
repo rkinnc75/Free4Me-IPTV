@@ -47,8 +47,13 @@ class SearchPerfTest {
   /// catalog-size-bound part of setup).
   static const int _nameSampleCap = 2000;
 
-  /// 5 queries x 3 shapes = 15 warm runs per method.
+  /// 5 queries x 3 shapes = 15 probe queries per pass.
   static const int _queriesPerShape = 5;
+
+  /// fix613: cold and warm now run the SAME probe set so the only difference is
+  /// cache state. Pass 1 is cold (SQLite page cache dropped first); passes
+  /// 2..(1+_warmPasses) are warm. Each number is the MEDIAN over its pass(es).
+  static const int _warmPasses = 3;
 
   /// Run the full benchmark. [onProgress] reports a human string per phase.
   static Future<List<SearchMethodPerfResult>> run({
@@ -61,7 +66,7 @@ class SearchPerfTest {
     }
     onProgress?.call('Sampling channel names…');
     final probes = await _buildProbes();
-    if (probes.oneWord.isEmpty) {
+    if (probes.isEmpty) {
       throw Exception('Not enough channel data to build a test.');
     }
 
@@ -95,7 +100,7 @@ class SearchPerfTest {
 
   static Future<SearchMethodPerfResult> _benchmarkMethod({
     required SearchMethod method,
-    required _Probes probes,
+    required List<String> probes,
     required List<int> enabledSourceIds,
     required bool safeMode,
   }) async {
@@ -115,56 +120,60 @@ class SearchPerfTest {
         );
 
     var degraded = false;
-
-    // ── COLD ──
-    // inMemory: cold = build + first query. Force a fresh build so the number
-    // reflects the real first-search-after-refresh cost.
-    double coldMs;
-    if (method == SearchMethod.inMemory) {
-      final sw = Stopwatch()..start();
-      ChannelSearchCache.invalidate();
-      await ChannelSearchCache.rebuild();
-      final rows = await Sql.search(mk(probes.oneWord.first));
-      sw.stop();
-      coldMs = sw.elapsedMicroseconds / 1000.0;
-      if (ChannelSearchCache.cacheSkipped || rows.isEmpty) degraded = true;
-    } else {
-      final sw = Stopwatch()..start();
-      final rows = await Sql.search(mk(probes.oneWord.first));
-      sw.stop();
-      coldMs = sw.elapsedMicroseconds / 1000.0;
-      if (rows.isEmpty) degraded = true;
-    }
-
-    // ── WARM ── 15 runs across the three shapes; median.
-    final warmTimes = <double>[];
-    final shapes = [probes.oneWord, probes.multiWord, probes.prefix];
     var anyRows = false;
-    for (final shape in shapes) {
-      for (var i = 0; i < _queriesPerShape; i++) {
-        final q = shape[i % shape.length];
+
+    // Run one full pass over the shared probe set; return each query's time.
+    Future<List<double>> runPass() async {
+      final times = <double>[];
+      for (final q in probes) {
         final sw = Stopwatch()..start();
         final rows = await Sql.search(mk(q));
         sw.stop();
-        warmTimes.add(sw.elapsedMicroseconds / 1000.0);
+        times.add(sw.elapsedMicroseconds / 1000.0);
         if (rows.isNotEmpty) anyRows = true;
       }
+      return times;
     }
+
+    double medianOf(List<double> xs) {
+      if (xs.isEmpty) return 0.0;
+      final sorted = List<double>.of(xs)..sort();
+      return sorted[sorted.length ~/ 2];
+    }
+
+    // fix613: cold and warm use the SAME probe set; only cache state differs.
+    // For inMemory, build the cache BEFORE pass 1 so its queries time against a
+    // freshly-built cache (the cache build itself is a one-time cost, not folded
+    // into the per-query median).
+    if (method == SearchMethod.inMemory) {
+      ChannelSearchCache.invalidate();
+      await ChannelSearchCache.rebuild();
+      if (ChannelSearchCache.cacheSkipped) degraded = true;
+    }
+
+    // ── COLD ── pass 1, SQLite page cache dropped first. Cold = median of pass.
+    final coldTimes = await runPass();
+    final coldMs = medianOf(coldTimes);
+
+    // ── WARM ── passes 2..(1+_warmPasses) over the identical set; median of all.
+    final warmTimes = <double>[];
+    for (var pass = 0; pass < _warmPasses; pass++) {
+      warmTimes.addAll(await runPass());
+    }
+    final warmMs = medianOf(warmTimes);
+
     if (!anyRows) degraded = true;
-    warmTimes.sort();
-    final median = warmTimes.isEmpty
-        ? 0.0
-        : warmTimes[warmTimes.length ~/ 2];
 
     AppLog.info(
       'SearchPerfTest: ${_label(method)} cold=${coldMs.toStringAsFixed(1)}ms '
-      'warmMedian=${median.toStringAsFixed(1)}ms degraded=$degraded',
+      'warmMedian=${warmMs.toStringAsFixed(1)}ms degraded=$degraded '
+      '(probes=${probes.length} warmPasses=$_warmPasses)',
     );
 
     return SearchMethodPerfResult(
       method: method,
       coldMs: coldMs,
-      warmMedianMs: median,
+      warmMedianMs: warmMs,
       degraded: degraded,
     );
   }
@@ -181,9 +190,21 @@ class SearchPerfTest {
     await db.execute('PRAGMA cache_size = -2000;');
   }
 
-  /// Sample real channel names (capped) and derive probe queries of each shape:
-  /// one-word, multi-word, and a short prefix.
-  static Future<_Probes> _buildProbes() async {
+  /// fix613: strip leading/trailing punctuation/symbols from a token, keeping
+  /// only a clean alphanumeric (+ internal spaces already split out) word. This
+  /// removes the garbage probes the first version produced ("#Li", "\'Al",
+  /// "(AU") by sampling raw words.first — leading symbols are not how a user
+  /// searches and skew FTS timing.
+  static String _clean(String w) {
+    final m = RegExp(r'[\p{L}\p{N}]+', unicode: true).allMatches(w);
+    return m.map((x) => x.group(0)!).join();
+  }
+
+  /// Sample real channel names (capped) and derive a SINGLE flat, ordered probe
+  /// set: [_queriesPerShape] each of one-word, multi-word, and 3-char prefix.
+  /// fix613: cold and warm both run this exact list, so they differ only by
+  /// cache state. Tokens are sanitized (see [_clean]) and de-duplicated.
+  static Future<List<String>> _buildProbes() async {
     final db = await DbFactory.db;
     final rows = await db.getAll(
       'SELECT name FROM channels WHERE name IS NOT NULL LIMIT ?',
@@ -199,16 +220,23 @@ class SearchPerfTest {
     final prefix = <String>[];
 
     for (final name in names) {
-      final words =
-          name.split(RegExp(r'\s+')).where((w) => w.length >= 2).toList();
+      final words = name
+          .split(RegExp(r'\s+'))
+          .map(_clean)
+          .where((w) => w.length >= 2)
+          .toList();
       if (words.isEmpty) continue;
-      if (oneWord.length < _queriesPerShape) oneWord.add(words.first);
+      if (oneWord.length < _queriesPerShape && !oneWord.contains(words.first)) {
+        oneWord.add(words.first);
+      }
       if (words.length >= 2 && multiWord.length < _queriesPerShape) {
-        multiWord.add('${words[0]} ${words[1]}');
+        final pair = '${words[0]} ${words[1]}';
+        if (!multiWord.contains(pair)) multiWord.add(pair);
       }
       if (prefix.length < _queriesPerShape) {
         final w = words.first;
-        prefix.add(w.length >= 3 ? w.substring(0, 3) : w);
+        final pre = w.length >= 3 ? w.substring(0, 3) : w;
+        if (!prefix.contains(pre)) prefix.add(pre);
       }
       if (oneWord.length >= _queriesPerShape &&
           multiWord.length >= _queriesPerShape &&
@@ -219,7 +247,7 @@ class SearchPerfTest {
     // Fallbacks so a thin catalog still runs (mirror one-word into the others).
     if (multiWord.isEmpty) multiWord.addAll(oneWord);
     if (prefix.isEmpty) prefix.addAll(oneWord);
-    return _Probes(oneWord: oneWord, multiWord: multiWord, prefix: prefix);
+    return [...oneWord, ...multiWord, ...prefix];
   }
 
   static String _label(SearchMethod m) => switch (m) {
@@ -230,13 +258,3 @@ class SearchPerfTest {
       };
 }
 
-class _Probes {
-  final List<String> oneWord;
-  final List<String> multiWord;
-  final List<String> prefix;
-  const _Probes({
-    required this.oneWord,
-    required this.multiWord,
-    required this.prefix,
-  });
-}

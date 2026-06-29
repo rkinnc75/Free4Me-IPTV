@@ -148,10 +148,11 @@ class _SearchPerfDialogState extends State<_SearchPerfDialog> {
           ..._results.map((r) => _resultRow(context, r, r.method == best)),
           const SizedBox(height: 12),
           Text(
-            'Warm = median of repeated searches (drives the recommendation). '
-            'Cold = first search after a refresh; compare cold loosely — the '
-            'system keeps data cached after the first method runs, so later '
-            'methods read warmer.',
+            'Cold and warm run the SAME searches; only the cache differs. '
+            'Warm = median over repeated passes (drives the recommendation). '
+            'Cold = the first pass with the database cache cleared. Compare '
+            'cold loosely across methods — the system keeps data cached after '
+            'the first method runs, so later methods read warmer.',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   fontStyle: FontStyle.italic,
                 ),
