@@ -6,6 +6,13 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.16': [
+    'TV Live guide: while you are browsing the category list, the program area '
+        'is now empty until you open a category — it no longer shows a stray '
+        'guide for your favorites before anything is opened.',
+    'TV Live guide: hardened against the first channel starting by itself when '
+        'you open a category.',
+  ],
   '2.2.15': [
     'TV guide times now read on the hour/half-hour (e.g. the current time, then '
         '10:00, 10:30 …) instead of odd minutes, and line up with the grid.',

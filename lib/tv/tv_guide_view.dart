@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/epg_service.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
@@ -74,6 +75,10 @@ class TvGuideViewState extends State<TvGuideView> {
   bool _favOnly = true; // fix539: Live defaults to Favorites (All pill removed)
   int _focusSeq = 0; // fix510: guards stale async focus callbacks
   bool _launching = false; // fix510: suppresses preview re-arm during _play
+  // fix605: see _enterChannels — ignore a play within this window of entering a
+  // category (catches the category-select OK bleeding into the first channel).
+  int _enterChannelsAtMs = 0;
+  static const int _enterPlayGuardMs = 700;
 
   // fix597 (#4 redesign): the left rail swaps categories <-> channels.
   // _railNodes hold the CATEGORY tiles (stable so LEFT-from-channel can restore
@@ -323,6 +328,13 @@ class TvGuideViewState extends State<TvGuideView> {
 
   // fix597: OK on a category → (re)load it and switch the rail to channels.
   void _enterChannels(int? groupId) {
+    // fix605: backstop for the auto-play-on-enter bug. The OK that selects the
+    // category can bleed its key-UP into the first channel once focus lands
+    // there (the orphan-KeyUp guard in _FocusTile catches the common case, but a
+    // fast category load — e.g. Favorites — can still race it). Stamp the
+    // enter time; _play ignores any play within _enterPlayGuardMs of it. A real
+    // "open category then OK a channel" is always slower than this window.
+    _enterChannelsAtMs = DateTime.now().millisecondsSinceEpoch;
     unawaited(_preview.stop()); // drop any dwell before the new selection
     unawaited(_loadGuide(groupId, enterChannels: true));
   }
@@ -354,6 +366,15 @@ class TvGuideViewState extends State<TvGuideView> {
 
   Future<void> _play(Channel ch) async {
     if (ch.url == null) return;
+    // fix605: ignore a play that fires within the enter-channels guard window —
+    // it's the category-select OK bleeding through to the freshly-focused first
+    // channel, not a deliberate channel activation.
+    if (DateTime.now().millisecondsSinceEpoch - _enterChannelsAtMs <
+        _enterPlayGuardMs) {
+      AppLog.info('Guide: ignoring play "${ch.name}" — within enter-channels '
+          'guard (bleed-through)');
+      return;
+    }
     // fix510: suppress preview re-arm for the whole launch, and release the
     // hero preview (and its provider connection) BEFORE opening full-screen,
     // so the full-open never races the preview on a connection-limited
@@ -662,6 +683,16 @@ class TvGuideViewState extends State<TvGuideView> {
   // channel scrolls its row into view (align-on-focus). The focused channel's
   // row is highlighted.
   Widget _grid() {
+    // fix605: in categories mode NO channels are listed (the rail shows
+    // categories), so the EPG grid must be EMPTY — not the preloaded Favorites
+    // programmes, which read as "a guide for a category that isn't open". The
+    // grid populates only once a category is opened (channels mode).
+    if (_railMode == RailMode.categories) {
+      return Center(
+        child: Text('Open a category to see its guide',
+            style: TextStyle(color: Colors.grey.shade500)),
+      );
+    }
     final channels = _visibleChannels;
     if (channels.isEmpty) {
       return Center(child: Text(_loading ? 'Loading guide…' : 'No channels'));
@@ -878,6 +909,9 @@ class TvGuideViewState extends State<TvGuideView> {
   // now / now+1h / now+2h ticks that read "21:38, 22:38, 23:38". Horizontal pad
   // matches _gridRow's so a label sits above its programmes.
   Widget _timeHeader() {
+    // fix605: no timeline in categories mode — the grid below is empty until a
+    // category is opened, so a floating set of times reads as misleading.
+    if (_railMode == RailMode.categories) return const SizedBox(height: 16);
     const tickStyle = TextStyle(fontSize: 11, color: Colors.grey);
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 6, 4, 4),
