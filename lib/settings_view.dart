@@ -5,8 +5,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:io';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/background_task_service.dart';
 import 'package:open_tv/backend/export_server.dart';
@@ -21,6 +19,7 @@ import 'package:open_tv/models/multi_view_layout.dart';
 import 'package:open_tv/models/multi_view_decode.dart';
 import 'package:open_tv/multi_view_picker_dialog.dart';
 import 'package:open_tv/backend/epg_service.dart';
+import 'package:open_tv/backend/issue_reporter.dart';
 import 'package:open_tv/backend/settings_io.dart';
 import 'package:open_tv/views/epg_channel_mapping.dart';
 import 'package:open_tv/backend/render_cap.dart';
@@ -1915,10 +1914,8 @@ class _SettingsState extends State<SettingsView> {
   // issue + commits the log to the PRIVATE repo. The app only knows the Worker
   // URL and a low-stakes shared key (worst case if extracted: rate-limited
   // spam issues to the private repo — no GitHub access, no token exposure).
-  static const String _issueWorkerUrl =
-      'https://free4me-issue-reporter.rkinnc75.workers.dev';
-  static const String _issueAppSecret =
-      '1rb-1eE4WchkBDjMD6qjb_-PKVCiFKFq3JqbMIS3CIw';
+  // fix607: the Worker URL + payload logic moved to IssueReporter (shared with
+  // the Live-TV diagnostic easter egg in tv_shell).
 
   /// fix416: collect a subject + details, then submit. Gated by the caller on
   /// debugLogging && !logUserPass (so a log with raw credentials is never sent).
@@ -2014,58 +2011,10 @@ class _SettingsState extends State<SettingsView> {
         ),
       );
     }
-    String? errorMsg;
-    bool success = false;
-    try {
-      // Re-scrub the whole log at send time (belt-and-suspenders on top of the
-      // write-time redaction), then base64 for JSON transport.
-      final scrubbed = AppLog.scrubSecrets(await AppLog.readLog());
-      final logB64 = base64Encode(utf8.encode(scrubbed));
-      // fix596: include a SCRUBBED settings export alongside the log so settings
-      // are available for review. Same builder + scrub the backup/restore export
-      // uses — includeCredentials:false omits creds, and scrubSecrets strips any
-      // residual host/user/pass. (Worker must store this as a 2nd report file.)
-      final settingsRaw =
-          await SettingsIo.buildBackupPayload(includeCredentials: false);
-      final settingsB64 =
-          base64Encode(utf8.encode(AppLog.scrubSecrets(settingsRaw)));
-      final clientId = await DeviceDetector.reportClientId();
-      final device = await DeviceDetector.deviceLabel();
-      final info = await PackageInfo.fromPlatform();
-      final resp = await http
-          .post(
-            Uri.parse(_issueWorkerUrl),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'secret': _issueAppSecret,
-              'subject': subject,
-              'details': details,
-              'log': logB64,
-              'settings': settingsB64, // fix596: scrubbed settings backup
-              'device': device,
-              'version': '${info.version}+${info.buildNumber}',
-              'clientId': clientId,
-            }),
-          )
-          .timeout(const Duration(seconds: 30));
-      if (resp.statusCode == 200) {
-        success = true;
-      } else if (resp.statusCode == 429) {
-        errorMsg =
-            'You\'ve sent several reports recently. Please try again later.';
-      } else {
-        String detail = '';
-        try {
-          detail = (jsonDecode(resp.body)['error'] ?? '').toString();
-        } catch (_) {}
-        errorMsg = 'Submit failed (${resp.statusCode})'
-            '${detail.isNotEmpty ? ': $detail' : ''}.';
-      }
-    } catch (_) {
-      errorMsg =
-          'Could not reach the reporting service. Check your connection and '
-          'try again.';
-    }
+    // fix607: shared submitter (also used by the Live-TV diagnostic easter egg).
+    final r = await IssueReporter.submit(subject: subject, details: details);
+    final bool success = r.success;
+    final String? errorMsg = r.errorMsg;
     if (!mounted) return;
     Navigator.of(context).pop(); // dismiss progress
     if (!mounted) return;

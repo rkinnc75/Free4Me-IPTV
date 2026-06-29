@@ -4,6 +4,8 @@ import 'package:open_tv/home.dart';
 import 'package:open_tv/models/filters.dart';
 import 'package:open_tv/models/home_manager.dart';
 import 'package:open_tv/models/media_type.dart';
+import 'package:open_tv/backend/issue_reporter.dart';
+import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/confirm_exit_scope.dart';
 import 'package:open_tv/models/view_type.dart';
@@ -218,6 +220,30 @@ class _TvShellState extends State<TvShell> {
   /// [Sql.clearHistory] and rebuilds the History body with a fresh key so it
   /// re-queries (now empty) instead of reusing the cached, stale State.
   Future<void> _onTabLongPress(int i) async {
+    // fix607: held-OK on the LIVE TV tab (index 0) is a hidden diagnostic
+    // shortcut — when diagnostic mode (debugLogging) is on, it auto-submits a
+    // diagnostic report (subject = timestamp, blank body) using the SAME
+    // scrubbed payload as Settings › Report an issue. Gated on !logUserPass too,
+    // so a log that captured raw credentials is never sent.
+    if (i == 0) {
+      final s = SettingsService.cached;
+      if (s == null || !s.debugLogging || s.logUserPass) return;
+      final subject = DateTime.now().toIso8601String();
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Sending diagnostic report…')),
+      );
+      final r =
+          await IssueReporter.submit(subject: subject, details: '');
+      if (!mounted) return;
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(SnackBar(
+        content: Text(r.success
+            ? 'Diagnostic report sent.'
+            : 'Report failed: ${r.errorMsg ?? 'error'}'),
+      ));
+      return;
+    }
     if (_tabs[i].viewType != ViewType.history) return;
     final confirm = await showDialog<bool>(
       context: context,

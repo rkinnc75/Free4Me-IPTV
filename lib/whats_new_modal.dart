@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.18': [
+    'Under the hood: the diagnostic-report tooling is now shared across the app '
+        'and reachable faster when diagnostic logging is enabled. No change for '
+        'normal use.',
+  ],
   '2.2.17': [
     'TV guide times now show without AM/PM (e.g. 9:38) in 12-hour mode — the '
         'period is clear from context. 24-hour mode is unchanged (21:38).',
