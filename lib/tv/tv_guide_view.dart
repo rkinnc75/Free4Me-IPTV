@@ -888,14 +888,45 @@ class TvGuideViewState extends State<TvGuideView> {
   /// re-run on re-entry; without this the rail/grid stay stale after the user
   /// changes which sources are enabled. Reloads from the top (no group filter).
   ///
-  /// fix544: this MUST re-run _init(), not just _loadGuide(null). _loadGuide
-  /// re-queries channels but reuses the cached _sourceIds and _groups (the
-  /// category rail) captured at the last _init(). So after the user disabled
-  /// ALL sources, reloadGuide() re-queried with the STALE enabled-source list
-  /// and the Live grid kept showing channels (while Movies/Series/Categories,
-  /// which rebuild fully, correctly went empty). _init() re-reads
-  /// getEnabledSourcesMinimal(), rebuilds the rail, and then loads the guide.
-  Future<void> reloadGuide() => _init();
+  /// fix544: a full rebuild MUST re-run _init() (not just _loadGuide(null)):
+  /// _loadGuide reuses the cached _sourceIds/_groups, so after the user disabled
+  /// ALL sources reloadGuide re-queried with the STALE enabled-source list. So
+  /// _init() re-reads getEnabledSourcesMinimal(), rebuilds the rail, and loads.
+  ///
+  /// fix610: REMEMBER the user's place. reloadGuide existed only to pick up a
+  /// changed enabled-source set, but it unconditionally re-ran _init() — which
+  /// reset the guide to the top (Favorites / category list) EVERY time the user
+  /// returned to Live TV, losing the category/channels view they were on. Now it
+  /// rebuilds+resets ONLY when the enabled sources actually changed; otherwise
+  /// (the common tab-switch case) it keeps the kept-alive state and just restores
+  /// focus to where the user was (mirrors the fix598/599 focus discipline).
+  Future<void> reloadGuide() async {
+    final enabled = await Sql.getEnabledSourcesMinimal();
+    final ids = enabled.map((e) => e.id).whereType<int>().toList()..sort();
+    final current = [..._sourceIds]..sort();
+    if (!mounted) return;
+    if (!_ready || ids.join(',') != current.join(',')) {
+      return _init(); // first load OR sources changed → rebuild + reset to top
+    }
+    // Enabled sources unchanged → keep the user's place. fix610: but STILL
+    // re-anchor the EPG window to NOW + refresh the grid programmes — the guide
+    // is kept alive in the IndexedStack, so without this the window goes stale
+    // across tab switches / next-day resumes (the fix541 bug). _reloadGridProgrammes
+    // re-anchors _windowStart/_windowEnd and rebuilds _progByKey while leaving
+    // channels / focus / rail mode untouched (no-ops if no channels are loaded).
+    unawaited(_reloadGridProgrammes());
+    // Restore focus to the focused channel (channels mode) or the selected
+    // category (categories mode).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final fid = _focused?.id;
+      if (_railMode == RailMode.channels && fid != null) {
+        _channelNodes[fid]?.requestFocus();
+      } else {
+        (_railNodes[_selectedGroupId] ?? _railNodes[null])?.requestFocus();
+      }
+    });
+  }
 
   // fix604 (#5): all guide/EPG times go through the shared guideClockFmt()
   // (settings_service) so the 12/24-hour choice is consistent across the Live

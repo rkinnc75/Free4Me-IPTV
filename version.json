@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.20",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.20",
+  "latest": "2.2.21",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.21",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 A \"Preparing for the best Free4Me experience\u2026\" loading screen now shows at startup while your channel list loads \u2014 so large catalogs show branding instead of a blank or frozen screen, then fade into the app when ready.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.20/Free4Me-IPTV-2.2.20-arm64.apk"
+  "releaseNotes": "\u2022 TV: returning to Live TV now reopens the category and channels you were viewing, instead of resetting to the top \u2014 unless you changed which sources are enabled (then it refreshes from the top as before).",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.21/Free4Me-IPTV-2.2.21-arm64.apk"
 }

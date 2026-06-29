@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.21': [
+    'TV: returning to Live TV now reopens the category and channels you were '
+        'viewing, instead of resetting to the top — unless you changed which '
+        'sources are enabled (then it refreshes from the top as before).',
+  ],
   '2.2.20': [
     'A "Preparing for the best Free4Me experience…" loading screen now shows at '
         'startup while your channel list loads — so large catalogs show branding '
