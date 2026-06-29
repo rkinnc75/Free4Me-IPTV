@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.23",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.23",
+  "latest": "2.2.24",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.24",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Developer options now has a \"Run Search Perf Test\" button: it benchmarks every search method against your own channel list on this device, shows how each performs, and lets you switch to the fastest one with a tap.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.23/Free4Me-IPTV-2.2.23-arm64.apk"
+  "releaseNotes": "\u2022 Search Perf Test is more accurate: cold and warm now run the exact same set of searches (so the only difference is caching), and the test queries are cleaned up to drop leading punctuation that produced misleading results.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.24/Free4Me-IPTV-2.2.24-arm64.apk"
 }
