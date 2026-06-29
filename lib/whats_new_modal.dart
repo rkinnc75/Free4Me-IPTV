@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.17': [
+    'TV guide times now show without AM/PM (e.g. 9:38) in 12-hour mode — the '
+        'period is clear from context. 24-hour mode is unchanged (21:38).',
+  ],
   '2.2.16': [
     'TV Live guide: while you are browsing the category list, the program area '
         'is now empty until you open a category — it no longer shows a stray '

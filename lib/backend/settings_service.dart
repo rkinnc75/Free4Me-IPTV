@@ -38,10 +38,13 @@ const use24HourTimeProp = "use24HourTime"; // fix604 (#5)
 /// multi-view), the per-channel schedule, and the player's now-label — so the
 /// 12/24-hour choice is consistent app-wide, not just in the Live guide.
 /// Reads the live cached settings; falls back to 12-hour before settings load.
+///
+/// fix606: 12-hour omits AM/PM ("9:38", not "9:38 PM") — in a guide the period
+/// is assumed from context. 24-hour stays "21:38".
 DateFormat guideClockFmt() =>
     (SettingsService.cached?.use24HourTime ?? false)
         ? DateFormat.Hm()
-        : DateFormat.jm();
+        : DateFormat('h:mm');
 const audioDownmixStereoProp = "audioDownmixStereo"; // fix361
 const dvrMinutesProp = "dvrMinutes"; // fix357
 const vodDemuxerMaxMBProp = "vodDemuxerMaxMB";
