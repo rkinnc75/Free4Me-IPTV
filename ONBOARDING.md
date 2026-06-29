@@ -10,17 +10,18 @@ This machine has the full toolchain (`flutter`, `gh`, `adb`, git push, CI) worki
 
 ---
 
-## 1. Current state (2026-06-27)
+## 1. Current state (2026-06-29)
 
 | Item | Value |
 |---|---|
-| Latest release | **v2.1.6+579** (`git tag -l --sort=-creatordate \| head` for absolute truth) |
+| Latest release | **v2.2.21+610** (`git ls-remote <url> refs/tags/* \| sort` for absolute truth — the desktop ships frequently) |
 | Releases | https://github.com/rkinnc75/Free4Me-IPTV/releases |
-| Player engine | **media_kit / libmpv only.** ExoPlayer was removed in fix350 — there is no `ExoEngine`/`engine_picker` anymore. (Media3-default revisited + **backlogged indefinitely** 2026-06-27 — see `docs/media3-engine-scoping.md`.) |
-| libmpv | **Custom LGPL-max build** (commit 66045f3): all 435 non-GPL filters incl. `fps`/`select`/`scale`/`tonemap`, all decoders/demuxers. Wired via `dependency_overrides` → `rkalsky/media-kit` fork. Still LGPLv3 (app stays proprietary). **Do not remove the override block in `pubspec.yaml`.** Full detail: `docs/CUSTOM_LIBMPV.md` (enumerated lists in `docs/LIBMPV_COMPONENTS.md`). |
-| Playback smoothness | `framedrop=decoder` auto-applies on low-RAM Android (onn 4K Plus class) → smooth high-fps; **on-device validated** (v2.1.0, decoder = 0 VO drops @ 1080p60). See `runbooks/fix571.md`. An opt-in `vf=fps=30` cap is parked on branch `libmpv-lgplmax-verify` (not shipped). |
-| TV remote (player) | D-pad **direct-map** shipped + on-device verified (v2.1.3–4): ▲▼ channel, ◀▶ seek (DVR), OK play-pause + reveal bars. D-pad **navigation of the bars** (Mode B) is NOT done — the v2.1.5 attempt failed (media_kit bars can't host focus nav) and was reverted in v2.1.6; needs a custom focusable overlay. See `runbooks/fix576-579.md`. |
-| `flutter analyze` | 0 errors/warnings (2 tolerated INFOs in `settings_view.dart`). `flutter test` must be green. |
+| Player engine | **media_kit / libmpv only.** ExoPlayer was removed in fix350 — no `ExoEngine`/`engine_picker`. (Media3-default **backlogged indefinitely** — `docs/media3-engine-scoping.md`.) |
+| libmpv | **Custom LGPL-max build**: all 435 non-GPL filters incl. `fps`/`select`/`scale`/`tonemap`, all decoders/demuxers. Wired via `dependency_overrides` → `rkalsky/media-kit` fork. LGPLv3. **Do not remove the override block in `pubspec.yaml`.** `docs/CUSTOM_LIBMPV.md`. |
+| Playback smoothness | `framedrop=decoder` auto-applies on low-RAM Android (onn 4K Plus class) → smooth high-fps; **on-device validated** (decoder = 0 VO drops @ 1080p60). An opt-in `vf=fps=30` cap exists behind `forceCapFps30LowRam_v2` (OFF by default). |
+| TV Live guide (v2.2.11–2.2.21) | Reworked: EPG stays current (launch stale-refresh + source-refresh-also-EPG + live reload via `EpgService.epgVersion`); search DOWN/Enter→first card; held-OK channel menu (Play/Multi-view/favorite); category-enter no longer auto-plays; empty grid while browsing categories; favorite STARS; **EPG rows align with the rail**; timeline snaps :00/:30; **12/24h clock setting (default 12h, no AM/PM)** via shared `guideClockFmt()`; **Live-TV-tab held-OK diagnostic easter egg** (gated `debugLogging && !logUserPass`); **Shield startup-freeze** mitigations + a "Preparing…" loading splash; **Live TV remembers your place** on tab return. Runbooks fix600–610. |
+| TV remote (player) | D-pad **direct-map** shipped + verified: ▲▼ channel, ◀▶ seek (DVR), OK play-pause + reveal bars. D-pad **bar navigation** (Mode B) NOT done (media_kit bars can't host focus nav → needs a custom overlay). |
+| `flutter analyze` | Clean (*No issues found!*). `flutter test` must be green. |
 
 ---
 
@@ -92,6 +93,13 @@ A `v*` tag push is the **only** trigger for a build. Commits to `main` alone do 
 - **media_kit libmpv `vf` filters are device-strict** — the custom build has them, but the on-device libavfilter parser wants `filter=opt=val` with escaped commas (`\,`). Test filter strings on the actual `.so`, never assume from desktop mpv/ffmpeg.
 - **Read the `STATS` logcat line for playback diagnosis** (debug logging on): `voDrop`/`decDrop` are authoritative; `vfFps`/estimated-vf-fps is unreliable on this build.
 - APK is **~109 MB** (full libmpv all-filters/decoders × universal arm+arm64). Universal ABI is required — 32-bit-only TV boxes (onn 4K) can't load an arm64-only APK.
+- **adb cannot inject a HELD key** (no root; `sendevent` is permission-denied; `input keyevent --longpress` registers as a quick press). So held-OK GESTURES — the Live-guide channel menu, the History-clear long-press, the Live-TV-tab diagnostic easter egg — are NOT adb-verifiable. Verify by review + the proven fix586 `node.onKeyEvent` held detector, the synthetic touch-long-press (`adb shell input swipe X Y X Y 700`) where a widget also wires `InkWell.onLongPress`, and the real remote. Coords are in the **1920×1080 override** space (the onn is physically 4K). See memory `free4me-tv-longpress-menu`.
+- **The onn cannot reproduce the SHIELD startup freeze** — it cache-skips below 2300 MB (`ChannelSearchCache._minRamMbForCache`), so the ~75 s 272k-entry cache rebuild only happens on 3 GB+ boxes (Shield). Memory `shield-startup-freeze`.
+
+## 5a. Session rules (memory-backed)
+- **iMessage `rkalsky@kalsky.com` on every release submission + every stopping point**, and include a flat continuously-NUMBERED validation plan on every test-requiring completion. `osascript` with the var named `theAddr` (NOT `handle` → `-1728` keyword clash). Memory `imessage-alert-rule`.
+- **Adversarially review** each substantive fix with a Workflow (find → verify), apply confirmed findings, then ship. It has caught a HIGH bug most rounds.
+- **Never run a fork/subagent that EDITS this working copy in parallel** — it interleaves commits (the fix607 incident). Use read-only or `worktree`-isolated agents.
 
 ---
 
@@ -110,6 +118,9 @@ A `v*` tag push is the **only** trigger for a build. Commits to `main` alone do 
 | Database (SQLite, key-value Settings table) | `lib/backend/sql.dart` |
 | EPG | `lib/backend/epg_service.dart`, `xmltv_parser.dart`, `xtream_epg.dart`, `epg_matcher.dart` |
 | Home / search | `lib/home.dart`, `lib/channel_tile.dart` |
+| TV shell / Live guide | `lib/tv/tv_shell.dart` (tabs, `_onTabLongPress`, `_select`/`reloadGuide`), `lib/tv/tv_guide_view.dart` (the EPG guide: rail/grid, `_FocusTile` held-OK, `reloadGuide` remember-place, `_StartupSplash` gate in `lib/main.dart`), `lib/tv/tv_top_tab_bar.dart` (held-OK tab detector), `lib/tv/tv_search_view.dart`, `lib/tv/tv_hero_preview.dart` |
+| Diagnostic report | `lib/backend/issue_reporter.dart` (shared submitter — Settings + the Live-TV easter egg), Worker `free4me-issue-reporter.rkinnc75.workers.dev` |
+| Clock format | `guideClockFmt()` in `lib/backend/settings_service.dart` (12/24h, `use24HourTime` setting) |
 | Logging | `lib/backend/app_logger.dart` (`AppLog`) |
 | Models | `lib/models/channel.dart`, `source.dart`, `media_type.dart` |
 | Versioning | `pubspec.yaml`, `lib/whats_new_modal.dart`, `version.json` |
