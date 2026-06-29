@@ -1,11 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/models/program.dart';
 
-final _timeFmt = DateFormat.Hm(); // e.g. "20:30"
+// fix604 (#5): use the shared guideClockFmt() (honors the 12/24-hour setting).
 
 /// fix406: shows the channel's CURRENT EPG programme in the player's top bar,
 /// to the right of the channel name (the remaining space). Renders nothing when
@@ -59,8 +59,8 @@ class _PlayerEpgNowLabelState extends State<PlayerEpgNowLabel> {
   Widget build(BuildContext context) {
     final now = _now;
     if (now == null) return const SizedBox.shrink();
-    final start = _timeFmt.format(now.startTime.toLocal());
-    final stop = _timeFmt.format(now.stopTime.toLocal());
+    final start = guideClockFmt().format(now.startTime.toLocal());
+    final stop = guideClockFmt().format(now.stopTime.toLocal());
     return Padding(
       padding: const EdgeInsets.only(left: 4),
       child: Text(

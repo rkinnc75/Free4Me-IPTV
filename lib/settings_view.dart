@@ -2367,6 +2367,7 @@ class _SettingsState extends State<SettingsView> {
         ..defaultView = settings.defaultView
         ..refreshOnStart = settings.refreshOnStart
         ..forceTVMode = settings.forceTVMode
+        ..use24HourTime = settings.use24HourTime // fix604 (#5)
         ..showLivestreams = settings.showLivestreams
         ..showMovies = settings.showMovies
         ..showSeries = settings.showSeries
@@ -2947,6 +2948,22 @@ class _SettingsState extends State<SettingsView> {
                         ),
                         onChanged: (v) {
                           setState(() => settings.tvHeroLivePreview = v);
+                          updateSettings();
+                        },
+                      ),
+                      // fix604 (#5): EPG guide clock format. Default off = 12-hour.
+                      _switchTile(
+                        label: "24-hour clock in guide",
+                        value: settings.use24HourTime,
+                        help: (
+                          title: '24-hour clock in guide',
+                          body:
+                              'Show the TV guide times in 24-hour format (e.g. '
+                              '21:38) instead of 12-hour (9:38 PM). Default: off '
+                              '(12-hour).',
+                        ),
+                        onChanged: (v) {
+                          setState(() => settings.use24HourTime = v);
                           updateSettings();
                         },
                       ),

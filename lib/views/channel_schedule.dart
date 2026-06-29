@@ -9,7 +9,7 @@ import 'package:open_tv/models/source.dart';
 import 'package:open_tv/player.dart';
 
 final _dateFmt = DateFormat.MMMEd(); // e.g. "Mon, May 19"
-final _timeFmt = DateFormat.Hm(); // e.g. "20:30"
+// fix604 (#5): program times use the shared guideClockFmt() (12/24-hour setting).
 final _durationFmt = NumberFormat('0');
 
 sealed class _ListItem {}
@@ -205,7 +205,7 @@ class _ChannelScheduleViewState extends State<ChannelScheduleView> {
 
   Widget _programTile(Program p, int nowEpoch, {required bool isNow}) {
     final isPast = p.stopUtc <= nowEpoch;
-    final start = _timeFmt.format(p.startTime.toLocal());
+    final start = guideClockFmt().format(p.startTime.toLocal());
     final durationMins = _durationFmt.format(p.duration.inMinutes.toDouble());
 
     final source = _source;
@@ -351,8 +351,8 @@ class _ChannelScheduleViewState extends State<ChannelScheduleView> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                '${_timeFmt.format(p.startTime.toLocal())} – '
-                '${_timeFmt.format(p.stopTime.toLocal())}',
+                '${guideClockFmt().format(p.startTime.toLocal())} – '
+                '${guideClockFmt().format(p.stopTime.toLocal())}',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               if (p.category != null) ...[

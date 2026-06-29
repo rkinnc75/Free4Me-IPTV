@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.14",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.14",
+  "latest": "2.2.15",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.15",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 TV Live guide: fixed choosing a category accidentally starting the first channel full-screen. Opening a category now just shows its channels.\n\u2022 TV Live guide: the channel menu (hold OK/Select) is more reliable \u2014 it no longer flashes then starts playing, and a quick press still just plays.\n\u2022 TV Live guide: the program rows now line up with the channel list, and favorited channels show a star.\n\u2022 TV Live guide: scrolling the category list no longer changes the program grid \u2014 that only happens when you open a category.\n\u2022 TV search: pressing Enter (or Down) jumps to the first result; an empty search keeps the cursor in the search box.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.14/Free4Me-IPTV-2.2.14-arm64.apk"
+  "releaseNotes": "\u2022 TV guide times now read on the hour/half-hour (e.g. the current time, then 10:00, 10:30 \u2026) instead of odd minutes, and line up with the grid.\n\u2022 New setting \"24-hour clock in guide\" (Settings \u203a Playback). Off by default, so times show as 9:38 PM; turn it on for 21:38.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.15/Free4Me-IPTV-2.2.15-arm64.apk"
 }

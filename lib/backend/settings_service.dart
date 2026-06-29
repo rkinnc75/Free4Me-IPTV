@@ -1,4 +1,5 @@
 import 'dart:collection';
+import 'package:intl/intl.dart';
 import 'package:open_tv/models/zoom_mode.dart';
 
 import 'package:open_tv/backend/app_logger.dart';
@@ -29,6 +30,18 @@ const liveDemuxerMaxMBProp = "liveDemuxerMaxMB";
 const vodCacheSecsProp = "vodCacheSecs";
 const vodPrebufferSecsProp = "vodPrebufferSecs"; // fix354
 const dvrEnabledProp = "dvrEnabled"; // fix357
+const use24HourTimeProp = "use24HourTime"; // fix604 (#5)
+
+/// fix604 (#5): the shared EPG/guide clock format, honoring the use24HourTime
+/// setting (default 12-hour). EVERY guide/EPG program-time display routes
+/// through this — the Live guide, the now/next strip (channel tiles +
+/// multi-view), the per-channel schedule, and the player's now-label — so the
+/// 12/24-hour choice is consistent app-wide, not just in the Live guide.
+/// Reads the live cached settings; falls back to 12-hour before settings load.
+DateFormat guideClockFmt() =>
+    (SettingsService.cached?.use24HourTime ?? false)
+        ? DateFormat.Hm()
+        : DateFormat.jm();
 const audioDownmixStereoProp = "audioDownmixStereo"; // fix361
 const dvrMinutesProp = "dvrMinutes"; // fix357
 const vodDemuxerMaxMBProp = "vodDemuxerMaxMB";
@@ -174,6 +187,7 @@ class SettingsService {
     var vodSecs = settingsMap[vodCacheSecsProp];
     var vodPre = settingsMap[vodPrebufferSecsProp];
     var dvrEn = settingsMap[dvrEnabledProp];
+    var use24h = settingsMap[use24HourTimeProp]; // fix604 (#5)
     var audioDmx = settingsMap[audioDownmixStereoProp];
     var dvrMin = settingsMap[dvrMinutesProp];
     var vodMB = settingsMap[vodDemuxerMaxMBProp];
@@ -222,6 +236,7 @@ class SettingsService {
     if (vodSecs != null) settings.vodCacheSecs = int.parse(vodSecs);
     if (vodPre != null) settings.vodPrebufferSecs = int.parse(vodPre);
     if (dvrEn != null) settings.dvrEnabled = dvrEn == 'true';
+    if (use24h != null) settings.use24HourTime = use24h == 'true'; // fix604
     if (audioDmx != null) settings.audioDownmixStereo = audioDmx == 'true';
     if (dvrMin != null) settings.dvrMinutes = int.parse(dvrMin);
     if (vodMB != null) settings.vodDemuxerMaxMB = int.parse(vodMB);
@@ -422,6 +437,7 @@ class SettingsService {
     settingsMap[vodCacheSecsProp] = settings.vodCacheSecs.toString();
     settingsMap[vodPrebufferSecsProp] = settings.vodPrebufferSecs.toString();
     settingsMap[dvrEnabledProp] = settings.dvrEnabled.toString();
+    settingsMap[use24HourTimeProp] = settings.use24HourTime.toString(); // fix604
     settingsMap[audioDownmixStereoProp] = settings.audioDownmixStereo.toString();
     settingsMap[dvrMinutesProp] = settings.dvrMinutes.toString();
     settingsMap[vodDemuxerMaxMBProp] = settings.vodDemuxerMaxMB.toString();

@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:open_tv/backend/epg_service.dart';
 import 'package:open_tv/backend/settings_service.dart';
@@ -21,7 +20,9 @@ import 'package:open_tv/player/overlay_player_controller.dart';
 import 'package:open_tv/source_color_picker.dart';
 import 'package:open_tv/tv/tv_hero_preview.dart';
 
-final _timeFmt = DateFormat.Hm();
+// fix604 (#5): guide/EPG times go through the shared guideClockFmt()
+// (settings_service), which honors the use24HourTime setting — 24-hour "21:38"
+// vs 12-hour "9:38 PM". See _fmtEpoch.
 
 /// fix597 (#4 redesign): the left rail SWAPS content. [categories] shows the
 /// provider's live categories; selecting one switches to [channels] — that
@@ -761,16 +762,14 @@ class TvGuideViewState extends State<TvGuideView> {
         const SizedBox(height: 6),
         if (onNow != null)
           Text(
-            'NOW   ${onNow.title}   ·   ends '
-            '${_timeFmt.format(DateTime.fromMillisecondsSinceEpoch(onNow.stopUtc * 1000).toLocal())}',
+            'NOW   ${onNow.title}   ·   ends ${_fmtEpoch(onNow.stopUtc)}',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.bodyMedium,
           ),
         if (next != null)
           Text(
-            'NEXT   ${next.title}   ·   '
-            '${_timeFmt.format(DateTime.fromMillisecondsSinceEpoch(next.startUtc * 1000).toLocal())}',
+            'NEXT   ${next.title}   ·   ${_fmtEpoch(next.startUtc)}',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
@@ -867,20 +866,54 @@ class TvGuideViewState extends State<TvGuideView> {
   /// getEnabledSourcesMinimal(), rebuilds the rail, and then loads the guide.
   Future<void> reloadGuide() => _init();
 
+  // fix604 (#5): all guide/EPG times go through the shared guideClockFmt()
+  // (settings_service) so the 12/24-hour choice is consistent across the Live
+  // guide, now/next strip, schedule, and player label.
+  String _fmtEpoch(int epochSecs) => guideClockFmt()
+      .format(DateTime.fromMillisecondsSinceEpoch(epochSecs * 1000).toLocal());
+
+  // fix604 (#4): the timeline now shows the CURRENT time at the left edge and
+  // then labels snapped to clean :00/:30 boundaries, each POSITIONED at the time
+  // it represents (same _x() mapping as the grid blocks) — instead of the old
+  // now / now+1h / now+2h ticks that read "21:38, 22:38, 23:38". Horizontal pad
+  // matches _gridRow's so a label sits above its programmes.
   Widget _timeHeader() {
-    final ticks = <Widget>[];
-    for (var h = 0; h <= _windowHours; h++) {
-      final t = DateTime.fromMillisecondsSinceEpoch(
-          (_windowStart + h * 3600) * 1000);
-      ticks.add(Expanded(
-        child: Text(_timeFmt.format(t.toLocal()),
-            style: const TextStyle(fontSize: 11, color: Colors.grey)),
-      ));
-    }
+    const tickStyle = TextStyle(fontSize: 11, color: Colors.grey);
     return Padding(
-      // fix597: align with the grid rows' left edge (no 144px name column now).
-      padding: const EdgeInsets.fromLTRB(4, 6, 8, 4),
-      child: Row(children: ticks),
+      padding: const EdgeInsets.fromLTRB(4, 6, 4, 4),
+      child: SizedBox(
+        height: 16,
+        child: LayoutBuilder(builder: (context, c) {
+          final width = c.maxWidth;
+          final labels = <Widget>[
+            // current time, pinned to the left edge.
+            Positioned(
+              left: 0,
+              top: 0,
+              child: Text(_fmtEpoch(_windowStart),
+                  style: tickStyle.copyWith(
+                      color: Colors.white70, fontWeight: FontWeight.w600)),
+            ),
+          ];
+          const step = 1800; // 30-minute boundaries
+          // first :00/:30 mark strictly after the window start.
+          for (var b = ((_windowStart ~/ step) + 1) * step;
+              b <= _windowEnd;
+              b += step) {
+            final x = _x(b, width);
+            // skip a boundary that would overlap the left "now" label, or run
+            // off the right edge (fix604: the label grows rightward from x, so a
+            // near-edge tick would be clipped by the Stack's hard edge).
+            if (x < 44 || x > width - 44) continue;
+            labels.add(Positioned(
+              left: x,
+              top: 0,
+              child: Text(_fmtEpoch(b), style: tickStyle),
+            ));
+          }
+          return Stack(clipBehavior: Clip.hardEdge, children: labels);
+        }),
+      ),
     );
   }
 

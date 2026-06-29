@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.15': [
+    'TV guide times now read on the hour/half-hour (e.g. the current time, then '
+        '10:00, 10:30 …) instead of odd minutes, and line up with the grid.',
+    'New setting "24-hour clock in guide" (Settings › Playback). Off by default, '
+        'so times show as 9:38 PM; turn it on for 21:38.',
+  ],
   '2.2.14': [
     'TV Live guide: fixed choosing a category accidentally starting the first '
         'channel full-screen. Opening a category now just shows its channels.',

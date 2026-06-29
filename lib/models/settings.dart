@@ -41,6 +41,9 @@ class Settings {
   bool showMovies;
   bool showSeries;
   bool forceTVMode;
+  /// fix604 (#5): show the EPG guide clock in 24-hour time. Default false =
+  /// 12-hour (e.g. 9:38 PM).
+  bool use24HourTime;
 
   /// libmpv cache read-ahead in seconds for live streams.
   int liveCacheSecs;
@@ -295,6 +298,7 @@ class Settings {
     this.showMovies = true,
     this.showSeries = true,
     this.forceTVMode = false,
+    this.use24HourTime = false, // fix604 (#5): 12-hour by default
     this.liveCacheSecs = 20,
     this.liveDemuxerMaxMB = 150,
     this.vodCacheSecs = 60,

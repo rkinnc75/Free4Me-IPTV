@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/models/program.dart';
 
-final _timeFmt = DateFormat.Hm(); // e.g. "20:30"
+// fix604 (#5): use the shared guideClockFmt() (honors the 12/24-hour setting).
 
 /// Displays "Now: <title>  •  Next: <title>" for a channel that has EPG data.
 /// Returns [SizedBox.shrink()] when no EPG data is available.
@@ -57,7 +57,7 @@ class _NowNextStripState extends State<NowNextStrip> {
       parts.add('▶ ${now.title}');
     }
     if (next != null) {
-      final startStr = _timeFmt.format(next.startTime.toLocal());
+      final startStr = guideClockFmt().format(next.startTime.toLocal());
       parts.add('Next $startStr: ${next.title}');
     }
 
