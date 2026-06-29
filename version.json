@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.19",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.19",
+  "latest": "2.2.20",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.20",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Very large channel lists (250k+) freeze the app less at startup: redundant search-index rebuilds after a restart are gone, indexes build with far less disk thrashing, and the guide refresh now waits for startup work to finish instead of piling on. (More startup speedups to come.)",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.19/Free4Me-IPTV-2.2.19-arm64.apk"
+  "releaseNotes": "\u2022 A \"Preparing for the best Free4Me experience\u2026\" loading screen now shows at startup while your channel list loads \u2014 so large catalogs show branding instead of a blank or frozen screen, then fade into the app when ready.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.20/Free4Me-IPTV-2.2.20-arm64.apk"
 }

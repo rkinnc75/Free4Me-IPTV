@@ -125,7 +125,13 @@ Future<void> main() async {
   // for 1–3 min (the Shield startup freeze), and firing a 100k-programme EPG
   // download into that pile made it worse. Each warm-up swallows its own error
   // so Future.wait always settles; whenComplete runs the refresh either way.
-  Future.wait(warmups.map((f) => f.catchError((_) {}))).whenComplete(() {
+  Future.wait(warmups.map((f) => f.catchError((_) {})))
+      // fix609: safety cap so a hung/very-long warm-up can't trap the startup
+      // splash forever — lift it after 4 min regardless. Normal launches lift
+      // far sooner (when the warm-ups actually finish).
+      .timeout(const Duration(minutes: 4), onTimeout: () => <void>[])
+      .whenComplete(() {
+    appWarmupDone.value = true; // fix609: lift the "Preparing…" splash
     unawaited(EpgService.refreshIfStale());
   });
   // fix506: mirror the render-cap setting to the native SharedPref so the
@@ -143,6 +149,15 @@ Future<void> main() async {
 
 /// Thin StatefulWidget whose only job is to fire the update check once the
 /// widget tree has a valid BuildContext (required by showDialog in UpdateChecker).
+/// fix609: false until the heavy startup DB warm-ups (search-cache rebuild +
+/// browse warm + index maintenance) finish. While false, the home shows a
+/// "Preparing…" splash over the real UI so a huge catalog (272k+ channels, e.g.
+/// on a Shield) shows branding instead of a frozen/blank screen during the
+/// 1–3 min SQL warm-up. Set true in main() when Future.wait(warmups) settles
+/// (or the 4-min safety cap fires). Skips straight to true effect when there's
+/// nothing to warm (no sources / fast device → brief or no splash).
+final ValueNotifier<bool> appWarmupDone = ValueNotifier<bool>(false);
+
 class _RootPage extends StatefulWidget {
   final bool skipSetup;
   final Settings settings;
@@ -200,18 +215,83 @@ class _RootPageState extends State<_RootPage> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     if (!widget.skipSetup) return const Setup();
+    final Widget home;
     if (widget.settings.forceTVMode ||
         widget.isTV ||
         (!widget.hasTouchScreen &&
             (Platform.isAndroid || Platform.isIOS))) {
-      return TvHome(settings: widget.settings);
+      home = TvHome(settings: widget.settings);
+    } else {
+      home = Home(
+        firstLaunch: true,
+        refresh: widget.settings.refreshOnStart,
+        home: HomeManager(
+          filters: Filters(viewType: widget.settings.defaultView),
+        ),
+      );
     }
-    return Home(
-      firstLaunch: true,
-      refresh: widget.settings.refreshOnStart,
-      home: HomeManager(
-        filters: Filters(viewType: widget.settings.defaultView),
+    // fix609: overlay the startup splash until the DB warm-ups finish, so a huge
+    // catalog shows "Preparing…" instead of a frozen/blank UI. Fades out (and is
+    // removed) when appWarmupDone flips. The home builds underneath meanwhile.
+    return ValueListenableBuilder<bool>(
+      valueListenable: appWarmupDone,
+      builder: (context, done, _) => Stack(
+        fit: StackFit.expand,
+        children: [
+          home,
+          Positioned.fill(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 400),
+              child: done
+                  ? const SizedBox.shrink(key: ValueKey('warm-done'))
+                  : const _StartupSplash(key: ValueKey('warm-splash')),
+            ),
+          ),
+        ],
       ),
+    );
+  }
+}
+
+/// fix609: full-screen startup splash shown over the home while the DB warms up.
+/// Same background as the TV shell (assets/tv_background.webp) with an 85% scrim
+/// so the message reads clearly.
+class _StartupSplash extends StatelessWidget {
+  const _StartupSplash({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Stack(
+      fit: StackFit.expand,
+      children: [
+        Image(image: AssetImage('assets/tv_background.webp'), fit: BoxFit.cover),
+        ColoredBox(color: Color(0xD9000000)), // 85% scrim
+        Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 44,
+                height: 44,
+                child: CircularProgressIndicator(strokeWidth: 3),
+              ),
+              SizedBox(height: 28),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 40),
+                child: Text(
+                  'Preparing for the best Free4Me experience…',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.20': [
+    'A "Preparing for the best Free4Me experience…" loading screen now shows at '
+        'startup while your channel list loads — so large catalogs show branding '
+        'instead of a blank or frozen screen, then fade into the app when ready.',
+  ],
   '2.2.19': [
     'Very large channel lists (250k+) freeze the app less at startup: redundant '
         'search-index rebuilds after a restart are gone, indexes build with far '
