@@ -1,0 +1,105 @@
+diff --git a/lib/backend/app_logger.dart b/lib/backend/app_logger.dart
+index c4c88cb..56c2435 100644
+--- a/lib/backend/app_logger.dart
++++ b/lib/backend/app_logger.dart
+@@ -1,4 +1,3 @@
+-import 'dart:async';
+ import 'dart:io';
+ 
+ import 'package:package_info_plus/package_info_plus.dart';
+@@ -68,15 +67,20 @@ class AppLogger {
+     };
+     final line = '[$ts] [$prefix] $message\n';
+     debugPrint(line.trimRight());
+-    _sink?.write(line);
+-    // fix617: flush after every write (fire-and-forget — do NOT await, so the
+-    // synchronous log() API is unchanged). The IOSink buffers, so before this a
+-    // process that HUNG (alive but stuck) never flushed its buffered lines to
+-    // disk, and force-closing it lost them — which is why every captured log of
+-    // the phone refresh hang was tiny and showed nothing of the stall. Flushing
+-    // per line shrinks that loss window to near-zero so the next hang is
+-    // actually recorded up to the stall point.
+-    unawaited(_sink?.flush() ?? Future<void>.value());
++    // fix618: write via a synchronous atomic append (flush:true) instead of the
++    // buffered IOSink + per-write flush. fix617 called `unawaited(_sink.flush())`
++    // after every write; overlapping fl* on a single IOSink throws
++    // "Bad state: StreamSink is bound to a stream" under rapid logging (a
++    // refresh emits many lines fast), which corrupted the sink and broke
++    // logging, the source refresh, AND settings import. writeAsStringSync with
++    // flush:true reaches disk immediately (so a hang is still captured — the
++    // fix617 goal) but has no shared in-flight stream state, so it cannot enter
++    // that bad state. The IOSink is no longer used by log(); it is closed in
++    // _close() and otherwise dormant. Best-effort: an I/O error here must never
++    // throw out of the synchronous log() API.
++    try {
++      _file?.writeAsStringSync(line, mode: FileMode.append, flush: true);
++    } catch (_) {}
+     // fix359: rotation was only evaluated in _ensureOpen() (enable/clear),
+     // so a long logging SESSION grew unbounded past _maxBytes. Track bytes
+     // written and trigger an async rotation when the cap is crossed. The
+@@ -299,7 +303,11 @@ class AppLogger {
+ 
+   Future<void> _ensureOpen() async {
+     _bytesSinceOpen = 0; // fix359
+-    if (_sink != null || _initializing) return;
++    // fix618: _file is the open sentinel now (the IOSink is no longer used by
++    // log(); see the synchronous append there). Opening a long-lived
++    // openWrite() sink AND doing writeAsStringSync on the same path is two write
++    // handles to one file, so the sink is dropped entirely.
++    if (_file != null || _initializing) return;
+     _initializing = true;
+     try {
+       final path = await logPath;
+@@ -314,7 +322,10 @@ class AppLogger {
+           _file = File(path);
+         }
+       }
+-      _sink = _file!.openWrite(mode: FileMode.append);
++      // Ensure the file exists so the first synchronous append has a target.
++      if (!await _file!.exists()) {
++        await _file!.create(recursive: true);
++      }
+     } catch (e) {
+       debugPrint('AppLogger: failed to open log file: $e');
+     } finally {
+@@ -323,6 +334,9 @@ class AppLogger {
+   }
+ 
+   Future<void> _close() async {
++    // fix618: the IOSink is no longer opened by _ensureOpen (log() appends
++    // synchronously). Defensively flush/close any sink a prior build/path may
++    // have left, then clear the open sentinel (_file).
+     await _sink?.flush();
+     await _sink?.close();
+     _sink = null;
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 336f848..b7061a1 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '2.2.29': [
++    'Fixed a bug introduced in the previous build where rapid logging could '
++        'put the log writer into a bad state, which broke settings import and '
++        'could stall a source refresh. Logging now writes to disk safely and '
++        'immediately.',
++  ],
+   '2.2.28': [
+     'Diagnostic logging now writes to disk immediately, so if the app gets '
+         'stuck the log captures what it was doing right up to that point. Added '
+diff --git a/pubspec.yaml b/pubspec.yaml
+index a115c9e..c22773e 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 2.2.28+617
++version: 2.2.29+618
+ 
+ environment:
+   sdk: ^3.10.7
+
