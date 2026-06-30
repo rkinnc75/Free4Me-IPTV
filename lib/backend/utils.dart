@@ -256,6 +256,19 @@ class Utils {
           }
           await Sql.reindexFtsSources(succeededIds);
         });
+
+    // fix615: checkpoint db.sqlite's WAL HERE, where the big channel write just
+    // happened, instead of leaving a large WAL (wal_autocheckpoint is raised to
+    // 8000 pages) for a later EPG refresh to inherit and hard-TRUNCATE at a bad
+    // moment (the sms938u crash). epg.sqlite was not written by this path, so
+    // skip it. Guarded so a checkpoint hiccup never fails an otherwise-good
+    // refresh.
+    try {
+      await Sql.checkpointAndTruncateWal(epg: false);
+    } catch (e) {
+      AppLog.warn('Utils.refreshAllSources: post-refresh db.sqlite '
+          'checkpoint failed (non-fatal) — $e');
+    }
   }
 
   // fix580: memoized so the Player can read the resolved value synchronously at

@@ -211,7 +211,11 @@ class EpgService {
         programsInserted: inserted,
         statusMessage: 'Optimising database…',
       ));
-      await Sql.checkpointAndTruncateWal();
+      // fix615: this path wrote epg.sqlite (TRUNCATE is correct and cheap — the
+      // log showed 8ms). db.sqlite was NOT written here; downgrade its
+      // checkpoint to PASSIVE so a large stale sources-refresh WAL is never
+      // hard-TRUNCATEd mid-EPG-refresh (the sms938u crash site).
+      await Sql.checkpointAndTruncateWal(dbMode: WalCheckpointMode.passive);
 
       AppLog.info(
           'EPG: downloaded "${source.name}" — $inserted programs');
@@ -314,7 +318,10 @@ class EpgService {
     );
     if (merged.isNotEmpty) {
       await Sql.setChannelEpgIds(merged);
-      await Sql.checkpointAndTruncateWal();
+      // fix615: this wrote db.sqlite (channel epg_id mapping), so db.sqlite is
+      // the legitimate target; epg.sqlite was not written here. The mapping is
+      // a small write, so TRUNCATE is fine.
+      await Sql.checkpointAndTruncateWal(epg: false);
     }
 
     final report = MatchReport(

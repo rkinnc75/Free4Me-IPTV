@@ -1,0 +1,173 @@
+diff --git a/lib/backend/epg_service.dart b/lib/backend/epg_service.dart
+index ac031ed..48720db 100644
+--- a/lib/backend/epg_service.dart
++++ b/lib/backend/epg_service.dart
+@@ -211,7 +211,11 @@ class EpgService {
+         programsInserted: inserted,
+         statusMessage: 'Optimising database…',
+       ));
+-      await Sql.checkpointAndTruncateWal();
++      // fix615: this path wrote epg.sqlite (TRUNCATE is correct and cheap — the
++      // log showed 8ms). db.sqlite was NOT written here; downgrade its
++      // checkpoint to PASSIVE so a large stale sources-refresh WAL is never
++      // hard-TRUNCATEd mid-EPG-refresh (the sms938u crash site).
++      await Sql.checkpointAndTruncateWal(dbMode: WalCheckpointMode.passive);
+ 
+       AppLog.info(
+           'EPG: downloaded "${source.name}" — $inserted programs');
+@@ -314,7 +318,10 @@ class EpgService {
+     );
+     if (merged.isNotEmpty) {
+       await Sql.setChannelEpgIds(merged);
+-      await Sql.checkpointAndTruncateWal();
++      // fix615: this wrote db.sqlite (channel epg_id mapping), so db.sqlite is
++      // the legitimate target; epg.sqlite was not written here. The mapping is
++      // a small write, so TRUNCATE is fine.
++      await Sql.checkpointAndTruncateWal(epg: false);
+     }
+ 
+     final report = MatchReport(
+diff --git a/lib/backend/sql.dart b/lib/backend/sql.dart
+index efb92d8..23bb0ff 100644
+--- a/lib/backend/sql.dart
++++ b/lib/backend/sql.dart
+@@ -32,6 +32,14 @@ const int importBatchSize = 500;
+ // of the wipe-then-reinsert window. Verified via seeded 1000-row upsert test.
+ const int bulkInsertRows = 1000;
+ 
++/// fix615: WAL checkpoint mode for [Sql.checkpointAndTruncateWal].
++/// - [truncate] flushes the entire WAL to the main DB and shrinks the WAL file
++///   to zero; it waits for readers and does a synchronous fsync (the heavy,
++///   blocking variant).
++/// - [passive] flushes whatever it can without blocking on readers and does
++///   NOT shrink the file; far cheaper, no synchronous spike.
++enum WalCheckpointMode { passive, truncate }
++
+ class Sql {
+   static Future<void> commitWrite(
+       List<Future<void> Function(SqliteWriteContext, Map<String, String>)>
+@@ -2352,33 +2360,56 @@ class Sql {
+   ///
+   /// Uses db.execute (not writeTransaction) — PRAGMA wal_checkpoint must run
+   /// outside a transaction.
+-  static Future<void> checkpointAndTruncateWal() async {
+-    // Checkpoint both databases — epg.sqlite is where the large writes
+-    // happen; db.sqlite may also have pending WAL from channel updates.
+-    for (final entry in [
+-      ('epg.sqlite', await EpgDbFactory.db),
+-      ('db.sqlite', await DbFactory.db),
+-    ]) {
++  static Future<void> checkpointAndTruncateWal({
++    bool epg = true,
++    bool db = true,
++    WalCheckpointMode epgMode = WalCheckpointMode.truncate,
++    WalCheckpointMode dbMode = WalCheckpointMode.truncate,
++  }) async {
++    // fix615: which databases to checkpoint, and in which mode, are now
++    // per-call. Defaults (both, both TRUNCATE) preserve the original behaviour
++    // for the import/export callers that legitimately touch both DBs.
++    //
++    // Background (sms938u crash, log 2026-06-29T21-54): the EPG refresh path
++    // used to TRUNCATE-checkpoint db.sqlite even though EPG only writes
++    // epg.sqlite. After a sources refresh (which now writes a lot to db.sqlite
++    // and leaves a large WAL because wal_autocheckpoint is raised to 8000
++    // pages), the NEXT EPG refresh inherited a hard TRUNCATE of that large
++    // stale db.sqlite WAL — a synchronous fsync spike, and the last log line
++    // before the process died. The fix: sources refresh checkpoints its OWN
++    // db.sqlite WAL at its end (db-only, TRUNCATE), and the EPG path downgrades
++    // its db.sqlite checkpoint to PASSIVE so it is never a blocking TRUNCATE.
++    final targets = <(String, SqliteWriteContext, WalCheckpointMode)>[
++      if (epg) ('epg.sqlite', await EpgDbFactory.db, epgMode),
++      if (db) ('db.sqlite', await DbFactory.db, dbMode),
++    ];
++    for (final entry in targets) {
+       final label = entry.$1;
+-      final db = entry.$2;
++      final database = entry.$2;
++      final mode = entry.$3;
++      final modeSql = mode == WalCheckpointMode.truncate ? 'TRUNCATE' : 'PASSIVE';
+       try {
+-        final rows = await db.getAll('PRAGMA wal_checkpoint(PASSIVE)');
++        final rows = await database.getAll('PRAGMA wal_checkpoint(PASSIVE)');
+         if (rows.isNotEmpty) {
+           final pages = rows.first.columnAt(1) as int;
+           final mb = (pages * 4096 / 1024 / 1024).toStringAsFixed(1);
+           AppLog.info(
+             'Sql.checkpoint [$label]: WAL has $pages pages (~${mb}MB)'
+-            ' — starting TRUNCATE',
++            ' — starting $modeSql',
+           );
+         }
+       } catch (_) {
+         AppLog.info(
+-            'Sql.checkpoint [$label]: WAL size unknown — starting TRUNCATE');
++            'Sql.checkpoint [$label]: WAL size unknown — starting $modeSql');
+       }
++      // A PASSIVE probe already ran above; for PASSIVE mode that is the
++      // checkpoint, so only issue the explicit pragma for TRUNCATE.
+       final t = DateTime.now();
+-      await db.execute('PRAGMA wal_checkpoint(TRUNCATE)');
++      if (mode == WalCheckpointMode.truncate) {
++        await database.execute('PRAGMA wal_checkpoint(TRUNCATE)');
++      }
+       final ms = DateTime.now().difference(t).inMilliseconds;
+-      AppLog.info('Sql.checkpoint [$label]: WAL truncated in ${ms}ms');
++      AppLog.info('Sql.checkpoint [$label]: $modeSql done in ${ms}ms');
+     }
+   }
+ 
+diff --git a/lib/backend/utils.dart b/lib/backend/utils.dart
+index 57d574e..ad1c7b2 100644
+--- a/lib/backend/utils.dart
++++ b/lib/backend/utils.dart
+@@ -256,6 +256,19 @@ class Utils {
+           }
+           await Sql.reindexFtsSources(succeededIds);
+         });
++
++    // fix615: checkpoint db.sqlite's WAL HERE, where the big channel write just
++    // happened, instead of leaving a large WAL (wal_autocheckpoint is raised to
++    // 8000 pages) for a later EPG refresh to inherit and hard-TRUNCATE at a bad
++    // moment (the sms938u crash). epg.sqlite was not written by this path, so
++    // skip it. Guarded so a checkpoint hiccup never fails an otherwise-good
++    // refresh.
++    try {
++      await Sql.checkpointAndTruncateWal(epg: false);
++    } catch (e) {
++      AppLog.warn('Utils.refreshAllSources: post-refresh db.sqlite '
++          'checkpoint failed (non-fatal) — $e');
++    }
+   }
+ 
+   // fix580: memoized so the Player can read the resolved value synchronously at
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 1e18739..3da84a1 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '2.2.26': [
++    'Fixed a rare crash where the app could close during an EPG refresh that '
++        'ran shortly after refreshing all sources. The database now flushes its '
++        'write-ahead log at the right time, removing the heavy disk operation '
++        'that could end the app.',
++  ],
+   '2.2.25': [
+     'Refreshing all sources is dramatically faster: rebuilding the search index '
+         'at the end no longer reprocesses the entire catalog — it now updates '
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 2ace59c..852944a 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 2.2.25+614
++version: 2.2.26+615
+ 
+ environment:
+   sdk: ^3.10.7
+

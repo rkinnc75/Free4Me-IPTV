@@ -32,6 +32,14 @@ const int importBatchSize = 500;
 // of the wipe-then-reinsert window. Verified via seeded 1000-row upsert test.
 const int bulkInsertRows = 1000;
 
+/// fix615: WAL checkpoint mode for [Sql.checkpointAndTruncateWal].
+/// - [truncate] flushes the entire WAL to the main DB and shrinks the WAL file
+///   to zero; it waits for readers and does a synchronous fsync (the heavy,
+///   blocking variant).
+/// - [passive] flushes whatever it can without blocking on readers and does
+///   NOT shrink the file; far cheaper, no synchronous spike.
+enum WalCheckpointMode { passive, truncate }
+
 class Sql {
   static Future<void> commitWrite(
       List<Future<void> Function(SqliteWriteContext, Map<String, String>)>
@@ -2352,33 +2360,56 @@ class Sql {
   ///
   /// Uses db.execute (not writeTransaction) — PRAGMA wal_checkpoint must run
   /// outside a transaction.
-  static Future<void> checkpointAndTruncateWal() async {
-    // Checkpoint both databases — epg.sqlite is where the large writes
-    // happen; db.sqlite may also have pending WAL from channel updates.
-    for (final entry in [
-      ('epg.sqlite', await EpgDbFactory.db),
-      ('db.sqlite', await DbFactory.db),
-    ]) {
+  static Future<void> checkpointAndTruncateWal({
+    bool epg = true,
+    bool db = true,
+    WalCheckpointMode epgMode = WalCheckpointMode.truncate,
+    WalCheckpointMode dbMode = WalCheckpointMode.truncate,
+  }) async {
+    // fix615: which databases to checkpoint, and in which mode, are now
+    // per-call. Defaults (both, both TRUNCATE) preserve the original behaviour
+    // for the import/export callers that legitimately touch both DBs.
+    //
+    // Background (sms938u crash, log 2026-06-29T21-54): the EPG refresh path
+    // used to TRUNCATE-checkpoint db.sqlite even though EPG only writes
+    // epg.sqlite. After a sources refresh (which now writes a lot to db.sqlite
+    // and leaves a large WAL because wal_autocheckpoint is raised to 8000
+    // pages), the NEXT EPG refresh inherited a hard TRUNCATE of that large
+    // stale db.sqlite WAL — a synchronous fsync spike, and the last log line
+    // before the process died. The fix: sources refresh checkpoints its OWN
+    // db.sqlite WAL at its end (db-only, TRUNCATE), and the EPG path downgrades
+    // its db.sqlite checkpoint to PASSIVE so it is never a blocking TRUNCATE.
+    final targets = <(String, SqliteWriteContext, WalCheckpointMode)>[
+      if (epg) ('epg.sqlite', await EpgDbFactory.db, epgMode),
+      if (db) ('db.sqlite', await DbFactory.db, dbMode),
+    ];
+    for (final entry in targets) {
       final label = entry.$1;
-      final db = entry.$2;
+      final database = entry.$2;
+      final mode = entry.$3;
+      final modeSql = mode == WalCheckpointMode.truncate ? 'TRUNCATE' : 'PASSIVE';
       try {
-        final rows = await db.getAll('PRAGMA wal_checkpoint(PASSIVE)');
+        final rows = await database.getAll('PRAGMA wal_checkpoint(PASSIVE)');
         if (rows.isNotEmpty) {
           final pages = rows.first.columnAt(1) as int;
           final mb = (pages * 4096 / 1024 / 1024).toStringAsFixed(1);
           AppLog.info(
             'Sql.checkpoint [$label]: WAL has $pages pages (~${mb}MB)'
-            ' — starting TRUNCATE',
+            ' — starting $modeSql',
           );
         }
       } catch (_) {
         AppLog.info(
-            'Sql.checkpoint [$label]: WAL size unknown — starting TRUNCATE');
+            'Sql.checkpoint [$label]: WAL size unknown — starting $modeSql');
       }
+      // A PASSIVE probe already ran above; for PASSIVE mode that is the
+      // checkpoint, so only issue the explicit pragma for TRUNCATE.
       final t = DateTime.now();
-      await db.execute('PRAGMA wal_checkpoint(TRUNCATE)');
+      if (mode == WalCheckpointMode.truncate) {
+        await database.execute('PRAGMA wal_checkpoint(TRUNCATE)');
+      }
       final ms = DateTime.now().difference(t).inMilliseconds;
-      AppLog.info('Sql.checkpoint [$label]: WAL truncated in ${ms}ms');
+      AppLog.info('Sql.checkpoint [$label]: $modeSql done in ${ms}ms');
     }
   }
 
