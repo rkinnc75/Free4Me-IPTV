@@ -49,6 +49,12 @@ Future<void> showSourcesRefreshDialog(BuildContext context) async {
   int sourceIndex = 0;
   int sourceTotal = 0;
   bool done = false;
+  // fix620: set when the user taps Cancel. The refresh IIFE checks it between
+  // sources (cooperative cancellation — it can't interrupt a synchronous call,
+  // but the FTS pre-flight heal in refreshAllSources removes the main hang, so
+  // the loop stays responsive at its await points). On cancel we also repair
+  // the FTS index so the user is left with a usable database, not a broken one.
+  bool cancelRequested = false;
   Object? error;
   // fix611: per-source failures collected during the batch. A single source
   // failing no longer aborts the whole refresh (see Utils.refreshAllSources);
@@ -125,7 +131,36 @@ Future<void> showSourcesRefreshDialog(BuildContext context) async {
                       child: const Text('OK'),
                     ),
                   ]
-                : null,
+                : [
+                    // fix620: Cancel lets the user abort a long/stuck refresh
+                    // without force-closing. It flags cooperative cancellation,
+                    // repairs the FTS index (so a half-done refresh doesn't
+                    // leave a broken search index), and closes the dialog.
+                    TextButton(
+                      onPressed: cancelRequested
+                          ? null
+                          : () async {
+                              AppLog.info(
+                                  'SourcesRefreshDialog: user requested cancel');
+                              setSt(() {
+                                cancelRequested = true;
+                                status = 'Cancelling — repairing search index…';
+                              });
+                              try {
+                                await Sql.ensureFtsHealthy();
+                              } catch (e) {
+                                AppLog.warn('SourcesRefreshDialog: FTS repair '
+                                    'on cancel failed — $e');
+                              }
+                              setSt(() {
+                                done = true;
+                                title = 'Cancelled';
+                                status = 'Refresh cancelled.';
+                              });
+                            },
+                      child: Text(cancelRequested ? 'Cancelling…' : 'Cancel'),
+                    ),
+                  ],
           ),
         );
       },
@@ -187,6 +222,7 @@ Future<void> showSourcesRefreshDialog(BuildContext context) async {
             onSourceFailed: (Source source, Object err) {
               setSt(() => failedSources.add(source.name));
             },
+            shouldCancel: () => cancelRequested,
           );
         },
       );

@@ -34,6 +34,17 @@ class Utils {
     void Function(int done, int total)? onRowProgress,
   }) async {
     refreshedSeries.clear();
+    // fix620: repair a malformed FTS index BEFORE touching it — a corrupt index
+    // makes the per-source delete hang on the main isolate (the single-source
+    // "Emjay" refresh hang). Heal proactively. Non-fatal on failure.
+    try {
+      if (await Sql.ensureFtsHealthy()) {
+        onProgress?.call('Repaired search index');
+      }
+    } catch (e) {
+      AppLog.warn('Utils.refreshSource: FTS pre-flight check failed '
+          '(non-fatal, continuing) — $e');
+    }
     await processSource(source, true, onProgress, onRowProgress);
     // After channels are populated, apply any favorites and last-
     // watched timestamps that an imported backup staged for this
@@ -155,6 +166,7 @@ class Utils {
     void Function(Source source, String status)? onSourceStatus,
     void Function(Source source, int done, int total)? onSourceRowProgress,
     void Function(Source source, Object error)? onSourceFailed,
+    bool Function()? shouldCancel, // fix620: cooperative cancellation
   }) async {
     final enabled = (await Sql.getSources())
         .where((s) => s.enabled)
@@ -163,6 +175,18 @@ class Utils {
       'Utils.refreshAllSources: ${enabled.length} enabled source(s)'
       ' (${enabled.map((s) => s.name).join(", ")})',
     );
+    // fix620: repair a malformed FTS index BEFORE the loop. A corrupt index
+    // makes the per-source delete hang (not throw) on the main isolate, which
+    // no Cancel button can interrupt — so heal it proactively here.
+    try {
+      final repaired = await Sql.ensureFtsHealthy();
+      if (repaired && enabled.isNotEmpty) {
+        onSourceStatus?.call(enabled.first, 'Repaired search index');
+      }
+    } catch (e) {
+      AppLog.warn('Utils.refreshAllSources: FTS pre-flight check failed '
+          '(non-fatal, continuing) — $e');
+    }
 
     if (enabled.isEmpty) return;
 
@@ -199,6 +223,14 @@ class Utils {
         // single end-of-batch rebuild.
         final failures = <Source, Object>{};
         for (var i = 0; i < enabled.length; i++) {
+          // fix620: stop cleanly between sources if the user cancelled. Sources
+          // already refreshed keep their data + FTS (maintained per-source);
+          // remaining sources are simply skipped.
+          if (shouldCancel?.call() ?? false) {
+            AppLog.info('Utils.refreshAllSources: cancelled by user before '
+                'source ${i + 1}/${enabled.length}');
+            break;
+          }
           final s = enabled[i];
           onSourceStart?.call(i + 1, enabled.length, s);
           const maxAttempts = 2;

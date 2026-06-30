@@ -691,6 +691,32 @@ class Sql {
         s.contains('database disk image is malformed');
   }
 
+  /// fix620: pre-flight FTS health check. A malformed external-content FTS5
+  /// index (code 267) makes a refresh HANG rather than throw — the corrupting
+  /// `DELETE FROM channels_fts` can block inside the synchronous SQLite call on
+  /// the main isolate, where a Cancel button cannot interrupt it. So instead of
+  /// relying on catching the error, the refresh paths call this FIRST: run
+  /// FTS5's built-in `integrity-check`, and if it fails, rebuild the index from
+  /// scratch BEFORE any refresh touches it. Cheap on a healthy index (~1s on
+  /// the 857K-row catalog). Returns true if a rebuild was performed.
+  static Future<bool> ensureFtsHealthy() async {
+    final db = await DbFactory.db;
+    try {
+      await db
+          .execute("INSERT INTO channels_fts(channels_fts) VALUES('integrity-check');");
+      return false; // healthy
+    } catch (e) {
+      if (!isMalformedDbError(e)) {
+        // Not a malformedness error — surface it rather than masking.
+        rethrow;
+      }
+      AppLog.warn('Sql.ensureFtsHealthy: FTS integrity-check failed '
+          '($e) — rebuilding index before refresh');
+      await rebuildFtsTableFromScratch();
+      return true;
+    }
+  }
+
   /// fix174.3: bulk upsert for large imports. Same ON CONFLICT key as
   /// insertChannel (fix174.1). Does NOT read last_insert_rowid().
   static Future<void> Function(SqliteWriteContext, Map<String, String>)

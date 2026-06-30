@@ -6,6 +6,14 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.31': [
+    'Source refresh now checks and repairs the search index automatically '
+        'before it starts, preventing a corrupted index from stalling the '
+        'refresh.',
+    'Added a Cancel button to the refresh dialog so a long-running refresh can '
+        'be stopped without force-closing the app; cancelling also repairs the '
+        'search index so your data stays usable.',
+  ],
   '2.2.30': [
     'Fixed a bug that could corrupt the search index during a refresh of all '
         'sources (causing refreshes to fail with a database error). The search '
