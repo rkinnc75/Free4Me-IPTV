@@ -178,6 +178,43 @@ class AppLogger {
     return '$dir/$_fileName';
   }
 
+  /// fix616: path of the sidecar marker that records which app version the log
+  /// was last cleared for. Deliberately a PLAIN FILE next to the log — NOT a
+  /// row in db.sqlite's settings table. The version-change log rotation used to
+  /// read its marker from db.sqlite; when a sources refresh left db.sqlite
+  /// wiped/empty, the marker read came back absent, so the rotation fired on a
+  /// SAME-VERSION restart and destroyed the very log that would explain the bad
+  /// refresh. A file in the app dir survives a db.sqlite wipe, so the log is
+  /// preserved across exactly the failures we most need to diagnose.
+  Future<String> get _clearedVersionMarkerPath async {
+    final dir = await Utils.appDir;
+    return '$dir/.log_cleared_version';
+  }
+
+  /// Read the version the log was last cleared for, or '' if the marker is
+  /// missing/unreadable (treated as "never cleared for any version").
+  Future<String> readClearedVersionMarker() async {
+    try {
+      final f = File(await _clearedVersionMarkerPath);
+      if (!await f.exists()) return '';
+      return (await f.readAsString()).trim();
+    } catch (_) {
+      return '';
+    }
+  }
+
+  /// Record [version] as the version the log has been cleared for. Best-effort:
+  /// a write failure must never break startup, it just means the next boot may
+  /// re-clear once.
+  Future<void> writeClearedVersionMarker(String version) async {
+    try {
+      final f = File(await _clearedVersionMarkerPath);
+      await f.writeAsString(version);
+    } catch (e) {
+      log('writeClearedVersionMarker failed: $e', level: LogLevel.warning);
+    }
+  }
+
   /// Returns log file contents as a string. Returns empty string if the file
   /// doesn't exist yet.
   Future<String> readLog() async {

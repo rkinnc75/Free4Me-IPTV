@@ -1,0 +1,120 @@
+diff --git a/lib/backend/app_logger.dart b/lib/backend/app_logger.dart
+index 0b5b8c3..0b04345 100644
+--- a/lib/backend/app_logger.dart
++++ b/lib/backend/app_logger.dart
+@@ -178,6 +178,43 @@ class AppLogger {
+     return '$dir/$_fileName';
+   }
+ 
++  /// fix616: path of the sidecar marker that records which app version the log
++  /// was last cleared for. Deliberately a PLAIN FILE next to the log — NOT a
++  /// row in db.sqlite's settings table. The version-change log rotation used to
++  /// read its marker from db.sqlite; when a sources refresh left db.sqlite
++  /// wiped/empty, the marker read came back absent, so the rotation fired on a
++  /// SAME-VERSION restart and destroyed the very log that would explain the bad
++  /// refresh. A file in the app dir survives a db.sqlite wipe, so the log is
++  /// preserved across exactly the failures we most need to diagnose.
++  Future<String> get _clearedVersionMarkerPath async {
++    final dir = await Utils.appDir;
++    return '$dir/.log_cleared_version';
++  }
++
++  /// Read the version the log was last cleared for, or '' if the marker is
++  /// missing/unreadable (treated as "never cleared for any version").
++  Future<String> readClearedVersionMarker() async {
++    try {
++      final f = File(await _clearedVersionMarkerPath);
++      if (!await f.exists()) return '';
++      return (await f.readAsString()).trim();
++    } catch (_) {
++      return '';
++    }
++  }
++
++  /// Record [version] as the version the log has been cleared for. Best-effort:
++  /// a write failure must never break startup, it just means the next boot may
++  /// re-clear once.
++  Future<void> writeClearedVersionMarker(String version) async {
++    try {
++      final f = File(await _clearedVersionMarkerPath);
++      await f.writeAsString(version);
++    } catch (e) {
++      log('writeClearedVersionMarker failed: $e', level: LogLevel.warning);
++    }
++  }
++
+   /// Returns log file contents as a string. Returns empty string if the file
+   /// doesn't exist yet.
+   Future<String> readLog() async {
+diff --git a/lib/backend/settings_service.dart b/lib/backend/settings_service.dart
+index 8e8bb04..e06bd53 100644
+--- a/lib/backend/settings_service.dart
++++ b/lib/backend/settings_service.dart
+@@ -566,14 +566,22 @@ class SettingsService {
+ 
+   /// Clears the debug log file the first time the app boots on a new version.
+   ///
+-  /// Idempotent: tracks the cleared-for version in [lastLogClearedVersion],
+-  /// so subsequent launches on the same build do not touch the log again.
++  /// Idempotent: tracks the cleared-for version in a sidecar FILE marker
++  /// (fix616 — see [AppLogger.readClearedVersionMarker]), so subsequent
++  /// launches on the same build do not touch the log again, and a db.sqlite
++  /// wipe can no longer trigger a spurious same-version clear.
+   /// Safe to call regardless of whether file logging is currently enabled —
+   /// [AppLog.clearLog] handles both states.
+   static Future<void> maybeRotateLogOnVersionChange() async {
+     final String version = (await PackageInfo.fromPlatform()).version;
+-    final settingsMap = await Sql.getSettings();
+-    if (settingsMap[lastLogClearedVersion] == version) return;
++    // fix616: the guard now lives in a sidecar FILE, not db.sqlite's settings
++    // table. A sources refresh that left db.sqlite wiped used to make the old
++    // db-backed marker read absent, firing this rotation on a same-version
++    // restart and destroying the log that explained the bad refresh. The file
++    // marker survives a db.sqlite wipe, so the log is preserved across exactly
++    // those failures. (clearPlaybackMetrics still writes db.sqlite — that's the
++    // metrics DATA, not the guard, and a wipe of it is harmless.)
++    if (await AppLog.readClearedVersionMarker() == version) return;
+ 
+     await AppLog.clearLog();
+     // fix180: also wipe Analyze/Suggest history so suggestions aren't biased
+@@ -582,8 +590,6 @@ class SettingsService {
+     AppLog.info(
+       'Free4Me-IPTV $version — log + playback metrics cleared on version change',
+     );
+-    final HashMap<String, String> update = HashMap();
+-    update[lastLogClearedVersion] = version;
+-    await Sql.updateSettings(update);
++    await AppLog.writeClearedVersionMarker(version);
+   }
+ }
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 3da84a1..eab4189 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '2.2.27': [
++    'The diagnostic log is no longer wiped when the app restarts after a '
++        'failed source refresh, so logs that explain a problem are preserved '
++        'for troubleshooting. The log still resets once when you update to a '
++        'new version, as before.',
++  ],
+   '2.2.26': [
+     'Fixed a rare crash where the app could close during an EPG refresh that '
+         'ran shortly after refreshing all sources. The database now flushes its '
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 852944a..827cb08 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 2.2.26+615
++version: 2.2.27+616
+ 
+ environment:
+   sdk: ^3.10.7
+

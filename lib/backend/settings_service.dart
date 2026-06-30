@@ -566,14 +566,22 @@ class SettingsService {
 
   /// Clears the debug log file the first time the app boots on a new version.
   ///
-  /// Idempotent: tracks the cleared-for version in [lastLogClearedVersion],
-  /// so subsequent launches on the same build do not touch the log again.
+  /// Idempotent: tracks the cleared-for version in a sidecar FILE marker
+  /// (fix616 — see [AppLogger.readClearedVersionMarker]), so subsequent
+  /// launches on the same build do not touch the log again, and a db.sqlite
+  /// wipe can no longer trigger a spurious same-version clear.
   /// Safe to call regardless of whether file logging is currently enabled —
   /// [AppLog.clearLog] handles both states.
   static Future<void> maybeRotateLogOnVersionChange() async {
     final String version = (await PackageInfo.fromPlatform()).version;
-    final settingsMap = await Sql.getSettings();
-    if (settingsMap[lastLogClearedVersion] == version) return;
+    // fix616: the guard now lives in a sidecar FILE, not db.sqlite's settings
+    // table. A sources refresh that left db.sqlite wiped used to make the old
+    // db-backed marker read absent, firing this rotation on a same-version
+    // restart and destroying the log that explained the bad refresh. The file
+    // marker survives a db.sqlite wipe, so the log is preserved across exactly
+    // those failures. (clearPlaybackMetrics still writes db.sqlite — that's the
+    // metrics DATA, not the guard, and a wipe of it is harmless.)
+    if (await AppLog.readClearedVersionMarker() == version) return;
 
     await AppLog.clearLog();
     // fix180: also wipe Analyze/Suggest history so suggestions aren't biased
@@ -582,8 +590,6 @@ class SettingsService {
     AppLog.info(
       'Free4Me-IPTV $version — log + playback metrics cleared on version change',
     );
-    final HashMap<String, String> update = HashMap();
-    update[lastLogClearedVersion] = version;
-    await Sql.updateSettings(update);
+    await AppLog.writeClearedVersionMarker(version);
   }
 }
