@@ -6,6 +6,13 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.30': [
+    'Fixed a bug that could corrupt the search index during a refresh of all '
+        'sources (causing refreshes to fail with a database error). The search '
+        'index is now updated in the correct, safe order per source.',
+    'Added automatic recovery: if the search index is found to be corrupted, '
+        'the app now rebuilds it and retries the refresh instead of failing.',
+  ],
   '2.2.29': [
     'Fixed a bug introduced in the previous build where rapid logging could '
         'put the log writer into a bad state, which broke settings import and '

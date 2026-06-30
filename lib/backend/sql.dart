@@ -283,14 +283,61 @@ class Sql {
       "AND name IN ('channels_ai', 'channels_au', 'channels_ad')",
     );
     final hadTriggers = existing.length == 3;
-    // fix521: re-entrancy — when an outer batch (refreshAllSources) has already
-    // suspended the FTS triggers around the WHOLE loop, this inner per-source
-    // call is a pure pass-through: the triggers are already dropped so the body
-    // inserts trigger-free, and the OUTER finally owns the single end-of-batch
-    // global rebuild (no per-source rebuild). Mirrors fix518's
-    // _browseIndexesDropped.
+    // fix521 + fix619: re-entrancy — when an outer batch (refreshAllSources)
+    // has already suspended the FTS triggers around the WHOLE loop, this inner
+    // per-source call is normally a pass-through. fix614 tried to defer ALL FTS
+    // work to a single end-of-batch reindex, but that ran its
+    // `DELETE FROM channels_fts` AFTER every source's wipe+reinsert — and on an
+    // external-content FTS5 table, deleting index rows once the backing content
+    // rows have already changed corrupts the index ("database disk image is
+    // malformed", code 267, seen on sms938u). fix619 fixes this by doing the
+    // SAME proven ordering the single-source path uses, here, per source:
+    // delete this source's FTS rows BEFORE body()'s wipe (while `channels`
+    // still holds them), then insert the new rows AFTER body(). The outer
+    // wrapper still owns the trigger drop/restore; we only touch FTS rows.
     if (_ftsTriggersSuspended) {
-      await body();
+      if (refreshedSourceId == null) {
+        // No per-source context (e.g. a non-source write) — just pass through.
+        await body();
+        return;
+      }
+      // Delete BEFORE wipe, while the content rows still exist. Materialize the
+      // id list (a correlated subquery against the content table silently
+      // deletes nothing — see the correctness note below).
+      final idRows = await db.getAll(
+        'SELECT id FROM channels WHERE source_id = ?',
+        [refreshedSourceId],
+      );
+      final ids = idRows.map((r) => r['id'] as int).toList();
+      for (var i = 0; i < ids.length; i += 900) {
+        final end = i + 900 > ids.length ? ids.length : i + 900;
+        final chunk = ids.sublist(i, end);
+        await db.execute(
+          'DELETE FROM channels_fts WHERE rowid IN '
+          '(${generatePlaceholders(chunk.length)})',
+          chunk,
+        );
+      }
+      var ok = false;
+      try {
+        await body();
+        ok = true;
+      } finally {
+        if (ok) {
+          // body() has wiped+reinserted this source; index the new rows.
+          await db.execute(
+            'INSERT INTO channels_fts(rowid, name) '
+            'SELECT id, name FROM channels WHERE source_id = ?',
+            [refreshedSourceId],
+          );
+          AppLog.info('Sql.withSuspendedFtsTriggers: per-source targeted FTS '
+              're-index inside batch (source=$refreshedSourceId, '
+              'rows=${ids.length})');
+        }
+        // If body() threw, this source's OLD FTS rows were already deleted and
+        // no new ones inserted. The outer batch wrapper will fall back to a
+        // global rebuild on the error path, which restores consistency.
+      }
       return;
     }
     var useTargeted = false;
@@ -355,20 +402,16 @@ class Sql {
           AppLog.info('Sql.withSuspendedFtsTriggers: FTS triggers restored'
               ' + targeted re-index (source=$refreshedSourceId)');
         } else if (batchTargetedRebuild != null && bodySucceeded) {
-          // fix614: batch path — targeted-reindex only the refreshed sources
-          // instead of a full-catalog rebuild. body() succeeded, so `channels`
-          // is consistent for those sources. Search is still gated during the
-          // reindex (it briefly drops+reinserts rows) and the flag is always
-          // cleared. Triggers are restored WITHOUT a global rebuild.
-          ftsRebuilding.value = true;
-          try {
-            await batchTargetedRebuild();
-            await reconcileFtsTriggers(true, skipRebuild: true);
-          } finally {
-            ftsRebuilding.value = false;
-          }
+          // fix619: in the batch path FTS is now maintained PER SOURCE inside
+          // the loop (delete-before-wipe + insert-after, in the pass-through
+          // branch above), so by here the index is already consistent for every
+          // source that succeeded. No global rebuild and no end-of-batch
+          // reindex needed — just restore the triggers. (batchTargetedRebuild
+          // is retained as the success sentinel from refreshAllSources; the
+          // closure it passes is now a no-op kept for signature stability.)
+          await reconcileFtsTriggers(true, skipRebuild: true);
           AppLog.info('Sql.withSuspendedFtsTriggers: FTS triggers restored'
-              ' + batch targeted re-index');
+              ' (per-source targeted re-index already applied in batch)');
         } else {
           // Either targeted wasn't applicable (large source / large
           // fraction / no sourceId given), or body() threw before finishing
@@ -391,54 +434,6 @@ class Sql {
         }
       }
     }
-  }
-
-  /// fix614: targeted FTS re-index for a set of sources, used by the batch
-  /// refresh in place of the full-catalog global rebuild. For each source it
-  /// deletes that source's existing FTS rows (by rowid, chunked at 900 for the
-  /// 999 bind-parameter limit) and reinserts them from the now-current
-  /// `channels` rows. Cost is proportional to the SUM of the refreshed sources'
-  /// rows, not the whole catalog, and it skips the global rebuild's full
-  /// re-tokenization of every row (incl. the prefix='2 3' index). Measured on
-  /// the production 857K-row catalog: ~51s for all four sources vs the global
-  /// rebuild running for tens of minutes.
-  ///
-  /// Caller contract: only pass sources whose refresh SUCCEEDED — their
-  /// `channels` rows must reflect the new state. A source that failed its fetch
-  /// never wiped its channels, so its existing FTS rows stay valid and it must
-  /// be OMITTED here (not reindexed). Assumes the FTS triggers are currently
-  /// suspended (the batch wrapper owns that) so these writes don't re-fire
-  /// per-row maintenance; the caller restores triggers with skipRebuild after.
-  static Future<void> reindexFtsSources(List<int> sourceIds) async {
-    if (sourceIds.isEmpty) return;
-    final db = await DbFactory.db;
-    final sw = Stopwatch()..start();
-    for (final sourceId in sourceIds) {
-      final idRows = await db.getAll(
-        'SELECT id FROM channels WHERE source_id = ?',
-        [sourceId],
-      );
-      final ids = idRows.map((r) => r['id'] as int).toList();
-      for (var i = 0; i < ids.length; i += 900) {
-        final end = i + 900 > ids.length ? ids.length : i + 900;
-        final chunk = ids.sublist(i, end);
-        await db.execute(
-          'DELETE FROM channels_fts WHERE rowid IN '
-          '(${generatePlaceholders(chunk.length)})',
-          chunk,
-        );
-      }
-      await db.execute(
-        'INSERT INTO channels_fts(rowid, name) '
-        'SELECT id, name FROM channels WHERE source_id = ?',
-        [sourceId],
-      );
-      AppLog.info('Sql.reindexFtsSources: source=$sourceId '
-          'rows=${ids.length}');
-    }
-    sw.stop();
-    AppLog.info('Sql.reindexFtsSources: ${sourceIds.length} source(s) '
-        'targeted-reindexed in ${sw.elapsedMilliseconds}ms');
   }
 
   /// fix514: deliberately conservative dual threshold (see the long comment
@@ -633,6 +628,67 @@ class Sql {
       await db.execute('DROP TRIGGER IF EXISTS channels_au;');
       await db.execute('DROP TRIGGER IF EXISTS channels_ad;');
     }
+  }
+
+  /// fix619: recover from a malformed FTS index ("database disk image is
+  /// malformed", SqliteException code 267). The external-content FTS5 shadow
+  /// tables can become inconsistent (a corrupted `channels_fts`); when that
+  /// happens every search and every refresh that touches FTS fails forever.
+  /// This drops the FTS virtual table and its sync triggers, recreates them
+  /// BYTE-IDENTICAL to migration 13 / reconcileFtsTriggers (unicode61,
+  /// prefix='2 3'), and repopulates from the current `channels`. Returns true
+  /// if recovery completed. Best-effort: callers should catch and surface a
+  /// failure rather than crash.
+  static Future<void> rebuildFtsTableFromScratch() async {
+    final db = await DbFactory.db;
+    AppLog.warn('Sql.rebuildFtsTableFromScratch: rebuilding malformed FTS '
+        'index from scratch');
+    // Triggers reference channels_fts; drop them before the table.
+    await db.execute('DROP TRIGGER IF EXISTS channels_ai;');
+    await db.execute('DROP TRIGGER IF EXISTS channels_au;');
+    await db.execute('DROP TRIGGER IF EXISTS channels_ad;');
+    // Dropping the external-content FTS table also removes its shadow tables
+    // (channels_fts_data/idx/docsize/config), discarding the corruption.
+    await db.execute('DROP TABLE IF EXISTS channels_fts;');
+    await db.execute('''
+      CREATE VIRTUAL TABLE channels_fts USING fts5(
+        name,
+        content='channels',
+        content_rowid='id',
+        tokenize='unicode61',
+        prefix='2 3'
+      );
+    ''');
+    await db.execute('''
+      INSERT INTO channels_fts(rowid, name)
+      SELECT id, name FROM channels;
+    ''');
+    // Recreate sync triggers (reconcileFtsTriggers also creates these, but do
+    // it here so recovery is self-contained and leaves a consistent state).
+    await db.execute('CREATE TRIGGER IF NOT EXISTS channels_ai '
+        'AFTER INSERT ON channels BEGIN '
+        'INSERT INTO channels_fts(rowid, name) VALUES (new.id, new.name); END;');
+    await db.execute('CREATE TRIGGER IF NOT EXISTS channels_ad '
+        'AFTER DELETE ON channels BEGIN '
+        "INSERT INTO channels_fts(channels_fts, rowid, name) "
+        "VALUES('delete', old.id, old.name); END;");
+    await db.execute('CREATE TRIGGER IF NOT EXISTS channels_au '
+        'AFTER UPDATE OF name ON channels BEGIN '
+        "INSERT INTO channels_fts(channels_fts, rowid, name) "
+        "VALUES('delete', old.id, old.name); "
+        'INSERT INTO channels_fts(rowid, name) VALUES (new.id, new.name); END;');
+    // Clear the suspend flag — recovery left triggers present and consistent.
+    _ftsTriggersSuspended = false;
+    AppLog.info('Sql.rebuildFtsTableFromScratch: FTS index rebuilt and '
+        'triggers recreated');
+  }
+
+  /// fix619: true if [e] is the SQLite "database disk image is malformed"
+  /// error (code 267), used to trigger FTS auto-recovery.
+  static bool isMalformedDbError(Object e) {
+    final s = e.toString();
+    return s.contains('code 267') ||
+        s.contains('database disk image is malformed');
   }
 
   /// fix174.3: bulk upsert for large imports. Same ON CONFLICT key as

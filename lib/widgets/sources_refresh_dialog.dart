@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:open_tv/backend/app_logger.dart';
+import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/backend/utils.dart';
 import 'package:open_tv/backend/background_task_service.dart';
 import 'package:open_tv/backend/settings_service.dart';
@@ -194,8 +195,62 @@ Future<void> showSourcesRefreshDialog(BuildContext context) async {
         ' — $sourceTotal source(s) done',
       );
     } catch (e, st) {
-      error = e;
-      AppLog.warn('SourcesRefreshDialog: refresh error — $e\n$st');
+      // fix619: a malformed FTS index (code 267) makes every refresh fail until
+      // the index is rebuilt. Detect it, rebuild channels_fts from scratch, and
+      // retry the refresh ONCE. If the retry also fails, surface that error.
+      if (Sql.isMalformedDbError(e)) {
+        AppLog.warn('SourcesRefreshDialog: malformed FTS detected (code 267) — '
+            'rebuilding index and retrying refresh once\n$st');
+        setSt(() => status = 'Repairing search index…');
+        try {
+          await Sql.rebuildFtsTableFromScratch();
+          failedSources.clear();
+          await BackgroundTaskService.run<void>(
+            enabled: SettingsService.cached?.backgroundProcessing ?? false,
+            title: 'Refreshing sources',
+            work: (update) async {
+              await Utils.refreshAllSources(
+                onSourceRowProgress: (Source src, int d, int t) {
+                  setSt(() {
+                    if (saveStartedAt == null || t != rowsTotal) {
+                      saveStartedAt = DateTime.now();
+                    }
+                    rowsDone = d;
+                    rowsTotal = t;
+                  });
+                  if (t > 0) update('${src.name}: $d / $t');
+                },
+                onSourceStart: (int i, int total, Source source) {
+                  setSt(() {
+                    sourceIndex = i;
+                    sourceTotal = total;
+                    status = 'Loading "${source.name}"…';
+                  });
+                  update('Loading "${source.name}" ($i/$total)…');
+                },
+                onSourceStatus: (Source source, String msg) {
+                  setSt(() {
+                    status = '${source.name}: '
+                        '${msg.length > 60 ? "${msg.substring(0, 60)}…" : msg}';
+                  });
+                },
+                onSourceFailed: (Source source, Object err) {
+                  setSt(() => failedSources.add(source.name));
+                },
+              );
+            },
+          );
+          AppLog.info('SourcesRefreshDialog: refresh complete after FTS '
+              'recovery — $sourceTotal source(s) done');
+        } catch (e2, st2) {
+          error = e2;
+          AppLog.warn('SourcesRefreshDialog: refresh STILL failed after FTS '
+              'recovery — $e2\n$st2');
+        }
+      } else {
+        error = e;
+        AppLog.warn('SourcesRefreshDialog: refresh error — $e\n$st');
+      }
     }
 
     setSt(() {

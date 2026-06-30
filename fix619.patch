@@ -1,0 +1,384 @@
+diff --git a/lib/backend/sql.dart b/lib/backend/sql.dart
+index 23bb0ff..220f0df 100644
+--- a/lib/backend/sql.dart
++++ b/lib/backend/sql.dart
+@@ -283,14 +283,61 @@ class Sql {
+       "AND name IN ('channels_ai', 'channels_au', 'channels_ad')",
+     );
+     final hadTriggers = existing.length == 3;
+-    // fix521: re-entrancy — when an outer batch (refreshAllSources) has already
+-    // suspended the FTS triggers around the WHOLE loop, this inner per-source
+-    // call is a pure pass-through: the triggers are already dropped so the body
+-    // inserts trigger-free, and the OUTER finally owns the single end-of-batch
+-    // global rebuild (no per-source rebuild). Mirrors fix518's
+-    // _browseIndexesDropped.
++    // fix521 + fix619: re-entrancy — when an outer batch (refreshAllSources)
++    // has already suspended the FTS triggers around the WHOLE loop, this inner
++    // per-source call is normally a pass-through. fix614 tried to defer ALL FTS
++    // work to a single end-of-batch reindex, but that ran its
++    // `DELETE FROM channels_fts` AFTER every source's wipe+reinsert — and on an
++    // external-content FTS5 table, deleting index rows once the backing content
++    // rows have already changed corrupts the index ("database disk image is
++    // malformed", code 267, seen on sms938u). fix619 fixes this by doing the
++    // SAME proven ordering the single-source path uses, here, per source:
++    // delete this source's FTS rows BEFORE body()'s wipe (while `channels`
++    // still holds them), then insert the new rows AFTER body(). The outer
++    // wrapper still owns the trigger drop/restore; we only touch FTS rows.
+     if (_ftsTriggersSuspended) {
+-      await body();
++      if (refreshedSourceId == null) {
++        // No per-source context (e.g. a non-source write) — just pass through.
++        await body();
++        return;
++      }
++      // Delete BEFORE wipe, while the content rows still exist. Materialize the
++      // id list (a correlated subquery against the content table silently
++      // deletes nothing — see the correctness note below).
++      final idRows = await db.getAll(
++        'SELECT id FROM channels WHERE source_id = ?',
++        [refreshedSourceId],
++      );
++      final ids = idRows.map((r) => r['id'] as int).toList();
++      for (var i = 0; i < ids.length; i += 900) {
++        final end = i + 900 > ids.length ? ids.length : i + 900;
++        final chunk = ids.sublist(i, end);
++        await db.execute(
++          'DELETE FROM channels_fts WHERE rowid IN '
++          '(${generatePlaceholders(chunk.length)})',
++          chunk,
++        );
++      }
++      var ok = false;
++      try {
++        await body();
++        ok = true;
++      } finally {
++        if (ok) {
++          // body() has wiped+reinserted this source; index the new rows.
++          await db.execute(
++            'INSERT INTO channels_fts(rowid, name) '
++            'SELECT id, name FROM channels WHERE source_id = ?',
++            [refreshedSourceId],
++          );
++          AppLog.info('Sql.withSuspendedFtsTriggers: per-source targeted FTS '
++              're-index inside batch (source=$refreshedSourceId, '
++              'rows=${ids.length})');
++        }
++        // If body() threw, this source's OLD FTS rows were already deleted and
++        // no new ones inserted. The outer batch wrapper will fall back to a
++        // global rebuild on the error path, which restores consistency.
++      }
+       return;
+     }
+     var useTargeted = false;
+@@ -355,20 +402,16 @@ class Sql {
+           AppLog.info('Sql.withSuspendedFtsTriggers: FTS triggers restored'
+               ' + targeted re-index (source=$refreshedSourceId)');
+         } else if (batchTargetedRebuild != null && bodySucceeded) {
+-          // fix614: batch path — targeted-reindex only the refreshed sources
+-          // instead of a full-catalog rebuild. body() succeeded, so `channels`
+-          // is consistent for those sources. Search is still gated during the
+-          // reindex (it briefly drops+reinserts rows) and the flag is always
+-          // cleared. Triggers are restored WITHOUT a global rebuild.
+-          ftsRebuilding.value = true;
+-          try {
+-            await batchTargetedRebuild();
+-            await reconcileFtsTriggers(true, skipRebuild: true);
+-          } finally {
+-            ftsRebuilding.value = false;
+-          }
++          // fix619: in the batch path FTS is now maintained PER SOURCE inside
++          // the loop (delete-before-wipe + insert-after, in the pass-through
++          // branch above), so by here the index is already consistent for every
++          // source that succeeded. No global rebuild and no end-of-batch
++          // reindex needed — just restore the triggers. (batchTargetedRebuild
++          // is retained as the success sentinel from refreshAllSources; the
++          // closure it passes is now a no-op kept for signature stability.)
++          await reconcileFtsTriggers(true, skipRebuild: true);
+           AppLog.info('Sql.withSuspendedFtsTriggers: FTS triggers restored'
+-              ' + batch targeted re-index');
++              ' (per-source targeted re-index already applied in batch)');
+         } else {
+           // Either targeted wasn't applicable (large source / large
+           // fraction / no sourceId given), or body() threw before finishing
+@@ -393,54 +436,6 @@ class Sql {
+     }
+   }
+ 
+-  /// fix614: targeted FTS re-index for a set of sources, used by the batch
+-  /// refresh in place of the full-catalog global rebuild. For each source it
+-  /// deletes that source's existing FTS rows (by rowid, chunked at 900 for the
+-  /// 999 bind-parameter limit) and reinserts them from the now-current
+-  /// `channels` rows. Cost is proportional to the SUM of the refreshed sources'
+-  /// rows, not the whole catalog, and it skips the global rebuild's full
+-  /// re-tokenization of every row (incl. the prefix='2 3' index). Measured on
+-  /// the production 857K-row catalog: ~51s for all four sources vs the global
+-  /// rebuild running for tens of minutes.
+-  ///
+-  /// Caller contract: only pass sources whose refresh SUCCEEDED — their
+-  /// `channels` rows must reflect the new state. A source that failed its fetch
+-  /// never wiped its channels, so its existing FTS rows stay valid and it must
+-  /// be OMITTED here (not reindexed). Assumes the FTS triggers are currently
+-  /// suspended (the batch wrapper owns that) so these writes don't re-fire
+-  /// per-row maintenance; the caller restores triggers with skipRebuild after.
+-  static Future<void> reindexFtsSources(List<int> sourceIds) async {
+-    if (sourceIds.isEmpty) return;
+-    final db = await DbFactory.db;
+-    final sw = Stopwatch()..start();
+-    for (final sourceId in sourceIds) {
+-      final idRows = await db.getAll(
+-        'SELECT id FROM channels WHERE source_id = ?',
+-        [sourceId],
+-      );
+-      final ids = idRows.map((r) => r['id'] as int).toList();
+-      for (var i = 0; i < ids.length; i += 900) {
+-        final end = i + 900 > ids.length ? ids.length : i + 900;
+-        final chunk = ids.sublist(i, end);
+-        await db.execute(
+-          'DELETE FROM channels_fts WHERE rowid IN '
+-          '(${generatePlaceholders(chunk.length)})',
+-          chunk,
+-        );
+-      }
+-      await db.execute(
+-        'INSERT INTO channels_fts(rowid, name) '
+-        'SELECT id, name FROM channels WHERE source_id = ?',
+-        [sourceId],
+-      );
+-      AppLog.info('Sql.reindexFtsSources: source=$sourceId '
+-          'rows=${ids.length}');
+-    }
+-    sw.stop();
+-    AppLog.info('Sql.reindexFtsSources: ${sourceIds.length} source(s) '
+-        'targeted-reindexed in ${sw.elapsedMilliseconds}ms');
+-  }
+-
+   /// fix514: deliberately conservative dual threshold (see the long comment
+   /// above) — targeted re-index is ONLY used when the refreshed source is
+   /// small on BOTH axes. A source must clear both caps; failing either one
+@@ -635,6 +630,67 @@ class Sql {
+     }
+   }
+ 
++  /// fix619: recover from a malformed FTS index ("database disk image is
++  /// malformed", SqliteException code 267). The external-content FTS5 shadow
++  /// tables can become inconsistent (a corrupted `channels_fts`); when that
++  /// happens every search and every refresh that touches FTS fails forever.
++  /// This drops the FTS virtual table and its sync triggers, recreates them
++  /// BYTE-IDENTICAL to migration 13 / reconcileFtsTriggers (unicode61,
++  /// prefix='2 3'), and repopulates from the current `channels`. Returns true
++  /// if recovery completed. Best-effort: callers should catch and surface a
++  /// failure rather than crash.
++  static Future<void> rebuildFtsTableFromScratch() async {
++    final db = await DbFactory.db;
++    AppLog.warn('Sql.rebuildFtsTableFromScratch: rebuilding malformed FTS '
++        'index from scratch');
++    // Triggers reference channels_fts; drop them before the table.
++    await db.execute('DROP TRIGGER IF EXISTS channels_ai;');
++    await db.execute('DROP TRIGGER IF EXISTS channels_au;');
++    await db.execute('DROP TRIGGER IF EXISTS channels_ad;');
++    // Dropping the external-content FTS table also removes its shadow tables
++    // (channels_fts_data/idx/docsize/config), discarding the corruption.
++    await db.execute('DROP TABLE IF EXISTS channels_fts;');
++    await db.execute('''
++      CREATE VIRTUAL TABLE channels_fts USING fts5(
++        name,
++        content='channels',
++        content_rowid='id',
++        tokenize='unicode61',
++        prefix='2 3'
++      );
++    ''');
++    await db.execute('''
++      INSERT INTO channels_fts(rowid, name)
++      SELECT id, name FROM channels;
++    ''');
++    // Recreate sync triggers (reconcileFtsTriggers also creates these, but do
++    // it here so recovery is self-contained and leaves a consistent state).
++    await db.execute('CREATE TRIGGER IF NOT EXISTS channels_ai '
++        'AFTER INSERT ON channels BEGIN '
++        'INSERT INTO channels_fts(rowid, name) VALUES (new.id, new.name); END;');
++    await db.execute('CREATE TRIGGER IF NOT EXISTS channels_ad '
++        'AFTER DELETE ON channels BEGIN '
++        "INSERT INTO channels_fts(channels_fts, rowid, name) "
++        "VALUES('delete', old.id, old.name); END;");
++    await db.execute('CREATE TRIGGER IF NOT EXISTS channels_au '
++        'AFTER UPDATE OF name ON channels BEGIN '
++        "INSERT INTO channels_fts(channels_fts, rowid, name) "
++        "VALUES('delete', old.id, old.name); "
++        'INSERT INTO channels_fts(rowid, name) VALUES (new.id, new.name); END;');
++    // Clear the suspend flag — recovery left triggers present and consistent.
++    _ftsTriggersSuspended = false;
++    AppLog.info('Sql.rebuildFtsTableFromScratch: FTS index rebuilt and '
++        'triggers recreated');
++  }
++
++  /// fix619: true if [e] is the SQLite "database disk image is malformed"
++  /// error (code 267), used to trigger FTS auto-recovery.
++  static bool isMalformedDbError(Object e) {
++    final s = e.toString();
++    return s.contains('code 267') ||
++        s.contains('database disk image is malformed');
++  }
++
+   /// fix174.3: bulk upsert for large imports. Same ON CONFLICT key as
+   /// insertChannel (fix174.1). Does NOT read last_insert_rowid().
+   static Future<void> Function(SqliteWriteContext, Map<String, String>)
+diff --git a/lib/backend/utils.dart b/lib/backend/utils.dart
+index 8d6247d..f50aeaf 100644
+--- a/lib/backend/utils.dart
++++ b/lib/backend/utils.dart
+@@ -182,13 +182,12 @@ class Utils {
+     // both the shared FTS-trigger suspend and this index drop/recreate, and
+     // SQLite serializes writes anyway, so concurrency bought nothing on the
+     // DB-write-bound refresh.
+-    // fix614: collect the ids of sources that SUCCEEDED so the end-of-batch FTS
+-    // step can targeted-reindex only those (≈51s) instead of a full-catalog
+-    // rebuild (≈66min). Declared out here so the targeted closure passed to
+-    // withSuspendedFtsTriggers — which runs in its finally, AFTER the loop —
+-    // can read the final set. A source that failed its fetch never wiped its
+-    // channels, so its existing FTS rows stay valid and it is correctly omitted.
+-    final succeededIds = <int>[];
++    // fix619: FTS is now maintained PER SOURCE inside the loop (each source's
++    // getXtream call does delete-before-wipe + insert-after via the
++    // pass-through branch in withSuspendedFtsTriggers), so there is no
++    // end-of-batch reindex to feed. The wrapper just needs to know the body
++    // succeeded so it restores triggers without a global rebuild; the error
++    // path still falls back to a global rebuild.
+     await Sql.withSuspendedFtsTriggers(() async {
+       await Sql.withDroppedBrowseIndexes(() async {
+         // fix611: one source failing must NEVER stop the rest from
+@@ -228,9 +227,6 @@ class Utils {
+               }
+             }
+           }
+-          if (lastError == null && s.id != null) {
+-            succeededIds.add(s.id!);
+-          }
+           if (lastError != null) {
+             failures[s] = lastError;
+             AppLog.warn(
+@@ -263,10 +259,10 @@ class Utils {
+         // populated. If the body throws, the wrapper ignores this and does the
+         // safe global rebuild instead.
+         batchTargetedRebuild: () async {
+-          if (onSourceStatus != null && enabled.isNotEmpty) {
+-            onSourceStatus(enabled.last, 'Updating search index…');
+-          }
+-          await Sql.reindexFtsSources(succeededIds);
++          // fix619: no-op success sentinel. Per-source FTS re-index already ran
++          // inside the loop; this closure's mere presence (plus body success)
++          // tells withSuspendedFtsTriggers to restore triggers without a global
++          // rebuild. Kept as a closure for signature stability.
+         });
+ 
+     // fix615: checkpoint db.sqlite's WAL HERE, where the big channel write just
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index b7061a1..70e3a8c 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,13 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '2.2.30': [
++    'Fixed a bug that could corrupt the search index during a refresh of all '
++        'sources (causing refreshes to fail with a database error). The search '
++        'index is now updated in the correct, safe order per source.',
++    'Added automatic recovery: if the search index is found to be corrupted, '
++        'the app now rebuilds it and retries the refresh instead of failing.',
++  ],
+   '2.2.29': [
+     'Fixed a bug introduced in the previous build where rapid logging could '
+         'put the log writer into a bad state, which broke settings import and '
+diff --git a/lib/widgets/sources_refresh_dialog.dart b/lib/widgets/sources_refresh_dialog.dart
+index 10deca3..3e03af3 100644
+--- a/lib/widgets/sources_refresh_dialog.dart
++++ b/lib/widgets/sources_refresh_dialog.dart
+@@ -2,6 +2,7 @@ import 'dart:async';
+ 
+ import 'package:flutter/material.dart';
+ import 'package:open_tv/backend/app_logger.dart';
++import 'package:open_tv/backend/sql.dart';
+ import 'package:open_tv/backend/utils.dart';
+ import 'package:open_tv/backend/background_task_service.dart';
+ import 'package:open_tv/backend/settings_service.dart';
+@@ -194,8 +195,62 @@ Future<void> showSourcesRefreshDialog(BuildContext context) async {
+         ' — $sourceTotal source(s) done',
+       );
+     } catch (e, st) {
+-      error = e;
+-      AppLog.warn('SourcesRefreshDialog: refresh error — $e\n$st');
++      // fix619: a malformed FTS index (code 267) makes every refresh fail until
++      // the index is rebuilt. Detect it, rebuild channels_fts from scratch, and
++      // retry the refresh ONCE. If the retry also fails, surface that error.
++      if (Sql.isMalformedDbError(e)) {
++        AppLog.warn('SourcesRefreshDialog: malformed FTS detected (code 267) — '
++            'rebuilding index and retrying refresh once\n$st');
++        setSt(() => status = 'Repairing search index…');
++        try {
++          await Sql.rebuildFtsTableFromScratch();
++          failedSources.clear();
++          await BackgroundTaskService.run<void>(
++            enabled: SettingsService.cached?.backgroundProcessing ?? false,
++            title: 'Refreshing sources',
++            work: (update) async {
++              await Utils.refreshAllSources(
++                onSourceRowProgress: (Source src, int d, int t) {
++                  setSt(() {
++                    if (saveStartedAt == null || t != rowsTotal) {
++                      saveStartedAt = DateTime.now();
++                    }
++                    rowsDone = d;
++                    rowsTotal = t;
++                  });
++                  if (t > 0) update('${src.name}: $d / $t');
++                },
++                onSourceStart: (int i, int total, Source source) {
++                  setSt(() {
++                    sourceIndex = i;
++                    sourceTotal = total;
++                    status = 'Loading "${source.name}"…';
++                  });
++                  update('Loading "${source.name}" ($i/$total)…');
++                },
++                onSourceStatus: (Source source, String msg) {
++                  setSt(() {
++                    status = '${source.name}: '
++                        '${msg.length > 60 ? "${msg.substring(0, 60)}…" : msg}';
++                  });
++                },
++                onSourceFailed: (Source source, Object err) {
++                  setSt(() => failedSources.add(source.name));
++                },
++              );
++            },
++          );
++          AppLog.info('SourcesRefreshDialog: refresh complete after FTS '
++              'recovery — $sourceTotal source(s) done');
++        } catch (e2, st2) {
++          error = e2;
++          AppLog.warn('SourcesRefreshDialog: refresh STILL failed after FTS '
++              'recovery — $e2\n$st2');
++        }
++      } else {
++        error = e;
++        AppLog.warn('SourcesRefreshDialog: refresh error — $e\n$st');
++      }
+     }
+ 
+     setSt(() {
+diff --git a/pubspec.yaml b/pubspec.yaml
+index c22773e..8884bb4 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 2.2.29+618
++version: 2.2.30+619
+ 
+ environment:
+   sdk: ^3.10.7
+

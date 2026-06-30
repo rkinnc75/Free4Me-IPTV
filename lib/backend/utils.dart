@@ -182,13 +182,12 @@ class Utils {
     // both the shared FTS-trigger suspend and this index drop/recreate, and
     // SQLite serializes writes anyway, so concurrency bought nothing on the
     // DB-write-bound refresh.
-    // fix614: collect the ids of sources that SUCCEEDED so the end-of-batch FTS
-    // step can targeted-reindex only those (≈51s) instead of a full-catalog
-    // rebuild (≈66min). Declared out here so the targeted closure passed to
-    // withSuspendedFtsTriggers — which runs in its finally, AFTER the loop —
-    // can read the final set. A source that failed its fetch never wiped its
-    // channels, so its existing FTS rows stay valid and it is correctly omitted.
-    final succeededIds = <int>[];
+    // fix619: FTS is now maintained PER SOURCE inside the loop (each source's
+    // getXtream call does delete-before-wipe + insert-after via the
+    // pass-through branch in withSuspendedFtsTriggers), so there is no
+    // end-of-batch reindex to feed. The wrapper just needs to know the body
+    // succeeded so it restores triggers without a global rebuild; the error
+    // path still falls back to a global rebuild.
     await Sql.withSuspendedFtsTriggers(() async {
       await Sql.withDroppedBrowseIndexes(() async {
         // fix611: one source failing must NEVER stop the rest from
@@ -228,9 +227,6 @@ class Utils {
               }
             }
           }
-          if (lastError == null && s.id != null) {
-            succeededIds.add(s.id!);
-          }
           if (lastError != null) {
             failures[s] = lastError;
             AppLog.warn(
@@ -263,10 +259,10 @@ class Utils {
         // populated. If the body throws, the wrapper ignores this and does the
         // safe global rebuild instead.
         batchTargetedRebuild: () async {
-          if (onSourceStatus != null && enabled.isNotEmpty) {
-            onSourceStatus(enabled.last, 'Updating search index…');
-          }
-          await Sql.reindexFtsSources(succeededIds);
+          // fix619: no-op success sentinel. Per-source FTS re-index already ran
+          // inside the loop; this closure's mere presence (plus body success)
+          // tells withSuspendedFtsTriggers to restore triggers without a global
+          // rebuild. Kept as a closure for signature stability.
         });
 
     // fix615: checkpoint db.sqlite's WAL HERE, where the big channel write just
