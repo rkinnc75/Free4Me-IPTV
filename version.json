@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.28",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.28",
+  "latest": "2.2.29",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.29",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Diagnostic logging now writes to disk immediately, so if the app gets stuck the log captures what it was doing right up to that point. Added detailed step logging around the start of a source refresh, and the log is preserved (not wiped) for this build, to track down a refresh that can hang on phones.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.28/Free4Me-IPTV-2.2.28-arm64.apk"
+  "releaseNotes": "\u2022 Fixed a bug introduced in the previous build where rapid logging could put the log writer into a bad state, which broke settings import and could stall a source refresh. Logging now writes to disk safely and immediately.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.29/Free4Me-IPTV-2.2.29-arm64.apk"
 }
