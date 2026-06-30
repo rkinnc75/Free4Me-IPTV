@@ -6,6 +6,13 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.28': [
+    'Diagnostic logging now writes to disk immediately, so if the app gets '
+        'stuck the log captures what it was doing right up to that point. Added '
+        'detailed step logging around the start of a source refresh, and the '
+        'log is preserved (not wiped) for this build, to track down a refresh '
+        'that can hang on phones.',
+  ],
   '2.2.27': [
     'The diagnostic log is no longer wiped when the app restarts after a '
         'failed source refresh, so logs that explain a problem are preserved '

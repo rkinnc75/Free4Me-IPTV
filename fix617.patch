@@ -1,0 +1,127 @@
+diff --git a/lib/backend/app_logger.dart b/lib/backend/app_logger.dart
+index 0b04345..35bf0ec 100644
+--- a/lib/backend/app_logger.dart
++++ b/lib/backend/app_logger.dart
+@@ -69,6 +69,14 @@ class AppLogger {
+     final line = '[$ts] [$prefix] $message\n';
+     debugPrint(line.trimRight());
+     _sink?.write(line);
++    // fix617: flush after every write (fire-and-forget — do NOT await, so the
++    // synchronous log() API is unchanged). The IOSink buffers, so before this a
++    // process that HUNG (alive but stuck) never flushed its buffered lines to
++    // disk, and force-closing it lost them — which is why every captured log of
++    // the phone refresh hang was tiny and showed nothing of the stall. Flushing
++    // per line shrinks that loss window to near-zero so the next hang is
++    // actually recorded up to the stall point.
++    unawaited(_sink?.flush() ?? Future<void>.value());
+     // fix359: rotation was only evaluated in _ensureOpen() (enable/clear),
+     // so a long logging SESSION grew unbounded past _maxBytes. Track bytes
+     // written and trigger an async rotation when the cap is crossed. The
+@@ -225,19 +233,26 @@ class AppLogger {
+   }
+ 
+   /// Delete the log file and reset the sink.
++  ///
++  /// fix617 (THIS BUILD ONLY — revert after the phone-hang investigation): do
++  /// NOT delete the log file. Instead append a divider line recording where a
++  /// real clear WOULD have started, so no prior session is ever lost while we
++  /// chase the hang. The Xtream-dump sweep is also skipped so nothing in the
++  /// app dir is removed. Restore the original delete behaviour once the hang is
++  /// understood.
+   Future<void> clearLog() async {
+-    await _close();
+-    final path = await logPath;
+-    final f = File(path);
+-    if (await f.exists()) await f.delete();
+-    // fix266: "Clear log" also removes the raw Xtream source dumps
+-    // (xtream_dump_*.json) written to the same app dir during refresh. These
+-    // can grow very large (tens to hundreds of MB) and previously had no way
+-    // to be purged from the UI, so the log dir grew without bound.
+-    await _clearXtreamDumps();
+     if (_enabled) await _ensureOpen();
+-    log('--- Log cleared ---', level: LogLevel.info);
+-    await stampVersion('log cleared'); // fix357
++    int lineCount = 0;
++    try {
++      final f = File(await logPath);
++      if (await f.exists()) {
++        lineCount = (await f.readAsLines()).length;
++      }
++    } catch (_) {}
++    log('=== LOG CLEAR REQUESTED — would delete from line $lineCount '
++        '(fix617: delete suppressed for this build; log preserved) ===',
++        level: LogLevel.info);
++    await stampVersion('log clear requested (suppressed)'); // fix357
+   }
+ 
+   /// fix357: write the app version into the log. Called on every clear and
+diff --git a/lib/backend/utils.dart b/lib/backend/utils.dart
+index ad1c7b2..8d6247d 100644
+--- a/lib/backend/utils.dart
++++ b/lib/backend/utils.dart
+@@ -62,13 +62,21 @@ class Utils {
+     // delete the just-created source on failure before rethrowing. A refresh /
+     // re-import of an existing source (name already present) is left untouched,
+     // so a transient refresh failure never deletes a working source.
++    // fix617: stage logging to pinpoint where a phone refresh hangs at
++    // "Preparing…" (no on-device repro; the log now survives so the next run
++    // shows the exact stall point).
++    AppLog.info('fix617 processSource: "${source.name}" — checking name exists');
+     final bool namePreExisted = await Sql.sourceNameExists(source.name);
++    AppLog.info('fix617 processSource: "${source.name}" — namePreExisted='
++        '$namePreExisted; entering withDroppedBrowseIndexes');
+     try {
+       // fix518: drop the channels browse indexes around the bulk wipe+reinsert
+       // and rebuild once after, instead of maintaining ~a dozen indexes per
+       // row. Re-entrant — a no-op when refreshAllSources already dropped them
+       // around the whole multi-source loop.
+       await Sql.withDroppedBrowseIndexes(() async {
++        AppLog.info('fix617 processSource: "${source.name}" — indexes dropped,'
++            ' dispatching ${source.sourceType} fetch');
+         switch (source.sourceType) {
+           case SourceType.m3u:
+             await processM3U(source, wipe, null, onProgress);
+@@ -80,7 +88,11 @@ class Utils {
+             await getXtream(source, wipe, onProgress, onRowProgress);
+             break;
+         }
++        AppLog.info('fix617 processSource: "${source.name}" — fetch+write'
++            ' returned (inside withDroppedBrowseIndexes)');
+       }, onProgress: onProgress);
++      AppLog.info('fix617 processSource: "${source.name}" —'
++          ' withDroppedBrowseIndexes complete');
+       // fix386: brand-new Xtream add — fire EPG auto-discovery.
+       // The runner is sticky (skips if epgDiscoveryState is set) and
+       // is fire-and-forget; a probe failure must not roll back the
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index eab4189..336f848 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,13 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '2.2.28': [
++    'Diagnostic logging now writes to disk immediately, so if the app gets '
++        'stuck the log captures what it was doing right up to that point. Added '
++        'detailed step logging around the start of a source refresh, and the '
++        'log is preserved (not wiped) for this build, to track down a refresh '
++        'that can hang on phones.',
++  ],
+   '2.2.27': [
+     'The diagnostic log is no longer wiped when the app restarts after a '
+         'failed source refresh, so logs that explain a problem are preserved '
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 827cb08..a115c9e 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 2.2.27+616
++version: 2.2.28+617
+ 
+ environment:
+   sdk: ^3.10.7
+

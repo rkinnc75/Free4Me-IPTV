@@ -62,13 +62,21 @@ class Utils {
     // delete the just-created source on failure before rethrowing. A refresh /
     // re-import of an existing source (name already present) is left untouched,
     // so a transient refresh failure never deletes a working source.
+    // fix617: stage logging to pinpoint where a phone refresh hangs at
+    // "Preparing…" (no on-device repro; the log now survives so the next run
+    // shows the exact stall point).
+    AppLog.info('fix617 processSource: "${source.name}" — checking name exists');
     final bool namePreExisted = await Sql.sourceNameExists(source.name);
+    AppLog.info('fix617 processSource: "${source.name}" — namePreExisted='
+        '$namePreExisted; entering withDroppedBrowseIndexes');
     try {
       // fix518: drop the channels browse indexes around the bulk wipe+reinsert
       // and rebuild once after, instead of maintaining ~a dozen indexes per
       // row. Re-entrant — a no-op when refreshAllSources already dropped them
       // around the whole multi-source loop.
       await Sql.withDroppedBrowseIndexes(() async {
+        AppLog.info('fix617 processSource: "${source.name}" — indexes dropped,'
+            ' dispatching ${source.sourceType} fetch');
         switch (source.sourceType) {
           case SourceType.m3u:
             await processM3U(source, wipe, null, onProgress);
@@ -80,7 +88,11 @@ class Utils {
             await getXtream(source, wipe, onProgress, onRowProgress);
             break;
         }
+        AppLog.info('fix617 processSource: "${source.name}" — fetch+write'
+            ' returned (inside withDroppedBrowseIndexes)');
       }, onProgress: onProgress);
+      AppLog.info('fix617 processSource: "${source.name}" —'
+          ' withDroppedBrowseIndexes complete');
       // fix386: brand-new Xtream add — fire EPG auto-discovery.
       // The runner is sticky (skips if epgDiscoveryState is set) and
       // is fire-and-forget; a probe failure must not roll back the

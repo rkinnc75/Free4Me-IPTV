@@ -69,6 +69,14 @@ class AppLogger {
     final line = '[$ts] [$prefix] $message\n';
     debugPrint(line.trimRight());
     _sink?.write(line);
+    // fix617: flush after every write (fire-and-forget — do NOT await, so the
+    // synchronous log() API is unchanged). The IOSink buffers, so before this a
+    // process that HUNG (alive but stuck) never flushed its buffered lines to
+    // disk, and force-closing it lost them — which is why every captured log of
+    // the phone refresh hang was tiny and showed nothing of the stall. Flushing
+    // per line shrinks that loss window to near-zero so the next hang is
+    // actually recorded up to the stall point.
+    unawaited(_sink?.flush() ?? Future<void>.value());
     // fix359: rotation was only evaluated in _ensureOpen() (enable/clear),
     // so a long logging SESSION grew unbounded past _maxBytes. Track bytes
     // written and trigger an async rotation when the cap is crossed. The
@@ -225,19 +233,26 @@ class AppLogger {
   }
 
   /// Delete the log file and reset the sink.
+  ///
+  /// fix617 (THIS BUILD ONLY — revert after the phone-hang investigation): do
+  /// NOT delete the log file. Instead append a divider line recording where a
+  /// real clear WOULD have started, so no prior session is ever lost while we
+  /// chase the hang. The Xtream-dump sweep is also skipped so nothing in the
+  /// app dir is removed. Restore the original delete behaviour once the hang is
+  /// understood.
   Future<void> clearLog() async {
-    await _close();
-    final path = await logPath;
-    final f = File(path);
-    if (await f.exists()) await f.delete();
-    // fix266: "Clear log" also removes the raw Xtream source dumps
-    // (xtream_dump_*.json) written to the same app dir during refresh. These
-    // can grow very large (tens to hundreds of MB) and previously had no way
-    // to be purged from the UI, so the log dir grew without bound.
-    await _clearXtreamDumps();
     if (_enabled) await _ensureOpen();
-    log('--- Log cleared ---', level: LogLevel.info);
-    await stampVersion('log cleared'); // fix357
+    int lineCount = 0;
+    try {
+      final f = File(await logPath);
+      if (await f.exists()) {
+        lineCount = (await f.readAsLines()).length;
+      }
+    } catch (_) {}
+    log('=== LOG CLEAR REQUESTED — would delete from line $lineCount '
+        '(fix617: delete suppressed for this build; log preserved) ===',
+        level: LogLevel.info);
+    await stampVersion('log clear requested (suppressed)'); // fix357
   }
 
   /// fix357: write the app version into the log. Called on every clear and
@@ -253,9 +268,12 @@ class AppLogger {
     }
   }
 
-  /// fix266: delete every `xtream_dump_*.json` in the app dir. Best-effort —
-  /// a failure on one file does not stop the rest, and a failure of the whole
-  /// sweep does not block clearing the text log.
+  // fix266: delete every `xtream_dump_*.json` in the app dir. Best-effort —
+// a failure on one file does not stop the rest, and a failure of the whole
+// sweep does not block clearing the text log.
+// fix617 (revert together with the original clearLog()): temporarily
+// unreferenced because the suppressed-deletion build no longer sweeps these.
+// ignore: unused_element
   Future<void> _clearXtreamDumps() async {
     try {
       final dir = await Utils.appDir;
