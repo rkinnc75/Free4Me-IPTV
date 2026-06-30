@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.26",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.26",
+  "latest": "2.2.27",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.27",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fixed a rare crash where the app could close during an EPG refresh that ran shortly after refreshing all sources. The database now flushes its write-ahead log at the right time, removing the heavy disk operation that could end the app.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.26/Free4Me-IPTV-2.2.26-arm64.apk"
+  "releaseNotes": "\u2022 The diagnostic log is no longer wiped when the app restarts after a failed source refresh, so logs that explain a problem are preserved for troubleshooting. The log still resets once when you update to a new version, as before.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.27/Free4Me-IPTV-2.2.27-arm64.apk"
 }
