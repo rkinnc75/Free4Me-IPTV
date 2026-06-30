@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.30",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.30",
+  "latest": "2.2.31",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.31",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fixed a bug that could corrupt the search index during a refresh of all sources (causing refreshes to fail with a database error). The search index is now updated in the correct, safe order per source.\n\u2022 Added automatic recovery: if the search index is found to be corrupted, the app now rebuilds it and retries the refresh instead of failing.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.30/Free4Me-IPTV-2.2.30-arm64.apk"
+  "releaseNotes": "\u2022 Source refresh now checks and repairs the search index automatically before it starts, preventing a corrupted index from stalling the refresh.\n\u2022 Added a Cancel button to the refresh dialog so a long-running refresh can be stopped without force-closing the app; cancelling also repairs the search index so your data stays usable.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.31/Free4Me-IPTV-2.2.31-arm64.apk"
 }
