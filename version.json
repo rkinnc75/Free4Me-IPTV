@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.25",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.25",
+  "latest": "2.2.26",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.26",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Refreshing all sources is dramatically faster: rebuilding the search index at the end no longer reprocesses the entire catalog \u2014 it now updates only the sources that refreshed, cutting a step that could take over an hour down to under a minute.\n\u2022 New Developer setting \"Import fetch timeout\" (default 60s): gives slow providers more time to respond during a refresh, so a source that is just slow no longer fails \u2014 separate from the playback network timeout.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.25/Free4Me-IPTV-2.2.25-arm64.apk"
+  "releaseNotes": "\u2022 Fixed a rare crash where the app could close during an EPG refresh that ran shortly after refreshing all sources. The database now flushes its write-ahead log at the right time, removing the heavy disk operation that could end the app.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.26/Free4Me-IPTV-2.2.26-arm64.apk"
 }
