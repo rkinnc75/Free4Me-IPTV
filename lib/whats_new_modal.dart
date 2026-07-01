@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.37': [
+    'Diagnostic logs now redact a source\'s custom EPG guide host too, so it '
+        'is no longer shown in the clear or mislabeled as another source\'s '
+        'host when sharing a log for troubleshooting.',
+  ],
   '2.2.36': [
     'Fixed "Re-match all channels" (and EPG refresh) failing with a database '
         'is locked error on every source after the first when a background '

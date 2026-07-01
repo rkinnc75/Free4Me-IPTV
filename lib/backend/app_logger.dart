@@ -147,6 +147,16 @@ class AppLogger {
         final h = _hostOf(raw);
         if (h != null) out.add(MapEntry(h, '<${tag}_HOST>'));
       }
+      // fix: the manual EPG-URL override (source.epgUrl) can point at a
+      // DIFFERENT host than the streaming url/urlOrigin — e.g. a source whose
+      // guide is served from another provider's XMLTV endpoint. That host was
+      // never in the redaction table, so it either leaked in cleartext or, when
+      // its string matched a DIFFERENT source's streaming host, got mislabelled
+      // under that other source's tag (a Dino EPG line showing as <Trex_HOST>).
+      // Redact it under this source's own EPG tag. (Xtream's auto-fallback EPG
+      // URL is built from the source's own url host, already covered above.)
+      final epgHost = _hostOf(s.epgUrl);
+      if (epgHost != null) out.add(MapEntry(epgHost, '<${tag}_EPG_HOST>'));
     }
     out.sort((a, b) => b.key.length.compareTo(a.key.length));
     _secrets = out;
