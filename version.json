@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.37",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.37",
+  "latest": "2.2.38",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.38",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Diagnostic logs now redact a source's custom EPG guide host too, so it is no longer shown in the clear or mislabeled as another source's host when sharing a log for troubleshooting.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.37/Free4Me-IPTV-2.2.37-arm64.apk"
+  "releaseNotes": "\u2022 Opening a Live TV category is fast again. On large catalogs the database was scanning an entire source to find a small category (10-45s); it now jumps straight to the category using the right index.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.38/Free4Me-IPTV-2.2.38-arm64.apk"
 }
