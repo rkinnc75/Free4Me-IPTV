@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.33': [
+    'The multi-view stats overlay now shows a third line with the current '
+        'buffer (seconds of video buffered ahead). It updates live and turns '
+        'red if playback is waiting on the buffer, making it easy to spot a '
+        'stream that is struggling to keep up.',
+  ],
   '2.2.32': [
     'Refreshing all sources is now dramatically faster. The search index is '
         'rebuilt once at the end of the refresh instead of per source, which on '

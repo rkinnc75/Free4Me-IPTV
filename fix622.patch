@@ -1,0 +1,78 @@
+diff --git a/lib/player/debug_stats_overlay.dart b/lib/player/debug_stats_overlay.dart
+index ebc747a..1306940 100644
+--- a/lib/player/debug_stats_overlay.dart
++++ b/lib/player/debug_stats_overlay.dart
+@@ -164,9 +164,10 @@ class _DebugStatsOverlayState extends State<DebugStatsOverlay> {
+     final hwLine =
+         '${_stats['hwdec'] ?? '—'} -> ${cur.isEmpty ? '(software)' : cur}';
+ 
+-    // fix588 (#22): compact variant for small multi-view / PiP cells. Two short
+-    // lines — resolution+codec and fps+drops — at the top-left so it clears the
+-    // cell's own top-right volume badge and bottom info bar.
++    // fix588 (#22) + fix622: compact variant for small multi-view / PiP cells.
++    // Three short lines — resolution+codec, fps+drops, and buffer seconds — at
++    // the top-left so it clears the cell's own top-right volume badge and
++    // bottom info bar.
+     if (widget.compact) {
+       const cStyle = TextStyle(
+         color: Colors.white,
+@@ -176,6 +177,13 @@ class _DebugStatsOverlayState extends State<DebugStatsOverlay> {
+         fontWeight: FontWeight.w600,
+       );
+       final dropWarn = _voDropDelta > 0 || _decDropDelta > 0;
++      // fix622: buffer health as a 3rd compact line. demuxer-cache-duration is
++      // mpv's seconds of buffered content (the same value the full panel's
++      // 'cache' row shows). Polled at 1 Hz like the rest, so it updates live —
++      // it hovers near the configured livestream/VOD cache target when healthy
++      // and visibly counts DOWN when the network can't keep up, flipping to the
++      // warn colour once paused-for-cache=yes (an imminent rebuffer).
++      final cachePaused = (_stats['paused-for-cache'] ?? '') == 'yes';
+       return Positioned(
+         top: 4,
+         left: 4,
+@@ -203,6 +211,14 @@ class _DebugStatsOverlayState extends State<DebugStatsOverlay> {
+                     color: dropWarn ? const Color(0xFFFFC107) : Colors.white,
+                   ),
+                 ),
++                Text(
++                  'buf ${_secs(_stats['demuxer-cache-duration'])}',
++                  style: cStyle.copyWith(
++                    color: cachePaused
++                        ? const Color(0xFFFF5252)
++                        : Colors.white,
++                  ),
++                ),
+               ],
+             ),
+           ),
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 09bf946..9be228c 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '2.2.33': [
++    'The multi-view stats overlay now shows a third line with the current '
++        'buffer (seconds of video buffered ahead). It updates live and turns '
++        'red if playback is waiting on the buffer, making it easy to spot a '
++        'stream that is struggling to keep up.',
++  ],
+   '2.2.32': [
+     'Refreshing all sources is now dramatically faster. The search index is '
+         'rebuilt once at the end of the refresh instead of per source, which on '
+diff --git a/pubspec.yaml b/pubspec.yaml
+index ca516e0..e480b38 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 2.2.32+621
++version: 2.2.33+622
+ 
+ environment:
+   sdk: ^3.10.7
+

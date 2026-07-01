@@ -164,9 +164,10 @@ class _DebugStatsOverlayState extends State<DebugStatsOverlay> {
     final hwLine =
         '${_stats['hwdec'] ?? '—'} -> ${cur.isEmpty ? '(software)' : cur}';
 
-    // fix588 (#22): compact variant for small multi-view / PiP cells. Two short
-    // lines — resolution+codec and fps+drops — at the top-left so it clears the
-    // cell's own top-right volume badge and bottom info bar.
+    // fix588 (#22) + fix622: compact variant for small multi-view / PiP cells.
+    // Three short lines — resolution+codec, fps+drops, and buffer seconds — at
+    // the top-left so it clears the cell's own top-right volume badge and
+    // bottom info bar.
     if (widget.compact) {
       const cStyle = TextStyle(
         color: Colors.white,
@@ -176,6 +177,13 @@ class _DebugStatsOverlayState extends State<DebugStatsOverlay> {
         fontWeight: FontWeight.w600,
       );
       final dropWarn = _voDropDelta > 0 || _decDropDelta > 0;
+      // fix622: buffer health as a 3rd compact line. demuxer-cache-duration is
+      // mpv's seconds of buffered content (the same value the full panel's
+      // 'cache' row shows). Polled at 1 Hz like the rest, so it updates live —
+      // it hovers near the configured livestream/VOD cache target when healthy
+      // and visibly counts DOWN when the network can't keep up, flipping to the
+      // warn colour once paused-for-cache=yes (an imminent rebuffer).
+      final cachePaused = (_stats['paused-for-cache'] ?? '') == 'yes';
       return Positioned(
         top: 4,
         left: 4,
@@ -201,6 +209,14 @@ class _DebugStatsOverlayState extends State<DebugStatsOverlay> {
                   '${_stats['decoder-frame-drop-count'] ?? '—'}',
                   style: cStyle.copyWith(
                     color: dropWarn ? const Color(0xFFFFC107) : Colors.white,
+                  ),
+                ),
+                Text(
+                  'buf ${_secs(_stats['demuxer-cache-duration'])}',
+                  style: cStyle.copyWith(
+                    color: cachePaused
+                        ? const Color(0xFFFF5252)
+                        : Colors.white,
                   ),
                 ),
               ],
