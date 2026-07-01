@@ -283,61 +283,30 @@ class Sql {
       "AND name IN ('channels_ai', 'channels_au', 'channels_ad')",
     );
     final hadTriggers = existing.length == 3;
-    // fix521 + fix619: re-entrancy — when an outer batch (refreshAllSources)
-    // has already suspended the FTS triggers around the WHOLE loop, this inner
-    // per-source call is normally a pass-through. fix614 tried to defer ALL FTS
-    // work to a single end-of-batch reindex, but that ran its
-    // `DELETE FROM channels_fts` AFTER every source's wipe+reinsert — and on an
-    // external-content FTS5 table, deleting index rows once the backing content
-    // rows have already changed corrupts the index ("database disk image is
-    // malformed", code 267, seen on sms938u). fix619 fixes this by doing the
-    // SAME proven ordering the single-source path uses, here, per source:
-    // delete this source's FTS rows BEFORE body()'s wipe (while `channels`
-    // still holds them), then insert the new rows AFTER body(). The outer
-    // wrapper still owns the trigger drop/restore; we only touch FTS rows.
+    // fix521 + fix619 + fix621: re-entrancy — when an outer batch
+    // (refreshAllSources) has already suspended the FTS triggers around the
+    // WHOLE loop, this inner per-source call is a PASS-THROUGH.
+    //
+    // fix614 deferred all FTS work to one end-of-batch reindex whose
+    // `DELETE FROM channels_fts` ran AFTER each source's wipe — illegal on an
+    // external-content FTS5 table (deleting index rows after the backing
+    // content changed corrupts the index: "database disk image is malformed",
+    // code 267, sms938u). fix619 moved to per-source delete-before-wipe here,
+    // which was correct but CATASTROPHICALLY slow: the chunked
+    // `DELETE FROM channels_fts WHERE rowid IN (...)` degraded as segments/
+    // tombstones accumulated across the interleaved loop — 78 chunks ramping
+    // 1s→140s, ~86 min for Media4u ALONE (and it never even committed) on the
+    // onn 4K Plus, 2026-06-30, v2.2.31.
+    //
+    // fix621: do NO per-source FTS work here. The outer wrapper already
+    // suspended the triggers, so body()'s wipe+insert don't touch the index;
+    // the index simply goes stale for the duration of the loop and is rebuilt
+    // ONCE at end-of-batch via DROP+repopulate (see the batch branch in the
+    // finally below) — ~10x faster (~9 min for the whole catalog, onn Run A
+    // calibration) and corruption-proof (DROP discards the old shadow tables,
+    // so there is no delete-after-content-change window at all).
     if (_ftsTriggersSuspended) {
-      if (refreshedSourceId == null) {
-        // No per-source context (e.g. a non-source write) — just pass through.
-        await body();
-        return;
-      }
-      // Delete BEFORE wipe, while the content rows still exist. Materialize the
-      // id list (a correlated subquery against the content table silently
-      // deletes nothing — see the correctness note below).
-      final idRows = await db.getAll(
-        'SELECT id FROM channels WHERE source_id = ?',
-        [refreshedSourceId],
-      );
-      final ids = idRows.map((r) => r['id'] as int).toList();
-      for (var i = 0; i < ids.length; i += 900) {
-        final end = i + 900 > ids.length ? ids.length : i + 900;
-        final chunk = ids.sublist(i, end);
-        await db.execute(
-          'DELETE FROM channels_fts WHERE rowid IN '
-          '(${generatePlaceholders(chunk.length)})',
-          chunk,
-        );
-      }
-      var ok = false;
-      try {
-        await body();
-        ok = true;
-      } finally {
-        if (ok) {
-          // body() has wiped+reinserted this source; index the new rows.
-          await db.execute(
-            'INSERT INTO channels_fts(rowid, name) '
-            'SELECT id, name FROM channels WHERE source_id = ?',
-            [refreshedSourceId],
-          );
-          AppLog.info('Sql.withSuspendedFtsTriggers: per-source targeted FTS '
-              're-index inside batch (source=$refreshedSourceId, '
-              'rows=${ids.length})');
-        }
-        // If body() threw, this source's OLD FTS rows were already deleted and
-        // no new ones inserted. The outer batch wrapper will fall back to a
-        // global rebuild on the error path, which restores consistency.
-      }
+      await body();
       return;
     }
     var useTargeted = false;
@@ -346,6 +315,14 @@ class Sql {
       await db.execute('DROP TRIGGER IF EXISTS channels_au;');
       await db.execute('DROP TRIGGER IF EXISTS channels_ad;');
       _ftsTriggersSuspended = true;
+      if (batchTargetedRebuild != null) {
+        // fix621: in a batch refresh the FTS index is stale from the first
+        // source's wipe until the end-of-batch rebuild below. Gate FTS-backed
+        // search for that ENTIRE window (not just the rebuild) so a query can
+        // never hit an inconsistent external-content index. Branch 2 (and the
+        // else/error path) clear this flag in their finally.
+        ftsRebuilding.value = true;
+      }
       if (refreshedSourceId != null) {
         final counts = await db.getAll(
           'SELECT '
@@ -402,16 +379,28 @@ class Sql {
           AppLog.info('Sql.withSuspendedFtsTriggers: FTS triggers restored'
               ' + targeted re-index (source=$refreshedSourceId)');
         } else if (batchTargetedRebuild != null && bodySucceeded) {
-          // fix619: in the batch path FTS is now maintained PER SOURCE inside
-          // the loop (delete-before-wipe + insert-after, in the pass-through
-          // branch above), so by here the index is already consistent for every
-          // source that succeeded. No global rebuild and no end-of-batch
-          // reindex needed — just restore the triggers. (batchTargetedRebuild
-          // is retained as the success sentinel from refreshAllSources; the
-          // closure it passes is now a no-op kept for signature stability.)
-          await reconcileFtsTriggers(true, skipRebuild: true);
-          AppLog.info('Sql.withSuspendedFtsTriggers: FTS triggers restored'
-              ' (per-source targeted re-index already applied in batch)');
+          // fix621: batch refresh succeeded. FTS was NOT touched during the
+          // loop (see the pass-through branch above), so the index is fully
+          // stale — every source was wiped+reinserted with the triggers
+          // suspended. Rebuild it ONCE from the final `channels` state via
+          // DROP+repopulate: a single `INSERT ... SELECT` (~9 min on the
+          // ~1M-row catalog, onn Run A calibration) vs fix619's ~86-min
+          // per-source delete storm, and corruption-proof — DROP discards the
+          // old shadow tables, so there is no delete-after-content-change
+          // window (fix614's code-267 cause). rebuildFtsTableFromScratch also
+          // recreates the sync triggers and clears _ftsTriggersSuspended, so
+          // nothing further is needed here. (batchTargetedRebuild stays as the
+          // batch success sentinel from refreshAllSources; its closure is a
+          // no-op kept for signature stability.)
+          // fix611: gate FTS-backed search off for the rebuild's duration.
+          ftsRebuilding.value = true;
+          try {
+            await rebuildFtsTableFromScratch();
+          } finally {
+            ftsRebuilding.value = false;
+          }
+          AppLog.info('Sql.withSuspendedFtsTriggers: FTS index rebuilt once '
+              'end-of-batch via DROP+repopulate (fix621)');
         } else {
           // Either targeted wasn't applicable (large source / large
           // fraction / no sourceId given), or body() threw before finishing

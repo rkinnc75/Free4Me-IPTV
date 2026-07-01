@@ -132,30 +132,26 @@ Future<void> showSourcesRefreshDialog(BuildContext context) async {
                     ),
                   ]
                 : [
-                    // fix620: Cancel lets the user abort a long/stuck refresh
-                    // without force-closing. It flags cooperative cancellation,
-                    // repairs the FTS index (so a half-done refresh doesn't
-                    // leave a broken search index), and closes the dialog.
+                    // fix620/fix621: Cancel lets the user abort a long refresh
+                    // without force-closing. It only FLAGS cooperative
+                    // cancellation (shouldCancel); the refresh loop breaks
+                    // between sources and the wrapper still runs its
+                    // end-of-batch FTS rebuild, which leaves the search index
+                    // fully consistent. We do NOT call ensureFtsHealthy here
+                    // (fix621: it would race the wrapper's in-flight
+                    // DROP+rebuild) and we do NOT mark done here — the refresh
+                    // completion handler shows "Cancelled" once the rebuild has
+                    // actually finished, so the dialog stays honest.
                     TextButton(
                       onPressed: cancelRequested
                           ? null
-                          : () async {
+                          : () {
                               AppLog.info(
                                   'SourcesRefreshDialog: user requested cancel');
                               setSt(() {
                                 cancelRequested = true;
-                                status = 'Cancelling — repairing search index…';
-                              });
-                              try {
-                                await Sql.ensureFtsHealthy();
-                              } catch (e) {
-                                AppLog.warn('SourcesRefreshDialog: FTS repair '
-                                    'on cancel failed — $e');
-                              }
-                              setSt(() {
-                                done = true;
-                                title = 'Cancelled';
-                                status = 'Refresh cancelled.';
+                                status = 'Cancelling — finishing the current '
+                                    'source and rebuilding the search index…';
                               });
                             },
                       child: Text(cancelRequested ? 'Cancelling…' : 'Cancel'),
@@ -294,6 +290,12 @@ Future<void> showSourcesRefreshDialog(BuildContext context) async {
       if (error != null) {
         title = 'Refresh failed';
         status = error.toString();
+      } else if (cancelRequested) {
+        // fix621: reached here only after the wrapper's end-of-batch FTS
+        // rebuild completed, so the index is consistent and it is honest to
+        // report the cancellation as done.
+        title = 'Cancelled';
+        status = 'Refresh cancelled. Loaded sources are ready.';
       } else if (sourceTotal == 0) {
         title = 'Nothing to refresh';
         status = 'No enabled sources were found.';
