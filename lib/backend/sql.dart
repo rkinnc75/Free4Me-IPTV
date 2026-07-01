@@ -1065,9 +1065,29 @@ class Sql {
       if (useSrcMtHint && !await _indexExists('idx_browse_src_mt')) {
         useSrcMtHint = false;
       }
+      // fix627: a grouped/category browse (groupId set) filters source_id +
+      // group_id, but the planner seeks by source_id ALONE, reads the whole
+      // source partition (~275k-450k rows/source), residual-filters group_id,
+      // then temp-B-tree sorts — measured 12-43s for a small category on the
+      // onn (private log 2026-07-01, plan "SEARCH c USING INDEX
+      // index_channel_source_id | USE TEMP B-TREE"). Force idx_browse_src_grp
+      // (source_id, group_id, tier, name) so it seeks straight to the
+      // category's rows. Its partial WHERE (url IS NOT NULL AND series_id IS
+      // NULL) is provably implied: the query emits `url IS NOT NULL` and
+      // VisibilityClause emits `series_id IS NULL` whenever groupId is set — so
+      // results are identical, just fast. Same _indexExists gate as fix526 (the
+      // index is dropped mid-refresh / absent on some upgraded DBs, and a
+      // forced INDEXED BY on a missing index is a hard crash).
+      var useSrcGrpHint = filters.viewType != ViewType.favorites &&
+          filters.viewType != ViewType.history &&
+          filters.seriesId == null &&
+          filters.groupId != null;
+      if (useSrcGrpHint && !await _indexExists('idx_browse_src_grp')) {
+        useSrcGrpHint = false;
+      }
       // No query — simple filter on indexed columns.
       sqlQuery = '''
-        SELECT * FROM channels c${useSrcMtHint ? ' INDEXED BY idx_browse_src_mt' : ''}
+        SELECT * FROM channels c${useSrcMtHint ? ' INDEXED BY idx_browse_src_mt' : useSrcGrpHint ? ' INDEXED BY idx_browse_src_grp' : ''}
         WHERE media_type IN (${generatePlaceholders(mediaTypes.length)})
           AND source_id IN (${generatePlaceholders(filters.sourceIds!.length)})
           AND url IS NOT NULL
@@ -3040,12 +3060,24 @@ class Sql {
     // (a forced INDEXED BY on a missing index is a hard crash — fix526). For
     // provider/category modes the index serves the filter and the small
     // per-source result re-sorts via a cheap temp B-tree (results unchanged).
-    final safeHint = (filters.safeMode &&
-            filters.seriesId == null &&
-            filters.groupId == null &&
-            await _indexExists('idx_browse_src_mt_safe'))
-        ? ' INDEXED BY idx_browse_src_mt_safe'
-        : '';
+    // fix627: grouped/category browse — force idx_browse_src_grp so each
+    // per-source subquery seeks straight to (source_id, group_id) instead of
+    // scanning the whole source partition (the same 12-43s onn regression fixed
+    // on the single-query path). Its partial WHERE (url IS NOT NULL AND
+    // series_id IS NULL) is implied by the subquery's `url IS NOT NULL` +
+    // VisibilityClause's `series_id IS NULL` (emitted when groupId is set), so
+    // results are identical. Takes priority over the safe-mode ungrouped hint
+    // (the two are mutually exclusive on groupId). Same _indexExists gate.
+    final safeHint = (filters.seriesId == null &&
+            filters.groupId != null &&
+            await _indexExists('idx_browse_src_grp'))
+        ? ' INDEXED BY idx_browse_src_grp'
+        : (filters.safeMode &&
+                filters.seriesId == null &&
+                filters.groupId == null &&
+                await _indexExists('idx_browse_src_mt_safe'))
+            ? ' INDEXED BY idx_browse_src_mt_safe'
+            : '';
     final innerLimit = offset + pageSize;
     final parts = <String>[];
     final params = <Object>[];

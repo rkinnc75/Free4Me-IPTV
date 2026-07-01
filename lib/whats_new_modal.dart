@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.38': [
+    'Opening a Live TV category is fast again. On large catalogs the database '
+        'was scanning an entire source to find a small category (10-45s); it '
+        'now jumps straight to the category using the right index.',
+  ],
   '2.2.37': [
     'Diagnostic logs now redact a source\'s custom EPG guide host too, so it '
         'is no longer shown in the clear or mislabeled as another source\'s '
