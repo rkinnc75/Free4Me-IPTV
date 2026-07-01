@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.31",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.31",
+  "latest": "2.2.32",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.32",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Source refresh now checks and repairs the search index automatically before it starts, preventing a corrupted index from stalling the refresh.\n\u2022 Added a Cancel button to the refresh dialog so a long-running refresh can be stopped without force-closing the app; cancelling also repairs the search index so your data stays usable.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.31/Free4Me-IPTV-2.2.31-arm64.apk"
+  "releaseNotes": "\u2022 Refreshing all sources is now dramatically faster. The search index is rebuilt once at the end of the refresh instead of per source, which on large catalogs could take over an hour and appear to hang. A full refresh now finishes in minutes.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.32/Free4Me-IPTV-2.2.32-arm64.apk"
 }
