@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.33",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.33",
+  "latest": "2.2.34",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.34",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 The multi-view stats overlay now shows a third line with the current buffer (seconds of video buffered ahead). It updates live and turns red if playback is waiting on the buffer, making it easy to spot a stream that is struggling to keep up.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.33/Free4Me-IPTV-2.2.33-arm64.apk"
+  "releaseNotes": "\u2022 Multi-view now uses your full Livestream cache and demuxer settings (and honors the 30fps cap) instead of the small mini-player limits, so each cell can buffer far more than the previous ~40s ceiling.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.34/Free4Me-IPTV-2.2.34-arm64.apk"
 }
