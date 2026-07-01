@@ -1,0 +1,88 @@
+diff --git a/lib/player/mpv_engine.dart b/lib/player/mpv_engine.dart
+index 9452836..e7d4ead 100644
+--- a/lib/player/mpv_engine.dart
++++ b/lib/player/mpv_engine.dart
+@@ -1095,15 +1095,16 @@ class MpvEngine implements PlayerEngine {
+     // (and all non-GPL filters) — verified on-device (vfFps=30, voDrop=0) on the
+     // libmpv-lgplmax-verify branch. So the cap is re-enabled, OPT-IN via
+     // devCapFpsLowRam (default OFF: framedrop=decoder already holds full-rate
+-    // 0-drop on low-RAM, so the 30 fps cap is only for boxes that still judder),
+-    // low-RAM + non-preview only. Form `lavfi=[fps=fps=30]` (no commas to
+-    // escape); player.dart's isVfOptionError suppression (fix566) stays as cover.
++    // 0-drop on low-RAM, so the cap is mainly for boxes that still judder).
++    // Form `lavfi=[fps=fps=30]` (no commas to escape); player.dart's
++    // isVfOptionError suppression (fix566) stays as cover.
+     // fix623: the cap is gated off for the mini-player PiP, but multi-view
+-    // cells SHOULD honor it (they are the low-RAM juddering case). So allow it
+-    // whenever this isn't the mini-player.
+-    final capFps = !(previewMode && !multiViewMode) &&
+-        s.devCapFpsLowRam &&
+-        await DeviceDetector.isLowRamDevice();
++    // cells SHOULD honor it. So allow it whenever this isn't the mini-player.
++    // fix624: the low-RAM device gate was removed — when devCapFpsLowRam is
++    // enabled it now forces 30 fps on ANY device (the flag is the opt-in; the
++    // `fps` filter works regardless of RAM). Previously the setting silently
++    // did nothing on non-low-RAM hardware.
++    final capFps = !(previewMode && !multiViewMode) && s.devCapFpsLowRam;
+     await np.setProperty('vf', capFps ? r'lavfi=[fps=fps=30]' : '');
+     if (s.devHwdecImageFormat.value != null) {
+       await np.setProperty(
+diff --git a/lib/settings_view.dart b/lib/settings_view.dart
+index faabb12..faf6e8e 100644
+--- a/lib/settings_view.dart
++++ b/lib/settings_view.dart
+@@ -519,15 +519,16 @@ const _helpDevDeband = (
+ );
+ 
+ const _helpDevCapFps = (
+-  title: 'Cap 60→30 fps (low-RAM)',
++  title: 'Cap 60→30 fps',
+   body:
+-      'On low-RAM Android boxes (e.g. onn 4K Plus), cap 60 fps video output to '
+-      '30 fps. Most low-RAM judder is already handled automatically by the '
+-      'decoder frame-drop mode, which keeps the full frame rate with no '
+-      'dropped frames — so leave this OFF unless a 60 fps stream still judders. '
+-      'When on, capping to 30 fps halves the display-upload load while keeping '
+-      'audio and video in sync.\\n\\n'
+-      'Default: OFF (opt-in). Only affects low-RAM devices and 60 fps '
++      'Cap 60 fps video output to 30 fps. Intended for low-RAM Android boxes '
++      '(e.g. onn 4K Plus) where a 60 fps stream still judders, but when enabled '
++      'it now applies on ANY device. Most low-RAM judder is already handled '
++      'automatically by the decoder frame-drop mode, which keeps the full frame '
++      'rate with no dropped frames — so leave this OFF unless a 60 fps stream '
++      'still judders. When on, capping to 30 fps halves the display-upload load '
++      'while keeping audio and video in sync.\\n\\n'
++      'Default: OFF (opt-in). Applies to any device and 60 fps '
+       'content.\\n\\n'
+       'Range: ON / OFF.\\n\\n'
+       '↑ ON — 30 fps output; smoothest on weak boxes that still judder.\\n\\n'
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 77b5e4d..d02d417 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '2.2.35': [
++    'The "Cap 60→30 fps" setting now works on any device when enabled, not '
++        'just low-RAM boxes. Previously it silently had no effect on phones and '
++        'higher-RAM devices.',
++  ],
+   '2.2.34': [
+     'Multi-view now uses your full Livestream cache and demuxer settings (and '
+         'honors the 30fps cap) instead of the small mini-player limits, so each '
+diff --git a/pubspec.yaml b/pubspec.yaml
+index f4e17bb..528dac6 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 2.2.34+623
++version: 2.2.35+624
+ 
+ environment:
+   sdk: ^3.10.7
+

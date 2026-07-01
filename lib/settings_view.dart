@@ -519,15 +519,16 @@ const _helpDevDeband = (
 );
 
 const _helpDevCapFps = (
-  title: 'Cap 60→30 fps (low-RAM)',
+  title: 'Cap 60→30 fps',
   body:
-      'On low-RAM Android boxes (e.g. onn 4K Plus), cap 60 fps video output to '
-      '30 fps. Most low-RAM judder is already handled automatically by the '
-      'decoder frame-drop mode, which keeps the full frame rate with no '
-      'dropped frames — so leave this OFF unless a 60 fps stream still judders. '
-      'When on, capping to 30 fps halves the display-upload load while keeping '
-      'audio and video in sync.\\n\\n'
-      'Default: OFF (opt-in). Only affects low-RAM devices and 60 fps '
+      'Cap 60 fps video output to 30 fps. Intended for low-RAM Android boxes '
+      '(e.g. onn 4K Plus) where a 60 fps stream still judders, but when enabled '
+      'it now applies on ANY device. Most low-RAM judder is already handled '
+      'automatically by the decoder frame-drop mode, which keeps the full frame '
+      'rate with no dropped frames — so leave this OFF unless a 60 fps stream '
+      'still judders. When on, capping to 30 fps halves the display-upload load '
+      'while keeping audio and video in sync.\\n\\n'
+      'Default: OFF (opt-in). Applies to any device and 60 fps '
       'content.\\n\\n'
       'Range: ON / OFF.\\n\\n'
       '↑ ON — 30 fps output; smoothest on weak boxes that still judder.\\n\\n'

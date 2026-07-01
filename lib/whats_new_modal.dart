@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.35': [
+    'The "Cap 60→30 fps" setting now works on any device when enabled, not '
+        'just low-RAM boxes. Previously it silently had no effect on phones and '
+        'higher-RAM devices.',
+  ],
   '2.2.34': [
     'Multi-view now uses your full Livestream cache and demuxer settings (and '
         'honors the 30fps cap) instead of the small mini-player limits, so each '
