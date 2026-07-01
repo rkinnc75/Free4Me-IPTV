@@ -2353,12 +2353,14 @@ class Sql {
   /// FK cannot cascade automatically.
   static Future<void> deleteEpgForSource(int sourceId) async {
     final db = await EpgDbFactory.db;
-    await db.writeTransaction((tx) async {
+    // fix625: guarded like the refresh writers — deleting a source can overlap a
+    // background EPG refresh in the other isolate.
+    await _epgWriteWithRetry('deleteEpgForSource', () => db.writeTransaction((tx) async {
       await tx.execute(
           'DELETE FROM programmes WHERE source_id = ?', [sourceId]);
       await tx.execute(
           'DELETE FROM epg_refresh_log WHERE source_id = ?', [sourceId]);
-    });
+    }));
     AppLog.info(
         'Sql.deleteEpgForSource: removed EPG data for source $sourceId');
   }
@@ -2372,13 +2374,56 @@ class Sql {
   /// (title / description / category / stop_utc / episode_num). This lets
   /// EPG refresh skip the upfront DELETE and just upsert — repeating programs
   /// stay put and live-sport overruns get the new stop_utc.
+  /// fix625: retry an epg.sqlite WRITE on SQLITE_BUSY ("database is locked,
+  /// code 5"). The background Workmanager EPG task (`callbackDispatcher`) runs
+  /// in a SEPARATE headless isolate and opens its OWN `epg.sqlite` write
+  /// connection (statics — and thus `EpgDbFactory._db` — are per-isolate).
+  /// sqlite_async's write mutex only serializes writers WITHIN one isolate, so
+  /// when a foreground refresh / re-match overlaps that background refresh, the
+  /// other isolate holds SQLite's single writer lock and this isolate's
+  /// `BEGIN IMMEDIATE` waits the full 30s `busy_timeout` and then throws
+  /// (onn, 2026-07-01: re-match sources 2-4 all failed this way; the first
+  /// succeeded only because it happened not to overlap). A POSIX file lock
+  /// can't serialize same-PROCESS isolates (fcntl locks are per-process), so we
+  /// retry — the canonical, correct response to a transient, expected
+  /// SQLITE_BUSY. Background write transactions are short (per parse batch) with
+  /// gaps between, so a retry grabs the lock within a few attempts.
+  // fix625: match the SQLite result code, NOT e.toString(). SqliteException's
+  // string form appends the failing statement's bind params, which for
+  // insertProgramsBatch include untrusted XMLTV programme titles — a title
+  // literally containing "database is locked"/"code 5" would misclassify a real
+  // (e.g. constraint) error as busy and retry it. resultCode == 5 covers the
+  // whole SQLITE_BUSY family (5/261/517/773) and is locale/format-independent.
+  static bool _isDbBusy(Object e) => e is SqliteException && e.resultCode == 5;
+
+  static Future<T> _epgWriteWithRetry<T>(
+    String label,
+    Future<T> Function() op, {
+    int maxAttempts = 5,
+  }) async {
+    for (var attempt = 1;; attempt++) {
+      try {
+        return await op();
+      } catch (e) {
+        if (_isDbBusy(e) && attempt < maxAttempts) {
+          AppLog.warn('Sql.$label: epg.sqlite busy (SQLITE_BUSY, attempt '
+              '$attempt/$maxAttempts) — another isolate holds the write lock; '
+              'retrying');
+          await Future<void>.delayed(Duration(milliseconds: 500 * attempt));
+          continue;
+        }
+        rethrow;
+      }
+    }
+  }
+
   static Future<void> insertProgramsBatch(
     List<Program> programs,
   ) async {
     if (programs.isEmpty) return;
     const chunkSize = 100;
     final db = await EpgDbFactory.db;
-    await db.writeTransaction((tx) async {
+    await _epgWriteWithRetry('insertProgramsBatch', () => db.writeTransaction((tx) async {
       for (var offset = 0; offset < programs.length; offset += chunkSize) {
         final chunk = programs.sublist(
           offset,
@@ -2414,7 +2459,7 @@ class Sql {
             episode_num = excluded.episode_num
         ''', params);
       }
-    });
+    }));
   }
 
   /// Garbage-collect EPG programs that ended before [windowStartEpoch].
@@ -2477,7 +2522,13 @@ class Sql {
       // checkpoint, so only issue the explicit pragma for TRUNCATE.
       final t = DateTime.now();
       if (mode == WalCheckpointMode.truncate) {
-        await database.execute('PRAGMA wal_checkpoint(TRUNCATE)');
+        // fix625: retry the checkpoint on a transient cross-isolate SQLITE_BUSY
+        // (same busy_timeout starvation as the data writers). We do NOT swallow
+        // it here — after the retries it rethrows, so each caller keeps its own
+        // handling (import/export already wrap this and decide) rather than
+        // silently shipping a WAL-stale DB snapshot.
+        await _epgWriteWithRetry('checkpoint[$label]',
+            () => database.execute('PRAGMA wal_checkpoint(TRUNCATE)'));
       }
       final ms = DateTime.now().difference(t).inMilliseconds;
       AppLog.info('Sql.checkpoint [$label]: $modeSql done in ${ms}ms');
@@ -2492,9 +2543,12 @@ class Sql {
     int windowStartEpoch,
   ) async {
     final db = await EpgDbFactory.db;
-    await db.execute(
-      'DELETE FROM programmes WHERE source_id = ? AND stop_utc < ?',
-      [sourceId, windowStartEpoch],
+    await _epgWriteWithRetry(
+      'deleteStalePrograms',
+      () => db.execute(
+        'DELETE FROM programmes WHERE source_id = ? AND stop_utc < ?',
+        [sourceId, windowStartEpoch],
+      ),
     );
   }
 
@@ -2567,8 +2621,11 @@ class Sql {
   /// no per-row sync triggers are needed (which would slow the bulk insert).
   static Future<void> rebuildProgrammesFts() async {
     final db = await EpgDbFactory.db;
-    await db
-        .execute("INSERT INTO programmes_fts(programmes_fts) VALUES('rebuild');");
+    await _epgWriteWithRetry(
+      'rebuildProgrammesFts',
+      () => db
+          .execute("INSERT INTO programmes_fts(programmes_fts) VALUES('rebuild');"),
+    );
   }
 
   /// fix502: forward-only "what's on" search over EPG programme titles.
@@ -2711,14 +2768,17 @@ class Sql {
   ) async {
     final nowEpoch = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final db = await EpgDbFactory.db;
-    await db.execute('''
+    await _epgWriteWithRetry(
+      'upsertEpgRefreshLog',
+      () => db.execute('''
       INSERT INTO epg_refresh_log (source_id, last_refreshed_utc, programmes_loaded, last_error)
       VALUES (?, ?, ?, ?)
       ON CONFLICT(source_id) DO UPDATE SET
         last_refreshed_utc = excluded.last_refreshed_utc,
         programmes_loaded  = excluded.programmes_loaded,
         last_error         = excluded.last_error
-    ''', [sourceId, nowEpoch, programsLoaded, lastError]);
+    ''', [sourceId, nowEpoch, programsLoaded, lastError]),
+    );
   }
 
   /// Returns the last refresh log for a source, or null if never refreshed.

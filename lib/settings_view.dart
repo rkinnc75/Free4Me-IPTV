@@ -1165,7 +1165,9 @@ class _SettingsState extends State<SettingsView> {
   }
 
   /// Force a full EPG re-match for all sources (forceRematch=true).
-  /// Only runs the matching step — does NOT re-download the XMLTV feed.
+  /// Re-downloads each source's XMLTV to get the current channel map, then
+  /// force-matches EVERY channel (not just unmatched ones). The epg.sqlite
+  /// writes are guarded against cross-isolate SQLITE_BUSY (fix625).
   Future<void> _runEpgRematch(BuildContext ctx) async {
     final eligibleSources = sources.where((s) {
       if (!s.enabled) return false;

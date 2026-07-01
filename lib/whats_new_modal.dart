@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.36': [
+    'Fixed "Re-match all channels" (and EPG refresh) failing with a database '
+        'is locked error on every source after the first when a background '
+        'guide update was running at the same time. EPG database writes now '
+        'retry automatically instead of giving up.',
+  ],
   '2.2.35': [
     'The "Cap 60→30 fps" setting now works on any device when enabled, not '
         'just low-RAM boxes. Previously it silently had no effect on phones and '
