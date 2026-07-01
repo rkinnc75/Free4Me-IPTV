@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.36",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.36",
+  "latest": "2.2.37",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.37",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fixed \"Re-match all channels\" (and EPG refresh) failing with a database is locked error on every source after the first when a background guide update was running at the same time. EPG database writes now retry automatically instead of giving up.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.36/Free4Me-IPTV-2.2.36-arm64.apk"
+  "releaseNotes": "\u2022 Diagnostic logs now redact a source's custom EPG guide host too, so it is no longer shown in the clear or mislabeled as another source's host when sharing a log for troubleshooting.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.37/Free4Me-IPTV-2.2.37-arm64.apk"
 }
