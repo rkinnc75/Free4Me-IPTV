@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.34': [
+    'Multi-view now uses your full Livestream cache and demuxer settings (and '
+        'honors the 30fps cap) instead of the small mini-player limits, so each '
+        'cell can buffer far more than the previous ~40s ceiling.',
+  ],
   '2.2.33': [
     'The multi-view stats overlay now shows a third line with the current '
         'buffer (seconds of video buffered ahead). It updates live and turns '

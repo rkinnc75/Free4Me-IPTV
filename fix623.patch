@@ -1,0 +1,139 @@
+diff --git a/lib/multi_view_cell.dart b/lib/multi_view_cell.dart
+index 4721a75..1bc863b 100644
+--- a/lib/multi_view_cell.dart
++++ b/lib/multi_view_cell.dart
+@@ -448,6 +448,7 @@ class _MultiViewCellState extends State<MultiViewCell> {
+       settings: widget.settings,
+       fullscreenOnOpen: false,
+       previewMode: true,
++      multiViewMode: true, // fix623: full live buffers + 30fps cap for cells
+     );
+ 
+     // Pull channel HTTP headers once and reuse below for both
+diff --git a/lib/player/mpv_engine.dart b/lib/player/mpv_engine.dart
+index 160d8b9..9452836 100644
+--- a/lib/player/mpv_engine.dart
++++ b/lib/player/mpv_engine.dart
+@@ -31,6 +31,17 @@ class MpvEngine implements PlayerEngine {
+   /// share the same hardware decoder pool.
+   final bool previewMode;
+ 
++  /// fix623: true for multi-view grid CELLS (not the mini-player PiP). Cells
++  /// still set previewMode=true so they keep the multi-view decode handling
++  /// (the Tegra/Shield rainbow + onn low-RAM texture-contention paths in the
++  /// hwdec block are keyed on previewMode and must stay), but for BUFFERING they
++  /// should behave like the full player: use the full livestream demuxer cap
++  /// (liveDemuxerMaxMB) and honor the low-RAM 30fps cap, instead of the tiny
++  /// mini-player values (miniDemuxerMaxMB=16, cap disabled). Without this a cell
++  /// was capped at ~16MB of demux (~40s of a 3.5Mbit/s stream — the observed
++  /// ceiling) no matter the user's "Livestream cache/demuxer max" settings.
++  final bool multiViewMode;
++
+   /// fix357: when true (full-screen Player, live, no catch-up override) the
+   /// live DVR-to-disk buffer may be enabled per settings. Mini-player and
+   /// multi-view cells never set this.
+@@ -57,8 +68,9 @@ class MpvEngine implements PlayerEngine {
+ 
+   late final mk.Player _player = mk.Player(
+     configuration: mk.PlayerConfiguration(
+-      // bufferSizeMB from settings; mini-player (previewMode) uses half.
+-      bufferSize: previewMode
++      // bufferSizeMB from settings; mini-player PiP uses half. fix623:
++      // multi-view cells use the full size like the main player.
++      bufferSize: (previewMode && !multiViewMode)
+           ? (settings.bufferSizeMB ~/ 2) * 1024 * 1024
+           : settings.bufferSizeMB * 1024 * 1024,
+       // fix396: surface libmpv's own decode/vo/demuxer messages. The
+@@ -131,6 +143,7 @@ class MpvEngine implements PlayerEngine {
+     required this.settings,
+     this.fullscreenOnOpen = true,
+     this.previewMode = false,
++    this.multiViewMode = false,
+     this.dvrEligible = false,
+   }) {
+     _player.setPlaylistMode(mk.PlaylistMode.none);
+@@ -1012,7 +1025,11 @@ class MpvEngine implements PlayerEngine {
+           AppLog.info('MpvEngine: low-latency suppressed — DVR buffer active');
+         }
+         await np.setProperty('cache-secs', s.liveCacheSecs.toString());
+-        final liveMB = previewMode ? s.miniDemuxerMaxMB : s.liveDemuxerMaxMB;
++        // fix623: mini-player PiP uses the tiny cap; multi-view cells + full
++        // player use the real livestream demuxer cap.
++        final liveMB = (previewMode && !multiViewMode)
++            ? s.miniDemuxerMaxMB
++            : s.liveDemuxerMaxMB;
+         await np.setProperty('demuxer-max-bytes', '${liveMB}MiB');
+         await np.setProperty(
+             'demuxer-max-back-bytes', dvrBackMB > 0 ? '${dvrBackMB}MiB' : '0');
+@@ -1020,7 +1037,9 @@ class MpvEngine implements PlayerEngine {
+       }
+     } else {
+       await np.setProperty('cache-secs', s.vodCacheSecs.toString());
+-      final vodMB = previewMode ? s.miniDemuxerMaxMB * 2 : s.vodDemuxerMaxMB;
++      final vodMB = (previewMode && !multiViewMode)
++          ? s.miniDemuxerMaxMB * 2
++          : s.vodDemuxerMaxMB;
+       await np.setProperty('demuxer-max-bytes', '${vodMB}MiB');
+       await np.setProperty('demuxer-max-back-bytes', '64MiB');
+       // fix354: VOD pre-buffer. Providers that deliver files at/below the
+@@ -1079,7 +1098,10 @@ class MpvEngine implements PlayerEngine {
+     // 0-drop on low-RAM, so the 30 fps cap is only for boxes that still judder),
+     // low-RAM + non-preview only. Form `lavfi=[fps=fps=30]` (no commas to
+     // escape); player.dart's isVfOptionError suppression (fix566) stays as cover.
+-    final capFps = !previewMode &&
++    // fix623: the cap is gated off for the mini-player PiP, but multi-view
++    // cells SHOULD honor it (they are the low-RAM juddering case). So allow it
++    // whenever this isn't the mini-player.
++    final capFps = !(previewMode && !multiViewMode) &&
+         s.devCapFpsLowRam &&
+         await DeviceDetector.isLowRamDevice();
+     await np.setProperty('vf', capFps ? r'lavfi=[fps=fps=30]' : '');
+@@ -1095,14 +1117,15 @@ class MpvEngine implements PlayerEngine {
+     }
+ 
+     final demuxerMB = channel.mediaType == MediaType.livestream
+-        ? (previewMode ? s.miniDemuxerMaxMB : s.liveDemuxerMaxMB)
+-        : (previewMode ? s.miniDemuxerMaxMB * 2 : s.vodDemuxerMaxMB);
++        ? ((previewMode && !multiViewMode) ? s.miniDemuxerMaxMB : s.liveDemuxerMaxMB)
++        : ((previewMode && !multiViewMode) ? s.miniDemuxerMaxMB * 2 : s.vodDemuxerMaxMB);
+     AppLog.info(
+       'MpvEngine: options applied'
+       ' channel="${channel.name}"'
+       ' previewMode=$previewMode'
++      ' multiViewMode=$multiViewMode'
+       ' demuxerMB=$demuxerMB'
+-      ' bufferSizeMB=${previewMode ? s.bufferSizeMB ~/ 2 : s.bufferSizeMB}'
++      ' bufferSizeMB=${(previewMode && !multiViewMode) ? s.bufferSizeMB ~/ 2 : s.bufferSizeMB}'
+       ' lowLatency=${s.lowLatency}'
+       ' netTimeoutSecs=${s.devNetworkTimeoutSecs}'
+       ' tlsVerify=${ignoreSsl ? "no(source)" : (s.devTlsVerify ? "yes" : "no")}'
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 9be228c..77b5e4d 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '2.2.34': [
++    'Multi-view now uses your full Livestream cache and demuxer settings (and '
++        'honors the 30fps cap) instead of the small mini-player limits, so each '
++        'cell can buffer far more than the previous ~40s ceiling.',
++  ],
+   '2.2.33': [
+     'The multi-view stats overlay now shows a third line with the current '
+         'buffer (seconds of video buffered ahead). It updates live and turns '
+diff --git a/pubspec.yaml b/pubspec.yaml
+index e480b38..f4e17bb 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 2.2.33+622
++version: 2.2.34+623
+ 
+ environment:
+   sdk: ^3.10.7
+

@@ -448,6 +448,7 @@ class _MultiViewCellState extends State<MultiViewCell> {
       settings: widget.settings,
       fullscreenOnOpen: false,
       previewMode: true,
+      multiViewMode: true, // fix623: full live buffers + 30fps cap for cells
     );
 
     // Pull channel HTTP headers once and reuse below for both
