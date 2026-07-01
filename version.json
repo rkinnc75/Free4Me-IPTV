@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.34",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.34",
+  "latest": "2.2.35",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.35",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Multi-view now uses your full Livestream cache and demuxer settings (and honors the 30fps cap) instead of the small mini-player limits, so each cell can buffer far more than the previous ~40s ceiling.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.34/Free4Me-IPTV-2.2.34-arm64.apk"
+  "releaseNotes": "\u2022 The \"Cap 60\u219230 fps\" setting now works on any device when enabled, not just low-RAM boxes. Previously it silently had no effect on phones and higher-RAM devices.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.35/Free4Me-IPTV-2.2.35-arm64.apk"
 }
