@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.40",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.40",
+  "latest": "2.2.41",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.41",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Faster guide updates and source refreshes. Re-matching channels to the EPG guide now jumps straight to the unmatched channels instead of scanning a whole source, the launch check for an out-of-date guide looks at only the relevant sources instead of the entire guide, and refreshes write a little less because three unused database indexes were removed.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.40/Free4Me-IPTV-2.2.40-arm64.apk"
+  "releaseNotes": "\u2022 The source edit screen now shows your Xtream subscription expiry date, read from the provider on each refresh.\n\u2022 Expired (or banned) subscriptions are now automatically disabled on refresh so they stop erroring; you can re-enable a source after renewing.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.41/Free4Me-IPTV-2.2.41-arm64.apk"
 }
