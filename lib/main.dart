@@ -114,6 +114,11 @@ Future<void> main() async {
     warmups.add(Sql.runPendingIndexMaintenance());
     // fix546: purge legacy divider rows once, also off the cold-start path.
     unawaited(Sql.runPendingDividerCleanup());
+    // fix628: self-heal channels indexes lost to an interrupted/killed refresh
+    // (drop-without-recreate). Deferred/unawaited — a full rebuild is minutes of
+    // merge-sort on a 1.2M-row catalog and must never block the splash; cheap
+    // no-op when all indexes are present.
+    unawaited(Sql.ensureBrowseIndexesPresent());
   }
   unawaited(EpgService.scheduleBackgroundRefresh());
   // fix600: the background EPG task is unreliable on TV boxes (Amlogic/onn kill

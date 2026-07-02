@@ -6,6 +6,14 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.39': [
+    'Fixed the real cause of slow browsing: if a source refresh was cancelled '
+        'or killed at the wrong moment, it could permanently delete the '
+        'database speed indexes, making every category and list scan the whole '
+        'catalog (10-45s). The app now rebuilds any missing indexes in the '
+        'background on launch and protects them during a refresh, so browsing '
+        'stays fast.',
+  ],
   '2.2.38': [
     'Opening a Live TV category is fast again. On large catalogs the database '
         'was scanning an entire source to find a small category (10-45s); it '

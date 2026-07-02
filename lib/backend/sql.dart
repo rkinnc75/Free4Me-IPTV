@@ -502,6 +502,21 @@ class Sql {
       "AND name NOT IN (${generatePlaceholders(_keepIndexesDuringRefresh.length)})",
       _keepIndexesDuringRefresh,
     );
+    // fix628: persist the captured CREATE DDL BEFORE dropping. If the process is
+    // killed or the refresh is cancelled between here and the recreate in the
+    // finally (e.g. an FTS stall + Cancel — onn 2026-06-30, which lost all 19
+    // browse indexes permanently), the finally never runs, but
+    // Sql.ensureBrowseIndexesPresent() replays this exact DDL on next startup.
+    // Cleared once the recreate below completes.
+    try {
+      await db.execute(
+          "INSERT OR REPLACE INTO app_meta (key, value) "
+          "VALUES ('pending_browse_index_ddl', ?)",
+          [jsonEncode(rows.map((r) => r['sql'] as String).toList())]);
+    } catch (e) {
+      AppLog.warn('Sql.withDroppedBrowseIndexes: could not persist pending'
+          ' index DDL (self-heal still covers it) — $e');
+    }
     for (final r in rows) {
       await db.execute('DROP INDEX IF EXISTS "${r['name']}";');
     }
@@ -560,6 +575,15 @@ class Sql {
           AppLog.error('Sql.withDroppedBrowseIndexes: FAILED to recreate index'
               ' "${r['name']}" — $e');
         }
+      }
+      // fix628: clear the persisted rebuild DDL only when EVERY index came back
+      // — a partial recreate leaves it so ensureBrowseIndexesPresent() finishes
+      // the rest on next startup.
+      if (restored == total) {
+        try {
+          await db.execute(
+              "DELETE FROM app_meta WHERE key = 'pending_browse_index_ddl'");
+        } catch (_) {}
       }
       onProgress?.call('Finalizing database…');
       try {
@@ -1579,6 +1603,167 @@ class Sql {
       // Leaves the OLD indexes in place (browse still works); retries next
       // launch since the marker is only written on full success.
       AppLog.warn('fix542: deferred index maintenance skipped'
+          ' (will retry next launch) — $e');
+    }
+  }
+
+  // fix628: the shared 6-tier browse-order CASE. Structurally identical to
+  // BrowseOrder.tier and the migration index expressions (no alias — index
+  // exprs are unaliased); the planner matches structure, so this keeps every
+  // rebuilt index identical to what the ORDER BY expects.
+  static const String _t6 =
+      '(CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0'
+      ' WHEN COALESCE(favorite,0)=1 THEN 1'
+      ' WHEN last_watched IS NOT NULL AND COALESCE(stream_validated,0)=1 THEN 2'
+      ' WHEN last_watched IS NOT NULL THEN 3'
+      ' WHEN COALESCE(stream_validated,0)=1 THEN 4 ELSE 5 END)';
+
+  // fix628: the canonical CREATE (IF NOT EXISTS) for EVERY index
+  // withDroppedBrowseIndexes drops during a refresh. Single source of truth for
+  // the startup self-heal. If a refresh is cancelled or the process is killed
+  // between the DROP and the recreate-in-finally, these indexes are lost
+  // PERMANENTLY (the finally never runs) — every browse then falls back to
+  // index_channel_source_id and full-scans the ~1.2M-row catalog (10-45s;
+  // confirmed onn 2026-07-01: the 20:16 refresh dropped 19 indexes, was
+  // cancelled mid-FTS, and the next refresh logged "dropped 0"). Definitions
+  // copied verbatim from the fix537 rebuilt set + the migrations.
+  static const Map<String, String> _canonicalChannelIndexes = {
+    'idx_channels_browse_mt':
+        'CREATE INDEX IF NOT EXISTS idx_channels_browse_mt ON channels( media_type, $_t6, name COLLATE NOCASE ) WHERE url IS NOT NULL AND series_id IS NULL',
+    'idx_channels_browse_mt_safe':
+        'CREATE INDEX IF NOT EXISTS idx_channels_browse_mt_safe ON channels( media_type, $_t6, name COLLATE NOCASE ) WHERE url IS NOT NULL AND series_id IS NULL AND COALESCE(is_adult,0) = 0',
+    'idx_browse_prov':
+        'CREATE INDEX IF NOT EXISTS idx_browse_prov ON channels( media_type, (CASE WHEN COALESCE(favorite,0)=1 THEN 0 ELSE 1 END), (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0 ELSE 1 END), provider_order, name COLLATE NOCASE ) WHERE url IS NOT NULL AND series_id IS NULL',
+    'idx_browse_prov_safe':
+        'CREATE INDEX IF NOT EXISTS idx_browse_prov_safe ON channels( media_type, (CASE WHEN COALESCE(favorite,0)=1 THEN 0 ELSE 1 END), (CASE WHEN COALESCE(favorite,0)=1 AND COALESCE(stream_validated,0)=1 THEN 0 ELSE 1 END), provider_order, name COLLATE NOCASE ) WHERE url IS NOT NULL AND series_id IS NULL AND COALESCE(is_adult,0) = 0',
+    'idx_browse_src_mt':
+        'CREATE INDEX IF NOT EXISTS idx_browse_src_mt ON channels( source_id, media_type, $_t6, name COLLATE NOCASE ) WHERE url IS NOT NULL AND series_id IS NULL',
+    'idx_browse_src_mt_safe':
+        'CREATE INDEX IF NOT EXISTS idx_browse_src_mt_safe ON channels( source_id, media_type, $_t6, name COLLATE NOCASE ) WHERE url IS NOT NULL AND series_id IS NULL AND COALESCE(is_adult,0) = 0',
+    'idx_channels_browse_enabled':
+        'CREATE INDEX IF NOT EXISTS idx_channels_browse_enabled ON channels( source_id, $_t6, name COLLATE NOCASE ) WHERE url IS NOT NULL AND series_id IS NULL',
+    'idx_browse_src_grp':
+        'CREATE INDEX IF NOT EXISTS idx_browse_src_grp ON channels( source_id, group_id, $_t6, name COLLATE NOCASE ) WHERE url IS NOT NULL AND series_id IS NULL',
+    'idx_channels_browse_tier':
+        'CREATE INDEX IF NOT EXISTS idx_channels_browse_tier ON channels( source_id, $_t6, name COLLATE NOCASE ) WHERE url IS NOT NULL',
+    'index_channel_group_id':
+        'CREATE INDEX IF NOT EXISTS index_channel_group_id ON channels(group_id)',
+    'index_channels_stream_id':
+        'CREATE INDEX IF NOT EXISTS index_channels_stream_id ON channels(stream_id)',
+    'index_channels_group_name':
+        'CREATE INDEX IF NOT EXISTS index_channels_group_name ON channels(group_name)',
+    'index_channel_last_watched':
+        'CREATE INDEX IF NOT EXISTS index_channel_last_watched ON channels(last_watched)',
+    'idx_channels_epg_id':
+        'CREATE INDEX IF NOT EXISTS idx_channels_epg_id ON channels(epg_channel_id)',
+    // fix628: PARTIAL (migration 32 / fix392). An UNCONDITIONAL index on
+    // series_id matches the browse's `series_id IS NULL` predicate, gets chosen
+    // by the planner, and shadows the browse-tier indexes → the fix392
+    // temp-B-tree regression. The WHERE keeps it series-view-only.
+    'index_channel_series_id':
+        'CREATE INDEX IF NOT EXISTS index_channel_series_id ON channels(series_id) WHERE series_id IS NOT NULL',
+    'index_channel_name_source':
+        'CREATE INDEX IF NOT EXISTS index_channel_name_source ON channels(name, source_id)',
+    'idx_epg_unmatched':
+        'CREATE INDEX IF NOT EXISTS idx_epg_unmatched ON channels(source_id) WHERE media_type = 0 AND epg_manual_override IS NULL AND epg_channel_id IS NULL',
+    'idx_channel_src_media_url':
+        'CREATE INDEX IF NOT EXISTS idx_channel_src_media_url ON channels(source_id, media_type, url)',
+    'idx_channel_lastwatched_media':
+        'CREATE INDEX IF NOT EXISTS idx_channel_lastwatched_media ON channels(last_watched, media_type) WHERE last_watched IS NOT NULL',
+  };
+
+  /// fix628: startup self-heal for the channels indexes. Rebuilds any that are
+  /// missing — the primary case being an interrupted/killed refresh that
+  /// dropped them without reaching the recreate (see _canonicalChannelIndexes).
+  /// Also replays the exact DDL persisted by withDroppedBrowseIndexes if it was
+  /// interrupted mid-run (covers any custom/future index not in the canonical
+  /// map). Idempotent + cheap when all indexes are present (one lookup, no-op).
+  /// MUST be called unawaited/deferred (a full rebuild of the ~1.2M-row catalog
+  /// is minutes of merge-sort — never on the cold-start/splash path).
+  static Future<void> ensureBrowseIndexesPresent() async {
+    try {
+      final db = await DbFactory.db;
+      final pending = await db.getOptional(
+          "SELECT value FROM app_meta WHERE key = 'pending_browse_index_ddl'");
+      final names = _canonicalChannelIndexes.keys.toList();
+      final present = (await db.getAll(
+        "SELECT name FROM sqlite_master WHERE type = 'index' "
+        "AND name IN (${generatePlaceholders(names.length)})",
+        names,
+      ))
+          .map((r) => r['name'] as String)
+          .toSet();
+      final missing = names.where((n) => !present.contains(n)).toList();
+      if (missing.isEmpty && pending == null) return; // healthy — cheap no-op
+
+      // Bounded memory so the index merge-sorts spill to disk, not RAM
+      // (OOM-safe on a 1-2GB box). Connection-scoped on the single writer.
+      try {
+        await db.execute('PRAGMA temp_store = FILE;');
+        await db.execute('PRAGMA cache_size = -32768;');
+      } catch (_) {}
+
+      // 1) Replay the exact DDL an interrupted withDroppedBrowseIndexes left
+      //    behind (process killed between DROP and recreate).
+      if (pending != null) {
+        try {
+          final ddl =
+              (jsonDecode(pending['value'] as String) as List).cast<String>();
+          AppLog.warn('Sql.ensureBrowseIndexesPresent: an interrupted refresh '
+              'left ${ddl.length} browse index(es) un-rebuilt — replaying'
+              ' persisted DDL');
+          for (final sql in ddl) {
+            try {
+              await db.execute(sql);
+            } catch (e) {
+              AppLog.warn('  replay failed: $e');
+            }
+          }
+        } catch (e) {
+          AppLog.warn('Sql.ensureBrowseIndexesPresent: pending DDL parse'
+              ' failed — $e');
+        }
+        // fix628: guard so a throw here can't skip the cache_size restore below
+        // (leaving the writer at 32MiB for the session).
+        try {
+          await db.execute(
+              "DELETE FROM app_meta WHERE key = 'pending_browse_index_ddl'");
+        } catch (_) {}
+      }
+
+      // 2) Fill any canonical index still missing after the replay (covers the
+      //    already-broken device that has no persisted record).
+      final stillMissing = <String>[];
+      for (final n in missing) {
+        final row = await db.getOptional(
+            "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?",
+            [n]);
+        if (row == null) stillMissing.add(n);
+      }
+      if (stillMissing.isNotEmpty) {
+        AppLog.warn('Sql.ensureBrowseIndexesPresent: rebuilding'
+            ' ${stillMissing.length} missing channels index(es) (likely lost to'
+            ' an interrupted/killed refresh): ${stillMissing.join(", ")}');
+        for (var i = 0; i < stillMissing.length; i++) {
+          final n = stillMissing[i];
+          final sw = Stopwatch()..start();
+          try {
+            await db.execute(_canonicalChannelIndexes[n]!);
+            AppLog.info('Sql.ensureBrowseIndexesPresent: built'
+                ' ${i + 1}/${stillMissing.length} $n'
+                ' (${sw.elapsedMilliseconds}ms)');
+          } catch (e) {
+            AppLog.error(
+                'Sql.ensureBrowseIndexesPresent: FAILED to build $n — $e');
+          }
+        }
+      }
+      try {
+        await db.execute('PRAGMA cache_size = -2000;');
+        await db.execute('PRAGMA optimize;');
+      } catch (_) {}
+    } catch (e) {
+      AppLog.warn('Sql.ensureBrowseIndexesPresent: skipped'
           ' (will retry next launch) — $e');
     }
   }
