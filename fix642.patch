@@ -1,0 +1,126 @@
+diff --git a/lib/backend/app_logger.dart b/lib/backend/app_logger.dart
+index abd8ccd..9122a12 100644
+--- a/lib/backend/app_logger.dart
++++ b/lib/backend/app_logger.dart
+@@ -248,25 +248,27 @@ class AppLogger {
+ 
+   /// Delete the log file and reset the sink.
+   ///
+-  /// fix617 (THIS BUILD ONLY — revert after the phone-hang investigation): do
+-  /// NOT delete the log file. Instead append a divider line recording where a
+-  /// real clear WOULD have started, so no prior session is ever lost while we
+-  /// chase the hang. The Xtream-dump sweep is also skipped so nothing in the
+-  /// app dir is removed. Restore the original delete behaviour once the hang is
+-  /// understood.
++  /// fix642: restored the real clear (fix617's delete-suppression is reverted
++  /// now that the phone-hang investigation is settled). Deletes the log file,
++  /// sweeps the Xtream dumps, and re-stamps the version. Written against fix618
++  /// semantics: `_file` is the open sentinel and `log()` appends synchronously,
++  /// so we drop the handle via `_close()`, delete, then reopen with
++  /// `_ensureOpen()` if logging is currently enabled.
+   Future<void> clearLog() async {
+-    if (_enabled) await _ensureOpen();
+-    int lineCount = 0;
++    // Drop the open handle so the delete targets a closed file.
++    await _close();
+     try {
+       final f = File(await logPath);
+-      if (await f.exists()) {
+-        lineCount = (await f.readAsLines()).length;
+-      }
+-    } catch (_) {}
+-    log('=== LOG CLEAR REQUESTED — would delete from line $lineCount '
+-        '(fix617: delete suppressed for this build; log preserved) ===',
+-        level: LogLevel.info);
+-    await stampVersion('log clear requested (suppressed)'); // fix357
++      if (await f.exists()) await f.delete();
++    } catch (_) {
++      // ignore: a delete failure must never throw out of clearLog
++    }
++    // fix266: also remove the raw Xtream dump files from the app dir.
++    await _clearXtreamDumps();
++    // Reopen a fresh (empty) file if logging is on, then stamp the version so
++    // the new log identifies its build (fix357).
++    if (_enabled) await _ensureOpen();
++    await stampVersion('log + metrics cleared'); // fix357
+   }
+ 
+   /// fix357: write the app version into the log. Called on every clear and
+@@ -285,9 +287,6 @@ class AppLogger {
+   // fix266: delete every `xtream_dump_*.json` in the app dir. Best-effort —
+ // a failure on one file does not stop the rest, and a failure of the whole
+ // sweep does not block clearing the text log.
+-// fix617 (revert together with the original clearLog()): temporarily
+-// unreferenced because the suppressed-deletion build no longer sweeps these.
+-// ignore: unused_element
+   Future<void> _clearXtreamDumps() async {
+     try {
+       final dir = await Utils.appDir;
+diff --git a/lib/backend/sql.dart b/lib/backend/sql.dart
+index f7867f8..a4b75c7 100644
+--- a/lib/backend/sql.dart
++++ b/lib/backend/sql.dart
+@@ -395,7 +395,11 @@ class Sql {
+           // fix611: gate FTS-backed search off for the rebuild's duration.
+           ftsRebuilding.value = true;
+           try {
+-            await rebuildFtsTableFromScratch();
++            // fix642: routine end-of-batch rebuild (index was intentionally
++            // stale — triggers suspended for the whole batch), NOT corruption.
++            // Pass a reason so it logs at INFO instead of the malformed WARN.
++            await rebuildFtsTableFromScratch(
++                reason: 'routine end-of-batch repopulate (fix621)');
+           } finally {
+             ftsRebuilding.value = false;
+           }
+@@ -652,10 +656,18 @@ class Sql {
+   /// prefix='2 3'), and repopulates from the current `channels`. Returns true
+   /// if recovery completed. Best-effort: callers should catch and surface a
+   /// failure rather than crash.
+-  static Future<void> rebuildFtsTableFromScratch() async {
++  /// fix642: [reason] distinguishes the routine fix621 end-of-batch rebuild
++  /// (index intentionally stale after a suspended-trigger batch — logged at
++  /// INFO) from genuine code-267 corruption recovery (logged at WARN as
++  /// "malformed"). Defaults to null → the malformed-recovery wording.
++  static Future<void> rebuildFtsTableFromScratch({String? reason}) async {
+     final db = await DbFactory.db;
+-    AppLog.warn('Sql.rebuildFtsTableFromScratch: rebuilding malformed FTS '
+-        'index from scratch');
++    if (reason == null) {
++      AppLog.warn('Sql.rebuildFtsTableFromScratch: rebuilding malformed FTS '
++          'index from scratch');
++    } else {
++      AppLog.info('Sql.rebuildFtsTableFromScratch: $reason');
++    }
+     // Triggers reference channels_fts; drop them before the table.
+     await db.execute('DROP TRIGGER IF EXISTS channels_ai;');
+     await db.execute('DROP TRIGGER IF EXISTS channels_au;');
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 3c4fa2b..af465f5 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '2.2.42': [
++    'Clearing the log now actually deletes the old log and cached provider '
++        'dumps again, and search-index rebuilds during a normal refresh no '
++        'longer show a scary "malformed" warning in the log.',
++  ],
+   '2.2.41': [
+     'The source edit screen now shows your Xtream subscription expiry date, '
+         'read from the provider on each refresh.',
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 41216bc..17955ea 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 2.2.41+630
++version: 2.2.42+631
+ 
+ environment:
+   sdk: ^3.10.7

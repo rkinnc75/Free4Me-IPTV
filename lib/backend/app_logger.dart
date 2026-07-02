@@ -248,25 +248,27 @@ class AppLogger {
 
   /// Delete the log file and reset the sink.
   ///
-  /// fix617 (THIS BUILD ONLY — revert after the phone-hang investigation): do
-  /// NOT delete the log file. Instead append a divider line recording where a
-  /// real clear WOULD have started, so no prior session is ever lost while we
-  /// chase the hang. The Xtream-dump sweep is also skipped so nothing in the
-  /// app dir is removed. Restore the original delete behaviour once the hang is
-  /// understood.
+  /// fix642: restored the real clear (fix617's delete-suppression is reverted
+  /// now that the phone-hang investigation is settled). Deletes the log file,
+  /// sweeps the Xtream dumps, and re-stamps the version. Written against fix618
+  /// semantics: `_file` is the open sentinel and `log()` appends synchronously,
+  /// so we drop the handle via `_close()`, delete, then reopen with
+  /// `_ensureOpen()` if logging is currently enabled.
   Future<void> clearLog() async {
-    if (_enabled) await _ensureOpen();
-    int lineCount = 0;
+    // Drop the open handle so the delete targets a closed file.
+    await _close();
     try {
       final f = File(await logPath);
-      if (await f.exists()) {
-        lineCount = (await f.readAsLines()).length;
-      }
-    } catch (_) {}
-    log('=== LOG CLEAR REQUESTED — would delete from line $lineCount '
-        '(fix617: delete suppressed for this build; log preserved) ===',
-        level: LogLevel.info);
-    await stampVersion('log clear requested (suppressed)'); // fix357
+      if (await f.exists()) await f.delete();
+    } catch (_) {
+      // ignore: a delete failure must never throw out of clearLog
+    }
+    // fix266: also remove the raw Xtream dump files from the app dir.
+    await _clearXtreamDumps();
+    // Reopen a fresh (empty) file if logging is on, then stamp the version so
+    // the new log identifies its build (fix357).
+    if (_enabled) await _ensureOpen();
+    await stampVersion('log + metrics cleared'); // fix357
   }
 
   /// fix357: write the app version into the log. Called on every clear and
@@ -285,9 +287,6 @@ class AppLogger {
   // fix266: delete every `xtream_dump_*.json` in the app dir. Best-effort —
 // a failure on one file does not stop the rest, and a failure of the whole
 // sweep does not block clearing the text log.
-// fix617 (revert together with the original clearLog()): temporarily
-// unreferenced because the suppressed-deletion build no longer sweeps these.
-// ignore: unused_element
   Future<void> _clearXtreamDumps() async {
     try {
       final dir = await Utils.appDir;

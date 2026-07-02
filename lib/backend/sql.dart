@@ -395,7 +395,11 @@ class Sql {
           // fix611: gate FTS-backed search off for the rebuild's duration.
           ftsRebuilding.value = true;
           try {
-            await rebuildFtsTableFromScratch();
+            // fix642: routine end-of-batch rebuild (index was intentionally
+            // stale — triggers suspended for the whole batch), NOT corruption.
+            // Pass a reason so it logs at INFO instead of the malformed WARN.
+            await rebuildFtsTableFromScratch(
+                reason: 'routine end-of-batch repopulate (fix621)');
           } finally {
             ftsRebuilding.value = false;
           }
@@ -652,10 +656,18 @@ class Sql {
   /// prefix='2 3'), and repopulates from the current `channels`. Returns true
   /// if recovery completed. Best-effort: callers should catch and surface a
   /// failure rather than crash.
-  static Future<void> rebuildFtsTableFromScratch() async {
+  /// fix642: [reason] distinguishes the routine fix621 end-of-batch rebuild
+  /// (index intentionally stale after a suspended-trigger batch — logged at
+  /// INFO) from genuine code-267 corruption recovery (logged at WARN as
+  /// "malformed"). Defaults to null → the malformed-recovery wording.
+  static Future<void> rebuildFtsTableFromScratch({String? reason}) async {
     final db = await DbFactory.db;
-    AppLog.warn('Sql.rebuildFtsTableFromScratch: rebuilding malformed FTS '
-        'index from scratch');
+    if (reason == null) {
+      AppLog.warn('Sql.rebuildFtsTableFromScratch: rebuilding malformed FTS '
+          'index from scratch');
+    } else {
+      AppLog.info('Sql.rebuildFtsTableFromScratch: $reason');
+    }
     // Triggers reference channels_fts; drop them before the table.
     await db.execute('DROP TRIGGER IF EXISTS channels_ai;');
     await db.execute('DROP TRIGGER IF EXISTS channels_au;');

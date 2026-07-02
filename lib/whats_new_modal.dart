@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.42': [
+    'Clearing the log now actually deletes the old log and cached provider '
+        'dumps again, and search-index rebuilds during a normal refresh no '
+        'longer show a scary "malformed" warning in the log.',
+  ],
   '2.2.41': [
     'The source edit screen now shows your Xtream subscription expiry date, '
         'read from the provider on each refresh.',
