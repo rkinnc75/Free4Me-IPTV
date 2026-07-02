@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.41",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.41",
+  "latest": "2.2.42",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.42",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 The source edit screen now shows your Xtream subscription expiry date, read from the provider on each refresh.\n\u2022 Expired (or banned) subscriptions are now automatically disabled on refresh so they stop erroring; you can re-enable a source after renewing.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.41/Free4Me-IPTV-2.2.41-arm64.apk"
+  "releaseNotes": "\u2022 Clearing the log now actually deletes the old log and cached provider dumps again, and search-index rebuilds during a normal refresh no longer show a scary \"malformed\" warning in the log.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.42/Free4Me-IPTV-2.2.42-arm64.apk"
 }
