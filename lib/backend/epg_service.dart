@@ -52,16 +52,50 @@ class EpgService {
   /// fix600: true when NO programme is airing right now — i.e. the EPG forecast
   /// has lapsed (stale). The onn's Workmanager auto-refresh is unreliable, so we
   /// use this to trigger a foreground refresh on launch.
-  static Future<bool> isStale() async {
+  static Future<bool> isStale({List<int>? sourceIds}) async {
     try {
       final db = await EpgDbFactory.db;
       final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      // fix629: the old form — count(*) over ALL programmes with only
+      // start_utc/stop_utc predicates — could NOT use any index (the only
+      // time index, idx_programs_time_range, leads with source_id) so it
+      // FULL-SCANNED the ~1M-row programmes table on every launch, just to
+      // learn "is anything airing". Two changes make it seek instead:
+      //   1. Bound by source_id (equality on the index's leading column), one
+      //      cheap probe per eligible source, early-exit the moment ONE source
+      //      has something airing (the common case → touches one source).
+      //   2. Floor start_utc to a recent window so the (source_id, start_utc,
+      //      stop_utc) range seek is tiny (rather than reading the whole
+      //      source). The floor is the MAX EPG retention window (epgPastDays
+      //      caps at 3 — settings_view). deleteStalePrograms never prunes a
+      //      row still airing (it keeps stop_utc > now - pastDays), and no
+      //      retained airing programme can have start_utc older than that
+      //      window, so a 3-day floor is provably equivalent to the old
+      //      unbounded count(*) form within the data the DB actually holds.
+      // stop_utc > now is covered by the third index column, so the probe is
+      // index-only. LIMIT 1 — we only need existence, not a count.
+      final windowStart = now - 3 * 86400;
+      final ids = sourceIds;
+      if (ids != null && ids.isNotEmpty) {
+        for (final sid in ids) {
+          final rows = await db.getAll(
+            'SELECT 1 FROM programmes '
+            'WHERE source_id = ? AND start_utc > ? AND start_utc <= ? '
+            'AND stop_utc > ? LIMIT 1',
+            [sid, windowStart, now, now],
+          );
+          if (rows.isNotEmpty) return false; // something airing → not stale
+        }
+        return true; // nothing airing across every eligible source
+      }
+      // No source list supplied: keep the LIMIT-1 early-exit (still avoids the
+      // count(*) full aggregate) even though this form can't seek by source.
       final rows = await db.getAll(
-        'SELECT count(*) c FROM programmes WHERE start_utc <= ? AND stop_utc > ?',
-        [now, now],
+        'SELECT 1 FROM programmes '
+        'WHERE start_utc > ? AND start_utc <= ? AND stop_utc > ? LIMIT 1',
+        [windowStart, now, now],
       );
-      final airing = rows.isNotEmpty ? (rows.first['c'] as int? ?? 0) : 0;
-      return airing == 0;
+      return rows.isEmpty;
     } catch (e) {
       AppLog.warn('EPG: isStale check failed — $e');
       return false; // never trigger a refresh on a check error
@@ -85,7 +119,10 @@ class EpgService {
         .where((s) => s.enabled && resolveEpgUrl(s) != null)
         .toList(growable: false);
     if (eligible.isEmpty) return;
-    if (!await isStale()) return;
+    // fix629: pass the eligible source IDs so isStale can seek per-source via
+    // idx_programs_time_range instead of full-scanning all programmes.
+    final eligibleIds = eligible.map((s) => s.id).whereType<int>().toList();
+    if (!await isStale(sourceIds: eligibleIds)) return;
     final last = await Sql.getLatestEpgRefresh();
     if (last != null) {
       final ageSec =

@@ -6,6 +6,14 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.40': [
+    'Faster guide updates and source refreshes. Re-matching channels to the '
+        'EPG guide now jumps straight to the unmatched channels instead of '
+        'scanning a whole source, the launch check for an out-of-date guide '
+        'looks at only the relevant sources instead of the entire guide, and '
+        'refreshes write a little less because three unused database indexes '
+        'were removed.',
+  ],
   '2.2.39': [
     'Fixed the real cause of slow browsing: if a source refresh was cancelled '
         'or killed at the wrong moment, it could permanently delete the '

@@ -1648,12 +1648,14 @@ class Sql {
         'CREATE INDEX IF NOT EXISTS idx_channels_browse_tier ON channels( source_id, $_t6, name COLLATE NOCASE ) WHERE url IS NOT NULL',
     'index_channel_group_id':
         'CREATE INDEX IF NOT EXISTS index_channel_group_id ON channels(group_id)',
-    'index_channels_stream_id':
-        'CREATE INDEX IF NOT EXISTS index_channels_stream_id ON channels(stream_id)',
-    'index_channels_group_name':
-        'CREATE INDEX IF NOT EXISTS index_channels_group_name ON channels(group_name)',
-    'index_channel_last_watched':
-        'CREATE INDEX IF NOT EXISTS index_channel_last_watched ON channels(last_watched)',
+    // fix629: index_channels_stream_id, index_channels_group_name and
+    // index_channel_last_watched were dropped (migration 41). They were bare
+    // single-column indexes that NO app query ever seeks on (stream_id is only
+    // read by rowid/PK lookups; group_name is superseded by the group_id +
+    // browse composites; last_watched is superseded by the PARTIAL composite
+    // idx_channel_lastwatched_media below). They only cost write-amp on every
+    // channel insert during a refresh. Removed from the canonical map so the
+    // self-heal never resurrects them; see docs/CHANNELS_SQL_INDEX_MAP.md.
     'idx_channels_epg_id':
         'CREATE INDEX IF NOT EXISTS idx_channels_epg_id ON channels(epg_channel_id)',
     // fix628: PARTIAL (migration 32 / fix392). An UNCONDITIONAL index on
@@ -3031,8 +3033,22 @@ class Sql {
     int sourceId,
   ) async {
     var db = await DbFactory.db;
+    // fix629: force idx_epg_unmatched. During "Re-match all channels" the
+    // planner mis-picks index_channel_source_id (or idx_channels_epg_id) and
+    // full-scans the per-source slice (13-21 s each on the onn — private log
+    // 2026-06-30). ANALYZE cannot fix this: averaged sqlite_stat1 can't model
+    // the 5-source, 149k-450k-row skew (see fix531). This query's WHERE is
+    // IDENTICAL to idx_epg_unmatched's partial predicate (media_type = 0 AND
+    // epg_manual_override IS NULL AND epg_channel_id IS NULL), so the force is
+    // always a valid, full-result path — the partial index covers every row the
+    // query can return. Gated on _indexExists because withDroppedBrowseIndexes
+    // drops it during a refresh and a forced INDEXED BY on a missing index is a
+    // hard crash (fix526).
+    final hint = await _indexExists('idx_epg_unmatched')
+        ? ' INDEXED BY idx_epg_unmatched'
+        : '';
     final rows = await db.getAll('''
-      SELECT * FROM channels
+      SELECT * FROM channels$hint
       WHERE source_id = ?
         AND media_type = 0
         AND epg_manual_override IS NULL

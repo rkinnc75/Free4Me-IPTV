@@ -976,6 +976,25 @@ class DbFactory {
           'CREATE UNIQUE INDEX index_group_unique '
           'ON groups(name, source_id, media_type);',
         );
+      }))
+      ..add(SqliteMigration(41, (tx) async {
+        // fix629: drop three bare single-column channels indexes that NO app
+        // query ever seeks on — they only cost write-amplification on every
+        // channel insert during a refresh (millions of rows). Confirmed dead
+        // against docs/CHANNELS_SQL_INDEX_MAP.md:
+        //   - index_channels_stream_id(stream_id): stream_id is only read by
+        //     rowid/PK-style lookups, never filtered/ordered by this index.
+        //   - index_channels_group_name(group_name): superseded by group_id and
+        //     the browse composites; no query filters on group_name.
+        //   - index_channel_last_watched(last_watched): superseded by the
+        //     PARTIAL composite idx_channel_lastwatched_media
+        //     (last_watched, media_type WHERE last_watched IS NOT NULL).
+        // Also removed from Sql._canonicalChannelIndexes so the fix628 startup
+        // self-heal never resurrects them. Base migration 1 still creates them
+        // on a fresh install; this migration drops them immediately after.
+        await tx.execute('DROP INDEX IF EXISTS index_channels_stream_id;');
+        await tx.execute('DROP INDEX IF EXISTS index_channels_group_name;');
+        await tx.execute('DROP INDEX IF EXISTS index_channel_last_watched;');
       }));
     // fix608 (#2): bound memory so any migration that rebuilds a browse index
     // over an ALREADY-POPULATED channels table — a user upgrading with a huge
