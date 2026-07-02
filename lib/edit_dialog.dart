@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_form_builder/flutter_form_builder.dart';
+import 'package:intl/intl.dart';
 import 'package:open_tv/widgets/dpad_text_field.dart';
 import 'package:form_builder_validators/form_builder_validators.dart';
 import 'package:open_tv/backend/sql.dart';
@@ -529,6 +530,14 @@ class _EditDialogState extends State<EditDialog> {
               ? 'Unknown'
               : '${widget.source.maxConnections}',
         ),
+        // fix641: subscription expiry (Xtream only). Red when expired.
+        if (widget.source.sourceType == SourceType.xtream)
+          _infoRow(
+            Icons.event_busy_outlined,
+            'Expires',
+            _expiryText(widget.source),
+            valueColor: isSourceExpired(widget.source) ? Colors.red : null,
+          ),
         _infoRow(
           Icons.live_tv_outlined,
           'Live TV',
@@ -562,20 +571,38 @@ class _EditDialogState extends State<EditDialog> {
   String _countText(int? n) => n == null ? '—' : '$n';
 
   /// fix268: a compact read-only "icon · label · value" row.
-  Widget _infoRow(IconData icon, String label, String value) {
+  Widget _infoRow(IconData icon, String label, String value,
+      {Color? valueColor}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
       child: Row(
         children: [
-          Icon(icon, size: 20),
+          Icon(icon, size: 20, color: valueColor),
           const SizedBox(width: 12),
           Expanded(child: Text(label)),
           Text(
             value,
-            style: const TextStyle(fontWeight: FontWeight.w600),
+            style: TextStyle(fontWeight: FontWeight.w600, color: valueColor),
           ),
         ],
       ),
     );
+  }
+
+  /// fix641: human-readable subscription expiry for the edit dialog.
+  String _expiryText(Source source) {
+    final exp = source.expDate;
+    if (exp == null || exp <= 0) {
+      // No date reported. If the provider flagged a bad status, show it;
+      // otherwise it's unknown / lifetime.
+      final st = source.status;
+      if (st != null && st.trim().isNotEmpty && st.toLowerCase() != 'active') {
+        return st;
+      }
+      return 'Unknown';
+    }
+    final d = DateTime.fromMillisecondsSinceEpoch(exp * 1000).toLocal();
+    final formatted = DateFormat.yMMMd().add_jm().format(d);
+    return isSourceExpired(source) ? '$formatted (expired)' : formatted;
   }
 }

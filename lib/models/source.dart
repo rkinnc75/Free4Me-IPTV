@@ -42,6 +42,16 @@ class Source {
   /// path.
   String? epgDiscoveryState;
 
+  /// fix641: Xtream subscription expiry as a Unix epoch (seconds), from
+  /// player_api.php user_info.exp_date. null = unknown / not reported / lifetime
+  /// (a null or 0 value must NEVER be treated as expired). Captured on every
+  /// Xtream refresh; shown read-only on the source edit screen.
+  int? expDate;
+
+  /// fix641: Xtream account status from user_info.status (e.g. "Active",
+  /// "Expired", "Banned", "Disabled"). null = unknown / not reported.
+  String? status;
+
   Source({
     this.id,
     required this.name,
@@ -60,5 +70,7 @@ class Source {
     this.lastSeriesCount,
     this.hideDividers,
     this.epgDiscoveryState,
+    this.expDate,
+    this.status,
   });
 }

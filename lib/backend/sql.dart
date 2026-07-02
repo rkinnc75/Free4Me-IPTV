@@ -916,7 +916,9 @@ class Sql {
                      enabled        = ?,
                      max_connections = COALESCE(?, max_connections),
                      color           = COALESCE(?, color),
-                     sort_mode       = COALESCE(?, sort_mode)
+                     sort_mode       = COALESCE(?, sort_mode),
+                     exp_date        = COALESCE(?, exp_date),
+                     status          = COALESCE(?, status)
                WHERE id = ?
             ''', [
           source.sourceType.index,
@@ -928,6 +930,8 @@ class Sql {
           source.maxConnections,
           source.color,
           source.sortMode,
+          source.expDate,
+          source.status,
           id,
         ]);
         memory['sourceId'] = id.toString();
@@ -935,8 +939,8 @@ class Sql {
         await tx.execute('''
               INSERT INTO sources
                 (name, source_type, url, username, password, epg_url,
-                 enabled, max_connections, color, sort_mode)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                 enabled, max_connections, color, sort_mode, exp_date, status)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             ''', [
           source.name,
           source.sourceType.index,
@@ -948,6 +952,8 @@ class Sql {
           source.maxConnections,
           source.color,
           source.sortMode,
+          source.expDate,
+          source.status,
         ]);
         memory['sourceId'] =
             (await tx.get("SELECT last_insert_rowid();")).columnAt(0).toString();
@@ -1951,6 +1957,7 @@ class Sql {
     //   ← fix268 (migration 21)
     //   hide_dividers(15) ← fix272 (migration 22)
     //   epg_discovery_state(16) ← fix386 (migration 31)
+    //   exp_date(17)/status(18) ← fix641 (migration 42)
     return Source(
       id: row.columnAt(0),
       name: row.columnAt(1),
@@ -1969,6 +1976,8 @@ class Sql {
       lastSeriesCount: row.columnAt(14) as int?,
       hideDividers: row.columnAt(15) as int?, // fix272 (migration 22)
       epgDiscoveryState: row.columnAt(16) as String?, // fix386 (migration 31)
+      expDate: row.columnAt(17) as int?, // fix641 (migration 42)
+      status: row.columnAt(18) as String?, // fix641 (migration 42)
     );
   }
 
@@ -2107,7 +2116,7 @@ class Sql {
       SET name = ?, url = ?, username = ?, password = ?,
           max_connections = ?, color = ?, sort_mode = ?,
           last_live_count = ?, last_movie_count = ?, last_series_count = ?,
-          hide_dividers = ?
+          hide_dividers = ?, exp_date = ?, status = ?
       WHERE id = ?
     ''';
 
@@ -2125,6 +2134,8 @@ class Sql {
       source.lastMovieCount,
       source.lastSeriesCount,
       source.hideDividers, // fix272
+      source.expDate, // fix641
+      source.status, // fix641
       source.id,
     ]);
   }

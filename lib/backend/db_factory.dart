@@ -995,6 +995,15 @@ class DbFactory {
         await tx.execute('DROP INDEX IF EXISTS index_channels_stream_id;');
         await tx.execute('DROP INDEX IF EXISTS index_channels_group_name;');
         await tx.execute('DROP INDEX IF EXISTS index_channel_last_watched;');
+      }))
+      ..add(SqliteMigration(42, (tx) async {
+        // fix641: persist the Xtream subscription expiry + account status from
+        // player_api.php user_info, so the source edit screen can show the
+        // expiry date and the app can auto-disable an expired line on refresh.
+        await tx.execute(
+            'ALTER TABLE sources ADD COLUMN exp_date INTEGER;');
+        await tx.execute(
+            'ALTER TABLE sources ADD COLUMN status TEXT;');
       }));
     // fix608 (#2): bound memory so any migration that rebuilds a browse index
     // over an ALREADY-POPULATED channels table — a user upgrading with a huge

@@ -45,7 +45,8 @@ void main() {
           url TEXT, username TEXT, password TEXT, epg_url TEXT, enabled INTEGER,
           max_connections INTEGER, color INTEGER, sort_mode TEXT,
           last_live_count INTEGER, last_movie_count INTEGER,
-          last_series_count INTEGER, hide_dividers INTEGER)''');
+          last_series_count INTEGER, hide_dividers INTEGER,
+          exp_date INTEGER, status TEXT)''');
       await db.execute('''
         CREATE TABLE channels(
           id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, image TEXT, url TEXT,

@@ -39,26 +39,30 @@ s3.Database _seed() {
       last_live_count INTEGER,
       last_movie_count INTEGER,
       last_series_count INTEGER,
-      hide_dividers INTEGER
+      hide_dividers INTEGER,
+      exp_date INTEGER,
+      status TEXT
     )''');
   // Target row (id 7) + a sibling control (id 8) that must stay untouched.
+  // fix641: added exp_date (null/0) + status (null) to match the new columns
+  // the canonical updateSourceSql now binds.
   db.execute(
-    "INSERT INTO sources VALUES (7,'Old Name','http://old','u','p',1,0,'provider',10,20,30,0)",
+    "INSERT INTO sources VALUES (7,'Old Name','http://old','u','p',1,0,'provider',10,20,30,0,NULL,NULL)",
   );
   db.execute(
-    "INSERT INTO sources VALUES (8,'Sibling','http://sib','u2','p2',1,0,'category',1,2,3,1)",
+    "INSERT INTO sources VALUES (8,'Sibling','http://sib','u2','p2',1,0,'category',1,2,3,1,NULL,NULL)",
   );
   return db;
 }
 
-// Same bind order as Sql.updateSource.
+// Same bind order as Sql.updateSource (fix641 added expDate + status binds).
 List<Object?> _binds({
   required String name,
   required String url,
   required int color,
   required int id,
 }) =>
-    [name, url, 'u', 'p', 1, color, 'provider', 10, 20, 30, 0, id];
+    [name, url, 'u', 'p', 1, color, 'provider', 10, 20, 30, 0, null, null, id];
 
 void main() {
   group('Sql.updateSource persists the name (fix387)', () {

@@ -6,6 +6,13 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.41': [
+    'The source edit screen now shows your Xtream subscription expiry date, '
+        'read from the provider on each refresh.',
+    'Expired (or banned) subscriptions are now automatically disabled on '
+        'refresh so they stop erroring; you can re-enable a source after '
+        'renewing.',
+  ],
   '2.2.40': [
     'Faster guide updates and source refreshes. Re-matching channels to the '
         'EPG guide now jumps straight to the unmatched channels instead of '

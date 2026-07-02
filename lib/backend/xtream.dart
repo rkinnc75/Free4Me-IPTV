@@ -267,9 +267,16 @@ Future<void> getXtream(
   }
   // fix184: detect and persist the provider's connection limit.
   // fix268: also persist the live/movie/series counts from this refresh.
-  final mc = await fetchXtreamMaxConnections(source);
+  // fix641: the same player_api.php user_info response also carries exp_date +
+  // status, so fetch all three in one call and persist them.
+  final info = await fetchXtreamAccountInfo(source);
   if (source.id != null) {
-    if (mc != null) source.maxConnections = mc;
+    if (info.maxConnections != null) {
+      source.maxConnections = info.maxConnections;
+    }
+    // fix641: record expiry + status (null = unknown; leave prior value).
+    if (info.expDate != null) source.expDate = info.expDate;
+    if (info.status != null) source.status = info.status;
     // fix321: for preserved types the fresh count is 0 but the old rows remain,
     // so keep the previous count rather than recording 0.
     if (!keepMediaTypes.contains(MediaType.livestream.index)) {
@@ -280,6 +287,21 @@ Future<void> getXtream(
     }
     if (!keepMediaTypes.contains(MediaType.serie.index)) {
       source.lastSeriesCount = seriesCount;
+    }
+    // fix641: auto-disable an expired/banned line. Trust an explicit bad
+    // status; otherwise fall back to the epoch (present, non-zero, past UTC).
+    // A null/0 exp_date is NEVER treated as expired (lifetime lines report
+    // that). Channels just fetched are kept — only the source is disabled — so
+    // the user can still see (stale) content and re-enable after renewing.
+    if (source.enabled && isSourceExpired(source)) {
+      source.enabled = false;
+      AppLog.warn('Xtream: source "${source.name}" auto-disabled — '
+          'status=${source.status} exp_date=${source.expDate} '
+          '(expired subscription)');
+      onProgress?.call('Subscription expired — source disabled');
+      // updateSource() below does NOT write `enabled` (that's setSourceEnabled's
+      // job), so persist the disable explicitly.
+      await Sql.setSourceEnabled(false, source.id!);
     }
     await Sql.updateSource(source);
   }
@@ -388,6 +410,55 @@ Future<int?> fetchXtreamMaxConnections(Source source) async {
         'Xtream: max_connections fetch failed for "${source.name}" — $e');
   }
   return null;
+}
+
+/// fix641: account info pulled from a single player_api.php user_info response
+/// — max_connections (fix184), plus exp_date + status. Each field is null when
+/// not reported or on any failure, so the caller keeps prior values.
+typedef XtreamAccountInfo = ({int? maxConnections, int? expDate, String? status});
+
+Future<XtreamAccountInfo> fetchXtreamAccountInfo(Source source) async {
+  try {
+    // Empty action → base player_api.php auth call that returns user_info.
+    final data = await getXtreamHttpData('', source);
+    if (data is Map && data['user_info'] is Map) {
+      final ui = data['user_info'] as Map;
+      final rawMc = ui['max_connections'];
+      final mc = rawMc is int ? rawMc : int.tryParse(rawMc?.toString() ?? '');
+      final rawExp = ui['exp_date'];
+      final exp = rawExp is int ? rawExp : int.tryParse(rawExp?.toString() ?? '');
+      final st = ui['status']?.toString();
+      AppLog.info('Xtream: source "${source.name}" account info '
+          'max_connections=$mc exp_date=$exp status=$st');
+      return (
+        maxConnections: (mc != null && mc > 0) ? mc : null,
+        expDate: (exp != null && exp > 0) ? exp : null,
+        status: (st != null && st.trim().isNotEmpty) ? st : null,
+      );
+    }
+  } catch (e) {
+    AppLog.warn(
+        'Xtream: account info fetch failed for "${source.name}" — $e');
+  }
+  return (maxConnections: null, expDate: null, status: null);
+}
+
+/// fix641: whether a source's subscription is expired. Trusts an explicit bad
+/// [status] first; otherwise uses [expDate] (present, non-zero, past UTC). A
+/// null/0 exp_date is NEVER expired — lifetime lines report that.
+bool isSourceExpired(Source source) {
+  final st = source.status?.trim().toLowerCase();
+  if (st != null &&
+      (st == 'expired' || st == 'banned' || st == 'disabled')) {
+    return true;
+  }
+  final exp = source.expDate;
+  if (exp != null && exp > 0) {
+    final expiresUtc = DateTime.fromMillisecondsSinceEpoch(exp * 1000,
+        isUtc: true);
+    return expiresUtc.isBefore(DateTime.now().toUtc());
+  }
+  return false;
 }
 
 /// fix388: probe the Xtream server to verify auth.
