@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.39",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.39",
+  "latest": "2.2.40",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.40",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fixed the real cause of slow browsing: if a source refresh was cancelled or killed at the wrong moment, it could permanently delete the database speed indexes, making every category and list scan the whole catalog (10-45s). The app now rebuilds any missing indexes in the background on launch and protects them during a refresh, so browsing stays fast.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.39/Free4Me-IPTV-2.2.39-arm64.apk"
+  "releaseNotes": "\u2022 Faster guide updates and source refreshes. Re-matching channels to the EPG guide now jumps straight to the unmatched channels instead of scanning a whole source, the launch check for an out-of-date guide looks at only the relevant sources instead of the entire guide, and refreshes write a little less because three unused database indexes were removed.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.40/Free4Me-IPTV-2.2.40-arm64.apk"
 }
