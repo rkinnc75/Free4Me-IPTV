@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.38",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.38",
+  "latest": "2.2.39",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.39",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Opening a Live TV category is fast again. On large catalogs the database was scanning an entire source to find a small category (10-45s); it now jumps straight to the category using the right index.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.38/Free4Me-IPTV-2.2.38-arm64.apk"
+  "releaseNotes": "\u2022 Fixed the real cause of slow browsing: if a source refresh was cancelled or killed at the wrong moment, it could permanently delete the database speed indexes, making every category and list scan the whole catalog (10-45s). The app now rebuilds any missing indexes in the background on launch and protects them during a refresh, so browsing stays fast.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.39/Free4Me-IPTV-2.2.39-arm64.apk"
 }
