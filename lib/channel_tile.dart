@@ -110,6 +110,14 @@ class ChannelTile extends StatefulWidget {
   /// phone + other TV uses are unchanged.
   final bool categoryToggleMode;
 
+  /// fix643: TV left-at-edge back. When [leftEdge] is true (this tile sits in
+  /// the grid's leftmost column) a D-pad LEFT fires [onLeftEdgeBack] instead of
+  /// directional traversal, so LEFT steps back one screen exactly like the Back
+  /// button. KeyDown only (not repeats) — a held LEFT must not pop multiple
+  /// levels. Both default off so phone + non-edge tiles are unchanged.
+  final bool leftEdge;
+  final VoidCallback? onLeftEdgeBack;
+
   const ChannelTile({
     super.key,
     required this.channel,
@@ -132,6 +140,8 @@ class ChannelTile extends StatefulWidget {
     this.playlistIndex = 0, // fix397
     this.poster = false, // fix508: TV portrait poster layout
     this.categoryToggleMode = false, // fix529: TV category-toggle grid
+    this.leftEdge = false, // fix643: leftmost-column tile (TV back-on-LEFT)
+    this.onLeftEdgeBack, // fix643: fired on LEFT from a leftEdge tile
   });
 
   @override
@@ -161,6 +171,16 @@ class _ChannelTileState extends State<ChannelTile> {
   void initState() {
     super.initState();
     _focusNode.onKeyEvent = (node, event) {
+      // fix643: leftmost-column tile — LEFT = back (mirrors the Back button).
+      // KeyDown only: a KeyRepeat from a held LEFT must not pop several
+      // screens. Non-edge tiles fall through to normal directional traversal.
+      if (event is KeyDownEvent &&
+          event.logicalKey == LogicalKeyboardKey.arrowLeft &&
+          widget.leftEdge &&
+          widget.onLeftEdgeBack != null) {
+        widget.onLeftEdgeBack!.call();
+        return KeyEventResult.handled;
+      }
       if (event is KeyDownEvent &&
           event.logicalKey == LogicalKeyboardKey.arrowRight) {
         if (!FocusScope.of(

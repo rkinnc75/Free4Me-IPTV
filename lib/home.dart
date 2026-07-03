@@ -908,6 +908,21 @@ class _HomeState extends State<Home> {
                                       );
                                     },
                                     autofocus: index == 0,
+                                    // fix643: TV left-at-edge back. A tile in
+                                    // the leftmost grid column turns D-pad LEFT
+                                    // into "go back one screen" — pops the
+                                    // drilled-in route (category/series ->
+                                    // parent). At a root tab there is nothing
+                                    // to pop and LEFT does nothing (only the
+                                    // Back button arms the exit confirm), so a
+                                    // fast horizontal scroll can never
+                                    // accidentally exit the app.
+                                    leftEdge: !widget.hasTouchScreen &&
+                                        index % crossAxisCount == 0,
+                                    onLeftEdgeBack: () {
+                                      final nav = Navigator.of(context);
+                                      if (nav.canPop()) nav.pop();
+                                    },
                                     // fix397: hand the tile the full result list
                                     // + its position so full-screen playback can
                                     // surf channel +/- through this same list.

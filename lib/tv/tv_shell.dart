@@ -301,10 +301,12 @@ class _TvShellState extends State<TvShell> {
     // a dark scrim so foreground text/tiles stay readable. The Scaffold and its
     // content are transparent so the image shows through; only the guide's
     // small now-line element paints its own color (intended).
-    // fix587 (#23): confirm-to-exit guard around the whole TV shell (no-op
-    // unless the setting is on and Back would exit the app).
+    // fix587 (#23): confirm-to-exit guard around the whole TV shell.
+    // fix643: ALWAYS on for TV — a stray Back on a remote exits far too easily,
+    // so the "Press Back again to exit" hint is unconditional here. The
+    // confirmToExit setting still governs the phone (Home / SettingsView).
     return ConfirmExitScope(
-      enabled: widget.settings.confirmToExit,
+      enabled: true,
       child: Stack(
       fit: StackFit.expand,
       children: [

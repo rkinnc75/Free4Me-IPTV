@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.43': [
+    'TV: pressing LEFT on the remote from the first column of a channel '
+        'or category grid now goes back a screen, just like the Back '
+        'button, and the "Press Back again to exit" confirmation is now '
+        'always on for TV so a stray Back press never closes the app.',
+  ],
   '2.2.42': [
     'Clearing the log now actually deletes the old log and cached provider '
         'dumps again, and search-index rebuilds during a normal refresh no '
