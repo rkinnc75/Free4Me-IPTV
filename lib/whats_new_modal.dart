@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.49': [
+    'TV: the left/right remote keys now skip back/forward in movies and '
+        'series too (previously they only worked inside a live DVR window), '
+        'and every skip shows a small on-screen chip with the seconds moved.',
+  ],
   '2.2.48': [
     'Favorites views open instantly again on big catalogs. The favorites '
         'speed index added in 2.2.46 existed but the database engine was not '

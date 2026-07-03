@@ -16,8 +16,12 @@ enum PlayerKeyAction {
 ///
 /// - ▲ / CH+  → channel up   (only when [canSurf])
 /// - ▼ / CH−  → channel down (only when [canSurf])
-/// - ◀ / ▶    → seek −/+10s  (only when [dvrActive]; otherwise no-op)
+/// - ◀ / ▶    → seek −/+     (only when [canSeek]; otherwise no-op)
 /// - OK/center/Enter/PlayPause → toggle play-pause and reveal the bars
+///
+/// fix649: the seek gate is now [canSeek] (was `dvrActive`) — the caller
+/// passes live-DVR *or* VOD seekability, so ◀/▶ work on movies/series on TV
+/// instead of only inside a live DVR window.
 ///
 /// Returns [PlayerKeyAction.none] for anything else (and for surf/seek when the
 /// precondition is unmet), so the caller can leave the key unhandled and let it
@@ -25,7 +29,7 @@ enum PlayerKeyAction {
 PlayerKeyAction playerKeyAction(
   LogicalKeyboardKey key, {
   required bool canSurf,
-  required bool dvrActive,
+  required bool canSeek,
 }) {
   if (key == LogicalKeyboardKey.arrowUp ||
       key == LogicalKeyboardKey.channelUp) {
@@ -36,10 +40,10 @@ PlayerKeyAction playerKeyAction(
     return canSurf ? PlayerKeyAction.channelDown : PlayerKeyAction.none;
   }
   if (key == LogicalKeyboardKey.arrowLeft) {
-    return dvrActive ? PlayerKeyAction.seekBack : PlayerKeyAction.none;
+    return canSeek ? PlayerKeyAction.seekBack : PlayerKeyAction.none;
   }
   if (key == LogicalKeyboardKey.arrowRight) {
-    return dvrActive ? PlayerKeyAction.seekForward : PlayerKeyAction.none;
+    return canSeek ? PlayerKeyAction.seekForward : PlayerKeyAction.none;
   }
   if (key == LogicalKeyboardKey.select ||
       key == LogicalKeyboardKey.enter ||

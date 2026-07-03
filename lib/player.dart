@@ -183,6 +183,14 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   final FocusNode _overlayFirstFocus =
       FocusNode(debugLabel: 'tvOverlayFirstFocus');
 
+  // fix649: transient ±seconds indicator for ◀/▶ transport seeks. Consecutive
+  // presses accumulate (net signed seconds) while the chip is visible; it
+  // clears shortly after the last press. Purely visual — the seeks themselves
+  // happen in _seekBy.
+  int _skipIndicatorSecs = 0;
+  Timer? _skipIndicatorTimer;
+  static const Duration _skipIndicatorHold = Duration(milliseconds: 900);
+
   /// Subscriptions specifically tied to [_engine]'s streams (errorStream,
   /// bufferingStream, completedStream). Tracked separately from
   /// [subscriptions] so engine teardown can cancel exactly its own listeners.
@@ -909,6 +917,7 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     _stableTimer?.cancel();
     _surfTimer?.cancel(); // fix397
     _overlayHideTimer?.cancel(); // fix580
+    _skipIndicatorTimer?.cancel(); // fix649
     _overlayFirstFocus.dispose(); // fix580
     _surfKeyFocus.dispose(); // fix397
     for (final s in subscriptions) {
@@ -1069,12 +1078,67 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
 
   // ===================== fix360 (re-applied fix364): DVR transport ========
 
-  Future<void> _dvrSeekBy(Duration delta) async {
-    if (!_engine.dvrActive) return;
-    final target = _engine.position + delta;
-    final clamped = target.isNegative ? Duration.zero : target;
-    await _engine.seek(clamped);
-    AppLog.info('Player: DVR seek ${delta.inSeconds}s -> ${clamped.inSeconds}s');
+  /// fix649: shared ◀/▶ transport seek — live-DVR AND VOD (was `_dvrSeekBy`,
+  /// gated on dvrActive only, which left LEFT/RIGHT dead on TV movies/series).
+  /// Clamps to [0, duration]; duration unknown/0 → only the zero floor (mpv
+  /// clamps the live edge itself).
+  Future<void> _seekBy(Duration delta) async {
+    if (!_canSeekTransport) return;
+    var target = _engine.position + delta;
+    if (target.isNegative) target = Duration.zero;
+    final dur = _engine.duration;
+    if (dur > Duration.zero && target > dur) target = dur;
+    _noteSkip(delta);
+    await _engine.seek(target);
+    AppLog.info(
+        'Player: transport seek ${delta.inSeconds}s -> ${target.inSeconds}s');
+  }
+
+  /// fix649: record a ◀/▶ seek in the on-screen skip chip. Accumulates the
+  /// net signed seconds across rapid presses, then clears after
+  /// [_skipIndicatorHold] of inactivity.
+  void _noteSkip(Duration delta) {
+    if (!mounted) return;
+    _skipIndicatorTimer?.cancel();
+    setState(() => _skipIndicatorSecs += delta.inSeconds);
+    _skipIndicatorTimer = Timer(_skipIndicatorHold, () {
+      if (mounted) setState(() => _skipIndicatorSecs = 0);
+    });
+  }
+
+  /// fix649: the centered "+30 s" / "−10 s" chip shown while ◀/▶ seeks land.
+  Widget _buildSkipIndicator() {
+    final secs = _skipIndicatorSecs;
+    final label = secs > 0 ? '+$secs s' : '−${secs.abs()} s';
+    final icon = secs > 0 ? Icons.fast_forward : Icons.fast_rewind;
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: Center(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.65),
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: Colors.white, size: 28),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _dvrGoLive() async {
@@ -1108,11 +1172,11 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
         _dvrButton(Icons.keyboard_arrow_up, 'Channel up', () => _surf(-1)),
       if (dvr)
         _dvrButton(Icons.replay_10, 'Rewind 10s',
-            () => _dvrSeekBy(const Duration(seconds: -10))),
+            () => _seekBy(const Duration(seconds: -10))),
       const MaterialPlayOrPauseButton(iconSize: 40.0),
       if (dvr) ...[
         _dvrButton(Icons.forward_10, 'Forward 10s',
-            () => _dvrSeekBy(const Duration(seconds: 10))),
+            () => _seekBy(const Duration(seconds: 10))),
         _dvrButton(Icons.live_tv, 'Back to live', _dvrGoLive),
       ],
       if (_canSurf)
@@ -1137,6 +1201,13 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
 
   /// True when the launching list has another playable channel to surf to.
   bool get _canSurf => (widget.playlist?.hasSurfableNeighbor ?? false);
+
+  /// fix649: transport-seek availability for the ◀/▶ keys and overlay
+  /// buttons. Live uses the DVR window ([PlayerEngine.dvrActive]); VOD
+  /// (movies/series) is seekable by nature — the engine's existing
+  /// seek-probe/grace handling absorbs the rare non-seekable VOD stream.
+  bool get _canSeekTransport =>
+      _engine.dvrActive || widget.channel.mediaType != MediaType.livestream;
 
   /// Advance the surf target by [direction] (+1 = down the list, -1 = up),
   /// show the target channel name, and (re)arm the debounce so the switch only
@@ -1342,11 +1413,11 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
           _ovlButton(Icons.keyboard_arrow_up, 'Channel up', () => _surf(-1)),
         if (dvr)
           _ovlButton(Icons.replay_10, 'Rewind 10s',
-              () => _dvrSeekBy(const Duration(seconds: -10))),
+              () => _seekBy(const Duration(seconds: -10))),
         playPause,
         if (dvr) ...[
           _ovlButton(Icons.forward_10, 'Forward 10s',
-              () => _dvrSeekBy(const Duration(seconds: 10))),
+              () => _seekBy(const Duration(seconds: 10))),
           _ovlButton(Icons.live_tv, 'Back to live', _dvrGoLive),
         ],
         if (_canSurf)
@@ -1379,9 +1450,9 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
 
   /// fix576: player key handling. On TV the player Focus holds focus, so the
   /// remote D-pad maps directly: ▲/CH+ = channel up, ▼/CH− = channel down,
-  /// ◀/▶ = seek −/+10s when DVR/seek is active, OK/center = play-pause + reveal
-  /// the control bars. Unhandled keys (Back etc.) are ignored so they bubble to
-  /// the PopScope / normal handling.
+  /// ◀/▶ = seek −/+10s when seeking is available (live DVR or VOD — fix649),
+  /// OK/center = play-pause + reveal the control bars. Unhandled keys (Back
+  /// etc.) are ignored so they bubble to the PopScope / normal handling.
   KeyEventResult _onPlayerKey(FocusNode _, KeyEvent event) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
@@ -1397,7 +1468,7 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     final action = playerKeyAction(
       event.logicalKey,
       canSurf: _canSurf,
-      dvrActive: _engine.dvrActive,
+      canSeek: _canSeekTransport,
     );
     switch (action) {
       case PlayerKeyAction.channelUp:
@@ -1407,10 +1478,10 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
         _surf(1);
         return KeyEventResult.handled;
       case PlayerKeyAction.seekBack:
-        _dvrSeekBy(const Duration(seconds: -10));
+        _seekBy(const Duration(seconds: -10));
         return KeyEventResult.handled;
       case PlayerKeyAction.seekForward:
-        _dvrSeekBy(const Duration(seconds: 10));
+        _seekBy(const Duration(seconds: 10));
         return KeyEventResult.handled;
       case PlayerKeyAction.playPauseReveal:
         _togglePlayPause();
@@ -1688,6 +1759,8 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
               _buildVideoArea(),
               if (_bufferingState != null) _buildBufferingOverlay(),
               if (_surfBanner != null) _buildSurfBanner(),
+              // fix649: ±seconds chip for ◀/▶ transport seeks.
+              if (_skipIndicatorSecs != 0) _buildSkipIndicator(),
               // fix564: live playback-stats panel (top-right), single-cell
               // full-screen only, shown when debug logging is on. Also writes
               // each snapshot to the report log for offline review.
