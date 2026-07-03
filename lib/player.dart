@@ -1309,6 +1309,15 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     if (_engine.isPlaying) {
       await _engine.pause();
     } else {
+      // fix652: optional rewind on resume — VOD only. A paused live-DVR
+      // stream is already behind the live edge by the pause length, so a
+      // further skip back would just double the lag.
+      final n = widget.settings.devSkipBackOnResumeSecs;
+      if (n > 0 &&
+          widget.channel.mediaType != MediaType.livestream &&
+          _engine.position > Duration(seconds: n)) {
+        await _engine.seek(_engine.position - Duration(seconds: n));
+      }
       await _engine.play();
     }
   }

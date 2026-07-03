@@ -678,6 +678,7 @@ class SettingsIo {
         // backup payload, so a backup/restore silently reset them to defaults.
         'multiViewDecode': s.multiViewDecode.toJson(),
         'devControlsHideSecs': s.devControlsHideSecs,
+        'devSkipBackOnResumeSecs': s.devSkipBackOnResumeSecs, // fix652
         'playerZoomMode': s.playerZoomMode.name,
       };
 
@@ -819,6 +820,9 @@ class SettingsIo {
     }
     if (m['devControlsHideSecs'] is int) {
       s.devControlsHideSecs = m['devControlsHideSecs'] as int;
+    }
+    if (m['devSkipBackOnResumeSecs'] is int) {
+      s.devSkipBackOnResumeSecs = m['devSkipBackOnResumeSecs'] as int; // fix652
     }
     if (m['playerZoomMode'] is String) {
       s.playerZoomMode = ZoomMode.values.firstWhere(

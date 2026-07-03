@@ -117,6 +117,8 @@ const devCapFpsLowRamProp = "forceCapFps30LowRam_v2";
 const devHwdecImageFormatProp = "devHwdecImageFormat";
 const devAudioBufferSecsProp = "devAudioBufferSecs";
 const devControlsHideSecsProp = "devControlsHideSecs";
+// fix652: rewind-on-resume (seconds, 0 = off, VOD only).
+const devSkipBackOnResumeSecsProp = "devSkipBackOnResumeSecs";
 const playerZoomModeProp = "playerZoomMode";
 const devAudioSpdifProp = "devAudioSpdif";
 
@@ -390,6 +392,10 @@ class SettingsService {
     if (dchs != null) {
       settings.devControlsHideSecs = int.tryParse(dchs) ?? 3;
     }
+    final dsbr = settingsMap[devSkipBackOnResumeSecsProp];
+    if (dsbr != null) {
+      settings.devSkipBackOnResumeSecs = int.tryParse(dsbr) ?? 0;
+    }
     final pzm = settingsMap[playerZoomModeProp];
     if (pzm != null) {
       settings.playerZoomMode = ZoomMode.values.firstWhere(
@@ -529,6 +535,8 @@ class SettingsService {
         settings.devAudioBufferSecs.toString();
     settingsMap[devControlsHideSecsProp] =
         settings.devControlsHideSecs.toString();
+    settingsMap[devSkipBackOnResumeSecsProp] =
+        settings.devSkipBackOnResumeSecs.toString();
     settingsMap[playerZoomModeProp] = settings.playerZoomMode.name;
     settingsMap[devAudioSpdifProp] = settings.devAudioSpdif.toJson();
 

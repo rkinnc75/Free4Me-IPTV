@@ -195,6 +195,16 @@ const _helpDevControlsHideSecs = (
       'Set to 0 to keep the controls up until you tap to dismiss them.',
 );
 
+const _helpDevSkipBackOnResumeSecs = (
+  title: 'Skip back on resume (seconds)',
+  body:
+      'When you resume a paused movie or series episode, jump back this many '
+      'seconds first so you can pick the scene back up.\n\n'
+      'Live TV is never skipped — pausing live already leaves you behind the '
+      'live edge.\n\n'
+      'Default: 0 (off). Range: 0–30 s.',
+);
+
 const _helpLiveCacheSecs = (
   title: 'Livestream Cache (seconds)',
   body:
@@ -4348,6 +4358,22 @@ class _SettingsState extends State<SettingsView> {
                         onChanged: (v) {
                           setState(
                             () => settings.devControlsHideSecs = v.round(),
+                          );
+                          updateSettings();
+                        },
+                      ),
+                      _bufferSlider(
+                        label: "Skip back on resume (seconds, 0 = off)",
+                        value:
+                            settings.devSkipBackOnResumeSecs.toDouble(),
+                        min: 0,
+                        max: 30,
+                        divisions: 30,
+                        help: _helpDevSkipBackOnResumeSecs,
+                        onChanged: (v) {
+                          setState(
+                            () => settings.devSkipBackOnResumeSecs =
+                                v.round(),
                           );
                           updateSettings();
                         },

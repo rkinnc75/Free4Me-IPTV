@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.52': [
+    'New optional playback setting: "Skip back on resume" rewinds a few '
+        'seconds when you unpause a movie or episode so you can pick the '
+        'scene back up (Settings, default off; live TV is never skipped).',
+  ],
   '2.2.51': [
     'TV: holding the left/right remote keys now accelerates the skip — up '
         'to 2 minutes per step in long movies — and rapid presses are '

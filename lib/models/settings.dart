@@ -269,6 +269,11 @@ class Settings {
   /// (applies on low-RAM only).
   bool devCapFpsLowRam;
 
+  /// fix652: rewind this many seconds when resuming from pause — VOD
+  /// (movies/series) only; a paused live-DVR stream is already behind the
+  /// live edge by the pause length, so live never skips. 0 = off (default).
+  int devSkipBackOnResumeSecs;
+
   // fix394 review: removed devTargetColorspace — no `target-colorspace`
   // libmpv property exists (the real option is the `target-colorspace-hint`
   // yes/no flag plus `target-prim`/`target-trc`).
@@ -365,6 +370,7 @@ class Settings {
     this.devHwdecImageFormat = HwdecImageFormat.defaultFmt,
     this.devAudioBufferSecs = 0.2,
     this.devControlsHideSecs = 3,
+    this.devSkipBackOnResumeSecs = 0, // fix652: opt-in OFF
     this.playerZoomMode = ZoomMode.fit,
     this.devAudioSpdif = AudioSpdifMode.no,
   });
@@ -515,6 +521,7 @@ class Settings {
     s.devHwdecImageFormat = HwdecImageFormat.defaultFmt;
     s.devAudioBufferSecs = 0.2;
     s.devControlsHideSecs = 3;
+    s.devSkipBackOnResumeSecs = 0; // fix652: opt-in OFF
     s.devAudioSpdif = AudioSpdifMode.no;
 
     return s;
