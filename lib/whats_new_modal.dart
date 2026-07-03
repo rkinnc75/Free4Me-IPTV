@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.51': [
+    'TV: holding the left/right remote keys now accelerates the skip — up '
+        'to 2 minutes per step in long movies — and rapid presses are '
+        'batched so seeking stays smooth on low-power boxes.',
+  ],
   '2.2.50': [
     'TV: pressing OK in a movie or series now opens the same remote-friendly '
         'control overlay as live TV — with a new position/length progress bar '

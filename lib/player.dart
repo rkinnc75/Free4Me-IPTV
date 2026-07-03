@@ -27,6 +27,7 @@ import 'package:open_tv/models/source.dart';
 import 'package:open_tv/player/cast_controller.dart';
 import 'package:open_tv/player/overlay_player_controller.dart';
 import 'package:open_tv/player/pip_controller.dart';
+import 'package:open_tv/player/seek_acceleration.dart';
 import 'package:open_tv/player/mpv_engine.dart';
 import 'package:open_tv/player/debug_stats_overlay.dart';
 import 'package:open_tv/player/player_engine.dart';
@@ -190,6 +191,16 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   int _skipIndicatorSecs = 0;
   Timer? _skipIndicatorTimer;
   static const Duration _skipIndicatorHold = Duration(milliseconds: 900);
+
+  // fix651: ◀/▶ hold-to-seek. Key repeats accelerate through the ladder in
+  // seek_acceleration.dart, and the actual engine.seek is COALESCED — deltas
+  // accumulate and flush at most once per [_seekFlushEvery] — so a held key
+  // on a weak box (onn: every KeyRepeat previously awaited a full mpv seek)
+  // cannot flood the engine with seek requests.
+  int _seekRepeatCount = 0;
+  Duration _pendingSeek = Duration.zero;
+  Timer? _seekFlushTimer;
+  static const Duration _seekFlushEvery = Duration(milliseconds: 250);
 
   /// Subscriptions specifically tied to [_engine]'s streams (errorStream,
   /// bufferingStream, completedStream). Tracked separately from
@@ -918,6 +929,7 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     _surfTimer?.cancel(); // fix397
     _overlayHideTimer?.cancel(); // fix580
     _skipIndicatorTimer?.cancel(); // fix649
+    _seekFlushTimer?.cancel(); // fix651
     _overlayFirstFocus.dispose(); // fix580
     _surfKeyFocus.dispose(); // fix397
     for (final s in subscriptions) {
@@ -1078,17 +1090,46 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
 
   // ===================== fix360 (re-applied fix364): DVR transport ========
 
+  /// fix651: queue a transport seek. The FIRST request in an idle window is
+  /// applied immediately (a single tap feels instant); while the flush timer
+  /// is live, further deltas accumulate and land together on the next
+  /// [_seekFlushEvery] tick — ONE engine.seek per tick regardless of the
+  /// key-repeat rate. The skip chip updates per request, so feedback stays
+  /// per-press even while the engine seek is batched.
+  void _requestSeek(Duration delta) {
+    if (!_canSeekTransport) return;
+    _noteSkip(delta);
+    _pendingSeek += delta;
+    if (_seekFlushTimer != null) return;
+    _flushPendingSeek();
+    _seekFlushTimer = Timer.periodic(_seekFlushEvery, (_) {
+      if (_pendingSeek == Duration.zero) {
+        _seekFlushTimer?.cancel();
+        _seekFlushTimer = null;
+      } else {
+        _flushPendingSeek();
+      }
+    });
+  }
+
+  void _flushPendingSeek() {
+    final delta = _pendingSeek;
+    _pendingSeek = Duration.zero;
+    if (delta == Duration.zero) return;
+    unawaited(_seekBy(delta));
+  }
+
   /// fix649: shared ◀/▶ transport seek — live-DVR AND VOD (was `_dvrSeekBy`,
   /// gated on dvrActive only, which left LEFT/RIGHT dead on TV movies/series).
   /// Clamps to [0, duration]; duration unknown/0 → only the zero floor (mpv
-  /// clamps the live edge itself).
+  /// clamps the live edge itself). fix651: callers go through [_requestSeek]
+  /// (which owns the skip chip + coalescing); this only performs the seek.
   Future<void> _seekBy(Duration delta) async {
     if (!_canSeekTransport) return;
     var target = _engine.position + delta;
     if (target.isNegative) target = Duration.zero;
     final dur = _engine.duration;
     if (dur > Duration.zero && target > dur) target = dur;
-    _noteSkip(delta);
     await _engine.seek(target);
     AppLog.info(
         'Player: transport seek ${delta.inSeconds}s -> ${target.inSeconds}s');
@@ -1172,11 +1213,11 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
         _dvrButton(Icons.keyboard_arrow_up, 'Channel up', () => _surf(-1)),
       if (dvr)
         _dvrButton(Icons.replay_10, 'Rewind 10s',
-            () => _seekBy(const Duration(seconds: -10))),
+            () => _requestSeek(const Duration(seconds: -10))),
       const MaterialPlayOrPauseButton(iconSize: 40.0),
       if (dvr) ...[
         _dvrButton(Icons.forward_10, 'Forward 10s',
-            () => _seekBy(const Duration(seconds: 10))),
+            () => _requestSeek(const Duration(seconds: 10))),
         _dvrButton(Icons.live_tv, 'Back to live', _dvrGoLive),
       ],
       if (_canSurf)
@@ -1468,11 +1509,11 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
           _ovlButton(Icons.keyboard_arrow_up, 'Channel up', () => _surf(-1)),
         if (seekable)
           _ovlButton(Icons.replay_10, 'Rewind 10s',
-              () => _seekBy(const Duration(seconds: -10))),
+              () => _requestSeek(const Duration(seconds: -10))),
         playPause,
         if (seekable)
           _ovlButton(Icons.forward_10, 'Forward 10s',
-              () => _seekBy(const Duration(seconds: 10))),
+              () => _requestSeek(const Duration(seconds: 10))),
         if (dvr)
           _ovlButton(Icons.live_tv, 'Back to live', _dvrGoLive),
         if (_canSurf)
@@ -1540,10 +1581,20 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
         _surf(1);
         return KeyEventResult.handled;
       case PlayerKeyAction.seekBack:
-        _seekBy(const Duration(seconds: -10));
-        return KeyEventResult.handled;
       case PlayerKeyAction.seekForward:
-        _seekBy(const Duration(seconds: 10));
+        // fix651: repeats (held key) walk up the acceleration ladder; a fresh
+        // KeyDown resets it. Deltas go through the coalescer, not straight to
+        // the engine.
+        _seekRepeatCount =
+            event is KeyRepeatEvent ? _seekRepeatCount + 1 : 0;
+        final step = seekStepSeconds(
+          repeatCount: _seekRepeatCount,
+          duration: widget.channel.mediaType == MediaType.livestream
+              ? Duration.zero // DVR window length is unreliable → conservative
+              : _engine.duration,
+        );
+        _requestSeek(Duration(
+            seconds: action == PlayerKeyAction.seekBack ? -step : step));
         return KeyEventResult.handled;
       case PlayerKeyAction.playPauseReveal:
         _togglePlayPause();
