@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.43",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.43",
+  "latest": "2.2.44",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.44",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 TV: pressing LEFT on the remote from the first column of a channel or category grid now goes back a screen, just like the Back button, and the \"Press Back again to exit\" confirmation is now always on for TV so a stray Back press never closes the app.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.43/Free4Me-IPTV-2.2.43-arm64.apk"
+  "releaseNotes": "\u2022 TV guide: picking a category now loads its channels much faster (a slow background check no longer blocks the guide), the Back button from the channel list returns to the categories rail instead of trying to exit the app, and the rail now lists up to 10,000 categories (was 1,000).",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.44/Free4Me-IPTV-2.2.44-arm64.apk"
 }
