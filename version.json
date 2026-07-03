@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.46",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.46",
+  "latest": "2.2.47",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.47",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Favorites views on large catalogs now load instantly (a new favorites index), and slow-query diagnostics no longer freeze the screen while they collect catalog statistics.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.46/Free4Me-IPTV-2.2.46-arm64.apk"
+  "releaseNotes": "\u2022 TV voice search: tap the new mic button in the Search tab (or press a SEARCH key on remotes that have one, from any screen) to speak a search instead of typing it.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.47/Free4Me-IPTV-2.2.47-arm64.apk"
 }
