@@ -54,7 +54,9 @@ class TvGuideViewState extends State<TvGuideView> {
   static const int _windowHours = 3;
   static const int _channelCap = 200; // rail-scoped guard against huge groups
   // fix527: cap the (now paged) Live category rail, mirroring TvBrowseView.
-  static const int _railCap = 1000;
+  // fix644: raised 1000 -> 10000 — providers with huge category counts were
+  // silently truncated in the rail.
+  static const int _railCap = 10000;
 
   Map<int, int?> _sourceColors = {};
   List<int> _sourceIds = [];
@@ -352,16 +354,23 @@ class TvGuideViewState extends State<TvGuideView> {
       return KeyEventResult.ignored;
     }
     if (_railMode != RailMode.channels) return KeyEventResult.ignored;
-    // fix598/599: swap to categories. The SELECTED category's autofocus is
-    // best-effort; FORCE focus to it in a post-frame (same escape-to-nav race as
-    // entering channels). ALWAYS handled so LEFT never falls through to
-    // directional traversal.
+    _swapToCategories();
+    return KeyEventResult.handled;
+  }
+
+  /// fix598/599: swap to categories. The SELECTED category's autofocus is
+  /// best-effort; FORCE focus to it in a post-frame (same escape-to-nav race as
+  /// entering channels). ALWAYS handled so LEFT never falls through to
+  /// directional traversal.
+  /// fix644: extracted so the Back button (guide PopScope) shares the exact
+  /// behaviour of D-pad LEFT (fix584) — Back from the channels rail returns to
+  /// the categories rail instead of bubbling to the app-exit confirm.
+  void _swapToCategories() {
     setState(() => _railMode = RailMode.categories);
     final target = _railNodes[_selectedGroupId] ?? _railNodes[null];
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && _railMode == RailMode.categories) target?.requestFocus();
     });
-    return KeyEventResult.handled;
   }
 
   Future<void> _play(Channel ch) async {
@@ -423,7 +432,19 @@ class TvGuideViewState extends State<TvGuideView> {
     // fix597 (#4 redesign): top band = 70% preview (left) + channel info
     // (right); below = swapping rail (left) + passive EPG grid (right). The
     // grid no longer carries a channel-name column — names live in the rail.
-    return Column(
+    // fix644: the channels rail is a MODE swap, not a pushed route, so a Back
+    // press used to bubble straight to TvShell's exit confirm ("attempted to
+    // exit the app from the channels", onn 2026-07-03). Intercept Back while
+    // in channels mode and step back to the categories rail (same behaviour
+    // as D-pad LEFT, fix584); in categories mode Back bubbles normally so the
+    // shell's exit confirm still works.
+    return PopScope(
+      canPop: _railMode != RailMode.channels,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _swapToCategories();
+      },
+      child: Column(
       children: [
         SizedBox(
           height: 124,
@@ -461,6 +482,7 @@ class TvGuideViewState extends State<TvGuideView> {
           ),
         ),
       ],
+      ),
     );
   }
 

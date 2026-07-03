@@ -25,7 +25,9 @@ class TvCategoriesView extends StatefulWidget {
 }
 
 class _TvCategoriesViewState extends State<TvCategoriesView> {
-  static const int _cap = 1000;
+  // fix644: raised 1000 -> 10000 (matches the guide rail's _railCap) —
+  // providers with huge category counts were silently truncated.
+  static const int _cap = 10000;
   // fix547: Categories now spans all three media types. A centered row of three
   // type buttons (Live TV / Movies / Series) selects which type's categories the
   // grid below shows; defaults to Live TV.

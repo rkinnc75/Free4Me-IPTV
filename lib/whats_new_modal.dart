@@ -6,6 +6,13 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.44': [
+    'TV guide: picking a category now loads its channels much faster (a '
+        'slow background check no longer blocks the guide), the Back '
+        'button from the channel list returns to the categories rail '
+        'instead of trying to exit the app, and the rail now lists up to '
+        '10,000 categories (was 1,000).',
+  ],
   '2.2.43': [
     'TV: pressing LEFT on the remote from the first column of a channel '
         'or category grid now goes back a screen, just like the Back '

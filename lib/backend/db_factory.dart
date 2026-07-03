@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/utils.dart';
 import 'package:open_tv/backend/timed_db.dart';
@@ -1093,8 +1095,6 @@ class DbFactory {
 /// integrity at the application layer (Sql.deleteEpgForSource is called
 /// from Sql.deleteSource).
 class EpgDbFactory {
-  static SqliteDatabase? _db;
-
   static Future<SqliteDatabase> _createDB() async {
     final db = SqliteDatabase(path: '${await Utils.appDir}/epg.sqlite');
     final migrations = SqliteMigrations()
@@ -1174,7 +1174,21 @@ class EpgDbFactory {
     // out of sync), EPG title search returns 0 and the search "On now"/"Coming
     // up" shelves are silently always empty (diag 2026-06-28: epgProg=.../0 on
     // every query while the guide showed NOW/NEXT). Rebuild once if the counts
-    // disagree. The counts are cheap; the rebuild only runs when actually stale.
+    // disagree.
+    // fix644: run the check FIRE-AND-FORGET instead of blocking the open. The
+    // two COUNT(*)s walk ~2.8M programme rows plus the trigram FTS — ~7-15s
+    // EACH on the onn — and every first EPG consumer (the guide's category
+    // select) was stuck behind them (2026-07-03 log: ~26s category -> channels).
+    // Worst case during the check window: EPG title search briefly returns
+    // stale/empty shelves; the guide's NOW/NEXT grid (plain programmes table)
+    // is unaffected.
+    unawaited(_selfHealProgrammesFts(db));
+
+    return db;
+  }
+
+  /// fix644: extracted fix593 self-heal — see the call site above.
+  static Future<void> _selfHealProgrammesFts(SqliteDatabase db) async {
     try {
       final progCount = (await db.get('SELECT count(*) c FROM programmes'))['c']
               as int? ??
@@ -1196,12 +1210,17 @@ class EpgDbFactory {
     } catch (e) {
       AppLog.warn('EpgDb: programmes_fts self-heal check failed — $e');
     }
-
-    return db;
   }
 
+  // fix644: memoize the OPEN FUTURE, not the result. The old
+  // `_db ??= await _createDB()` raced: every caller that arrived while the
+  // first open was still in flight saw `_db == null` and started ANOTHER full
+  // open (2026-07-03 onn log: two "EpgDb: opened" + three programme-count
+  // pairs stacked ~26s of duplicate work behind the guide's first category
+  // select). With the future memoized, concurrent callers await the same open.
+  static Future<SqliteDatabase>? _dbFuture;
+
   static Future<SqliteDatabase> get db async {
-    _db ??= await _createDB();
-    return _db!;
+    return _dbFuture ??= _createDB();
   }
 }

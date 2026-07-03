@@ -1,0 +1,183 @@
+diff --git a/lib/backend/db_factory.dart b/lib/backend/db_factory.dart
+index 267e583..6caed80 100644
+--- a/lib/backend/db_factory.dart
++++ b/lib/backend/db_factory.dart
+@@ -1,3 +1,5 @@
++import 'dart:async';
++
+ import 'package:open_tv/backend/app_logger.dart';
+ import 'package:open_tv/backend/utils.dart';
+ import 'package:open_tv/backend/timed_db.dart';
+@@ -1093,8 +1095,6 @@ class DbFactory {
+ /// integrity at the application layer (Sql.deleteEpgForSource is called
+ /// from Sql.deleteSource).
+ class EpgDbFactory {
+-  static SqliteDatabase? _db;
+-
+   static Future<SqliteDatabase> _createDB() async {
+     final db = SqliteDatabase(path: '${await Utils.appDir}/epg.sqlite');
+     final migrations = SqliteMigrations()
+@@ -1174,7 +1174,21 @@ class EpgDbFactory {
+     // out of sync), EPG title search returns 0 and the search "On now"/"Coming
+     // up" shelves are silently always empty (diag 2026-06-28: epgProg=.../0 on
+     // every query while the guide showed NOW/NEXT). Rebuild once if the counts
+-    // disagree. The counts are cheap; the rebuild only runs when actually stale.
++    // disagree.
++    // fix644: run the check FIRE-AND-FORGET instead of blocking the open. The
++    // two COUNT(*)s walk ~2.8M programme rows plus the trigram FTS — ~7-15s
++    // EACH on the onn — and every first EPG consumer (the guide's category
++    // select) was stuck behind them (2026-07-03 log: ~26s category -> channels).
++    // Worst case during the check window: EPG title search briefly returns
++    // stale/empty shelves; the guide's NOW/NEXT grid (plain programmes table)
++    // is unaffected.
++    unawaited(_selfHealProgrammesFts(db));
++
++    return db;
++  }
++
++  /// fix644: extracted fix593 self-heal — see the call site above.
++  static Future<void> _selfHealProgrammesFts(SqliteDatabase db) async {
+     try {
+       final progCount = (await db.get('SELECT count(*) c FROM programmes'))['c']
+               as int? ??
+@@ -1196,12 +1210,17 @@ class EpgDbFactory {
+     } catch (e) {
+       AppLog.warn('EpgDb: programmes_fts self-heal check failed — $e');
+     }
+-
+-    return db;
+   }
+ 
++  // fix644: memoize the OPEN FUTURE, not the result. The old
++  // `_db ??= await _createDB()` raced: every caller that arrived while the
++  // first open was still in flight saw `_db == null` and started ANOTHER full
++  // open (2026-07-03 onn log: two "EpgDb: opened" + three programme-count
++  // pairs stacked ~26s of duplicate work behind the guide's first category
++  // select). With the future memoized, concurrent callers await the same open.
++  static Future<SqliteDatabase>? _dbFuture;
++
+   static Future<SqliteDatabase> get db async {
+-    _db ??= await _createDB();
+-    return _db!;
++    return _dbFuture ??= _createDB();
+   }
+ }
+diff --git a/lib/tv/tv_categories_view.dart b/lib/tv/tv_categories_view.dart
+index 5f87fc7..7ed9714 100644
+--- a/lib/tv/tv_categories_view.dart
++++ b/lib/tv/tv_categories_view.dart
+@@ -25,7 +25,9 @@ class TvCategoriesView extends StatefulWidget {
+ }
+ 
+ class _TvCategoriesViewState extends State<TvCategoriesView> {
+-  static const int _cap = 1000;
++  // fix644: raised 1000 -> 10000 (matches the guide rail's _railCap) —
++  // providers with huge category counts were silently truncated.
++  static const int _cap = 10000;
+   // fix547: Categories now spans all three media types. A centered row of three
+   // type buttons (Live TV / Movies / Series) selects which type's categories the
+   // grid below shows; defaults to Live TV.
+diff --git a/lib/tv/tv_guide_view.dart b/lib/tv/tv_guide_view.dart
+index dd0b1b5..0eff8f8 100644
+--- a/lib/tv/tv_guide_view.dart
++++ b/lib/tv/tv_guide_view.dart
+@@ -54,7 +54,9 @@ class TvGuideViewState extends State<TvGuideView> {
+   static const int _windowHours = 3;
+   static const int _channelCap = 200; // rail-scoped guard against huge groups
+   // fix527: cap the (now paged) Live category rail, mirroring TvBrowseView.
+-  static const int _railCap = 1000;
++  // fix644: raised 1000 -> 10000 — providers with huge category counts were
++  // silently truncated in the rail.
++  static const int _railCap = 10000;
+ 
+   Map<int, int?> _sourceColors = {};
+   List<int> _sourceIds = [];
+@@ -352,16 +354,23 @@ class TvGuideViewState extends State<TvGuideView> {
+       return KeyEventResult.ignored;
+     }
+     if (_railMode != RailMode.channels) return KeyEventResult.ignored;
+-    // fix598/599: swap to categories. The SELECTED category's autofocus is
+-    // best-effort; FORCE focus to it in a post-frame (same escape-to-nav race as
+-    // entering channels). ALWAYS handled so LEFT never falls through to
+-    // directional traversal.
++    _swapToCategories();
++    return KeyEventResult.handled;
++  }
++
++  /// fix598/599: swap to categories. The SELECTED category's autofocus is
++  /// best-effort; FORCE focus to it in a post-frame (same escape-to-nav race as
++  /// entering channels). ALWAYS handled so LEFT never falls through to
++  /// directional traversal.
++  /// fix644: extracted so the Back button (guide PopScope) shares the exact
++  /// behaviour of D-pad LEFT (fix584) — Back from the channels rail returns to
++  /// the categories rail instead of bubbling to the app-exit confirm.
++  void _swapToCategories() {
+     setState(() => _railMode = RailMode.categories);
+     final target = _railNodes[_selectedGroupId] ?? _railNodes[null];
+     WidgetsBinding.instance.addPostFrameCallback((_) {
+       if (mounted && _railMode == RailMode.categories) target?.requestFocus();
+     });
+-    return KeyEventResult.handled;
+   }
+ 
+   Future<void> _play(Channel ch) async {
+@@ -423,7 +432,19 @@ class TvGuideViewState extends State<TvGuideView> {
+     // fix597 (#4 redesign): top band = 70% preview (left) + channel info
+     // (right); below = swapping rail (left) + passive EPG grid (right). The
+     // grid no longer carries a channel-name column — names live in the rail.
+-    return Column(
++    // fix644: the channels rail is a MODE swap, not a pushed route, so a Back
++    // press used to bubble straight to TvShell's exit confirm ("attempted to
++    // exit the app from the channels", onn 2026-07-03). Intercept Back while
++    // in channels mode and step back to the categories rail (same behaviour
++    // as D-pad LEFT, fix584); in categories mode Back bubbles normally so the
++    // shell's exit confirm still works.
++    return PopScope(
++      canPop: _railMode != RailMode.channels,
++      onPopInvokedWithResult: (didPop, result) {
++        if (didPop) return;
++        _swapToCategories();
++      },
++      child: Column(
+       children: [
+         SizedBox(
+           height: 124,
+@@ -461,6 +482,7 @@ class TvGuideViewState extends State<TvGuideView> {
+           ),
+         ),
+       ],
++      ),
+     );
+   }
+ 
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 07fdc37..54c34e7 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,13 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '2.2.44': [
++    'TV guide: picking a category now loads its channels much faster (a '
++        'slow background check no longer blocks the guide), the Back '
++        'button from the channel list returns to the categories rail '
++        'instead of trying to exit the app, and the rail now lists up to '
++        '10,000 categories (was 1,000).',
++  ],
+   '2.2.43': [
+     'TV: pressing LEFT on the remote from the first column of a channel '
+         'or category grid now goes back a screen, just like the Back '
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 7506941..ab1cd5d 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 2.2.43+632
++version: 2.2.44+633
+ 
+ environment:
+   sdk: ^3.10.7
