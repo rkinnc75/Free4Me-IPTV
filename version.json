@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.44",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.44",
+  "latest": "2.2.45",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.45",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 TV guide: picking a category now loads its channels much faster (a slow background check no longer blocks the guide), the Back button from the channel list returns to the categories rail instead of trying to exit the app, and the rail now lists up to 10,000 categories (was 1,000).",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.44/Free4Me-IPTV-2.2.44-arm64.apk"
+  "releaseNotes": "\u2022 The Live TV category rail now refreshes after you enable, disable, or favorite categories in the Categories tab \u2014 previously the changes only showed up after an app restart or source change.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.45/Free4Me-IPTV-2.2.45-arm64.apk"
 }
