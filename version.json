@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.49",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.49",
+  "latest": "2.2.50",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.50",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 TV: the left/right remote keys now skip back/forward in movies and series too (previously they only worked inside a live DVR window), and every skip shows a small on-screen chip with the seconds moved.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.49/Free4Me-IPTV-2.2.49-arm64.apk"
+  "releaseNotes": "\u2022 TV: pressing OK in a movie or series now opens the same remote-friendly control overlay as live TV \u2014 with a new position/length progress bar \u2014 instead of controls the remote could not reach.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.50/Free4Me-IPTV-2.2.50-arm64.apk"
 }
