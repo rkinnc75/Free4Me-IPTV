@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.42",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.42",
+  "latest": "2.2.43",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.43",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 Clearing the log now actually deletes the old log and cached provider dumps again, and search-index rebuilds during a normal refresh no longer show a scary \"malformed\" warning in the log.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.42/Free4Me-IPTV-2.2.42-arm64.apk"
+  "releaseNotes": "\u2022 TV: pressing LEFT on the remote from the first column of a channel or category grid now goes back a screen, just like the Back button, and the \"Press Back again to exit\" confirmation is now always on for TV so a stray Back press never closes the app.",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.43/Free4Me-IPTV-2.2.43-arm64.apk"
 }
