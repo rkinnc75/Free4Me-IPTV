@@ -1,8 +1,8 @@
 {
-  "latest": "2.2.51",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.51",
+  "latest": "2.2.52",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.52",
   "minSupportedAndroidApi": 21,
   "criticalUpdate": false,
-  "releaseNotes": "\u2022 TV: holding the left/right remote keys now accelerates the skip \u2014 up to 2 minutes per step in long movies \u2014 and rapid presses are batched so seeking stays smooth on low-power boxes.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.51/Free4Me-IPTV-2.2.51-arm64.apk"
+  "releaseNotes": "\u2022 New optional playback setting: \"Skip back on resume\" rewinds a few seconds when you unpause a movie or episode so you can pick the scene back up (Settings, default off; live TV is never skipped).",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.52/Free4Me-IPTV-2.2.52-arm64.apk"
 }
