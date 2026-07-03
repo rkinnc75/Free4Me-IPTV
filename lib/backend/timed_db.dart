@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:sqlite3/common.dart' as sqlite;
 import 'package:sqlite_async/sqlite_async.dart';
 
@@ -59,7 +61,14 @@ class TimedWriteContext implements SqliteWriteContext {
           }
           if (!_browseStatsLogged && flat.contains('FROM channels c')) {
             _browseStatsLogged = true;
-            await _logBrowseStats();
+            // fix646: FIRE-AND-FORGET. The dump's five full-catalog aggregates
+            // took ~60s on the onn (2026-07-03 log: a 15s favorites query
+            // ballooned to a 75s screen stall because this ran inside the
+            // caller's await chain). The one-shot guard is already set above;
+            // the stats lines simply land in the log a few seconds after the
+            // PLAN line. Runs on the read pool (_inner getAll), so it does not
+            // block subsequent writes.
+            unawaited(_logBrowseStats());
           }
         }
       }

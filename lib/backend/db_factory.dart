@@ -1006,6 +1006,22 @@ class DbFactory {
             'ALTER TABLE sources ADD COLUMN exp_date INTEGER;');
         await tx.execute(
             'ALTER TABLE sources ADD COLUMN status TEXT;');
+      }))
+      ..add(SqliteMigration(43, (tx) async {
+        // fix646: partial index for favorite browse. The Favorites view on a
+        // big catalog (`... favorite = 1` over ~760k enabled movie rows) had
+        // no favorite-aware index — the planner walked the whole media_type
+        // range testing favorite=1 per row (onn 2026-07-03: 15.3s for 3 rows).
+        // Favorites are a tiny set, so a partial index makes every favorites
+        // query a handful of seeks. The WHERE text matches the query's
+        // `favorite = 1` term exactly (SQLite's partial-index matcher is
+        // conservative — do NOT rewrite as COALESCE). Tiny row count => near-
+        // zero insert-maintenance cost; withDroppedBrowseIndexes captures and
+        // recreates it like every other non-unique channels index.
+        await tx.execute(
+            'CREATE INDEX IF NOT EXISTS idx_fav_browse ON channels'
+            '(media_type, source_id, name COLLATE NOCASE)'
+            ' WHERE favorite = 1;');
       }));
     // fix608 (#2): bound memory so any migration that rebuilds a browse index
     // over an ALREADY-POPULATED channels table — a user upgrading with a huge

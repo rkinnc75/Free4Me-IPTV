@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.46': [
+    'Favorites views on large catalogs now load instantly (a new '
+        'favorites index), and slow-query diagnostics no longer freeze '
+        'the screen while they collect catalog statistics.',
+  ],
   '2.2.45': [
     'The Live TV category rail now refreshes after you enable, disable, '
         'or favorite categories in the Categories tab — previously the '

@@ -1,0 +1,82 @@
+diff --git a/lib/backend/db_factory.dart b/lib/backend/db_factory.dart
+index 6caed80..69d486b 100644
+--- a/lib/backend/db_factory.dart
++++ b/lib/backend/db_factory.dart
+@@ -1006,6 +1006,22 @@ class DbFactory {
+             'ALTER TABLE sources ADD COLUMN exp_date INTEGER;');
+         await tx.execute(
+             'ALTER TABLE sources ADD COLUMN status TEXT;');
++      }))
++      ..add(SqliteMigration(43, (tx) async {
++        // fix646: partial index for favorite browse. The Favorites view on a
++        // big catalog (`... favorite = 1` over ~760k enabled movie rows) had
++        // no favorite-aware index — the planner walked the whole media_type
++        // range testing favorite=1 per row (onn 2026-07-03: 15.3s for 3 rows).
++        // Favorites are a tiny set, so a partial index makes every favorites
++        // query a handful of seeks. The WHERE text matches the query's
++        // `favorite = 1` term exactly (SQLite's partial-index matcher is
++        // conservative — do NOT rewrite as COALESCE). Tiny row count => near-
++        // zero insert-maintenance cost; withDroppedBrowseIndexes captures and
++        // recreates it like every other non-unique channels index.
++        await tx.execute(
++            'CREATE INDEX IF NOT EXISTS idx_fav_browse ON channels'
++            '(media_type, source_id, name COLLATE NOCASE)'
++            ' WHERE favorite = 1;');
+       }));
+     // fix608 (#2): bound memory so any migration that rebuilds a browse index
+     // over an ALREADY-POPULATED channels table — a user upgrading with a huge
+diff --git a/lib/backend/timed_db.dart b/lib/backend/timed_db.dart
+index e419144..cb2fdb2 100644
+--- a/lib/backend/timed_db.dart
++++ b/lib/backend/timed_db.dart
+@@ -1,3 +1,5 @@
++import 'dart:async';
++
+ import 'package:sqlite3/common.dart' as sqlite;
+ import 'package:sqlite_async/sqlite_async.dart';
+ 
+@@ -59,7 +61,14 @@ class TimedWriteContext implements SqliteWriteContext {
+           }
+           if (!_browseStatsLogged && flat.contains('FROM channels c')) {
+             _browseStatsLogged = true;
+-            await _logBrowseStats();
++            // fix646: FIRE-AND-FORGET. The dump's five full-catalog aggregates
++            // took ~60s on the onn (2026-07-03 log: a 15s favorites query
++            // ballooned to a 75s screen stall because this ran inside the
++            // caller's await chain). The one-shot guard is already set above;
++            // the stats lines simply land in the log a few seconds after the
++            // PLAN line. Runs on the read pool (_inner getAll), so it does not
++            // block subsequent writes.
++            unawaited(_logBrowseStats());
+           }
+         }
+       }
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index a688278..2ad57d2 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '2.2.46': [
++    'Favorites views on large catalogs now load instantly (a new '
++        'favorites index), and slow-query diagnostics no longer freeze '
++        'the screen while they collect catalog statistics.',
++  ],
+   '2.2.45': [
+     'The Live TV category rail now refreshes after you enable, disable, '
+         'or favorite categories in the Categories tab — previously the '
+diff --git a/pubspec.yaml b/pubspec.yaml
+index d24dfa7..98ee5d2 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 2.2.45+634
++version: 2.2.46+635
+ 
+ environment:
+   sdk: ^3.10.7
