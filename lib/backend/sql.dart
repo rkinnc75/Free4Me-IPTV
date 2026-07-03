@@ -1127,9 +1127,25 @@ class Sql {
       if (useSrcGrpHint && !await _indexExists('idx_browse_src_grp')) {
         useSrcGrpHint = false;
       }
+      // fix648: the Favorites browse mis-picks like fix627's category browse
+      // did — the fix646 partial index idx_fav_browse (media_type, source_id,
+      // name WHERE favorite = 1) EXISTS but the planner walks
+      // idx_channel_src_media_url over the whole media_type range instead,
+      // residual-testing favorite=1 per row + temp-B-tree (onn 2026-07-03:
+      // 64s/30s for 3 rows — VERIFY_643-647 §4 FAIL). Averaged sqlite_stat1
+      // can't see that favorite=1 is ~a-dozen rows, so ANALYZE can't fix the
+      // pick (fix531). Forcing is provably safe: this hint's condition is
+      // IDENTICAL to the branch below that appends `AND favorite = 1`, which
+      // implies the index's partial WHERE — same result set, just seeks the
+      // tiny favorites index. Same live _indexExists gate as fix526/627.
+      var useFavHint = filters.viewType == ViewType.favorites &&
+          filters.seriesId == null;
+      if (useFavHint && !await _indexExists('idx_fav_browse')) {
+        useFavHint = false;
+      }
       // No query — simple filter on indexed columns.
       sqlQuery = '''
-        SELECT * FROM channels c${useSrcMtHint ? ' INDEXED BY idx_browse_src_mt' : useSrcGrpHint ? ' INDEXED BY idx_browse_src_grp' : ''}
+        SELECT * FROM channels c${useFavHint ? ' INDEXED BY idx_fav_browse' : useSrcMtHint ? ' INDEXED BY idx_browse_src_mt' : useSrcGrpHint ? ' INDEXED BY idx_browse_src_grp' : ''}
         WHERE media_type IN (${generatePlaceholders(mediaTypes.length)})
           AND source_id IN (${generatePlaceholders(filters.sourceIds!.length)})
           AND url IS NOT NULL
@@ -1700,6 +1716,12 @@ class Sql {
         'CREATE INDEX IF NOT EXISTS idx_channel_src_media_url ON channels(source_id, media_type, url)',
     'idx_channel_lastwatched_media':
         'CREATE INDEX IF NOT EXISTS idx_channel_lastwatched_media ON channels(last_watched, media_type) WHERE last_watched IS NOT NULL',
+    // fix648: the fix646 favorites partial index (migration 43) was NOT in
+    // this map — an interrupted refresh would drop it permanently and the
+    // self-heal would never rebuild it, silently turning the fix648 forced
+    // hint off (the _indexExists gate). Def matches migration 43 verbatim.
+    'idx_fav_browse':
+        'CREATE INDEX IF NOT EXISTS idx_fav_browse ON channels(media_type, source_id, name COLLATE NOCASE) WHERE favorite = 1',
   };
 
   /// fix628: startup self-heal for the channels indexes. Rebuilds any that are
@@ -3367,8 +3389,19 @@ class Sql {
         .toList();
     if (terms.isEmpty) return [];
 
+    // fix648: same favorites force as the no-query browse. A favorites text
+    // search otherwise LIKE-scans the catalog and residual-tests favorite=1;
+    // seeking idx_fav_browse first bounds the scan to the ~dozen favorite
+    // rows, with the LIKE terms applied as residuals. Valid because this
+    // hint's condition is IDENTICAL to the branch below that appends
+    // `AND c.favorite = 1` (implies the index's partial WHERE). Gated live on
+    // _indexExists (fix526 — forced INDEXED BY on a missing index is a crash).
+    final useFavHint = filters.viewType == ViewType.favorites &&
+        filters.seriesId == null &&
+        await _indexExists('idx_fav_browse');
+
     var sqlQuery = '''
-      SELECT * FROM channels c
+      SELECT * FROM channels c${useFavHint ? ' INDEXED BY idx_fav_browse' : ''}
       WHERE (${terms.map((_) => 'c.name LIKE ?').join(' AND ')})
         AND c.media_type IN (${generatePlaceholders(mediaTypes.length)})
         AND c.source_id IN (${generatePlaceholders(filters.sourceIds!.length)})

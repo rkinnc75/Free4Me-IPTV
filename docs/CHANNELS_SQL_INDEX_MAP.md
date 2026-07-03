@@ -41,13 +41,14 @@ Lifecycle legend: **canon** = in `_canonicalChannelIndexes` (sql.dart:1630), sel
 | `index_channel_group_id` | `group_id` | (full) | canon; refresh:drop/recreate | group_id lookups / group joins. |
 | `index_channel_series_id` | `series_id` | `series_id IS NOT NULL` (partial as of mig 32/fix392; was full in mig 1) | canon; refresh:drop/recreate | Series drilldown (`series_id = ?`). Made partial so it stops shadowing browse-tier indexes on `series_id IS NULL` (fix392). |
 | `index_channels_stream_id` | `stream_id` | (full) | canon; refresh:drop/recreate | stream_id lookups. |
-| `index_channels_group_name` | `group_name` | (full) | canon; refresh:drop/recreate | group_name lookups. |
-| `index_channel_last_watched` | `last_watched` | (full) | canon; refresh:drop/recreate | History / last_watched ordering. |
+| `index_channels_group_name` | `group_name` | (full) | **DROPPED mig 41/fix629** (was canon) | (was: group_name lookups — all real uses are source_id-scoped; never load-bearing.) |
+| `index_channel_last_watched` | `last_watched` | (full) | **DROPPED mig 41/fix629** (was canon) | (was: History ordering — superseded by `idx_channel_lastwatched_media`.) |
 | `idx_channels_epg_id` | `epg_channel_id` | (full) | canon; refresh:drop/recreate | EPG channel-id matching / programme-guide joins. |
 | `index_channel_name_source` | `name, source_id` | (full) | canon; refresh:drop/recreate | restorePreserve join on `(name, source_id)`; replaced dropped `channels_unique` (~134s regression fix). |
-| `idx_epg_unmatched` | `source_id` | `media_type=0 AND epg_manual_override IS NULL AND epg_channel_id IS NULL` | canon; refresh:drop/recreate | EPG auto-match scan `getChannelsNeedingEpgMatch` / `getUnmatchedLiveChannels`. |
-| `idx_channel_src_media_url` | `source_id, media_type, url` | (full) | canon; refresh:drop/recreate | No-query / history seek by source + media type on large catalogs. |
+| `idx_epg_unmatched` | `source_id` | `media_type=0 AND epg_manual_override IS NULL AND epg_channel_id IS NULL` | canon; refresh:drop/recreate | EPG auto-match scan `getChannelsNeedingEpgMatch` (forced via gated `INDEXED BY`, fix629). |
+| `idx_channel_src_media_url` | `source_id, media_type, url` | (full) | canon; refresh:drop/recreate | No-query / history seek by source + media type; **load-bearing for Re-match-all** (`getChannelsForEpgMatching`, 54k rows in 2.5s on onn) — do NOT drop. |
 | `idx_channel_lastwatched_media` | `last_watched, media_type` | `last_watched IS NOT NULL` | canon; refresh:drop/recreate | History view ordered by last_watched, filtered by media_type. |
+| `idx_fav_browse` | `media_type, source_id, name COLLATE NOCASE` | `favorite = 1` | canon (fix648); created mig 43/fix646; refresh:drop/recreate | Favorites browse + favorites LIKE-search, forced via gated `INDEXED BY` (fix648 — planner mis-picked `idx_channel_src_media_url`, 64s for 3 rows on onn; averaged stats can't see favorite=1 is ~a dozen rows). |
 
 ### 1c. UNIQUE indexes (survive refresh; not canon)
 
