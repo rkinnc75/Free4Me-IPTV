@@ -5,6 +5,7 @@ import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/setting_bounds.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
+import 'package:open_tv/backend/voice_search.dart';
 import 'package:open_tv/channel_tile.dart';
 import 'package:open_tv/home.dart';
 import 'package:open_tv/models/channel.dart';
@@ -78,6 +79,16 @@ class _TvSearchViewState extends State<TvSearchView> {
       _sourceIds = enabled.map((e) => e.id).whereType<int>().toList();
       _ready = true;
     });
+    // fix647: consume a voice-recognized query handed over by TvShell. The
+    // Search tab is rebuilt under a fresh key on every entry, so initState
+    // always runs and a pending query can never be missed or double-run.
+    final vq = VoiceSearch.pendingQuery;
+    if (vq != null && vq.isNotEmpty) {
+      VoiceSearch.pendingQuery = null;
+      _controller.text = vq;
+      _pendingFocusFirst = true; // fix603: land focus on the first result
+      await _run(vq);
+    }
   }
 
   @override
@@ -300,6 +311,15 @@ class _TvSearchViewState extends State<TvSearchView> {
             decoration: InputDecoration(
               hintText: "Search channels and what's on…",
               prefixIcon: const Icon(Icons.search),
+              // fix647: mic button — launches the system voice-recognition
+              // dialog; the recognized text routes back through TvShell and
+              // re-enters this tab prefilled + run. Works on every remote
+              // (the Assistant mic key itself never reaches the app).
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.mic),
+                tooltip: 'Voice search',
+                onPressed: _ready ? () => VoiceSearch.start() : null,
+              ),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
                 borderSide: BorderSide.none,

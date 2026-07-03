@@ -11,6 +11,7 @@ import 'package:open_tv/confirm_exit_scope.dart';
 import 'package:open_tv/models/view_type.dart';
 import 'package:open_tv/settings_view.dart';
 import 'package:open_tv/tv/tv_browse_view.dart';
+import 'package:open_tv/backend/voice_search.dart';
 import 'package:open_tv/tv/tv_categories_view.dart';
 import 'package:open_tv/tv/tv_guide_view.dart';
 import 'package:open_tv/tv/tv_search_view.dart';
@@ -108,6 +109,40 @@ class _TvShellState extends State<TvShell> {
     super.initState();
     _index = _landingIndex(widget.settings.defaultView);
     _ensureBuilt(_index);
+    // fix647: voice search routing. Recognized text lands here (from the
+    // Search tab's mic button or a hardware SEARCH key on any screen); stash
+    // it and (re)build the Search tab, which consumes it in its init — the
+    // same fresh-key rebuild _select() already does for keyed tabs.
+    VoiceSearch.bind();
+    VoiceSearch.onResult = (text) {
+      if (!mounted) return;
+      VoiceSearch.pendingQuery = text;
+      final si = _tabs.indexWhere((t) => t.isSearch);
+      if (si < 0) return;
+      if (_index == si) {
+        // Already on Search — force the fresh-key rebuild _select() would do.
+        setState(() {
+          _reloadGen++;
+          _built[si] = null;
+          _ensureBuilt(si);
+        });
+      } else {
+        _select(si);
+      }
+    };
+    VoiceSearch.onUnavailable = () {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Voice input is not available on this device')));
+    };
+  }
+
+  @override
+  void dispose() {
+    // fix647: drop the routing callbacks if they are still ours.
+    VoiceSearch.onResult = null;
+    VoiceSearch.onUnavailable = null;
+    super.dispose();
   }
 
   /// fix500: map the saved Default view onto a landing tab. [ViewType] has no

@@ -2,12 +2,16 @@ package me.free4me.iptv
 
 import android.app.ActivityManager
 import android.app.PictureInPictureParams
+import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
+import android.speech.RecognizerIntent
 import android.util.Rational
+import android.view.KeyEvent
 import android.view.SurfaceView
 import android.view.View
 import android.view.ViewGroup
@@ -23,9 +27,86 @@ class MainActivity : FlutterActivity() {
     // only triggers PiP when video is actually playing.
     private var isVideoPlaying = false
 
+    // ── fix647: voice search ──────────────────────────────────────────────
+    // The remote's mic button is an Assistant key the system consumes, so the
+    // app launches the RecognizerIntent dialog itself instead: from the Search
+    // tab's mic button (Dart calls "start") or a hardware KEYCODE_SEARCH press
+    // on any screen (onKeyDown below). Recognized text is delivered INTO Dart
+    // as an inbound "voiceResult" method call; Dart routes it to the Search
+    // tab. Phone mode never binds a handler, so inbound calls are dropped.
+    private var voiceChannel: MethodChannel? = null
+    private var voicePending = false
+
+    companion object {
+        private const val VOICE_REQUEST_CODE = 64701
+    }
+
+    private fun launchVoiceRecognition() {
+        if (voicePending) return
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(
+                RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
+            )
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "Search channels and what's on…")
+        }
+        try {
+            voicePending = true
+            @Suppress("DEPRECATION")
+            startActivityForResult(intent, VOICE_REQUEST_CODE)
+        } catch (_: ActivityNotFoundException) {
+            voicePending = false
+            voiceChannel?.invokeMethod("voiceUnavailable", null)
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == VOICE_REQUEST_CODE) {
+            voicePending = false
+            if (resultCode == RESULT_OK) {
+                val text = data
+                    ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                    ?.firstOrNull()
+                if (!text.isNullOrBlank()) {
+                    voiceChannel?.invokeMethod("voiceResult", text)
+                }
+            }
+            // Cancel / no match: do nothing — the user backed out.
+        }
+        @Suppress("DEPRECATION")
+        super.onActivityResult(requestCode, resultCode, data)
+    }
+
+    // Remotes/keyboards with a dedicated SEARCH key can start voice search
+    // from ANY screen. (The Assistant mic key never reaches the app.)
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_SEARCH) {
+            launchVoiceRecognition()
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         flutterEngine.plugins.add(CastPlugin())
+
+        // ── fix647: voice-search MethodChannel ────────────────────────────
+        voiceChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "me.free4me.iptv/voice",
+        ).also { ch ->
+            ch.setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "start" -> {
+                        launchVoiceRecognition()
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+        }
 
         // ── fix506: render-cap pref bridge ────────────────────────────────
         // Flutter's render-cap toggle writes the SharedPref that

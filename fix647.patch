@@ -1,0 +1,301 @@
+diff --git a/android/app/src/main/kotlin/me/free4me/iptv/MainActivity.kt b/android/app/src/main/kotlin/me/free4me/iptv/MainActivity.kt
+index a953067..ddf3234 100644
+--- a/android/app/src/main/kotlin/me/free4me/iptv/MainActivity.kt
++++ b/android/app/src/main/kotlin/me/free4me/iptv/MainActivity.kt
+@@ -2,12 +2,16 @@ package me.free4me.iptv
+ 
+ import android.app.ActivityManager
+ import android.app.PictureInPictureParams
++import android.content.ActivityNotFoundException
+ import android.content.Context
++import android.content.Intent
+ import android.content.pm.PackageManager
+ import android.content.res.Configuration
+ import android.os.Build
+ import android.os.Bundle
++import android.speech.RecognizerIntent
+ import android.util.Rational
++import android.view.KeyEvent
+ import android.view.SurfaceView
+ import android.view.View
+ import android.view.ViewGroup
+@@ -23,10 +27,87 @@ class MainActivity : FlutterActivity() {
+     // only triggers PiP when video is actually playing.
+     private var isVideoPlaying = false
+ 
++    // ── fix647: voice search ──────────────────────────────────────────────
++    // The remote's mic button is an Assistant key the system consumes, so the
++    // app launches the RecognizerIntent dialog itself instead: from the Search
++    // tab's mic button (Dart calls "start") or a hardware KEYCODE_SEARCH press
++    // on any screen (onKeyDown below). Recognized text is delivered INTO Dart
++    // as an inbound "voiceResult" method call; Dart routes it to the Search
++    // tab. Phone mode never binds a handler, so inbound calls are dropped.
++    private var voiceChannel: MethodChannel? = null
++    private var voicePending = false
++
++    companion object {
++        private const val VOICE_REQUEST_CODE = 64701
++    }
++
++    private fun launchVoiceRecognition() {
++        if (voicePending) return
++        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
++            putExtra(
++                RecognizerIntent.EXTRA_LANGUAGE_MODEL,
++                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
++            )
++            putExtra(RecognizerIntent.EXTRA_PROMPT, "Search channels and what's on…")
++        }
++        try {
++            voicePending = true
++            @Suppress("DEPRECATION")
++            startActivityForResult(intent, VOICE_REQUEST_CODE)
++        } catch (_: ActivityNotFoundException) {
++            voicePending = false
++            voiceChannel?.invokeMethod("voiceUnavailable", null)
++        }
++    }
++
++    @Deprecated("Deprecated in Java")
++    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
++        if (requestCode == VOICE_REQUEST_CODE) {
++            voicePending = false
++            if (resultCode == RESULT_OK) {
++                val text = data
++                    ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
++                    ?.firstOrNull()
++                if (!text.isNullOrBlank()) {
++                    voiceChannel?.invokeMethod("voiceResult", text)
++                }
++            }
++            // Cancel / no match: do nothing — the user backed out.
++        }
++        @Suppress("DEPRECATION")
++        super.onActivityResult(requestCode, resultCode, data)
++    }
++
++    // Remotes/keyboards with a dedicated SEARCH key can start voice search
++    // from ANY screen. (The Assistant mic key never reaches the app.)
++    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
++        if (keyCode == KeyEvent.KEYCODE_SEARCH) {
++            launchVoiceRecognition()
++            return true
++        }
++        return super.onKeyDown(keyCode, event)
++    }
++
+     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+         super.configureFlutterEngine(flutterEngine)
+         flutterEngine.plugins.add(CastPlugin())
+ 
++        // ── fix647: voice-search MethodChannel ────────────────────────────
++        voiceChannel = MethodChannel(
++            flutterEngine.dartExecutor.binaryMessenger,
++            "me.free4me.iptv/voice",
++        ).also { ch ->
++            ch.setMethodCallHandler { call, result ->
++                when (call.method) {
++                    "start" -> {
++                        launchVoiceRecognition()
++                        result.success(null)
++                    }
++                    else -> result.notImplemented()
++                }
++            }
++        }
++
+         // ── fix506: render-cap pref bridge ────────────────────────────────
+         // Flutter's render-cap toggle writes the SharedPref that
+         // attachBaseContext/onCreate read at the NEXT launch.
+diff --git a/lib/backend/voice_search.dart b/lib/backend/voice_search.dart
+new file mode 100644
+index 0000000..5078f02
+--- /dev/null
++++ b/lib/backend/voice_search.dart
+@@ -0,0 +1,59 @@
++import 'package:flutter/services.dart';
++
++/// fix647: TV voice search bridge.
++///
++/// The remote's mic button is an Assistant key — the SYSTEM consumes it and
++/// the press never reaches the app, so it cannot be captured. What we CAN do:
++/// launch Android's speech recognizer (RecognizerIntent) ourselves and treat
++/// the recognized text as a search. Triggers:
++///  - the mic button in the Search tab's field (works on every remote), and
++///  - a hardware KEYCODE_SEARCH press from ANY screen, on remotes that have
++///    one (handled natively in MainActivity.onKeyDown).
++///
++/// Flow: Dart (or the native key handler) starts the system voice dialog;
++/// MainActivity delivers the recognized text back through this channel as an
++/// inbound "voiceResult" call. TvShell routes it: stash [pendingQuery], switch
++/// to the Search tab (rebuilt fresh under the shell's reloadGen key), and the
++/// search view consumes the pending query in its init — prefilled + run, as if
++/// typed. "voiceUnavailable" fires when no recognizer activity exists on the
++/// device (rare on Google TV; common on de-Googled boxes).
++class VoiceSearch {
++  static const MethodChannel _ch = MethodChannel('me.free4me.iptv/voice');
++
++  /// Recognized text handed from the shell to the Search tab across the tab
++  /// rebuild. Consumed (nulled) by the search view.
++  static String? pendingQuery;
++
++  /// Set by TvShell. Phone mode never binds, so the native side's inbound
++  /// calls are simply dropped there.
++  static void Function(String text)? onResult;
++  static void Function()? onUnavailable;
++
++  static bool _bound = false;
++
++  /// Idempotent — installs the inbound handler once.
++  static void bind() {
++    if (_bound) return;
++    _bound = true;
++    _ch.setMethodCallHandler((call) async {
++      switch (call.method) {
++        case 'voiceResult':
++          final t = (call.arguments as String?)?.trim();
++          if (t != null && t.isNotEmpty) onResult?.call(t);
++        case 'voiceUnavailable':
++          onUnavailable?.call();
++      }
++    });
++  }
++
++  /// Launch the system voice-recognition dialog. The result arrives via the
++  /// inbound "voiceResult" call, NOT as this future's value.
++  static Future<void> start() async {
++    try {
++      await _ch.invokeMethod('start');
++    } catch (_) {
++      // Channel not registered (e.g. hot restart edge) — treat as unavailable.
++      onUnavailable?.call();
++    }
++  }
++}
+diff --git a/lib/tv/tv_search_view.dart b/lib/tv/tv_search_view.dart
+index 524007f..69b8a51 100644
+--- a/lib/tv/tv_search_view.dart
++++ b/lib/tv/tv_search_view.dart
+@@ -5,6 +5,7 @@ import 'package:open_tv/backend/app_logger.dart';
+ import 'package:open_tv/backend/setting_bounds.dart';
+ import 'package:open_tv/backend/settings_service.dart';
+ import 'package:open_tv/backend/sql.dart';
++import 'package:open_tv/backend/voice_search.dart';
+ import 'package:open_tv/channel_tile.dart';
+ import 'package:open_tv/home.dart';
+ import 'package:open_tv/models/channel.dart';
+@@ -78,6 +79,16 @@ class _TvSearchViewState extends State<TvSearchView> {
+       _sourceIds = enabled.map((e) => e.id).whereType<int>().toList();
+       _ready = true;
+     });
++    // fix647: consume a voice-recognized query handed over by TvShell. The
++    // Search tab is rebuilt under a fresh key on every entry, so initState
++    // always runs and a pending query can never be missed or double-run.
++    final vq = VoiceSearch.pendingQuery;
++    if (vq != null && vq.isNotEmpty) {
++      VoiceSearch.pendingQuery = null;
++      _controller.text = vq;
++      _pendingFocusFirst = true; // fix603: land focus on the first result
++      await _run(vq);
++    }
+   }
+ 
+   @override
+@@ -300,6 +311,15 @@ class _TvSearchViewState extends State<TvSearchView> {
+             decoration: InputDecoration(
+               hintText: "Search channels and what's on…",
+               prefixIcon: const Icon(Icons.search),
++              // fix647: mic button — launches the system voice-recognition
++              // dialog; the recognized text routes back through TvShell and
++              // re-enters this tab prefilled + run. Works on every remote
++              // (the Assistant mic key itself never reaches the app).
++              suffixIcon: IconButton(
++                icon: const Icon(Icons.mic),
++                tooltip: 'Voice search',
++                onPressed: _ready ? () => VoiceSearch.start() : null,
++              ),
+               border: OutlineInputBorder(
+                 borderRadius: BorderRadius.circular(8),
+                 borderSide: BorderSide.none,
+diff --git a/lib/tv/tv_shell.dart b/lib/tv/tv_shell.dart
+index 73952b2..27d2559 100644
+--- a/lib/tv/tv_shell.dart
++++ b/lib/tv/tv_shell.dart
+@@ -11,6 +11,7 @@ import 'package:open_tv/confirm_exit_scope.dart';
+ import 'package:open_tv/models/view_type.dart';
+ import 'package:open_tv/settings_view.dart';
+ import 'package:open_tv/tv/tv_browse_view.dart';
++import 'package:open_tv/backend/voice_search.dart';
+ import 'package:open_tv/tv/tv_categories_view.dart';
+ import 'package:open_tv/tv/tv_guide_view.dart';
+ import 'package:open_tv/tv/tv_search_view.dart';
+@@ -108,6 +109,40 @@ class _TvShellState extends State<TvShell> {
+     super.initState();
+     _index = _landingIndex(widget.settings.defaultView);
+     _ensureBuilt(_index);
++    // fix647: voice search routing. Recognized text lands here (from the
++    // Search tab's mic button or a hardware SEARCH key on any screen); stash
++    // it and (re)build the Search tab, which consumes it in its init — the
++    // same fresh-key rebuild _select() already does for keyed tabs.
++    VoiceSearch.bind();
++    VoiceSearch.onResult = (text) {
++      if (!mounted) return;
++      VoiceSearch.pendingQuery = text;
++      final si = _tabs.indexWhere((t) => t.isSearch);
++      if (si < 0) return;
++      if (_index == si) {
++        // Already on Search — force the fresh-key rebuild _select() would do.
++        setState(() {
++          _reloadGen++;
++          _built[si] = null;
++          _ensureBuilt(si);
++        });
++      } else {
++        _select(si);
++      }
++    };
++    VoiceSearch.onUnavailable = () {
++      if (!mounted) return;
++      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
++          content: Text('Voice input is not available on this device')));
++    };
++  }
++
++  @override
++  void dispose() {
++    // fix647: drop the routing callbacks if they are still ours.
++    VoiceSearch.onResult = null;
++    VoiceSearch.onUnavailable = null;
++    super.dispose();
+   }
+ 
+   /// fix500: map the saved Default view onto a landing tab. [ViewType] has no
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 2ad57d2..09bb2b5 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '2.2.47': [
++    'TV voice search: tap the new mic button in the Search tab (or press '
++        'a SEARCH key on remotes that have one, from any screen) to speak '
++        'a search instead of typing it.',
++  ],
+   '2.2.46': [
+     'Favorites views on large catalogs now load instantly (a new '
+         'favorites index), and slow-query diagnostics no longer freeze '
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 98ee5d2..996ccb6 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 2.2.46+635
++version: 2.2.47+636
+ 
+ environment:
+   sdk: ^3.10.7

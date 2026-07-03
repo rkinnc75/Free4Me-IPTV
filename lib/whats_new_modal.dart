@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.47': [
+    'TV voice search: tap the new mic button in the Search tab (or press '
+        'a SEARCH key on remotes that have one, from any screen) to speak '
+        'a search instead of typing it.',
+  ],
   '2.2.46': [
     'Favorites views on large catalogs now load instantly (a new '
         'favorites index), and slow-query diagnostics no longer freeze '
