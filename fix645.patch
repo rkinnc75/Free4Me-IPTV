@@ -1,0 +1,107 @@
+diff --git a/lib/backend/sql.dart b/lib/backend/sql.dart
+index a4b75c7..398110f 100644
+--- a/lib/backend/sql.dart
++++ b/lib/backend/sql.dart
+@@ -1335,7 +1335,16 @@ class Sql {
+   }
+ 
+   // fix278: toggle one category's enabled flag.
++  /// fix645: monotonic generation for ANY category (groups-table) visibility
++  /// change — enable/disable (single + bulk) and favorite (rail sort order).
++  /// The TV guide's reloadGuide() keep-your-place optimization (fix610) only
++  /// rebuilt the rail when the enabled-SOURCE set changed, so toggling
++  /// categories in the Categories tab never refreshed the Live TV rail.
++  /// Consumers snapshot this and rebuild when it moves.
++  static int groupsGen = 0;
++
+   static Future<void> setGroupEnabled(int groupId, bool enabled) async {
++    groupsGen++; // fix645
+     final db = await DbFactory.db;
+     await db.execute(
+       'UPDATE groups SET enabled = ? WHERE id = ?',
+@@ -1368,6 +1377,7 @@ class Sql {
+     bool enabled,
+   ) async {
+     if (sourceIds.isEmpty) return;
++    groupsGen++; // fix645
+     final db = await DbFactory.db;
+     final mt = mediaTypes.map((x) => x.index).toList();
+     // fix296: when no media-type filter is active (mt empty), do NOT emit
+@@ -1920,6 +1930,7 @@ class Sql {
+   // fix308: toggle a category's favorite flag (sorts it to the top of the
+   // Categories list; does NOT touch the channels inside it).
+   static Future<void> favoriteGroup(int groupId, bool favorite) async {
++    groupsGen++; // fix645: favorites sort to the top of the rail (fix308)
+     final db = await DbFactory.db;
+     await db.execute(
+       'UPDATE groups SET favorite = ? WHERE id = ?',
+diff --git a/lib/tv/tv_guide_view.dart b/lib/tv/tv_guide_view.dart
+index 0eff8f8..05430e6 100644
+--- a/lib/tv/tv_guide_view.dart
++++ b/lib/tv/tv_guide_view.dart
+@@ -61,6 +61,9 @@ class TvGuideViewState extends State<TvGuideView> {
+   Map<int, int?> _sourceColors = {};
+   List<int> _sourceIds = [];
+   List<Channel> _groups = [];
++  // fix645: Sql.groupsGen snapshot from the last rail build — reloadGuide
++  // rebuilds when categories were enabled/disabled/favorited since.
++  int _groupsGenSeen = 0;
+   int? _selectedGroupId; // null = All
+   List<Channel> _channels = [];
+   Map<String, List<Program>> _progByKey = {};
+@@ -149,6 +152,10 @@ class TvGuideViewState extends State<TvGuideView> {
+   }
+ 
+   Future<void> _init() async {
++    // fix645: snapshot the category-change generation FIRST — a toggle landing
++    // while this init runs will differ from the snapshot and trigger another
++    // rebuild on the next reloadGuide instead of being lost.
++    _groupsGenSeen = Sql.groupsGen;
+     // fix524 (safe-mode TV leak): the guide is built once at shell init and kept
+     // alive in IndexedStack, so widget.settings can go stale if Safe Mode is
+     // toggled afterward. Prefer the live SettingsService.cached value.
+@@ -927,8 +934,13 @@ class TvGuideViewState extends State<TvGuideView> {
+     final ids = enabled.map((e) => e.id).whereType<int>().toList()..sort();
+     final current = [..._sourceIds]..sort();
+     if (!mounted) return;
+-    if (!_ready || ids.join(',') != current.join(',')) {
+-      return _init(); // first load OR sources changed → rebuild + reset to top
++    // fix645: also rebuild when categories changed (enable/disable/favorite in
++    // the Categories tab or the phone Home) — the source-set check alone left
++    // the rail stale after category toggles.
++    if (!_ready ||
++        ids.join(',') != current.join(',') ||
++        _groupsGenSeen != Sql.groupsGen) {
++      return _init(); // first load, sources changed, or categories changed
+     }
+     // Enabled sources unchanged → keep the user's place. fix610: but STILL
+     // re-anchor the EPG window to NOW + refresh the grid programmes — the guide
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 54c34e7..a688278 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '2.2.45': [
++    'The Live TV category rail now refreshes after you enable, disable, '
++        'or favorite categories in the Categories tab — previously the '
++        'changes only showed up after an app restart or source change.',
++  ],
+   '2.2.44': [
+     'TV guide: picking a category now loads its channels much faster (a '
+         'slow background check no longer blocks the guide), the Back '
+diff --git a/pubspec.yaml b/pubspec.yaml
+index ab1cd5d..d24dfa7 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 2.2.44+633
++version: 2.2.45+634
+ 
+ environment:
+   sdk: ^3.10.7

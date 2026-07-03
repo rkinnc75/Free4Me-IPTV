@@ -61,6 +61,9 @@ class TvGuideViewState extends State<TvGuideView> {
   Map<int, int?> _sourceColors = {};
   List<int> _sourceIds = [];
   List<Channel> _groups = [];
+  // fix645: Sql.groupsGen snapshot from the last rail build — reloadGuide
+  // rebuilds when categories were enabled/disabled/favorited since.
+  int _groupsGenSeen = 0;
   int? _selectedGroupId; // null = All
   List<Channel> _channels = [];
   Map<String, List<Program>> _progByKey = {};
@@ -149,6 +152,10 @@ class TvGuideViewState extends State<TvGuideView> {
   }
 
   Future<void> _init() async {
+    // fix645: snapshot the category-change generation FIRST — a toggle landing
+    // while this init runs will differ from the snapshot and trigger another
+    // rebuild on the next reloadGuide instead of being lost.
+    _groupsGenSeen = Sql.groupsGen;
     // fix524 (safe-mode TV leak): the guide is built once at shell init and kept
     // alive in IndexedStack, so widget.settings can go stale if Safe Mode is
     // toggled afterward. Prefer the live SettingsService.cached value.
@@ -927,8 +934,13 @@ class TvGuideViewState extends State<TvGuideView> {
     final ids = enabled.map((e) => e.id).whereType<int>().toList()..sort();
     final current = [..._sourceIds]..sort();
     if (!mounted) return;
-    if (!_ready || ids.join(',') != current.join(',')) {
-      return _init(); // first load OR sources changed → rebuild + reset to top
+    // fix645: also rebuild when categories changed (enable/disable/favorite in
+    // the Categories tab or the phone Home) — the source-set check alone left
+    // the rail stale after category toggles.
+    if (!_ready ||
+        ids.join(',') != current.join(',') ||
+        _groupsGenSeen != Sql.groupsGen) {
+      return _init(); // first load, sources changed, or categories changed
     }
     // Enabled sources unchanged → keep the user's place. fix610: but STILL
     // re-anchor the EPG window to NOW + refresh the grid programmes — the guide

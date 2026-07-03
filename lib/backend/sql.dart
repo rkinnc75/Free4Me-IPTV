@@ -1335,7 +1335,16 @@ class Sql {
   }
 
   // fix278: toggle one category's enabled flag.
+  /// fix645: monotonic generation for ANY category (groups-table) visibility
+  /// change — enable/disable (single + bulk) and favorite (rail sort order).
+  /// The TV guide's reloadGuide() keep-your-place optimization (fix610) only
+  /// rebuilt the rail when the enabled-SOURCE set changed, so toggling
+  /// categories in the Categories tab never refreshed the Live TV rail.
+  /// Consumers snapshot this and rebuild when it moves.
+  static int groupsGen = 0;
+
   static Future<void> setGroupEnabled(int groupId, bool enabled) async {
+    groupsGen++; // fix645
     final db = await DbFactory.db;
     await db.execute(
       'UPDATE groups SET enabled = ? WHERE id = ?',
@@ -1368,6 +1377,7 @@ class Sql {
     bool enabled,
   ) async {
     if (sourceIds.isEmpty) return;
+    groupsGen++; // fix645
     final db = await DbFactory.db;
     final mt = mediaTypes.map((x) => x.index).toList();
     // fix296: when no media-type filter is active (mt empty), do NOT emit
@@ -1920,6 +1930,7 @@ class Sql {
   // fix308: toggle a category's favorite flag (sorts it to the top of the
   // Categories list; does NOT touch the channels inside it).
   static Future<void> favoriteGroup(int groupId, bool favorite) async {
+    groupsGen++; // fix645: favorites sort to the top of the rail (fix308)
     final db = await DbFactory.db;
     await db.execute(
       'UPDATE groups SET favorite = ? WHERE id = ?',
