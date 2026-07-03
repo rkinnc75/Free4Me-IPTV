@@ -1349,13 +1349,63 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     if (mounted && _navMode) _resetOverlayHideTimer();
   }
 
+  /// fix650: position/duration progress row for the TV overlay. Display-only —
+  /// seeking stays on the ◀/▶ keys and rewind/forward buttons; a focusable
+  /// slider would need its own key handling and steal D-pad LEFT/RIGHT from
+  /// the overlay's focus traversal. Hidden while the engine reports no
+  /// duration (plain live without a DVR window).
+  Widget _buildOverlayProgress() {
+    String fmt(Duration d) {
+      final h = d.inHours;
+      final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+      final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+      return h > 0 ? '$h:$m:$s' : '$m:$s';
+    }
+
+    return StreamBuilder<Duration>(
+      stream: _engine.positionStream,
+      initialData: _engine.position,
+      builder: (context, snap) {
+        final pos = snap.data ?? Duration.zero;
+        final dur = _engine.duration;
+        if (dur <= Duration.zero) return const SizedBox.shrink();
+        final frac = (pos.inMilliseconds / dur.inMilliseconds)
+            .clamp(0.0, 1.0)
+            .toDouble();
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(
+            children: [
+              Text(fmt(pos), style: const TextStyle(color: Colors.white)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: LinearProgressIndicator(
+                  value: frac,
+                  minHeight: 4,
+                  backgroundColor: Colors.white24,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(fmt(dur), style: const TextStyle(color: Colors.white)),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   /// The TV control overlay: a native Flutter [FocusTraversalGroup] of
   /// focusable [IconButton]s the D-pad navigates geometrically (arrows →
   /// DirectionalFocusIntent, OK → activate — the same path the TV browse UI
-  /// already uses). Built only when [_navMode] and gated to single-cell live.
+  /// already uses). Built only when [_navMode], single-cell full-screen —
+  /// live AND VOD since fix650 (VOD previously fell back to media_kit's bars,
+  /// which cannot host D-pad focus).
   Widget _buildTvOverlay() {
     final engine = _engine;
     final dvr = engine.dvrActive;
+    final live = widget.channel.mediaType == MediaType.livestream;
+    final seekable = _canSeekTransport; // fix650: DVR or VOD
     final tracks = engine.supportsTrackSelection;
 
     final topBar = Row(
@@ -1369,14 +1419,19 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
           ),
         ),
         const SizedBox(width: 12),
-        Expanded(
-          child: IgnorePointer(
-            child: PlayerEpgNowLabel(
-              epgChannelId: widget.channel.epgChannelId,
-              sourceId: widget.channel.sourceId,
+        // fix650: the now/next EPG label only makes sense on live channels;
+        // on VOD the slot becomes a plain spacer.
+        if (live)
+          Expanded(
+            child: IgnorePointer(
+              child: PlayerEpgNowLabel(
+                epgChannelId: widget.channel.epgChannelId,
+                sourceId: widget.channel.sourceId,
+              ),
             ),
-          ),
-        ),
+          )
+        else
+          const Spacer(),
         if (_castSupported)
           _ovlButton(
               _castIcon, _isCasting ? 'Stop casting' : 'Cast', _onCastTap),
@@ -1411,15 +1466,15 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
         ],
         if (_canSurf)
           _ovlButton(Icons.keyboard_arrow_up, 'Channel up', () => _surf(-1)),
-        if (dvr)
+        if (seekable)
           _ovlButton(Icons.replay_10, 'Rewind 10s',
               () => _seekBy(const Duration(seconds: -10))),
         playPause,
-        if (dvr) ...[
+        if (seekable)
           _ovlButton(Icons.forward_10, 'Forward 10s',
               () => _seekBy(const Duration(seconds: 10))),
+        if (dvr)
           _ovlButton(Icons.live_tv, 'Back to live', _dvrGoLive),
-        ],
         if (_canSurf)
           _ovlButton(Icons.keyboard_arrow_down, 'Channel down', () => _surf(1)),
         _ovlButton(Icons.aspect_ratio_outlined, 'Aspect ratio', toggleZoom),
@@ -1441,7 +1496,14 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
           ),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Column(
-            children: [topBar, const Spacer(), bottomBar],
+            children: [
+              topBar,
+              const Spacer(),
+              // fix650: position / duration row (display-only) above the
+              // buttons, whenever the stream is seekable and reports a length.
+              if (seekable) _buildOverlayProgress(),
+              bottomBar,
+            ],
           ),
         ),
       ),
@@ -1485,10 +1547,12 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
         return KeyEventResult.handled;
       case PlayerKeyAction.playPauseReveal:
         _togglePlayPause();
-        // fix580: TV + LIVE → open the custom focusable overlay; phone or
-        // TV+VOD → media_kit's own bars via the synth tap (VOD keeps them).
+        // fix580: TV single-cell → open the custom focusable overlay; phone →
+        // media_kit's own bars via the synth tap. fix650 dropped the LIVE-only
+        // gate: TV+VOD used media_kit's bars, which can't host D-pad focus
+        // (the reverted fix578 problem), so VOD now gets the same overlay —
+        // with a position/duration row.
         if (_tvMode &&
-            widget.channel.mediaType == MediaType.livestream &&
             widget.settings.multiViewLayout == MultiViewLayout.none) {
           _openOverlay();
         } else {
