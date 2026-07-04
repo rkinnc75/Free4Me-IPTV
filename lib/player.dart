@@ -1885,12 +1885,18 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
               if (_surfBanner != null) _buildSurfBanner(),
               // fix649: ±seconds chip for ◀/▶ transport seeks.
               if (_skipIndicatorSecs != 0) _buildSkipIndicator(),
-              // fix564: live playback-stats panel (top-right), single-cell
-              // full-screen only, shown when debug logging is on. Also writes
-              // each snapshot to the report log for offline review.
-              if (widget.settings.debugLogging &&
-                  widget.settings.multiViewLayout == MultiViewLayout.none &&
-                  _engine is MpvEngine)
+              // fix564: live playback-stats panel (top-right), full-screen
+              // player, shown when debug logging is on. Also writes each
+              // snapshot to the report log for offline review. fix653: no
+              // longer gated on multiViewLayout == none — that clause read the
+              // PERSISTED grid-size setting, not the current view, so merely
+              // having a 2x2 layout configured hid the panel on every
+              // single-cell play (from a tile AND from a maximized cell).
+              // This Player IS a single full-screen cell; it's pure UI (no
+              // engine), so it's safe even for a maximized-from-grid play. The
+              // multi-view grid's own compact per-cell overlays stay mounted
+              // (still streaming, just not painted) beneath the pushed Player.
+              if (widget.settings.debugLogging && _engine is MpvEngine)
                 DebugStatsOverlay(engine: _engine as MpvEngine),
               // fix580: custom focusable TV control overlay (Mode B).
               if (_navMode) _buildTvOverlay(),
@@ -2095,8 +2101,10 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
             icon: Icon(_castIcon, color: Colors.white, size: 28),
             tooltip: _isCasting ? 'Stop casting' : 'Cast to TV',
           ),
-        if (_pipSupported &&
-            widget.settings.multiViewLayout == MultiViewLayout.none)
+        // fix653: dropped the multiViewLayout == none clause — it read the
+        // persisted grid-size setting, hiding PiP on every single-cell play
+        // once a layout was ever configured (see the stats-panel note above).
+        if (_pipSupported)
           IconButton(
             onPressed: () => PipController.enterPip(),
             icon: const Icon(
@@ -2147,6 +2155,15 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
         // (±10s / live only when DVR is active).
         ..._transportButtons(),
         // Mini-player button — hidden when multi-view is active.
+        // fix653 NOTE: deliberately still gated on multiViewLayout == none.
+        // Flipping this like the stats panel/PiP is NOT safe: multi-view and
+        // the mini-player are mutually exclusive by design (multi_view_screen
+        // calls stopOverlay on entry), so minimizing a cell maximized from the
+        // grid and returning would double-read the same .ts URL (see the
+        // _promoteToFullScreen comment) — a "Failed to open" churn or a second
+        // audible copy. Reachable-from-a-tile single-cell playback is the
+        // common case, but this gate can't distinguish it from a maximized
+        // cell, so the button stays gated until that UX is designed (fix654).
         if (widget.channel.mediaType == MediaType.livestream &&
             widget.settings.multiViewLayout == MultiViewLayout.none) ...[
           IconButton(

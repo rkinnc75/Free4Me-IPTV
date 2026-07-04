@@ -6,6 +6,13 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.53': [
+    'Fixed the full-screen player hiding its diagnostics panel and '
+        'picture-in-picture button whenever a multi-view grid layout was '
+        'configured in Settings — even when you were not in multi-view. They '
+        'now show on every full-screen play, including a cell maximized from '
+        'multi-view.',
+  ],
   '2.2.52': [
     'New optional playback setting: "Skip back on resume" rewinds a few '
         'seconds when you unpause a movie or episode so you can pick the '
