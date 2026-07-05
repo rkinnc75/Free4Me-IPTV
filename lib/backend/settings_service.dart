@@ -20,7 +20,9 @@ const showLivestreams = "showLivestreams";
 const showMovies = "showMovies";
 const showSeries = "showSeries";
 const lastSeenVersion = "lastSeenVersion";
-const lastLogClearedVersion = "lastLogClearedVersion";
+// finding 160: lastLogClearedVersion removed — the cleared-version marker
+// moved to a file-based sidecar (AppLog.readClearedVersionMarker); the DB key
+// was dead code.
 const forceTvMode = "forceTVMode";
 const lowLatencyProp = "streamCaching";
 
@@ -228,7 +230,12 @@ class SettingsService {
     var maxReconnect = settingsMap[maxReconnectAttemptsProp];
 
     if (view != null) {
-      settings.defaultView = ViewType.values[int.parse(view)];
+      // finding 161: this runs before runApp, so a corrupt or forward-versioned
+      // index must degrade to the default rather than RangeError-brick startup
+      // (matches the elementAtOrNull pattern used for searchMethod/contentType).
+      settings.defaultView =
+          ViewType.values.elementAtOrNull(int.tryParse(view) ?? 0) ??
+              ViewType.all;
     }
     if (refresh != null) settings.refreshOnStart = int.parse(refresh) == 1;
     if (live != null) settings.showLivestreams = int.parse(live) == 1;
@@ -386,7 +393,7 @@ class SettingsService {
     }
     final dabs = settingsMap[devAudioBufferSecsProp];
     if (dabs != null) {
-      settings.devAudioBufferSecs = double.tryParse(dabs) ?? 0.0;
+      settings.devAudioBufferSecs = double.tryParse(dabs) ?? 0.2; // finding 162
     }
     final dchs = settingsMap[devControlsHideSecsProp];
     if (dchs != null) {

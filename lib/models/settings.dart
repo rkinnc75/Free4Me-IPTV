@@ -441,8 +441,8 @@ class Settings {
   /// user's currently selected [MultiViewLayout]. The TV branches assume
   /// wired networking and slower mediacodec init (Tegra/older chipsets);
   /// the phone branches assume Wi-Fi and faster recovery. The 2×2 layout
-  /// trims the per-cell mini demuxer cap to keep RAM headroom for four
-  /// concurrent decoders.
+  /// trims the live demuxer + buffer size (the caps multi-view cells read)
+  /// to keep RAM headroom for four concurrent decoders.
   ///
   /// `DeviceMemory.init()` MUST have been called before invoking this.
   factory Settings.optimisedFor({
@@ -455,11 +455,18 @@ class Settings {
     s.bufferSizeMB = DeviceMemory.defaultBufferSizeMb;
     s.liveDemuxerMaxMB = DeviceMemory.defaultLiveDemuxerMb;
     s.vodDemuxerMaxMB = DeviceMemory.defaultLiveDemuxerMb + 64;
-    s.miniDemuxerMaxMB = switch (layout) {
-      MultiViewLayout.twoByTwo =>
-          (DeviceMemory.defaultMiniDemuxerMb * 0.75).round().clamp(16, 256),
-      _ => DeviceMemory.defaultMiniDemuxerMb,
-    };
+    // finding 106: multi-view cells read liveDemuxerMaxMB/bufferSizeMB
+    // (multiViewMode:true, fix623), NOT miniDemuxerMaxMB — so the old 2x2
+    // trim on miniDemuxerMaxMB was dead. Trim the fields the cells actually
+    // consume, and leave miniDemuxerMaxMB at the plain RAM default (it drives
+    // the true mini-player/overlay via previewMode&&!multiViewMode).
+    s.miniDemuxerMaxMB = DeviceMemory.defaultMiniDemuxerMb;
+    if (layout == MultiViewLayout.twoByTwo) {
+      s.liveDemuxerMaxMB =
+          (DeviceMemory.defaultLiveDemuxerMb * 0.75).round().clamp(32, 256);
+      s.bufferSizeMB =
+          (DeviceMemory.defaultBufferSizeMb * 0.75).round().clamp(16, 256);
+    }
 
     // Cache seconds — TVs benefit from a longer read-ahead on wired
     // networks; phones recover faster from Wi-Fi handoffs with a smaller
