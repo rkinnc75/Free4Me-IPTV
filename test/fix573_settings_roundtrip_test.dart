@@ -38,4 +38,11 @@ void main() {
     expect(r.playerZoomMode, ZoomMode.stretch);
     expect(r.devControlsHideSecs, 0);
   });
+
+  test('finding 95: use24HourTime survives the backup round-trip', () {
+    // Default is false; set true so a dropped field is detectable.
+    final s = Settings.defaults()..use24HourTime = true;
+    final r = SettingsIo.roundTripForTest(s);
+    expect(r.use24HourTime, isTrue);
+  });
 }

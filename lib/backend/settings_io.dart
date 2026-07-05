@@ -237,7 +237,6 @@ class SettingsIo {
     BuildContext context, {
     bool includeCredentials = false,
   }) async {
-    final packageInfo = await PackageInfo.fromPlatform();
     final settings = await SettingsService.getSettings();
     final sources = await Sql.getSources();
 
@@ -250,44 +249,13 @@ class SettingsIo {
       ' multiViewAutoRestoreChannels=${settings.multiViewAutoRestoreChannels}',
     );
 
-    // For each source, capture the per-channel attributes worth
-    // round-tripping (favorite flag + last-watched timestamp). Keyed
-    // by channel name — restorePreserve matches on (name, source_id)
-    // after a refresh repopulates the channel table.
-    final sourcesPayload = <Map<String, dynamic>>[];
-    for (final s in sources) {
-      final base = _sourceToMap(s, includeCredentials);
-      if (s.id != null) {
-        final preserve = await Sql.getChannelsPreserve(s.id!);
-        if (preserve.isNotEmpty) {
-          base['preserve'] = preserve
-              .map((p) => {
-                    'name': p.name,
-                    if (p.favorite != null) 'favorite': p.favorite,
-                    if (p.lastWatched != null) 'lastWatched': p.lastWatched,
-                    // preserves matched channel IDs across source refresh.
-                    if (p.epgChannelId != null) 'epgChannelId': p.epgChannelId,
-                    if (p.epgManualOverride != null)
-                      'epgManualOverride': p.epgManualOverride,
-                  })
-              .toList();
-        }
-        // fix355: curated category state + VOD resume positions.
-        final curatedGroups = await Sql.getGroupsCurated(s.id!);
-        if (curatedGroups.isNotEmpty) base['groups'] = curatedGroups;
-        final positions = await Sql.getMoviePositionsForExport(s.id!);
-        if (positions.isNotEmpty) base['positions'] = positions;
-      }
-      sourcesPayload.add(base);
-    }
-
-    final payload = jsonEncode({
-      'schemaVersion': _schemaVersion,
-      'exportedAt': DateTime.now().toUtc().toIso8601String(),
-      'appVersion': packageInfo.version,
-      'settings': _settingsToMap(settings),
-      'sources': sourcesPayload,
-    });
+    // finding 96: reuse buildBackupPayload (its body was a line-for-line
+    // duplicate of the loop that used to live here) so the P0/#92 credential
+    // scrub and #95 use24HourTime fixes live in exactly ONE place and cover
+    // this save-to-file path automatically. The diagnostic log above still
+    // uses the settings/sources fetched here.
+    final payload =
+        await buildBackupPayload(includeCredentials: includeCredentials);
 
     final stamp = await stampWithDevice(); // fix166/fix322
     // fix654: gzip the backup at level 9 — settings-only backups are small,
@@ -356,44 +324,67 @@ class SettingsIo {
     }
     var count = 0;
     for (final raw in rawSources) {
-      final map = raw as Map<String, dynamic>;
-      final source = Source(
-        name: map['name'] as String,
-        url: map['url'] as String?,
-        username: map['username'] as String?,
-        password: map['password'] as String?,
-        sourceType: SourceType.values[map['sourceType'] as int? ?? 0],
-        enabled: map['enabled'] as bool? ?? true,
-        epgUrl: map['epgUrl'] as String?,
-        // fix358: carry source-level settings through QR/LAN import.
-        maxConnections: map['maxConnections'] as int?,
-        color: map['color'] as int?,
-        sortMode: map['sortMode'] as String?,
-      );
-      // getOrCreateSourceByName merges by name — existing sources are reused,
-      // new ones created. Other settings are intentionally NOT touched.
-      await Sql.commitWrite([Sql.getOrCreateSourceByName(source)]);
-      count++;
-      AppLog.info(
-        'SettingsIo.importSourcesOnly: source "${source.name}"'
-        ' type=${source.sourceType.name} enabled=${source.enabled}',
-      );
-      final preserveRaw = map['preserve'] as List<dynamic>?;
-      if (preserveRaw != null && preserveRaw.isNotEmpty) {
-        _pendingPreserves[source.name] = preserveRaw
-            .map((p) {
-              final m = p as Map<String, dynamic>;
-              return ChannelPreserve(
-                name: m['name'] as String,
-                favorite: m['favorite'] as int?,
-                lastWatched: m['lastWatched'] as int?,
-                epgChannelId: m['epgChannelId'] as String?,
-                epgManualOverride: m['epgManualOverride'] as String?,
-              );
-            })
-            .toList();
+      // finding 97: skip-and-log a malformed source entry instead of throwing
+      // after a partial import (bare casts previously aborted the whole loop
+      // and stranded the imported-so-far count). -1 stays reserved for the
+      // payload-level parse/schema failure handled above.
+      try {
+        if (raw is! Map) {
+          AppLog.warn(
+              'SettingsIo.importSourcesOnly: skipping non-map source entry');
+          continue;
+        }
+        final map = raw.cast<String, dynamic>();
+        final name = map['name'];
+        if (name is! String || name.isEmpty) {
+          AppLog.warn('SettingsIo.importSourcesOnly: skipping source with '
+              'missing/invalid name');
+          continue;
+        }
+        final typeIdx = map['sourceType'] as int? ?? 0;
+        final sourceType =
+            SourceType.values.elementAtOrNull(typeIdx) ?? SourceType.m3u;
+        final source = Source(
+          name: name,
+          url: map['url'] as String?,
+          username: map['username'] as String?,
+          password: map['password'] as String?,
+          sourceType: sourceType,
+          enabled: map['enabled'] as bool? ?? true,
+          epgUrl: map['epgUrl'] as String?,
+          // fix358: carry source-level settings through QR/LAN import.
+          maxConnections: map['maxConnections'] as int?,
+          color: map['color'] as int?,
+          sortMode: map['sortMode'] as String?,
+        );
+        // getOrCreateSourceByName merges by name — existing sources are reused,
+        // new ones created. Other settings are intentionally NOT touched.
+        await Sql.commitWrite([Sql.getOrCreateSourceByName(source)]);
+        count++;
+        AppLog.info(
+          'SettingsIo.importSourcesOnly: source "${source.name}"'
+          ' type=${source.sourceType.name} enabled=${source.enabled}',
+        );
+        final preserveRaw = map['preserve'] as List<dynamic>?;
+        if (preserveRaw != null && preserveRaw.isNotEmpty) {
+          _pendingPreserves[source.name] = preserveRaw
+              .map((p) {
+                final m = p as Map<String, dynamic>;
+                return ChannelPreserve(
+                  name: m['name'] as String,
+                  favorite: m['favorite'] as int?,
+                  lastWatched: m['lastWatched'] as int?,
+                  epgChannelId: m['epgChannelId'] as String?,
+                  epgManualOverride: m['epgManualOverride'] as String?,
+                );
+              })
+              .toList();
+        }
+        _stageGroupsAndPositions(source.name, map); // fix355
+      } catch (e) {
+        AppLog.warn(
+            'SettingsIo.importSourcesOnly: skipping malformed source entry — $e');
       }
-      _stageGroupsAndPositions(source.name, map); // fix355
     }
     AppLog.info('SettingsIo.importSourcesOnly: imported $count source(s)');
     return count;
@@ -507,7 +498,12 @@ class SettingsIo {
             sourceType: SourceType.values[map['sourceType'] as int? ?? 0],
             enabled: map['enabled'] as bool? ?? true,
             epgUrl: map['epgUrl'] as String?,
-              );
+            // finding 94: carry source-level settings through full import too
+            // (export writes them; only importFromFile was dropping them).
+            maxConnections: map['maxConnections'] as int?,
+            color: map['color'] as int?,
+            sortMode: map['sortMode'] as String?,
+          );
           await Sql.commitWrite([Sql.getOrCreateSourceByName(source)]);
 
           AppLog.info(
@@ -722,6 +718,7 @@ class SettingsIo {
         'multiViewDecode': s.multiViewDecode.toJson(),
         'devControlsHideSecs': s.devControlsHideSecs,
         'devSkipBackOnResumeSecs': s.devSkipBackOnResumeSecs, // fix652
+        'use24HourTime': s.use24HourTime, // finding 95: was dropped from backup
         'playerZoomMode': s.playerZoomMode.name,
       };
 
@@ -867,6 +864,9 @@ class SettingsIo {
     if (m['devSkipBackOnResumeSecs'] is int) {
       s.devSkipBackOnResumeSecs = m['devSkipBackOnResumeSecs'] as int; // fix652
     }
+    // finding 95: use24HourTime was persisted/reset-preserved but never
+    // survived a backup round-trip.
+    if (m['use24HourTime'] is bool) s.use24HourTime = m['use24HourTime'] as bool;
     if (m['playerZoomMode'] is String) {
       s.playerZoomMode = ZoomMode.values.firstWhere(
         (e) => e.name == m['playerZoomMode'],
@@ -930,18 +930,50 @@ class SettingsIo {
     }
   }
 
+  /// finding 92: strip credential-bearing query params (username/password/
+  /// token/auth/user/pass) from an m3uUrl-style playlist/EPG URL for
+  /// credential-free exports. m3uUrl sources store no username/password
+  /// fields — the creds live only inside the URL query string, so the
+  /// includeCredentials:false path (save-to-file "No (safer)" AND the
+  /// issue-report payload) leaked them until now. Non-URL/unparseable input
+  /// is returned unchanged.
+  static String? _scrubUrlCredentials(String? url) {
+    if (url == null || url.trim().isEmpty) return url;
+    Uri u;
+    try {
+      u = Uri.parse(url.trim());
+    } catch (_) {
+      return url;
+    }
+    if (u.queryParameters.isEmpty) return url;
+    const secretKeys = {'username', 'password', 'token', 'auth', 'pass', 'user'};
+    final scrubbed = <String, String>{};
+    var changed = false;
+    u.queryParameters.forEach((k, v) {
+      if (secretKeys.contains(k.toLowerCase())) {
+        scrubbed[k] = 'REDACTED';
+        changed = true;
+      } else {
+        scrubbed[k] = v;
+      }
+    });
+    if (!changed) return url;
+    return u.replace(queryParameters: scrubbed).toString();
+  }
+
   static Map<String, dynamic> _sourceToMap(
     Source s,
     bool includeCredentials,
   ) =>
       {
         'name': s.name,
-        'url': s.url,
+        'url': includeCredentials ? s.url : _scrubUrlCredentials(s.url),
         'sourceType': s.sourceType.index,
         'username': includeCredentials ? s.username : null,
         'password': includeCredentials ? s.password : null,
         'enabled': s.enabled,
-        'epgUrl': s.epgUrl,
+        'epgUrl':
+            includeCredentials ? s.epgUrl : _scrubUrlCredentials(s.epgUrl),
         // fix358: source-level settings were dropped on export, so QR/LAN
         // sources-import lost EPG URL was already carried; these were not.
         'maxConnections': s.maxConnections,
