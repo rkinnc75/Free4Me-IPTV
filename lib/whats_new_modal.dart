@@ -6,6 +6,13 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '2.2.54': [
+    'Storage: exported files (Backup & Restore, and the Diagnostics QR/LAN '
+        'export) are now gzip-compressed at maximum level, shrinking large '
+        'diagnostic bundles (database snapshots, raw source dumps) '
+        'considerably and reducing the on-device disk headroom an export '
+        'needs while it runs.',
+  ],
   '2.2.53': [
     'Fixed the full-screen player hiding its diagnostics panel and '
         'picture-in-picture button whenever a multi-view grid layout was '

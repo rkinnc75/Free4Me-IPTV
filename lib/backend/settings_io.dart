@@ -41,6 +41,43 @@ class SettingsIo {
     return tag.isEmpty ? stamp : '$tag-$stamp';
   }
 
+  /// fix654: gzip in-memory payloads (settings backups, log/settings text
+  /// items in the diagnostic bundle) via dart:io's native ZLibEncoder — real
+  /// zlib, not the bundled pure-Dart `archive` package. That package's
+  /// XZEncoder never actually compresses (it only wraps data in a valid but
+  /// UNCOMPRESSED .xz container — dead end for "smallest/fastest"), and its
+  /// Deflate OOM'd on a 532MB file that dart:io streams without issue. Level
+  /// 9 = max compression; native zlib is fast enough that the CPU cost is
+  /// negligible next to the disk/network time it saves.
+  static List<int> gzipBytes(List<int> data, {int level = 9}) =>
+      ZLibEncoder(gzip: true, level: level).convert(data);
+
+  /// fix654: stream-gzip a (possibly huge) file straight to [destPath] —
+  /// never holds the source in memory, so a multi-hundred-MB db.sqlite can't
+  /// OOM the 2GB TV box the way archive's Deflate did on the source dump.
+  static Future<File> gzipFileStream(File src, String destPath,
+      {int level = 9}) async {
+    final dest = File(destPath);
+    final sink = dest.openWrite();
+    try {
+      await sink.addStream(
+          src.openRead().transform(ZLibEncoder(gzip: true, level: level)));
+    } finally {
+      await sink.close();
+    }
+    return dest;
+  }
+
+  /// fix654: auto-detect a gzip member (magic bytes `1f 8b`) and decompress;
+  /// returns [bytes] unchanged otherwise so pre-fix654 plain exports still
+  /// import.
+  static List<int> maybeGunzip(List<int> bytes) {
+    if (bytes.length >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b) {
+      return ZLibDecoder(gzip: true).convert(bytes);
+    }
+    return bytes;
+  }
+
   /// fix572: given the basenames in a directory, return which ones are STALE
   /// export artifacts to purge. Pure (no IO) so it is unit-testable. An export
   /// artifact is a `free4me-export-*` bundle dir/zip or a `free4me-backup-*.json`
@@ -58,8 +95,8 @@ class SettingsIo {
     final stale = <String>[];
     for (final name in names) {
       final isExport = name.startsWith('free4me-export-');
-      final isBackup =
-          name.startsWith('free4me-backup-') && name.endsWith('.json');
+      final isBackup = name.startsWith('free4me-backup-') &&
+          (name.endsWith('.json') || name.endsWith('.json.gz')); // fix654
       if (!isExport && !isBackup) continue; // unrelated — leave it alone
       if (isExport && name == keepExportDir) continue;
       if (isBackup && name == keepBackupFile) continue;
@@ -253,16 +290,20 @@ class SettingsIo {
     });
 
     final stamp = await stampWithDevice(); // fix166/fix322
+    // fix654: gzip the backup at level 9 — settings-only backups are small,
+    // but a sources-with-credentials backup can carry hundreds of channel
+    // URLs and this shrinks it for free.
+    final backupName = 'free4me-backup-$stamp.json.gz';
     // fix572: sweep prior export artifacts (orphaned QR bundle dirs + leftover
     // backup jsons) before writing this one; keep the file we're about to save.
-    await purgeStaleExportArtifacts(keepBackupFile: 'free4me-backup-$stamp.json');
+    await purgeStaleExportArtifacts(keepBackupFile: backupName);
     final dir = await getTemporaryDirectory();
-    final tmpFile = File('${dir.path}/free4me-backup-$stamp.json');
-    await tmpFile.writeAsString(payload);
+    final tmpFile = File('${dir.path}/$backupName');
+    await tmpFile.writeAsBytes(gzipBytes(utf8.encode(payload)));
 
     final result = await FilePicker.platform.saveFile(
       dialogTitle: 'Save Free4Me-IPTV backup',
-      fileName: 'free4me-backup-$stamp.json',
+      fileName: backupName,
       bytes: tmpFile.readAsBytesSync(),
     );
 
@@ -293,7 +334,9 @@ class SettingsIo {
   static Future<int> importSourcesOnly(List<int> jsonBytes) async {
     final Map<String, dynamic> payload;
     try {
-      payload = jsonDecode(utf8.decode(jsonBytes)) as Map<String, dynamic>;
+      // fix654: transparently accept a gzipped payload (new exports).
+      payload = jsonDecode(utf8.decode(maybeGunzip(jsonBytes)))
+          as Map<String, dynamic>;
     } catch (e) {
       AppLog.warn('SettingsIo.importSourcesOnly: parse failed — $e');
       return -1;
@@ -359,12 +402,12 @@ class SettingsIo {
   static Future<bool> importFromFile(BuildContext context) async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['json'],
+      allowedExtensions: ['json', 'gz'], // fix654: exports are now gzipped
       withData: true,
     );
     if (result == null || result.files.single.bytes == null) return false;
 
-    final raw = utf8.decode(result.files.single.bytes!);
+    final raw = utf8.decode(maybeGunzip(result.files.single.bytes!));
     final Map<String, dynamic> payload;
     try {
       payload = jsonDecode(raw) as Map<String, dynamic>;

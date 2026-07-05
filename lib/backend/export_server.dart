@@ -143,7 +143,8 @@ class ExportServer {
             '</p>'
             '<form method="POST" action="/import-sources?t=$token" '
             'enctype="multipart/form-data">'
-            '<input type="file" name="file" accept=".json,application/json" '
+            '<input type="file" name="file" '
+            'accept=".json,.gz,application/json,application/gzip" ' // fix654
             'required style="display:block;margin:.6em 0">'
             '<button type="submit" '
             'style="font-size:1.1em;padding:.6em 1.2em;background:#2ea44f;'

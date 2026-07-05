@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:archive/archive_io.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -1752,23 +1753,31 @@ class _SettingsState extends State<SettingsView> {
     // fix594: DB snapshot paths (credential-gated), for the "Everything" zip.
     final dbPaths = <String, String>{};
 
+    // fix654: gzip every text item at level 9 (dart:io native zlib — see
+    // SettingsIo.gzipBytes) instead of writing plain text. The zip below then
+    // STOREs these already-compressed files instead of re-deflating them.
     Future<void> addTextFile(String key, String filename, String label,
         String content, String contentType) async {
-      final f = File('${outDir.path}/$filename');
-      await f.writeAsString(content);
+      final gzName = '$filename.gz';
+      final f = File('${outDir.path}/$gzName');
+      await f.writeAsBytes(SettingsIo.gzipBytes(utf8.encode(content)));
       final len = await f.length();
       items.add(ExportItem(
         key: key,
-        filename: filename,
+        filename: gzName,
         label: label,
         filePath: f.path,
         sizeBytes: len,
-        contentType: contentType,
+        contentType: 'application/gzip',
       ));
-      toZip[f.path] = filename;
+      toZip[f.path] = gzName;
     }
 
-    // 1. Source dump — written file-to-file (no giant in-memory string).
+    // 1. Source dump — written file-to-file (no giant in-memory string), then
+    // stream-gzipped (fix654) and the plaintext discarded. Streaming gzip is
+    // what actually fixes the OOM that hit a 532MB dump on the 2GB TV box —
+    // archive's pure-Dart Deflate buffered enough of it to exhaust the heap;
+    // dart:io's native zlib does not.
     onStep?.call('Gathering source data…');
     final dumpName = 'free4me-source-dump-$stamp.txt';
     final dumpPath = '${outDir.path}/$dumpName';
@@ -1776,16 +1785,20 @@ class _SettingsState extends State<SettingsView> {
         ? await _writeStringToFile(dumpPath, sourceDump)
         : await _streamSourceDumpToFile(dumpPath);
     if (wroteDump) {
-      final len = await File(dumpPath).length();
+      final gzName = '$dumpName.gz';
+      final gzPath = '${outDir.path}/$gzName';
+      await SettingsIo.gzipFileStream(File(dumpPath), gzPath);
+      await File(dumpPath).delete();
+      final len = await File(gzPath).length();
       items.add(ExportItem(
         key: 'sourcedump',
-        filename: dumpName,
+        filename: gzName,
         label: 'Raw source dumps',
-        filePath: dumpPath,
+        filePath: gzPath,
         sizeBytes: len,
-        contentType: 'text/plain; charset=utf-8',
+        contentType: 'application/gzip',
       ));
-      toZip[dumpPath] = dumpName;
+      toZip[gzPath] = gzName;
     }
     // 2. Debug log.
     onStep?.call('Collecting debug log…');
@@ -1814,11 +1827,14 @@ class _SettingsState extends State<SettingsView> {
     // than shipped with secrets.
     //
     // Checkpoint+truncate the WAL first so the .sqlite files are self-consistent
-    // (recent writes otherwise live only in the -wal sidecar), then stream-copy
-    // each DB to the export dir as a STANDALONE download. fix536: the DB is
-    // deliberately NOT added to the combined zip — ZipFileEncoder.addFile read
-    // the whole multi-hundred-MB db.sqlite into the heap and OOM'd the 2GB TV
-    // box (fix535 regression). A SQLite file barely compresses anyway.
+    // (recent writes otherwise live only in the -wal sidecar), then
+    // stream-gzip each DB straight to the export dir as a STANDALONE download
+    // — no plaintext copy ever touches disk. fix654: replaces the old
+    // stream-COPY (fix536); dart:io's native zlib streams a multi-hundred-MB
+    // file without holding it in memory (unlike archive's Deflate, which
+    // OOM'd on a 532MB text file this same session), and a SQLite file
+    // compresses better than the old "barely compresses" assumption gave it
+    // credit for — the page structure repeats a lot (URLs, channel names).
     if (includeCredentials) {
       onStep?.call('Snapshotting database…');
       try {
@@ -1830,17 +1846,10 @@ class _SettingsState extends State<SettingsView> {
       for (final dbName in const ['db.sqlite', 'epg.sqlite']) {
         final src = File('$appDir/$dbName');
         if (!await src.exists()) continue;
-        final destName = 'free4me-$dbName-$stamp.sqlite';
+        final destName = 'free4me-$dbName-$stamp.sqlite.gz';
         final destPath = '${outDir.path}/$destName';
         try {
-          // fix536: stream the copy in chunks instead of File.copy() and, more
-          // importantly, do NOT add the DB to the combined zip. The OOM on the
-          // 2GB TV box (fix535 regression) was ZipFileEncoder.addFile reading
-          // the full multi-hundred-MB db.sqlite into the heap to compress it.
-          // The DB is already a binary blob that barely compresses, so it ships
-          // as a standalone portal download only; the zip stays small (dumps +
-          // log + settings), preserving the fix328 OOM-avoidance design.
-          await _streamCopyFile(src, destPath);
+          await SettingsIo.gzipFileStream(src, destPath);
           final len = await File(destPath).length();
           dbPaths[destPath] = destName; // fix594: for the "Everything" zip
           items.add(ExportItem(
@@ -1850,15 +1859,18 @@ class _SettingsState extends State<SettingsView> {
                 dbName == 'db.sqlite' ? 'Channel database' : 'EPG database',
             filePath: destPath,
             sizeBytes: len,
-            contentType: 'application/x-sqlite3',
+            contentType: 'application/gzip',
           ));
         } catch (e) {
-          AppLog.warn('export: failed to copy $dbName — $e');
+          AppLog.warn('export: failed to gzip $dbName — $e');
         }
       }
     }
 
-    // 4. Combined zip — encoded directly to a file on disk.
+    // 4. Combined zip — encoded directly to a file on disk. fix654: every
+    // entry is already gzipped at level 9 (dart:io native zlib, streamed —
+    // see addTextFile / gzipFileStream above), so STORE it as-is; re-deflating
+    // already-compressed bytes just burns CPU for no size gain.
     onStep?.call('Compressing files…');
     if (toZip.isNotEmpty) {
       final zipName = 'free4me-export-$stamp.zip';
@@ -1866,11 +1878,7 @@ class _SettingsState extends State<SettingsView> {
       final encoder = ZipFileEncoder();
       encoder.create(zipPath);
       for (final entry in toZip.entries) {
-        // fix594: deflate the text bundle at max (level 9) — the source dumps
-        // dominate and compress well; previously the package default (bestSpeed)
-        // was used. addFile streams the input, so a small 32KB deflate window =
-        // max compression can't OOM.
-        await encoder.addFile(File(entry.key), entry.value, 9);
+        await encoder.addFile(File(entry.key), entry.value, ZipFileEncoder.STORE);
       }
       await encoder.close();
       final len = await File(zipPath).length();
@@ -1884,13 +1892,12 @@ class _SettingsState extends State<SettingsView> {
       ));
     }
 
-    // fix594: an optional "Everything (incl. databases)" zip — the small zip's
-    // contents PLUS the SQLite DBs in ONE download. Text files deflate at 9; the
-    // DBs are added at level 0 (stored, not compressed) since SQLite barely
-    // compresses and deflating a multi-hundred-MB DB is pure cost. addFile
-    // streams the input (archive 4.x) so neither path holds the file in heap.
-    // Credential-gated (the DB embeds Xtream user/pass), same as the standalone
-    // DB downloads. The small zip above is left exactly as-is.
+    // fix594/fix654: an optional "Everything (incl. databases)" zip — the
+    // small zip's contents PLUS the SQLite DBs in ONE download. Every entry
+    // (text and DB) is already gzipped, so both loops STORE. addFile streams
+    // the input (archive 4.x) so neither path holds the file in heap.
+    // Credential-gated (the DB embeds Xtream user/pass), same as the
+    // standalone DB downloads. The small zip above is left exactly as-is.
     if (includeCredentials && dbPaths.isNotEmpty && toZip.isNotEmpty) {
       onStep?.call('Building full archive (incl. databases)…');
       final allName = 'free4me-export-all-$stamp.zip';
@@ -1898,10 +1905,10 @@ class _SettingsState extends State<SettingsView> {
       final allEnc = ZipFileEncoder();
       allEnc.create(allPath);
       for (final entry in toZip.entries) {
-        await allEnc.addFile(File(entry.key), entry.value, 9); // text → max
+        await allEnc.addFile(File(entry.key), entry.value, ZipFileEncoder.STORE);
       }
       for (final entry in dbPaths.entries) {
-        await allEnc.addFile(File(entry.key), entry.value, 0); // DB → stored
+        await allEnc.addFile(File(entry.key), entry.value, ZipFileEncoder.STORE);
       }
       await allEnc.close();
       final len = await File(allPath).length();
@@ -1923,18 +1930,6 @@ class _SettingsState extends State<SettingsView> {
     if (content.isEmpty) return false;
     await File(path).writeAsString(content);
     return true;
-  }
-
-  // fix536: copy a (potentially very large) file by streaming bytes through a
-  // sink, never holding the whole file in memory. Used for the DB snapshot so
-  // a multi-hundred-MB db.sqlite cannot OOM the 2GB TV box.
-  Future<void> _streamCopyFile(File src, String destPath) async {
-    final sink = File(destPath).openWrite();
-    try {
-      await sink.addStream(src.openRead());
-    } finally {
-      await sink.close();
-    }
   }
 
   // fix311/fix328: stream the raw Xtream source dumps to a single file,
