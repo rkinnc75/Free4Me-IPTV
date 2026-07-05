@@ -538,11 +538,11 @@ const _helpDevCapFps = (
       'automatically by the decoder frame-drop mode, which keeps the full frame '
       'rate with no dropped frames — so leave this OFF unless a 60 fps stream '
       'still judders. When on, capping to 30 fps halves the display-upload load '
-      'while keeping audio and video in sync.\\n\\n'
+      'while keeping audio and video in sync.\n\n'
       'Default: OFF (opt-in). Applies to any device and 60 fps '
-      'content.\\n\\n'
-      'Range: ON / OFF.\\n\\n'
-      '↑ ON — 30 fps output; smoothest on weak boxes that still judder.\\n\\n'
+      'content.\n\n'
+      'Range: ON / OFF.\n\n'
+      '↑ ON — 30 fps output; smoothest on weak boxes that still judder.\n\n'
       '↓ OFF — full frame rate (recommended; the decoder frame-drop mode '
       'already prevents judder on most low-RAM boxes).',
 );
@@ -566,10 +566,10 @@ const _helpDevHwdecImageFormat = (
 const _helpDevAudioBufferSecs = (
   title: 'Audio Buffer (seconds)',
   body:
-      'Extra audio buffer in seconds. 0 (default) means "use the codec\'s '
-      'natural buffer" — libmpv\'s upstream default. Positive values add '
-      'extra cushion against A/V desync on shaky providers.\n\n'
-      'Default: 0.00 s. Range: 0–2 s.\n\n'
+      'Extra audio buffer in seconds. The default is 0.20 s — a small cushion '
+      'against A/V desync. Set 0 to use the codec\'s natural buffer '
+      '(libmpv\'s upstream default).\n\n'
+      'Default: 0.20 s. Range: 0–2 s.\n\n'
       '↑ Increasing — smoother A/V on weak networks; higher audio latency.\n\n'
       '↓ Decreasing — lower audio latency; more audio dropouts on slow '
       'links.\n\n'
@@ -640,6 +640,7 @@ class _SettingsState extends State<SettingsView> {
       SettingsService.getSettings(),
       Sql.getSources(),
       PackageInfo.fromPlatform(),
+      Sql.getLatestEpgRefresh(), // finding 12: load once, not per-build
     ]);
     if (!mounted) return;
     setState(() {
@@ -647,6 +648,7 @@ class _SettingsState extends State<SettingsView> {
       sources = results[1] as List<Source>;
       final info = results[2] as PackageInfo;
       _appVersion = 'v${info.version}';
+      _latestEpgRefreshTs = results[3] as int?;
       loading = false;
     });
   }
@@ -1054,7 +1056,12 @@ class _SettingsState extends State<SettingsView> {
           );
         },
       ),
-    ).then((_) => dialogOpen = false);
+    ).then((_) {
+      dialogOpen = false;
+      _refreshSetState = null; // finding 2: dialog gone -> progress callbacks
+      // become no-ops (_updateRefreshDialog null-guards), so a mid-run Back no
+      // longer throws setState-on-disposed and aborts the refresh.
+    });
 
     // fix349: keep this task alive via a foreground service if the user
     // switches away from the app (same pattern as the fix318 source
@@ -1173,6 +1180,11 @@ class _SettingsState extends State<SettingsView> {
         ],
       ),
     );
+    // finding 12: refresh the memoized "last loaded" subtitle after a run.
+    if (mounted) {
+      _latestEpgRefreshTs = await Sql.getLatestEpgRefresh();
+      setState(() {});
+    }
   }
 
   /// Force a full EPG re-match for all sources (forceRematch=true).
@@ -1230,7 +1242,11 @@ class _SettingsState extends State<SettingsView> {
           );
         },
       ),
-    ).then((_) => dialogOpen = false);
+    ).then((_) {
+      dialogOpen = false;
+      _refreshSetState = null; // finding 2/3: dialog gone -> progress callbacks
+      // become no-ops, so a mid-run Back no longer aborts the re-match.
+    });
 
     final results = <String>[];
     // fix349: keep this task alive via a foreground service if the user
@@ -1331,6 +1347,13 @@ class _SettingsState extends State<SettingsView> {
   // Mutable state for the refresh progress dialog
   void Function(void Function())? _refreshSetState;
   String _refreshStatus = '';
+
+  // finding 12: cache the last-EPG-refresh timestamp so the "Refresh EPG now"
+  // subtitle no longer fires a fresh Sql.getLatestEpgRefresh() DB query on
+  // every Settings rebuild (which competed with an in-flight refresh on the
+  // shared sqlite pool and flickered the subtitle). Loaded in initAsync and
+  // re-read after a refresh run.
+  int? _latestEpgRefreshTs;
 
   void _updateRefreshDialog(String status) {
     _refreshStatus = status;
@@ -1433,7 +1456,8 @@ class _SettingsState extends State<SettingsView> {
           ],
         ),
       ),
-    );
+    ).then((_) => dialogOpen = false); // finding 4: track Back-dismissal so
+    // closeProgress() below can't later pop the wrong (Settings) route.
 
     void closeProgress() {
       if (dialogOpen && mounted) {
@@ -1781,9 +1805,15 @@ class _SettingsState extends State<SettingsView> {
     onStep?.call('Gathering source data…');
     final dumpName = 'free4me-source-dump-$stamp.txt';
     final dumpPath = '${outDir.path}/$dumpName';
-    final wroteDump = sourceDump != null
-        ? await _writeStringToFile(dumpPath, sourceDump)
-        : await _streamSourceDumpToFile(dumpPath);
+    // finding P0-1: the raw source dumps echo the Xtream user_info block
+    // (username + password in cleartext) and have no scrubber, so gate them on
+    // includeCredentials exactly as the DB snapshot below is gated. When creds
+    // are excluded, wroteDump is false so the dump never enters items/toZip/zip.
+    final wroteDump = !includeCredentials
+        ? false
+        : (sourceDump != null
+            ? await _writeStringToFile(dumpPath, sourceDump)
+            : await _streamSourceDumpToFile(dumpPath));
     if (wroteDump) {
       final gzName = '$dumpName.gz';
       final gzPath = '${outDir.path}/$gzName';
@@ -2052,7 +2082,11 @@ class _SettingsState extends State<SettingsView> {
   }
 
   Future<void> _submitIssueReport(String subject, String details) async {
+    // finding 7: track the progress dialog so a Back press during submit can't
+    // desync — an unconditional pop would eject the user off the Settings route.
+    var progressOpen = false;
     if (mounted) {
+      progressOpen = true;
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -2065,14 +2099,17 @@ class _SettingsState extends State<SettingsView> {
             ],
           ),
         ),
-      );
+      ).then((_) => progressOpen = false);
     }
     // fix607: shared submitter (also used by the Live-TV diagnostic easter egg).
     final r = await IssueReporter.submit(subject: subject, details: details);
     final bool success = r.success;
     final String? errorMsg = r.errorMsg;
     if (!mounted) return;
-    Navigator.of(context).pop(); // dismiss progress
+    // finding 7: only dismiss if the dialog is still up (Back may have popped it).
+    if (progressOpen) {
+      Navigator.of(context, rootNavigator: true).pop(); // dismiss progress
+    }
     if (!mounted) return;
     showDialog(
       context: context,
@@ -2170,8 +2207,9 @@ class _SettingsState extends State<SettingsView> {
             'then run this again.',
           ),
           actions: [
+            // finding 10: only ONE autofocus per scope — let it land on the
+            // emphasized 'Enable logging' button, not the destructive Cancel.
             TextButton(
-                autofocus: true,
               onPressed: () => Navigator.pop(context, false),
               child: const Text('Cancel'),
             ),
@@ -2363,6 +2401,11 @@ class _SettingsState extends State<SettingsView> {
     final fresh = builder()
       ..debugLogging = settings.debugLogging
       ..logUserPass = settings.logUserPass
+      // finding 103: searchMethod must survive BOTH reset and optimise —
+      // settings.searchMethod already holds the RAM-aware resolver's decision,
+      // so preserving it stops reset/optimise re-persisting the ctor `inMemory`
+      // on a low-RAM box (which would drop the channels_fts triggers).
+      ..searchMethod = settings.searchMethod
       ..multiViewLayout = settings.multiViewLayout
       ..multiViewCells1x2 = settings.multiViewCells1x2
       ..multiViewCells2x2 = settings.multiViewCells2x2;
@@ -2381,7 +2424,24 @@ class _SettingsState extends State<SettingsView> {
         ..epgRefreshHour = settings.epgRefreshHour
         ..epgPastDays = settings.epgPastDays
         ..epgForecastDays = settings.epgForecastDays
-        ..epgSearchHours = settings.epgSearchHours;
+        ..epgSearchHours = settings.epgSearchHours
+        // findings 5/105: Optimise promises to preserve library/UX prefs but
+        // its factory reset them to ctor defaults — safeMode flipping off
+        // (un-hiding adult content) is the worst. Preserve them explicitly.
+        ..safeMode = settings.safeMode
+        ..confirmToExit = settings.confirmToExit
+        ..contentTypeFilter = settings.contentTypeFilter
+        ..playerZoomMode = settings.playerZoomMode;
+    } else {
+      // finding 104: plain Reset must use RAM-aware memory defaults (what a
+      // fresh install would pick on THIS box), not the hardcoded ctor
+      // 128/150/32. Reset-only so it never clobbers the device-tuned values
+      // Settings.optimisedFor bakes in on the Optimise path.
+      fresh
+        ..bufferSizeMB = DeviceMemory.defaultBufferSizeMb
+        ..miniDemuxerMaxMB = DeviceMemory.defaultMiniDemuxerMb
+        ..liveDemuxerMaxMB = DeviceMemory.defaultLiveDemuxerMb
+        ..vodDemuxerMaxMB = DeviceMemory.defaultLiveDemuxerMb + 64;
     }
 
     // Only `bufferSizeMB` is baked into `PlayerConfiguration` at MpvEngine
@@ -3517,6 +3577,7 @@ class _SettingsState extends State<SettingsView> {
                             ],
                           ),
                         );
+                        controller.dispose(); // finding 11: was leaked per open
                         if (result != null && source.id != null) {
                           await Sql.setSourceEpgUrl(
                             source.id!,
@@ -3682,19 +3743,13 @@ class _SettingsState extends State<SettingsView> {
                     leading: const Icon(Icons.refresh),
                     title: const Text("Refresh EPG now"),
                     // fix541 (item 7): show when the EPG was last loaded.
-                    subtitle: FutureBuilder<int?>(
-                      future: Sql.getLatestEpgRefresh(),
-                      builder: (context, snap) {
-                        final ts = snap.data;
-                        if (ts == null) {
-                          return const Text('Download latest program guide');
-                        }
-                        final when = DateTime.fromMillisecondsSinceEpoch(
-                            ts * 1000);
-                        return Text(
-                          'Last loaded ${_formatEpgWhen(when)}',
-                        );
-                      },
+                    // finding 12: read the memoized _latestEpgRefreshTs (loaded
+                    // in initAsync, refreshed after a run) instead of firing a
+                    // Sql.getLatestEpgRefresh() DB query on every rebuild.
+                    subtitle: Text(
+                      _latestEpgRefreshTs == null
+                          ? 'Download latest program guide'
+                          : 'Last loaded ${_formatEpgWhen(DateTime.fromMillisecondsSinceEpoch(_latestEpgRefreshTs! * 1000))}',
                     ),
                     onTap: () async {
                       final noUrls = sources.every(
@@ -4958,6 +5013,10 @@ class _DpadFriendlySlider extends StatefulWidget {
 class _DpadFriendlySliderState extends State<_DpadFriendlySlider> {
   late final FocusNode _focusNode = FocusNode(debugLabel: 'DpadSlider');
 
+  // finding 14: paint a visible highlight when this slider row holds D-pad
+  // focus (cheap — one setState per focus enter/leave, not per drag tick).
+  bool _focused = false;
+
   /// fix359: the stock Slider's inert focus node, hoisted out of build() so it
   /// is allocated once and disposed (was leaking one node per rebuild).
   late final FocusNode _innerInertNode =
@@ -5004,18 +5063,31 @@ class _DpadFriendlySliderState extends State<_DpadFriendlySlider> {
     return Focus(
       focusNode: _focusNode,
       onKeyEvent: _handleKey,
-      child: Slider(
-        value: widget.value.clamp(widget.min, widget.max),
-        min: widget.min,
-        max: widget.max,
-        divisions: widget.divisions,
-        label: widget.label,
-        // Do not let the stock Slider grab keyboard focus — our outer
-        // Focus node receives keys and forwards left/right manually.
-        // fix359: hoisted out of build() (was allocating a leaked FocusNode
-        // per rebuild during drag); disposed with the state.
-        focusNode: _innerInertNode,
-        onChanged: widget.onChanged,
+      // finding 14: reflect D-pad focus with a tint + active-color so the
+      // focused slider is obvious among the ten in the Buffering section.
+      onFocusChange: (f) => setState(() => _focused = f),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          color: _focused
+              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.12)
+              : Colors.transparent,
+        ),
+        child: Slider(
+          value: widget.value.clamp(widget.min, widget.max),
+          min: widget.min,
+          max: widget.max,
+          divisions: widget.divisions,
+          label: widget.label,
+          activeColor:
+              _focused ? Theme.of(context).colorScheme.primary : null,
+          // Do not let the stock Slider grab keyboard focus — our outer
+          // Focus node receives keys and forwards left/right manually.
+          // fix359: hoisted out of build() (was allocating a leaked FocusNode
+          // per rebuild during drag); disposed with the state.
+          focusNode: _innerInertNode,
+          onChanged: widget.onChanged,
+        ),
       ),
     );
   }
