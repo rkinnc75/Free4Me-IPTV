@@ -141,8 +141,23 @@ class AppLogger {
       final tag = s.name.replaceAll(' ', '');
       final u = s.username ?? '';
       final p = s.password ?? '';
-      if (u.trim().isNotEmpty) out.add(MapEntry(u, '<${tag}_USER>'));
-      if (p.trim().isNotEmpty) out.add(MapEntry(p, '<${tag}_PASS>'));
+      // finding 45: also register the percent-encoded forms so a URL-encoded
+      // credential in a logged URL still redacts. encodeComponent covers
+      // space->%20 / @->%40 / +->%2B; encodeQueryComponent covers space->+.
+      if (u.trim().isNotEmpty) {
+        out.add(MapEntry(u, '<${tag}_USER>'));
+        final eu = Uri.encodeComponent(u);
+        if (eu != u) out.add(MapEntry(eu, '<${tag}_USER>'));
+        final qu = Uri.encodeQueryComponent(u);
+        if (qu != u && qu != eu) out.add(MapEntry(qu, '<${tag}_USER>'));
+      }
+      if (p.trim().isNotEmpty) {
+        out.add(MapEntry(p, '<${tag}_PASS>'));
+        final ep = Uri.encodeComponent(p);
+        if (ep != p) out.add(MapEntry(ep, '<${tag}_PASS>'));
+        final qp = Uri.encodeQueryComponent(p);
+        if (qp != p && qp != ep) out.add(MapEntry(qp, '<${tag}_PASS>'));
+      }
       for (final raw in [s.url, s.urlOrigin]) {
         final h = _hostOf(raw);
         if (h != null) out.add(MapEntry(h, '<${tag}_HOST>'));
@@ -157,6 +172,24 @@ class AppLogger {
       // URL is built from the source's own url host, already covered above.)
       final epgHost = _hostOf(s.epgUrl);
       if (epgHost != null) out.add(MapEntry(epgHost, '<${tag}_EPG_HOST>'));
+      // findings 82/40: credentials embedded in the URL query string
+      // (m3uUrl `?username=U&password=P`, or an EPG URL with `?token=...`) are
+      // NOT stored in s.username/s.password, so pull them from every URL and
+      // redact each value.
+      for (final raw in [s.url, s.urlOrigin, s.epgUrl]) {
+        for (final v in _credsFromUrl(raw)) {
+          out.add(MapEntry(v, '<${tag}_CRED>'));
+        }
+      }
+      // finding 40: an opaque path token in the EPG URL
+      // (`/epg/ABCDEF123456.xml.gz`) is a bearer secret too — redact long path
+      // segments (cosmetic over-redaction of a legit 12+ char segment is fine).
+      final epgUri = _tryParseUri(s.epgUrl);
+      if (epgUri != null) {
+        for (final seg in epgUri.pathSegments) {
+          if (seg.length >= 12) out.add(MapEntry(seg, '<${tag}_EPG_TOK>'));
+        }
+      }
     }
     out.sort((a, b) => b.key.length.compareTo(a.key.length));
     _secrets = out;
@@ -175,6 +208,36 @@ class AppLogger {
     } catch (_) {
       return null;
     }
+  }
+
+  /// findings 40/82: parse a URL for redaction, prepending a scheme when
+  /// missing (so a bare `host:port` still parses). Returns null when
+  /// empty/unparseable.
+  Uri? _tryParseUri(String? url) {
+    if (url == null || url.trim().isEmpty) return null;
+    var u = url.trim();
+    if (!u.contains('://')) u = 'http://$u';
+    return Uri.tryParse(u);
+  }
+
+  /// findings 40/82: credential values carried in a URL query string
+  /// (`?username=U&password=P&token=T`). These are NOT in s.username/password
+  /// for m3uUrl / token-EPG sources, so they must be pulled from the URL and
+  /// redacted. Values shorter than 3 chars are skipped (redacting "1"/"on"
+  /// everywhere would mangle the log for no security gain).
+  static const _credQueryKeys = {
+    'username', 'user', 'password', 'pass', 'token', 'auth',
+  };
+  Iterable<String> _credsFromUrl(String? url) {
+    final uri = _tryParseUri(url);
+    if (uri == null) return const [];
+    final out = <String>[];
+    uri.queryParameters.forEach((k, v) {
+      if (_credQueryKeys.contains(k.toLowerCase()) && v.trim().length >= 3) {
+        out.add(v);
+      }
+    });
+    return out;
   }
 
   /// fix374: replace every known credential literal in [s] with its token.
