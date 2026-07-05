@@ -1,8 +1,6 @@
 {
-  "latest": "2.2.53",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.53",
-  "minSupportedAndroidApi": 21,
-  "criticalUpdate": false,
-  "releaseNotes": "\u2022 Fixed the full-screen player hiding its diagnostics panel and picture-in-picture button whenever a multi-view grid layout was configured in Settings \u2014 even when you were not in multi-view. They now show on every full-screen play, including a cell maximized from multi-view.",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.53/Free4Me-IPTV-2.2.53-arm64.apk"
+  "latest": "2.2.54",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.54",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.54/Free4Me-IPTV-2.2.54-arm64.apk",
+  "releaseNotes": "\u2022 Storage: exported files (Backup & Restore, and the Diagnostics QR/LAN export) are now gzip-compressed at maximum level, shrinking large diagnostic bundles (database snapshots, raw source dumps) considerably and reducing the on-device disk headroom an export needs while it runs."
 }
