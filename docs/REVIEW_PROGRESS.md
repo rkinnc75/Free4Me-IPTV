@@ -99,9 +99,11 @@ Wave 2 progress: 3 of 18 files done (m3u ✅, xmltv ✅, epg_service ✅). 15 fi
 ## SHIPPED
 - **v3.0.0+644 (fix655)** — PARTIAL ship of the review (Wave 1 + Wave 2 files m3u/xmltv/epg_service),
   at the owner's request. Commit 3e3ae11; main + tag v3.0.0 pushed; CI Release run 28762139276.
-  On-device verify PENDING (smoke-test the onn after APK publishes: launch, M3U+Xtream refresh, EPG
-  refresh, no catalog loss / no crash). Remaining Wave 2 (player.dart onward) will ship as **3.0.x**
-  — bump 3.0.0+644 → 3.0.1+645 for the next batch (NOT a fresh major).
+  Owner directive: **NO on-device testing until the whole review is done** — do NOT install/smoke-test
+  interim ships on the onn. ALL device-verify (the MANUAL/DEVICE + VF findings) is batched to the very
+  end (task #22). For each ship, just confirm the CI build succeeds + the APK asset publishes.
+  Remaining Wave 2 (player.dart onward) ships as **3.0.x** — bump 3.0.0+644 → 3.0.1+645 for the next
+  batch (NOT a fresh major).
 
 ## FINAL STEPS (after Wave 2)
 1. Batch device-verify the VF/MANUAL findings on the onn (`docs/DEVICE_TESTING.md`), record pass/fail.
