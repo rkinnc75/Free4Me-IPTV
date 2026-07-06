@@ -34,6 +34,17 @@ class XmltvProgress {
   bool get isMatching => matchingChannelsTotal > 0;
 }
 
+/// finding 46: result of a streaming XMLTV parse. `truncated` is true when the
+/// body stream stalled (idle timeout) and the feed is only partial — the caller
+/// must then NOT delete stale programmes and must log the refresh as partial so
+/// it isn't treated as a clean, complete refresh.
+class XmltvParseResult {
+  final Map<String, String> channelMap;
+  final bool truncated;
+  final int inserted;
+  const XmltvParseResult(this.channelMap, this.truncated, this.inserted);
+}
+
 /// Streams and event-parses an XMLTV file.
 ///
 /// Emits progress via [onProgress] and delivers programs in batches of
@@ -47,7 +58,7 @@ class XmltvParser {
 
   /// Returns a map of EPG channel-id → display-name from the file.
   /// Also calls [onBatch] for each batch of in-window programs.
-  static Future<Map<String, String>> parse({
+  static Future<XmltvParseResult> parse({
     required String url,
     required int sourceId,
     required int windowStartEpoch,
@@ -107,14 +118,18 @@ class XmltvParser {
     // `downloadAndParseEpg` returns a partial channelMap; the match step
     // runs on whatever arrived before the stall — partial data is better
     // than a permanent hang requiring force-close.
+    // finding 46: track a body-stall so the caller can avoid deleting stale
+    // programmes / marking the source cleanly-fresh on a partial feed.
+    bool truncated = false;
     Stream<List<int>> byteStream = await _maybeUngzip(
       response.stream.timeout(
         const Duration(seconds: 60),
         onTimeout: (sink) {
           AppLog.warn(
-            'XMLTV: body stream stalled — no data for 60 s, closing'
-            ' (partial result will be used)',
+            'XMLTV: body stream stalled — no data for 60 s, marking truncated'
+            ' (partial result kept, source will NOT be marked fresh)',
           );
+          truncated = true;
           sink.close();
         },
       ),
@@ -226,9 +241,10 @@ class XmltvParser {
 
     AppLog.info(
       'XMLTV: parse done — ${channelMap.length} channels, '
-      '$inserted programs inserted, $skipped outside window',
+      '$inserted programs inserted, $skipped outside window'
+      '${truncated ? " (TRUNCATED — body stalled)" : ""}',
     );
-    return channelMap;
+    return XmltvParseResult(channelMap, truncated, inserted);
   }
 
   /// Peeks at the first chunk of [source] and, if it starts with the gzip

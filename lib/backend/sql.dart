@@ -3062,10 +3062,14 @@ class Sql {
   /// fix541: the most recent EPG refresh time across ALL sources (epoch
   /// seconds), or null if EPG has never been refreshed. Used to show the user
   /// the last load time and to warn before a redundant re-download (<24h).
+  /// finding 37: only SUCCESSFUL refreshes (last_error IS NULL) count toward the
+  /// launch-refresh debounce — a failed/partial attempt must not suppress the
+  /// next retry for an hour (upsertEpgRefreshLog stamps the time even on error).
   static Future<int?> getLatestEpgRefresh() async {
     final db = await EpgDbFactory.db;
     final row = await db.getOptional(
-      'SELECT MAX(last_refreshed_utc) FROM epg_refresh_log',
+      'SELECT MAX(last_refreshed_utc) FROM epg_refresh_log '
+      'WHERE last_error IS NULL',
     );
     if (row == null) return null;
     return row.columnAt(0) as int?;

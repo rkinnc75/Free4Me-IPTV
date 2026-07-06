@@ -74,26 +74,30 @@ class EpgService {
       //      unbounded count(*) form within the data the DB actually holds.
       // stop_utc > now is covered by the third index column, so the probe is
       // index-only. LIMIT 1 — we only need existence, not a count.
-      final windowStart = now - 3 * 86400;
+      // finding 42: use the EXACT 'airing now' predicate (start_utc <= now AND
+      // stop_utc > now) instead of the old 3-day start_utc floor. A multi-day
+      // programme (24/7 filler, week-long container) inserted while its start
+      // was in-window can still be airing days later and survives
+      // deleteStalePrograms; the floor excluded it → isStale falsely true →
+      // hourly re-download storm. Still seeks idx_programs_time_range (source_id
+      // equality + start_utc range; stop_utc is the covered residual).
       final ids = sourceIds;
       if (ids != null && ids.isNotEmpty) {
         for (final sid in ids) {
           final rows = await db.getAll(
             'SELECT 1 FROM programmes '
-            'WHERE source_id = ? AND start_utc > ? AND start_utc <= ? '
-            'AND stop_utc > ? LIMIT 1',
-            [sid, windowStart, now, now],
+            'WHERE source_id = ? AND start_utc <= ? AND stop_utc > ? LIMIT 1',
+            [sid, now, now],
           );
-          if (rows.isNotEmpty) return false; // something airing → not stale
+          if (rows.isNotEmpty) return false; // something airing now → not stale
         }
         return true; // nothing airing across every eligible source
       }
-      // No source list supplied: keep the LIMIT-1 early-exit (still avoids the
-      // count(*) full aggregate) even though this form can't seek by source.
+      // No source list supplied: same on-now predicate, LIMIT-1 early-exit.
       final rows = await db.getAll(
         'SELECT 1 FROM programmes '
-        'WHERE start_utc > ? AND start_utc <= ? AND stop_utc > ? LIMIT 1',
-        [windowStart, now, now],
+        'WHERE start_utc <= ? AND stop_utc > ? LIMIT 1',
+        [now, now],
       );
       return rows.isEmpty;
     } catch (e) {
@@ -178,13 +182,33 @@ class EpgService {
           ? eligible.length
           : i + maxConcurrent;
       final chunk = eligible.sublist(i, end);
-      await Future.wait(chunk.map(
-        (s) => refreshSource(
-          s,
-          epgUrl: resolveEpgUrl(s),
-          background: background,
-        ),
-      ));
+      // finding 39: isolate each source — matchChannels (SQLITE_BUSY, isolate
+      // failure, checkpoint) can throw out of refreshSource; without this the
+      // Future.wait rethrows, the loop dies skipping later sources, and the
+      // error escapes the unawaited caller. Log + record and continue.
+      await Future.wait(chunk.map((s) async {
+        try {
+          await refreshSource(
+            s,
+            epgUrl: resolveEpgUrl(s),
+            background: background,
+            rebuildFts: false, // finding 36: hoisted to once-after-loop below
+          );
+        } catch (e, st) {
+          AppLog.error('EPG: refresh failed for "${s.name}": $e\n$st');
+          if (s.id != null) {
+            await Sql.upsertEpgRefreshLog(s.id!, 0, e.toString());
+          }
+        }
+      }));
+    }
+    // finding 36: programmes_fts 'rebuild' is a GLOBAL FTS5 op whose cost is
+    // independent of which source parsed, so a multi-source refresh pays it
+    // ONCE here instead of once per source. Idempotent when nothing changed.
+    try {
+      await Sql.rebuildProgrammesFts();
+    } catch (e) {
+      AppLog.warn('EPG: post-refresh FTS rebuild failed — $e');
     }
   }
 
@@ -194,6 +218,7 @@ class EpgService {
   static Future<Map<String, String>?> downloadAndParseEpg(
     Source source, {
     String? epgUrl,
+    bool rebuildFts = true, // finding 36: false in the multi-source path
     void Function(XmltvProgress)? onProgress,
   }) async {
     final settings = await SettingsService.getSettings();
@@ -214,7 +239,7 @@ class EpgService {
       // unique index on (source_id, epg_channel_id, start_utc) turns the
       // batch insert into an upsert so a mid-stream failure leaves the
       // previous EPG intact instead of emptying the table.
-      final channelMap = await XmltvParser.parse(
+      final result = await XmltvParser.parse(
         url: url,
         sourceId: source.id!,
         windowStartEpoch: windowStart,
@@ -225,6 +250,7 @@ class EpgService {
         },
         onProgress: onProgress,
       );
+      final channelMap = result.channelMap;
 
       // Force a WAL checkpoint before returning to the caller. Without
       // this, SQLite's automatic PASSIVE checkpoint runs concurrently
@@ -238,11 +264,19 @@ class EpgService {
       // Previously deleteStalePrograms ran after the checkpoint, creating a
       // fresh WAL that could reintroduce an auto-checkpoint stall on the
       // next UI read. Order: insert → delete stale → show progress → checkpoint.
-      await Sql.deleteStalePrograms(source.id!, windowStart);
+      // finding 46: on a truncated (stalled) feed, do NOT delete stale
+      // programmes — the partial download would otherwise drop still-valid rows.
+      if (!result.truncated) {
+        await Sql.deleteStalePrograms(source.id!, windowStart);
+      }
 
       // fix502: rebuild the programme-title FTS index once after the batch
       // refresh (trigger-free design — no per-row cost on the bulk insert).
-      await Sql.rebuildProgrammesFts();
+      // finding 36: skipped in the multi-source path — hoisted to
+      // refreshAllSources so a multi-source refresh pays the global rebuild once.
+      if (rebuildFts) {
+        await Sql.rebuildProgrammesFts();
+      }
 
       onProgress?.call(XmltvProgress(
         programsInserted: inserted,
@@ -254,9 +288,12 @@ class EpgService {
       // hard-TRUNCATEd mid-EPG-refresh (the sms938u crash site).
       await Sql.checkpointAndTruncateWal(dbMode: WalCheckpointMode.passive);
 
-      AppLog.info(
-          'EPG: downloaded "${source.name}" — $inserted programs');
-      await Sql.upsertEpgRefreshLog(source.id!, inserted, null);
+      AppLog.info('EPG: downloaded "${source.name}" — $inserted programs'
+          '${result.truncated ? " (partial/timeout)" : ""}');
+      // finding 46: record a partial refresh with an error tag so it is NOT
+      // counted as a clean success by the launch-refresh debounce (finding 37).
+      await Sql.upsertEpgRefreshLog(
+          source.id!, inserted, result.truncated ? 'partial/timeout' : null);
       return channelMap;
     } catch (e, st) {
       AppLog.error('EPG: download failed for "${source.name}": $e\n$st');
@@ -276,8 +313,9 @@ class EpgService {
   /// existing assignments (used by the "Re-match all channels" button in
   /// Settings or after the matcher algorithm is updated).
   ///
-  /// Manual overrides ([Channel.epgManualOverride] IS NOT NULL) are always
-  /// preserved and never re-matched.
+  /// Manual-override channels ([Channel.epgManualOverride] IS NOT NULL) are
+  /// excluded by the feeder queries, so they are never re-matched (their
+  /// existing assignment is left untouched).
   static Future<void> matchChannels(
     Source source,
     Map<String, String> channelMap, {
@@ -292,19 +330,17 @@ class EpgService {
               .toList()
         : await Sql.getChannelsNeedingEpgMatch(source.id!);
 
-    final manualOverrides = <int, String>{};
-    for (final ch in toMatch) {
-      if (ch.epgManualOverride != null && ch.id != null) {
-        manualOverrides[ch.id!] = ch.epgManualOverride!;
-      }
-    }
-
+    // finding 44: the old manual-override map + loop here were dead — both
+    // feeders exclude override rows (forceAll filters epgManualOverride==null;
+    // getChannelsNeedingEpgMatch requires epg_manual_override IS NULL), so
+    // toMatch never contains one and the map was always empty. Overrides are
+    // preserved simply by not being re-matched (their epg_channel_id is left
+    // untouched).
     AppLog.info(
       'EPG: matching ${toMatch.length} channels'
       ' (${forceAll ? "full re-match" : "unmatched only"})'
       ' for "${source.name}"'
-      ' channelMap=${channelMap.length}'
-      ' manualOverrides=${manualOverrides.length}',
+      ' channelMap=${channelMap.length}',
     );
 
     if (toMatch.isEmpty) {
@@ -347,12 +383,9 @@ class EpgService {
       ));
     }
 
-    final merged = {...allMatched, ...manualOverrides};
-    AppLog.info(
-      'EPG: matchChannels write: merged=${merged.length}'
-      ' (matched=${allMatched.length}'
-      ' + manualOverrides=${manualOverrides.length})',
-    );
+    // finding 44: merged == matched (no overrides in toMatch, see above).
+    final merged = allMatched;
+    AppLog.info('EPG: matchChannels write: merged=${merged.length}');
     if (merged.isNotEmpty) {
       await Sql.setChannelEpgIds(merged);
       // fix615: this wrote db.sqlite (channel epg_id mapping), so db.sqlite is
@@ -384,11 +417,13 @@ class EpgService {
     String? epgUrl,
     bool background = false,
     bool forceRematch = false,
+    bool rebuildFts = true, // finding 36: false from the multi-source path
     void Function(XmltvProgress)? onProgress,
   }) async {
     final channelMap = await downloadAndParseEpg(
       source,
       epgUrl: epgUrl,
+      rebuildFts: rebuildFts,
       onProgress: onProgress,
     );
     if (channelMap == null) return;
