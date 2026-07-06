@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:open_tv/backend/app_logger.dart';
-import 'package:open_tv/backend/sql.dart' show Sql, importBatchSize;
+import 'package:open_tv/backend/sql.dart' show Sql, importBatchSize, bulkInsertRows;
 import 'package:open_tv/backend/utils.dart';
 import 'package:open_tv/models/channel.dart';
 import 'package:open_tv/models/channel_http_headers.dart';
@@ -14,7 +14,10 @@ import 'package:http/http.dart' as http;
 import 'package:open_tv/backend/http_client.dart';
 
 final nameRegex = RegExp(r'tvg-name="([^"]*)"');
-final nameRegexAlt = RegExp(r',([^,\n\r\t]*)$');
+// finding 83: capture everything after the FIRST comma (the display title may
+// itself contain commas, e.g. "Cosmos, A Spacetime Odyssey"); firstMatch binds
+// to the leftmost comma so no-comma titles are unchanged.
+final nameRegexAlt = RegExp(r',(.+)$');
 final idRegex = RegExp(r'tvg-id="([^"]*)"');
 final logoRegex = RegExp(r'tvg-logo="([^"]*)"');
 final groupRegex = RegExp(r'group-title="([^"]*)"');
@@ -43,6 +46,10 @@ Future<void> processM3U(
   await Sql.commitWrite([Sql.getOrCreateSourceByName(source)], memory: memory);
   final sourceId = int.parse(memory['sourceId']!);
   source.id = sourceId;
+  // finding 78: capture preserve, but DO NOT wipe up front. A transient/empty/
+  // HTML/truncated download would otherwise permanently destroy the catalog +
+  // favorites. The wipe is deferred and spliced in front of the inserts (one
+  // atomic transaction) only after a plausible non-zero count is confirmed.
   if (wipe) {
     preserve = await Sql.getChannelsPreserve(sourceId);
     AppLog.info(
@@ -51,46 +58,70 @@ Future<void> processM3U(
       ' favorites=${preserve.where((p) => p.favorite == 1).length}'
       ' total=${preserve.length}',
     );
-    await Sql.commitWrite([Sql.wipeSource(sourceId)], memory: memory);
   }
 
-  var file = File(
-    path!,
-  ).openRead().transform(utf8.decoder).transform(const LineSplitter());
+  // finding 78: allowMalformed so a single bad byte mid-stream doesn't abort
+  // the whole parse (and drop every surrounding valid channel).
+  var file = File(path!)
+      .openRead()
+      .transform(const Utf8Decoder(allowMalformed: true))
+      .transform(const LineSplitter());
 
-  var batch = <Future<void> Function(SqliteWriteContext, Map<String, String>)>[];
+  // finding 78/79: accumulate every insert closure WITHOUT committing during
+  // the parse, so the deferred wipe can be gated on the final parsed count and
+  // made atomic with the inserts. finding 79: plain channels go through
+  // insertChannelsBulk (1000 rows/statement, no per-row last_insert_rowid);
+  // only a header-bearing channel uses insertChannel (its header row needs the
+  // rowid). M3U playlists are small (the 450k catalog case is Xtream, handled
+  // in xtream.dart), so holding the bulk closures here is fine.
+  final contentStatements =
+      <Future<void> Function(SqliteWriteContext, Map<String, String>)>[];
+  final channelBuffer = <Channel>[];
+  var channelCount = 0;
+  // fix256: provider order for M3U = line sequence (the playlist's intended
+  // order, the M3U analogue of Xtream's `num`).
+  var order = 0;
+
+  void flushChannelBuffer() {
+    if (channelBuffer.isEmpty) return;
+    contentStatements.add(Sql.insertChannelsBulk(List<Channel>.from(channelBuffer)));
+    channelBuffer.clear();
+  }
+
+  void emitChannel(String l1, String last, ChannelHttpHeaders? headers) {
+    final channel = getChannelFromLines(l1, last, order);
+    if (channel == null) return;
+    // fix546: discard "##### HEADER #####" divider entries at import.
+    if (channel.isDivider) return;
+    order++;
+    channelCount++;
+    if (headers != null) {
+      // finding 79: flush the bulk buffer first so provider_order stays
+      // contiguous and insertChannelHeaders sees this channel's rowid as the
+      // immediately-preceding INSERT.
+      flushChannelBuffer();
+      contentStatements.add(Sql.insertChannel(channel));
+      contentStatements.add(Sql.insertChannelHeaders(headers));
+    } else {
+      channelBuffer.add(channel);
+      if (channelBuffer.length >= bulkInsertRows) flushChannelBuffer();
+    }
+  }
+
   String? lastLine;
   String? channelLine;
   ChannelHttpHeaders? headers;
   var httpHeadersSet = false;
-  int channelCount = 0;
-
-  Future<void> flushBatch() async {
-    if (batch.isEmpty) return;
-    await Sql.commitWriteBatched(batch, memory: memory);
-    channelCount += batch.length;
-    batch = [];
-    onProgress?.call('Loading channels: $channelCount…');
-  }
-
-  // fix256: provider order for M3U = line sequence (the playlist lists
-  // channels in the provider's intended order, the M3U analogue of Xtream's
-  // `num`). Increment per committed channel and store as provider_order.
-  var order = 0;
   await for (var line in file) {
     final lineUpper = line.toUpperCase();
     if (lineUpper.startsWith("#EXTINF")) {
       if (channelLine != null &&
           lastLine != null &&
           lastLine.trim().isNotEmpty) {
-        commitChannel(
-          channelLine,
-          lastLine,
-          httpHeadersSet ? headers : null,
-          batch,
-          order++,
-        );
-        if (batch.length >= importBatchSize) await flushBatch();
+        emitChannel(channelLine, lastLine, httpHeadersSet ? headers : null);
+        if (channelCount % importBatchSize == 0) {
+          onProgress?.call('Parsing channels: $channelCount…');
+        }
       }
       channelLine = line;
       lastLine = null;
@@ -102,15 +133,49 @@ Future<void> processM3U(
         httpHeadersSet = true;
       }
     } else {
-      if (line.trim().isNotEmpty) {
-        lastLine = line;
+      // finding 84: only a bare, non-'#' line is the channel URL — a directive
+      // or comment line after the URL must never overwrite it (the M3U spec has
+      // no non-'#' directive, so skipping all remaining '#' lines is correct).
+      final t = line.trim();
+      if (t.isNotEmpty && !t.startsWith('#')) {
+        lastLine = t;
       }
     }
   }
   if (channelLine != null && lastLine != null && lastLine.trim().isNotEmpty) {
-    commitChannel(channelLine, lastLine, headers, batch, order++);
+    emitChannel(channelLine, lastLine, httpHeadersSet ? headers : null);
   }
-  await flushBatch();
+  flushChannelBuffer();
+
+  // finding 78: count gate — refuse to wipe/replace when the parse produced
+  // nothing plausible, so a failed/empty/HTML/truncated download keeps the
+  // existing catalog + favorites instead of destroying them.
+  if (channelCount == 0) {
+    AppLog.warn(
+      'M3U: parsed 0 channels for source="${source.name}" — keeping existing '
+      'catalog (download likely empty/HTML/failed)',
+    );
+    return;
+  }
+  if (wipe &&
+      source.lastLiveCount != null &&
+      source.lastLiveCount! > 100 &&
+      channelCount < source.lastLiveCount! ~/ 5) {
+    AppLog.warn(
+      'M3U: refusing to replace ${source.lastLiveCount} prior channels with '
+      '$channelCount (<20%) for source="${source.name}" — keeping existing '
+      'catalog',
+    );
+    return;
+  }
+
+  // finding 78: splice the wipe in front of the inserts so wipe + first inserts
+  // commit in the same batched transaction (a mid-commit throw rolls it back).
+  if (wipe) {
+    contentStatements.insert(0, Sql.wipeSource(sourceId));
+  }
+  onProgress?.call('Loading channels: $channelCount…');
+  await Sql.commitWriteBatched(contentStatements, memory: memory);
 
   final tail = <Future<void> Function(SqliteWriteContext, Map<String, String>)>[
     Sql.updateGroups(),
@@ -136,25 +201,6 @@ Future<void> processM3U(
       'M3U: preserve restored — source="${source.name}"'
       ' channels=$channelCount',
     );
-  }
-}
-
-void commitChannel(
-  String l1,
-  String last,
-  ChannelHttpHeaders? headers,
-  List<Future<void> Function(SqliteWriteContext, Map<String, String>)>
-  statements,
-  int order, // fix256: provider line order
-) {
-  var channel = getChannelFromLines(l1, last, order);
-  if (channel == null) return;
-  // fix546: discard "##### HEADER #####" divider entries at import so they
-  // never enter the DB (cosmetic separators, no playable content).
-  if (channel.isDivider) return;
-  statements.add(Sql.insertChannel(channel));
-  if (headers != null) {
-    statements.add(Sql.insertChannelHeaders(headers));
   }
 }
 
@@ -239,12 +285,25 @@ Future<void> processM3UUrl(
 ]) async {
   AppLog.info('M3U: downloading source="${source.name}" url="${source.url}"');
   onProgress?.call('Downloading playlist…');
+  // finding 80: delete the downloaded temp file on BOTH success and failure —
+  // only the file downloaded here (never a caller-supplied local path, which
+  // is why cleanup lives in processM3UUrl not processM3U).
+  String? path;
   try {
-    var path = await downloadM3U(source.url!);
+    path = await downloadM3U(source.url!);
     await processM3U(source, wipe, path, onProgress);
   } catch (e) {
     AppLog.warn('M3U: download failed source="${source.name}" error=$e');
     rethrow;
+  } finally {
+    if (path != null) {
+      try {
+        final f = File(path);
+        if (await f.exists()) await f.delete();
+      } catch (e) {
+        AppLog.warn('M3U: temp cleanup failed path="$path" error=$e');
+      }
+    }
   }
 }
 
@@ -265,14 +324,37 @@ Future<String> downloadM3U(String urlStr) async {
   final unique = DateTime.now().microsecondsSinceEpoch;
   final path = await Utils.getTempPath("get_$unique.m3u");
   final file = File(path);
+  // finding 80: sweep any leaked prior downloads (always this function's
+  // `get_*.m3u` output) before writing the new one, so a past crash between
+  // download and cleanup doesn't accumulate multi-MB files.
+  try {
+    await for (final e in file.parent.list(followLinks: false)) {
+      if (e is File &&
+          e.path != path &&
+          e.uri.pathSegments.last.startsWith('get_') &&
+          e.path.endsWith('.m3u')) {
+        try {
+          await e.delete();
+        } catch (_) {}
+      }
+    }
+  } catch (_) {}
   final sink = file.openWrite();
-  await for (var chunk in response.stream.timeout(
-    const Duration(seconds: 60),
-    onTimeout: (sink) => sink.close(),
-  )) {
-    sink.add(chunk);
+  try {
+    await for (var chunk in response.stream.timeout(
+      const Duration(seconds: 60),
+      // finding 81: emit an ERROR on idle timeout (not a clean close) so the
+      // `await for` throws and the caller keeps the old catalog, instead of
+      // persisting a silently-truncated playlist as a complete refresh. Note
+      // `eventSink` is the transformed-stream sink, distinct from the file sink.
+      onTimeout: (eventSink) =>
+          eventSink.addError(Exception('M3U download stalled: no data for 60s')),
+    )) {
+      sink.add(chunk);
+    }
+  } finally {
+    await sink.close();
   }
-  await sink.close();
   final length = await file.length();
   if (length == 0) {
     throw Exception('Downloaded M3U file is empty');
