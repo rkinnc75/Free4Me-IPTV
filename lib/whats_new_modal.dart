@@ -6,6 +6,22 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '3.0.1': [
+    'More reliability fixes from the code review: the player no longer gets '
+        'stuck on "Buffering" after a reconnect hiccup, a held OK button no '
+        'longer rapidly toggles play/pause, and your movie resume point is now '
+        'saved when you channel-surf or background the app (and never '
+        'overwritten with 0 by a failed open).',
+    'Removing or refreshing a source now fully cleans up its leftover data '
+        '(saved positions, stream headers), and crashed/leaked DVR cache '
+        'folders are swept on startup.',
+    'Guide: fixed a double-Back that could exit the app from the channel '
+        'rail, and the guide now shows an error state instead of a silent '
+        'blank screen if it fails to load.',
+    'Mini-player is now hidden on TV/remote-only devices where it can\'t be '
+        'controlled.',
+    'Plus more stability fixes across playback, database, and settings.',
+  ],
   '3.0.0': [
     'Reliability: an M3U refresh that fails, times out, or returns an error '
         'page no longer wipes your channel list — the existing catalog + '
