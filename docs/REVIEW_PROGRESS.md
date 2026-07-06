@@ -82,7 +82,35 @@ Status: ⬜ pending / 🟡 in-progress / ✅ done / ⤵ deferred-within-file.
 - ⬜ **21. epg_channel_mapping.dart** — P1: load-all + no debounce (:53). Apply.
 - ⬜ **22. test/fix572_export_purge_test.dart** — add credential-exclusion test fencing P0-1/P1-5 (or new test file). (Overlaps the deferred P0-1 unit test above.)
 
-## NEXT UP
+## WAVE 2 — CODE-COMPLETE for all non-device-premise findings (2026-07-05)
+All 18 Wave-2 files processed. Applied via two parallel workflows + parent glue:
+- own-file (commit 6c6a3b3): db_factory 57/59/60, xtream 64/66/68/69, tv_guide 71/72/74/75,
+  multi_view_cell 85/86/88/91, overlay 108, mpv_engine 98, home 115/116/117, tv_search 111/112/113,
+  multi_view_screen 122/123, stalker 124, epg_channel_mapping 125. +2 tests.
+- cross-file glue (commit 06a34b7): sql/xtream 55/63/65/67, confirm_exit_scope+tv_guide 70,
+  main+mpv_engine 100/101, channel_tile+player 107. (Earlier: m3u, xmltv, epg_service, player safe bundle.)
+Gate: `flutter analyze` clean, **300 tests green**.
+
+### DEFERRED — needs on-device premise confirmation (VF) or a test seam / larger refactor.
+Fold into the batched device-verify (task #22) + a focused follow-up pass. NONE are half-done.
+- **player.dart**: 15 (VOD failure), 17/22/23 (_onCastTap cast rewrite), 18/19 (hwdec+mpv_engine
+  setHardwareDecode/promoteToFullScreen), 20/21 (network-restore + _startPlayback generation guard),
+  26/27/35 (overlay D-pad gate decision), 29/31/32/33/34.
+- **epg_service.dart**: 38/43 (cross-isolate app_meta bridge + main.dart resume poll), 41 (matcher
+  index-reuse isolate refactor).
+- **db_factory.dart**: 54 (buildMigrations test seam), 56/58 (index-maintenance markers, →sql.dart), 61.
+- **xtream.dart**: 62 (main-isolate 6-way decode → Isolate.run, device memory claim).
+- **tv_guide_view.dart**: 73 (tv_search companion), 76 (empty-cat focus), 77 (→sql.dart channelsGen).
+- **multi_view_cell.dart**: 87/89/90. **overlay_player_widget.dart**: 109/110. **mpv_engine.dart**: 99/102.
+- **settings_view.dart**: 9/13. **settings_io.dart**: 93. **settings_service.dart**: 161-step2.
+- Refuted (never touch): sql.dart ~994, settings_service ~547.
+
+### SHIP STATE
+v3.0.0 (fix655) shipped Wave 1 + m3u/xmltv/epg. **Committed-but-NOT-shipped since:** player safe
+bundle (1347bdf), own-file (6c6a3b3), cross-file glue (06a34b7). Next ship = **3.0.1** folds these in
+(bump 3.0.0+644 → 3.0.1+645). No push/tag without owner OK; no on-device test until review fully done.
+
+## NEXT UP (historical)
 **Wave 2 file 9 = db_factory.dart** (P1: 55 FK-cascade→sql.dart deletes, 57 memoize failed EPG open,
 54 migration-test VF; P2: 56 fresh-install marker VF→sql.dart; P3: 58 heavy-migration-tail VF, 59
 down-migration guard, 60 DbFactory.db race [SAME memoize idiom as 57], 61 self-heal debounce VF).
