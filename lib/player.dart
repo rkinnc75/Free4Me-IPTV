@@ -231,6 +231,10 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   Timer? _startupWatchdog;
   Timer? _stableTimer;
   bool _isReconnecting = false;
+  // finding 28: true once playback has meaningfully started this session (first
+  // buffering=false). Gates the movie resume-position save so a failed/aborted
+  // open can't overwrite a good stored position with 0.
+  bool _playbackStartedThisSession = false;
   String? _bufferingState;
   // Suppresses false reconnect triggers during the first 3s after open().
   bool _startupGrace = false;
@@ -467,8 +471,9 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
       }
     }));
     _engineSubs.add(_engine.errorStream.listen((err) {
-      AppLog.warn('Player: engine error — $err');
-
+      // finding 30: no unconditional entry log — suppressed seek/vf probe
+      // errors must stay silent (fix380 intent); a real error is logged once
+      // at the classified site below.
       // Suppress the mpv seekability probe error unconditionally.
       // mpv probes seekability on every open() and MPEG-TS livestreams
       // always reject it with "Cannot seek in this stream." — the stream
@@ -602,6 +607,9 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     } else {
       _bufferingWatchdog?.cancel();
       _bufferingWatchdog = null;
+      // finding 28: first buffering=false means playback actually started —
+      // now a movie resume-position save is safe.
+      _playbackStartedThisSession = true;
       if (mounted) setState(() => _bufferingState = null);
 
       // Expire startup grace 500ms after buffering=false. The mpv seek probe
@@ -773,9 +781,20 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
       _isReconnecting = false;
       return;
     }
-    final headers = await Sql.getChannelHeaders(id);
-    await _startPlayback(null, headers: headers);
-    _isReconnecting = false;
+    // finding 16: always clear _isReconnecting, even if getChannelHeaders
+    // (a bare db read, throws on 'database is locked' during a concurrent
+    // refresh) or _startPlayback throws — otherwise the flag sticks true
+    // forever and every future disconnect / network-restore is rejected,
+    // wedging the player.
+    try {
+      final headers = await Sql.getChannelHeaders(id);
+      await _startPlayback(null, headers: headers);
+    } catch (e) {
+      AppLog.warn('Player: reconnect tail failed — $e'
+          ' channel="${widget.channel.name}"');
+    } finally {
+      _isReconnecting = false;
+    }
   }
 
   /// fix421: ensures the connection-setup timing probe runs once per
@@ -1277,6 +1296,21 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     if (!mounted || pl == null || target == null || exiting || _exitInvoked) {
       return;
     }
+    // finding 24: surfing away via pushReplacement disposes this Player without
+    // running onExit, so persist a movie's resume position here first (same
+    // finding-28 guard so a not-started/near-zero position can't clobber it).
+    if (widget.channel.mediaType == MediaType.movie) {
+      final curId = widget.channel.id;
+      final pos = _engine.position.inSeconds;
+      if (curId != null && _playbackStartedThisSession && pos > 5) {
+        try {
+          await Sql.setPosition(curId, pos)
+              .timeout(const Duration(seconds: 1));
+        } catch (e) {
+          AppLog.warn('Player: surf setPosition skipped — $e');
+        }
+      }
+    }
     final next = pl.channels[target];
     final nextId = next.id;
     AppLog.info('Player: channel surf -> "${next.name}" '
@@ -1606,6 +1640,10 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
             seconds: action == PlayerKeyAction.seekBack ? -step : step));
         return KeyEventResult.handled;
       case PlayerKeyAction.playPauseReveal:
+        // finding 25: act only on the initial press — a held OK fires KeyRepeat
+        // events, which otherwise thrash play/pause and re-activate the focused
+        // button. Consume repeats as handled without acting.
+        if (event is! KeyDownEvent) return KeyEventResult.handled;
         _togglePlayPause();
         // fix580: TV single-cell → open the custom focusable overlay; phone →
         // media_kit's own bars via the synth tap. fix650 dropped the LIVE-only
@@ -1772,11 +1810,15 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     _stableTimer = null;
 
     // Save movie resume position, bounded so a busy engine can't hang.
+    // finding 28: only when playback actually started AND we're past 5s — a
+    // failed/aborted open (position 0, or a brief spurious nonzero) must not
+    // overwrite a good stored resume point with ~0.
     if (widget.channel.mediaType == MediaType.movie) {
       final id = widget.channel.id;
-      if (id != null) {
+      final pos = _engine.position.inSeconds;
+      if (id != null && _playbackStartedThisSession && pos > 5) {
         try {
-          await Sql.setPosition(id, _engine.position.inSeconds)
+          await Sql.setPosition(id, pos)
               .timeout(const Duration(seconds: 1));
         } catch (e) {
           AppLog.warn('Player: onExit setPosition skipped — $e');
@@ -1820,6 +1862,22 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     AppLog.info('Player: onExit DONE channel="${widget.channel.name}"');
   }
 
+
+  // finding 24: persist a movie's resume position when the app is backgrounded
+  // or killed (onExit doesn't run on a swipe-away / process death). Paused +
+  // movie + started-and-past-5s only (finding-28 guard), kept cheap.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.paused &&
+        widget.channel.mediaType == MediaType.movie) {
+      final id = widget.channel.id;
+      final pos = _engine.position.inSeconds;
+      if (id != null && _playbackStartedThisSession && pos > 5) {
+        unawaited(Sql.setPosition(id, pos));
+      }
+    }
+  }
 
   // fix136: DIAGNOSTIC ONLY — logs rotation, no engine/connection action.
   @override
