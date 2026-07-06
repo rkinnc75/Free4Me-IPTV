@@ -26,6 +26,10 @@
 // is the cheapest reliable signal.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
+import 'package:open_tv/edit_dialog.dart';
+import 'package:open_tv/models/source.dart';
+import 'package:open_tv/models/source_type.dart';
 import 'dart:io';
 
 void main() {
@@ -109,6 +113,63 @@ void main() {
       ).hasMatch(content);
       expect(cancelAutofocus, isTrue,
           reason: 'Cancel must be autofocused (fix385 #6).');
+    });
+
+    // Review finding 159: a real behavioral test — the two grep tests above
+    // only prove the source TEXT contains `autofocus: true` near "Cancel";
+    // this proves the Cancel button actually OWNS D-pad focus on open and Save
+    // does not. EditDialog.initState fires Sql.getSources() fire-and-forget
+    // with a swallowing catchError + mounted guard, so no DB is needed; the
+    // _cancelFocus.requestFocus() runs in a post-frame, hence pumpAndSettle.
+    testWidgets('Cancel button holds primary focus on open (D-pad guard)',
+        (tester) async {
+      final source = Source(
+        id: 1,
+        name: 'Src',
+        sourceType: SourceType.m3u, // no network probe on open
+        url: 'http://example.com/list.m3u',
+      );
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: EditDialog(source: source, afterSave: () async {}),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      final cancelFinder = find.widgetWithText(TextButton, 'Cancel');
+      expect(cancelFinder, findsOneWidget);
+
+      // The autofocused Cancel button owns primary focus. Assert via the
+      // primaryFocus node's position in the tree, not Focus.of(...scopeOk:
+      // true) — that resolves to the shared enclosing FocusScope, which reports
+      // hasFocus==true for BOTH buttons and cannot distinguish them.
+      final primary = FocusManager.instance.primaryFocus;
+      expect(primary, isNotNull,
+          reason: 'Something must hold focus after the dialog opens.');
+
+      // Walk up from the primary-focus context: it must sit inside the Cancel
+      // button, and must NOT sit inside the Save button.
+      bool focusIsInside(Finder buttonFinder) {
+        final ctx = primary!.context;
+        if (ctx == null) return false;
+        final target = tester.element(buttonFinder);
+        var inside = false;
+        ctx.visitAncestorElements((el) {
+          if (el == target) {
+            inside = true;
+            return false;
+          }
+          return true;
+        });
+        return inside;
+      }
+
+      expect(focusIsInside(cancelFinder), isTrue,
+          reason: 'Cancel must own D-pad focus on open (fix385 #6).');
+
+      final saveFinder = find.widgetWithText(TextButton, 'Save');
+      expect(focusIsInside(saveFinder), isFalse,
+          reason: 'Save must not steal focus on open (fix385 #6).');
     });
   });
 

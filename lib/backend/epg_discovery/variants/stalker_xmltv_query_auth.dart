@@ -32,24 +32,60 @@ class StalkerXmltvQueryAuth {
       return null;
     }
     try {
-      final resp = await http
-          .get(url, headers: const {'User-Agent': 'Free4Me-IPTV/1.0'})
-          .timeout(_timeout);
-      final bodyBytes = resp.bodyBytes;
-      if (!EpgValidator.isValidEpgResponse(resp, bodyBytes)) {
+      // Review finding 149: stream the body and stop after headBytesCap bytes
+      // (the validator only inspects the first 64 KB), instead of buffering a
+      // multi-MB feed just to validate its head. A synthetic http.Response
+      // carries the streamed status + headers so the validator is unchanged.
+      final request = http.Request('GET', url)
+        ..headers['User-Agent'] = 'Free4Me-IPTV/1.0';
+      final client = http.Client();
+      final List<int> bodyBytes = [];
+      try {
+        final streamed = await client.send(request).timeout(_timeout);
+        final completer = Completer<void>();
+        late final StreamSubscription<List<int>> sub;
+        sub = streamed.stream.timeout(_timeout).listen(
+          (chunk) {
+            bodyBytes.addAll(chunk);
+            if (bodyBytes.length >= EpgValidator.headBytesCap) {
+              sub.cancel();
+              if (!completer.isCompleted) completer.complete();
+            }
+          },
+          onDone: () {
+            if (!completer.isCompleted) completer.complete();
+          },
+          onError: (Object e) {
+            if (!completer.isCompleted) completer.completeError(e);
+          },
+          cancelOnError: true,
+        );
+        await completer.future;
+        final capped = bodyBytes.length > EpgValidator.headBytesCap
+            ? bodyBytes.sublist(0, EpgValidator.headBytesCap)
+            : bodyBytes;
+        final resp = http.Response.bytes(
+          capped,
+          streamed.statusCode,
+          headers: streamed.headers,
+        );
+        if (!EpgValidator.isValidEpgResponse(resp, capped)) {
+          AppLog.info(
+              'EpgDiscovery: variant1 — host=$host rejected by validator');
+          return null;
+        }
+        final elapsed = DateTime.now().difference(start).inMilliseconds;
         AppLog.info(
-            'EpgDiscovery: variant1 — host=$host rejected by validator');
-        return null;
+            'EpgDiscovery: variant1 — hit at $host in ${elapsed}ms');
+        return EpgDiscoveryResult(
+          variant: 'stalker-xmltv-query',
+          url: url.toString(),
+          probedAt: start,
+          elapsedMs: elapsed,
+        );
+      } finally {
+        client.close();
       }
-      final elapsed = DateTime.now().difference(start).inMilliseconds;
-      AppLog.info(
-          'EpgDiscovery: variant1 — hit at $host in ${elapsed}ms');
-      return EpgDiscoveryResult(
-        variant: 'stalker-xmltv-query',
-        url: url.toString(),
-        probedAt: start,
-        elapsedMs: elapsed,
-      );
     } on TimeoutException {
       AppLog.info('EpgDiscovery: variant1 — timeout for host=$host');
       return null;

@@ -42,6 +42,7 @@ class _SearchPerfDialog extends StatefulWidget {
 }
 
 class _SearchPerfDialogState extends State<_SearchPerfDialog> {
+  final SearchPerfCancelToken _cancel = SearchPerfCancelToken(); // finding 157
   bool _running = true;
   String _status = 'Starting…';
   Object? _error;
@@ -54,11 +55,18 @@ class _SearchPerfDialogState extends State<_SearchPerfDialog> {
     _run();
   }
 
+  @override
+  void dispose() {
+    _cancel.cancel(); // review finding 157: stop the run if still in flight
+    super.dispose();
+  }
+
   Future<void> _run() async {
     try {
       final results = await SearchPerfTest.run(
         enabledSourceIds: widget.enabledSourceIds,
         safeMode: widget.safeMode,
+        cancelToken: _cancel,
         onProgress: (s) {
           if (mounted) setState(() => _status = s);
         },
@@ -84,7 +92,13 @@ class _SearchPerfDialogState extends State<_SearchPerfDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
+    // Review finding 157: Back cancels the work instead of orphaning it.
+    return PopScope(
+      canPop: true,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) _cancel.cancel();
+      },
+      child: AlertDialog(
       title: const Text('Search performance'),
       content: _running
           ? _buildRunning()
@@ -92,7 +106,18 @@ class _SearchPerfDialogState extends State<_SearchPerfDialog> {
               ? Text('Could not run the test:\n$_error')
               : _buildResults(context),
       actions: _running
-          ? null
+          ? [
+              // Review finding 157: focusable Cancel so a D-pad user isn't
+              // forced onto the raw Back key.
+              TextButton(
+                autofocus: true,
+                onPressed: () {
+                  _cancel.cancel();
+                  Navigator.of(context).pop();
+                },
+                child: const Text('Cancel'),
+              ),
+            ]
           : _error != null
               ? [
                   TextButton(
@@ -111,6 +136,7 @@ class _SearchPerfDialogState extends State<_SearchPerfDialog> {
                     child: Text('Use ${_methodLabel(_selected!)}'),
                   ),
                 ],
+    ),
     );
   }
 

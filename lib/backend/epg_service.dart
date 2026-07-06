@@ -173,6 +173,20 @@ class EpgService {
   /// `Utils.refreshAllSources` cadence so we don't surprise providers with
   /// burst traffic.
   static Future<void> refreshAllSources({bool background = false}) async {
+    // Review finding 141: the BACKGROUND WorkManager pass yields to a
+    // foreground catalog refresh (cross-isolate advisory lock in app_meta) —
+    // two isolates must never fight for the single sqlite writer on a 2GB
+    // box. Deferrable: the task re-runs on the next WorkManager cadence.
+    // The foreground (user-initiated) path is NOT gated.
+    if (background) {
+      final ok = await Sql.tryAcquireRefreshLock('background');
+      if (!ok) {
+        AppLog.info(
+            'EPG: skipping background refresh — a catalog refresh holds the lock');
+        return;
+      }
+    }
+    try {
     final eligible = (await Sql.getSources())
         .where((s) => s.enabled && resolveEpgUrl(s) != null)
         .toList(growable: false);
@@ -209,6 +223,9 @@ class EpgService {
       await Sql.rebuildProgrammesFts();
     } catch (e) {
       AppLog.warn('EPG: post-refresh FTS rebuild failed — $e');
+    }
+    } finally {
+      if (background) await Sql.releaseRefreshLock();
     }
   }
 
@@ -324,11 +341,12 @@ class EpgService {
   }) async {
     if (source.id == null) return;
 
-    final toMatch = forceAll
-        ? (await Sql.getChannelsForEpgMatching(source.id!))
-              .where((c) => c.epgManualOverride == null)
-              .toList()
-        : await Sql.getChannelsNeedingEpgMatch(source.id!);
+    // Review finding 131: stream keyset pages instead of materializing an
+    // entire source's live rows (SELECT *) into one list — bounds peak Dart
+    // heap to one page (+ the shared channelMap) on 100k+-channel sources.
+    // Page size == _pageSize; within each page the existing isolate batching
+    // applies unchanged. Total is pre-counted for the progress message.
+    const pageSize = 5000;
 
     // finding 44: the old manual-override map + loop here were dead — both
     // feeders exclude override rows (forceAll filters epgManualOverride==null;
@@ -336,51 +354,74 @@ class EpgService {
     // toMatch never contains one and the map was always empty. Overrides are
     // preserved simply by not being re-matched (their epg_channel_id is left
     // untouched).
-    AppLog.info(
-      'EPG: matching ${toMatch.length} channels'
-      ' (${forceAll ? "full re-match" : "unmatched only"})'
-      ' for "${source.name}"'
-      ' channelMap=${channelMap.length}',
-    );
-
-    if (toMatch.isEmpty) {
-      AppLog.info('EPG: no unmatched channels — skipping matcher');
-      onProgress?.call(XmltvProgress(
-        programsInserted: 0,
-        matchingChannelsDone: 0,
-        matchingChannelsTotal: 0,
-        statusMessage: 'All channels already matched',
-      ));
-      return;
-    }
-
+    var totalToMatch = 0;
     final allMatched = <int, String>{};
     final tierCounts = <MatchTier, int>{};
     final sampleUnmatched = <String>[];
+    var matchedSoFar = 0;
+    var afterId = 0;
+    var firstPage = true;
 
-    for (int i = 0; i < toMatch.length; i += _matchBatchSize) {
-      final end = min(i + _matchBatchSize, toMatch.length);
-      final batch = toMatch.sublist(i, end);
-
-      final (batchMatched, batchReport) =
-          await compute(_matchInIsolate, (channelMap, batch));
-
-      allMatched.addAll(batchMatched);
-      for (final e in batchReport.counts.entries) {
-        tierCounts[e.key] = (tierCounts[e.key] ?? 0) + e.value;
-      }
-      if (sampleUnmatched.length < 10) {
-        sampleUnmatched.addAll(
-          batchReport.sampleUnmatched.take(10 - sampleUnmatched.length),
+    while (true) {
+      var page = forceAll
+          ? (await Sql.getChannelsForEpgMatchingPage(source.id!,
+                  afterId: afterId, limit: pageSize))
+              .where((c) => c.epgManualOverride == null)
+              .toList()
+          : await Sql.getChannelsNeedingEpgMatchPage(source.id!,
+              afterId: afterId, limit: pageSize);
+      if (firstPage) {
+        firstPage = false;
+        AppLog.info(
+          'EPG: matching (paged, pageSize=$pageSize)'
+          ' (${forceAll ? "full re-match" : "unmatched only"})'
+          ' for "${source.name}"'
+          ' channelMap=${channelMap.length}',
         );
+        if (page.isEmpty) {
+          AppLog.info('EPG: no unmatched channels — skipping matcher');
+          onProgress?.call(XmltvProgress(
+            programsInserted: 0,
+            matchingChannelsDone: 0,
+            matchingChannelsTotal: 0,
+            statusMessage: 'All channels already matched',
+          ));
+          return;
+        }
       }
+      if (page.isEmpty) break;
+      // Keyset cursor: the paged queries ORDER BY id ASC, so the last row's id
+      // is the next cursor even after the override filter above.
+      final lastId = page.last.id;
+      totalToMatch += page.length;
 
-      onProgress?.call(XmltvProgress(
-        programsInserted: 0,
-        matchingChannelsDone: end,
-        matchingChannelsTotal: toMatch.length,
-        statusMessage: 'Matching channels: $end / ${toMatch.length}',
-      ));
+      for (int i = 0; i < page.length; i += _matchBatchSize) {
+        final end = min(i + _matchBatchSize, page.length);
+        final batch = page.sublist(i, end);
+
+        final (batchMatched, batchReport) =
+            await compute(_matchInIsolate, (channelMap, batch));
+
+        allMatched.addAll(batchMatched);
+        for (final e in batchReport.counts.entries) {
+          tierCounts[e.key] = (tierCounts[e.key] ?? 0) + e.value;
+        }
+        if (sampleUnmatched.length < 10) {
+          sampleUnmatched.addAll(
+            batchReport.sampleUnmatched.take(10 - sampleUnmatched.length),
+          );
+        }
+
+        matchedSoFar = totalToMatch - (page.length - end);
+        onProgress?.call(XmltvProgress(
+          programsInserted: 0,
+          matchingChannelsDone: matchedSoFar,
+          matchingChannelsTotal: totalToMatch,
+          statusMessage: 'Matching channels: $matchedSoFar…',
+        ));
+      }
+      if (page.length < pageSize || lastId == null) break;
+      afterId = lastId;
     }
 
     // finding 44: merged == matched (no overrides in toMatch, see above).
@@ -397,7 +438,7 @@ class EpgService {
     final report = MatchReport(
       counts: tierCounts,
       sampleUnmatched: sampleUnmatched,
-      totalChannels: toMatch.length,
+      totalChannels: totalToMatch,
     );
     AppLog.info('EPG: match done "${source.name}" — $report');
     if (report.sampleUnmatched.isNotEmpty) {

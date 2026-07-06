@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/channel_tile.dart';
@@ -41,6 +42,7 @@ class _TvCategoriesViewState extends State<TvCategoriesView> {
   Map<int, int?> _sourceColors = {};
   List<int> _sourceIds = [];
   bool _ready = false;
+  bool _loadFailed = false; // review finding 155
   int _inv = 0;
 
   @override
@@ -58,6 +60,7 @@ class _TvCategoriesViewState extends State<TvCategoriesView> {
     // fix527-style paged category fetch so providers with >36 categories aren't
     // truncated.
     var groups = <Channel>[];
+    var loadFailed = false; // review finding 155
     try {
       for (var page = 1; groups.length < _cap; page++) {
         final batch = await Sql.search(Filters(
@@ -72,8 +75,13 @@ class _TvCategoriesViewState extends State<TvCategoriesView> {
         groups.addAll(batch);
         if (batch.length < pageSize) break;
       }
-    } catch (_) {
+    } catch (e, st) {
       groups = [];
+      loadFailed = true;
+      // Review finding 155: a categories-query failure was swallowed and shown
+      // as a genuinely-empty list. AppLog scrubs source credentials.
+      AppLog.warn('TvCategoriesView: categories query failed for '
+          '${_typeLabel(_selectedType)} — $e\n$st');
     }
     if (!mounted || inv != _inv) return;
     setState(() {
@@ -84,6 +92,7 @@ class _TvCategoriesViewState extends State<TvCategoriesView> {
       _sourceIds = ids;
       _groups = groups.take(_cap).toList();
       _ready = true;
+      _loadFailed = loadFailed;
     });
   }
 
@@ -98,6 +107,7 @@ class _TvCategoriesViewState extends State<TvCategoriesView> {
     setState(() {
       _selectedType = t;
       _ready = false;
+      _loadFailed = false; // review finding 155
       _groups = [];
     });
     _load();
@@ -176,6 +186,26 @@ class _TvCategoriesViewState extends State<TvCategoriesView> {
   Widget _body() {
     if (!_ready) {
       return const Center(child: CircularProgressIndicator());
+    }
+    if (_loadFailed) {
+      // Review finding 155: distinct from genuinely-empty. autofocus so a
+      // D-pad-only remote can reach the Retry button.
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Could not load categories',
+                style: TextStyle(color: Colors.white70)),
+            const SizedBox(height: 12),
+            TextButton.icon(
+              autofocus: true,
+              onPressed: _load,
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
     }
     if (_groups.isEmpty) {
       return Center(

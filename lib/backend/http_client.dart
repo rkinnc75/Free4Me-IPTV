@@ -4,6 +4,27 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
 
+/// Review finding 150: classifies why an AppHttp request did not yield a 200
+/// body, so callers can distinguish PERMANENT failures (auth/credentials/gone
+/// — do not keep retrying forever) from TRANSIENT ones (timeout/socket/5xx —
+/// safe to preserve prior data and try again later).
+enum HttpFailureKind {
+  /// 401/403 (and 407): credentials rejected. Permanent until fixed.
+  authRejected,
+
+  /// 404/410: resource/line gone. Permanent.
+  notFound,
+
+  /// Any other non-200 (incl. 5xx that survived the one retry). Transient-ish.
+  httpError,
+
+  /// TimeoutException after the final attempt.
+  timeout,
+
+  /// SocketException / HttpException / other network error after final attempt.
+  network,
+}
+
 /// Free4Me-IPTV: a single shared HTTP client with sane timeouts, keep-alive,
 /// and a one-shot retry helper. Used by all source-refresh and pre-warm code.
 class AppHttp {
@@ -27,6 +48,7 @@ class AppHttp {
     Uri url, {
     Duration timeout = const Duration(seconds: 20),
     Map<String, String>? headers,
+    void Function(HttpFailureKind kind, int? statusCode)? onFailure,
   }) async {
     for (int attempt = 0; attempt < 2; attempt++) {
       try {
@@ -35,16 +57,34 @@ class AppHttp {
           await Future.delayed(const Duration(milliseconds: 500));
           continue;
         }
-        if (resp.statusCode != 200) return null;
+        if (resp.statusCode != 200) {
+          final sc = resp.statusCode;
+          if (sc == 401 || sc == 403 || sc == 407) {
+            onFailure?.call(HttpFailureKind.authRejected, sc);
+          } else if (sc == 404 || sc == 410) {
+            onFailure?.call(HttpFailureKind.notFound, sc);
+          } else {
+            onFailure?.call(HttpFailureKind.httpError, sc);
+          }
+          return null;
+        }
         return resp;
       } on TimeoutException catch (_) {
-        if (attempt == 1) return null;
+        if (attempt == 1) {
+          onFailure?.call(HttpFailureKind.timeout, null);
+          return null;
+        }
       } on SocketException catch (_) {
-        if (attempt == 1) return null;
+        if (attempt == 1) {
+          onFailure?.call(HttpFailureKind.network, null);
+          return null;
+        }
         await Future.delayed(const Duration(milliseconds: 500));
       } on HttpException catch (_) {
+        onFailure?.call(HttpFailureKind.network, null);
         return null;
       } catch (_) {
+        onFailure?.call(HttpFailureKind.network, null);
         return null;
       }
     }

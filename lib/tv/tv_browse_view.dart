@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/channel_tile.dart';
@@ -61,6 +62,7 @@ class _TvBrowseViewState extends State<TvBrowseView> {
   String _selectedLabel = 'Favorites';
   List<Channel> _items = [];
   bool _ready = false;
+  bool _error = false; // review finding 154
   bool _loading = false;
   int _inv = 0;
   final ScrollController _gridController = ScrollController();
@@ -78,6 +80,7 @@ class _TvBrowseViewState extends State<TvBrowseView> {
   }
 
   Future<void> _init() async {
+    _error = false; // review finding 154
     final s = SettingsService.cached ?? widget.settings;
     final sources = await Sql.getSources();
     final enabled = await Sql.getEnabledSourcesMinimal();
@@ -100,8 +103,13 @@ class _TvBrowseViewState extends State<TvBrowseView> {
         groups.addAll(batch);
         if (batch.length < pageSize) break;
       }
-    } catch (_) {
+    } catch (e, st) {
+      // Review finding 154: a rail browse-query failure was swallowed and
+      // rendered as an empty rail ("no categories"). Surface it so the user
+      // can retry instead of seeing a silent empty screen.
+      AppLog.error('TvBrowse: category rail load failed — $e\n$st');
       groups = [];
+      if (mounted) setState(() => _error = true);
     }
     if (!mounted) return;
     setState(() {
@@ -190,7 +198,13 @@ class _TvBrowseViewState extends State<TvBrowseView> {
       children: [
         SizedBox(width: 210, child: _rail()),
         const VerticalDivider(width: 1),
-        Expanded(child: _ready ? _content() : const SizedBox.shrink()),
+        Expanded(
+          child: !_ready
+              ? const SizedBox.shrink()
+              : _error
+                  ? _errorState()
+                  : _content(),
+        ),
       ],
     );
   }
@@ -218,6 +232,39 @@ class _TvBrowseViewState extends State<TvBrowseView> {
           const SizedBox(width: 10),
           Expanded(
             child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _errorState() {
+    // Review finding 154: D-pad-focusable Retry (reuses _FocusTile so it gets
+    // the app's focus ring and remote reachability).
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'Couldn\u2019t load categories.\nCheck the source, then retry.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.white70),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: 160,
+            child: _FocusTile(
+              selected: true,
+              onTap: _init,
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.refresh, size: 18),
+                  SizedBox(width: 8),
+                  Text('Retry'),
+                ],
+              ),
+            ),
           ),
         ],
       ),

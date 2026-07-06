@@ -26,6 +26,10 @@ class OverlayPlayerController extends ChangeNotifier {
   Source? _source;
   MpvEngine? _engine;
   Alignment _corner = Alignment.bottomRight;
+  // Review finding 147: monotonic token so a superseded in-flight startOverlay
+  // disposes its locally-created engine instead of leaking it, and a
+  // stopOverlay racing an in-flight start wins.
+  int _startGeneration = 0;
 
   Channel? get channel => _channel;
   MpvEngine? get engine => _engine;
@@ -98,12 +102,6 @@ class OverlayPlayerController extends ChangeNotifier {
     }
   }
 
-  /// Mutes the currently active main player so audio doesn't bleed during
-  /// the swap navigation transition.
-  Future<void> muteMain() async {
-    AppLog.info('OverlayController: muteMain');
-    await _mainEngine?.setVolume(0.0);
-  }
 
   /// fix106: registers [halt] as the synchronous shutdown callback for the
   /// current main player. Called by the Player in [initState] immediately
@@ -143,8 +141,8 @@ class OverlayPlayerController extends ChangeNotifier {
     return null;
   }
 
-  /// fix116: like consumeOverlay but RETURNS the live engine instead of
-  /// disposing it, so the caller (swap) can hand it to the new full-screen
+  /// fix116: RETURNS the live engine instead of disposing it, so the caller
+  /// (swap) can hand it to the new full-screen
   /// Player. The overlay's references are cleared but the engine keeps
   /// playing. Returns null if no overlay is active.
   ({Channel ch, Settings s, Source? src, MpvEngine engine})?
@@ -202,7 +200,9 @@ class OverlayPlayerController extends ChangeNotifier {
     bool forceMuted = false,
   }) async {
     AppLog.info('OverlayController: startOverlay channel="${ch.name}"');
+    final int gen = ++_startGeneration; // review finding 147
     await _disposeEngine();
+    if (gen != _startGeneration) return; // superseded during dispose
     _channel = ch;
     _settings = s;
     _source = src;
@@ -228,6 +228,12 @@ class OverlayPlayerController extends ChangeNotifier {
     // player's registerMain may not have fired yet.
     final fullScreenActive = forceMuted || _mainEngine != null;
     await engine.setVolume(fullScreenActive ? 0.0 : 1.0);
+    if (gen != _startGeneration) {
+      // Review finding 147: a newer start/stop superseded us before we stored
+      // this engine — dispose the orphan so it does not keep decoding.
+      await engine.dispose();
+      return;
+    }
     _engine = engine;
     notifyListeners();
 
@@ -243,6 +249,7 @@ class OverlayPlayerController extends ChangeNotifier {
   /// Stop the overlay and release all resources.
   Future<void> stopOverlay() async {
     AppLog.info('OverlayController: stopOverlay channel="${_channel?.name ?? 'none'}"');
+    ++_startGeneration; // review finding 147: invalidate any in-flight start
     await _disposeEngine();
     _channel = null;
     _settings = null;
@@ -255,23 +262,6 @@ class OverlayPlayerController extends ChangeNotifier {
     notifyListeners();
   }
 
-
-  /// Returns a snapshot of the current overlay state and disposes the engine,
-  /// clearing the channel.  Returns null if no overlay is active.
-  Future<({Channel ch, Settings s, Source? src})?> consumeOverlay() async {
-    AppLog.info('OverlayController: consumeOverlay channel="${_channel?.name ?? 'none'}"');
-    final ch = _channel;
-    final s = _settings;
-    final src = _source;
-    if (ch == null || s == null) return null;
-
-    await _disposeEngine();
-    _channel = null;
-    _settings = null;
-    _source = null;
-    notifyListeners();
-    return (ch: ch, s: s, src: src);
-  }
 
 
   Future<void> _disposeEngine() async {

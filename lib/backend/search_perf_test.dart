@@ -41,6 +41,13 @@ class SearchMethodPerfResult {
   });
 }
 
+/// Review finding 157: cooperative cancel for the perf benchmark so a Back
+/// press / dialog dispose stops the (DB-hammering) run instead of orphaning it.
+class SearchPerfCancelToken {
+  bool cancelled = false;
+  void cancel() => cancelled = true;
+}
+
 class SearchPerfTest {
   /// Hard cap on how many channel names we sample to build the probe queries —
   /// keeps the test fast on a 1M+ row catalog (the SELECT is the only
@@ -60,6 +67,7 @@ class SearchPerfTest {
     required List<int> enabledSourceIds,
     required bool safeMode,
     void Function(String)? onProgress,
+    SearchPerfCancelToken? cancelToken, // review finding 157
   }) async {
     if (enabledSourceIds.isEmpty) {
       throw Exception('No enabled sources — add or enable a source first.');
@@ -73,12 +81,14 @@ class SearchPerfTest {
     final results = <SearchMethodPerfResult>[];
     try {
       for (final method in SearchMethod.values) {
+        if (cancelToken?.cancelled == true) break; // review finding 157
         onProgress?.call('Testing ${_label(method)}…');
         results.add(await _benchmarkMethod(
           method: method,
           probes: probes,
           enabledSourceIds: enabledSourceIds,
           safeMode: safeMode,
+          cancelToken: cancelToken,
         ));
       }
     } finally {
@@ -103,6 +113,7 @@ class SearchPerfTest {
     required List<String> probes,
     required List<int> enabledSourceIds,
     required bool safeMode,
+    SearchPerfCancelToken? cancelToken, // review finding 157
   }) async {
     // Drop SQLite's own page cache so the cold run pays a fresh read (best we
     // can do — the OS file cache is out of reach from Dart).
@@ -126,6 +137,7 @@ class SearchPerfTest {
     Future<List<double>> runPass() async {
       final times = <double>[];
       for (final q in probes) {
+        if (cancelToken?.cancelled == true) break; // review finding 157
         final sw = Stopwatch()..start();
         final rows = await Sql.search(mk(q));
         sw.stop();

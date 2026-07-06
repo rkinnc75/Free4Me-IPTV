@@ -32,6 +32,7 @@ Future<void> getXtream(
   bool wipe, [
   void Function(String)? onProgress,
   void Function(int done, int total)? onRowProgress,
+  bool Function()? shouldCancel, // review finding 143
 ]) async {
   List<Future<void> Function(SqliteWriteContext, Map<String, String>)>
   statements = [];
@@ -117,7 +118,8 @@ Future<void> getXtream(
           'Xtream.fix301: bulk VOD count ${vods.length} looks short for'
           ' ${vodCats.length} categories — refetching per category',
         );
-        vods = await _fetchVodPerCategory(source, vodCats, vods, onProgress);
+        vods = await _fetchVodPerCategory(source, vodCats, vods, onProgress,
+            shouldCancel: shouldCancel);
       }
       movieCount = vods.length;
       onProgress?.call('Loading $movieCount movies…');
@@ -344,7 +346,22 @@ Future<void> getXtream(
   if (source.id != null) {
     await Sql.logRefreshQueryPlans(source.id!);
   }
+  // Review finding 143: a cancel during download skips the write entirely for
+  // the in-flight source (recoverable — next refresh wipes+reinserts).
+  if (shouldCancel?.call() ?? false) {
+    onProgress?.call('Cancelled');
+    AppLog.info('getXtream: cancelled before write phase'
+        ' source="${source.name}"');
+    return;
+  }
   final swCommit = Stopwatch()..start();
+  // Review finding 142: browse-index drop now wraps ONLY this DB-write phase
+  // (was around the whole fetch dispatch in Utils.processSource), so on the
+  // single-source path browse stays indexed through the entire download.
+  // Re-entrant — a pass-through during a batch refresh. Nested OUTSIDE
+  // withSuspendedFtsTriggers to preserve the single-source ordering the
+  // fix521/fix518 wrappers expect.
+  await Sql.withDroppedBrowseIndexes(() async {
   // fix361/Issue4: suspend FTS triggers around the bulk wipe+reinsert so a
   // large catalog (Dino ~148K rows) doesn't fire per-row FTS maintenance;
   // index rebuilt once afterwards. No-op when no FTS method is active.
@@ -352,6 +369,7 @@ Future<void> getXtream(
     await Sql.commitWriteBatched(
       statements,
       memory: memory,
+      shouldCancel: shouldCancel, // review finding 143
       onBatchCommitted: onRowProgress == null
           ? null
           : (committedClosures) {
@@ -361,6 +379,7 @@ Future<void> getXtream(
             },
     );
   }, refreshedSourceId: source.id);
+  }, onProgress: onProgress);
   swCommit.stop();
   AppLog.info('getXtream: DB commit phase for source="${source.name}" '
       'took ${swCommit.elapsedMilliseconds}ms ($totalRows fetched rows)');
@@ -408,13 +427,29 @@ Future<dynamic> getXtreamHttpData(
     final settings =
         SettingsService.cached ?? await SettingsService.getSettings();
     final timeoutSecs = settings.devImportFetchTimeoutSecs;
+    // Review finding 150: distinguish PERMANENT auth failures (401/403/407)
+    // from transient network/timeout — a rejected line must surface as
+    // disabled/expired instead of silently preserving a stale catalog forever.
+    HttpFailureKind? failKind;
     final response = await AppHttp.getWithRetry(
       url,
       timeout: timeoutSecs > 0
           ? Duration(seconds: timeoutSecs)
           : const Duration(seconds: 20),
+      onFailure: (k, sc) => failKind = k,
     );
-    if (response == null) return null;
+    if (response == null) {
+      if (failKind == HttpFailureKind.authRejected) {
+        AppLog.warn('Xtream: credentials REJECTED (auth) action="$action" '
+            'source="${source.name}" — flagging source disabled');
+        // Reuses the existing Source.status field; isSourceExpired() already
+        // treats 'disabled' as expired, so the guide/UI surfaces the dead line
+        // with no new plumbing. (An auth reject means the account-info call
+        // also 401s, so a later user_info fetch cannot clobber this back.)
+        source.status = 'disabled';
+      }
+      return null;
+    }
     // fix222: when debug logging is on, dump the raw response body to a file in
     // the app dir so it can be exported and replayed in a sandbox for true
     // apples-to-apples timing. One file per action+source; overwritten each run.
@@ -601,8 +636,9 @@ Future<List<XtreamStream>> _fetchVodPerCategory(
   Source source,
   List<XtreamCategory> vodCats,
   List<XtreamStream> bulk,
-  void Function(String)? onProgress,
-) async {
+  void Function(String)? onProgress, {
+  bool Function()? shouldCancel, // review finding 143
+}) async {
   final byId = <String, XtreamStream>{};
   void add(XtreamStream s) {
     final id = s.streamId;
@@ -614,6 +650,9 @@ Future<List<XtreamStream>> _fetchVodPerCategory(
   }
   var done = 0;
   for (final cat in vodCats) {
+    // Review finding 143: mid-source cancel — stop issuing per-category HTTP
+    // calls; the partial collection is treated like any truncated fetch.
+    if (shouldCancel?.call() ?? false) break;
     final cid = cat.categoryId;
     if (cid == null || cid.isEmpty) continue;
     final raw =

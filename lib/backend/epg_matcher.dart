@@ -72,12 +72,23 @@ class EpgMatcher {
     final epgNorms = <String>[];
     final epgTokens = <Set<String>>[];
     final epgIds = <String>[];
+    // Review finding 138: keys that map to >1 DISTINCT epgId are ambiguous —
+    // last-wins Map insertion silently bound such channels to whichever XMLTV
+    // entry iterated last. Tiers 3/4 skip these keys and fall through to the
+    // fuzzy tiers (better unmatched than wrong — the fuzzy-tier tie rule).
+    final ambiguousNorms = <String>{};
+    final ambiguousStripped = <String>{};
 
     for (final entry in channelMap.entries) {
       final epgId = entry.key;
       final displayName = entry.value;
       final norm = _normalize(displayName);
-      byNormalizedName[norm] = epgId;
+      final priorNorm = byNormalizedName[norm];
+      if (priorNorm == null) {
+        byNormalizedName[norm] = epgId;
+      } else if (priorNorm != epgId) {
+        ambiguousNorms.add(norm);
+      }
       // Also key by the EPG id itself (some feeds reuse names as IDs)
       byNormalizedName.putIfAbsent(_normalize(epgId), () => epgId);
 
@@ -86,8 +97,19 @@ class EpgMatcher {
       epgIds.add(epgId);
 
       final stripped = _stripRegionalSuffix(epgId);
-      if (stripped != epgId) byStrippedId[stripped] = epgId;
+      if (stripped != epgId) {
+        final priorStripped = byStrippedId[stripped];
+        if (priorStripped == null) {
+          byStrippedId[stripped] = epgId;
+        } else if (priorStripped != epgId) {
+          ambiguousStripped.add(stripped);
+        }
+      }
     }
+    // Review finding 140: lowercased EPG ids, computed ONCE, reused by tier 6
+    // — previously every channel × callsign iteration re-lowercased the whole
+    // id list (O(channels × callsigns × |epg|) allocations).
+    final epgIdsLower = <String>[for (final id in epgIds) id.toLowerCase()];
 
     // Inverted token index: token → list of EPG indices whose token set
     // contains it. Built once per call and used by tier 5 (token-superset)
@@ -137,7 +159,8 @@ class EpgMatcher {
 
       // 3. Normalized display-name
       final normName = _normalize(ch.name);
-      final tier3 = byNormalizedName[normName];
+      final tier3 =
+          ambiguousNorms.contains(normName) ? null : byNormalizedName[normName];
       if (tier3 != null) {
         result[ch.id!] = tier3;
         record(MatchTier.normalizedName);
@@ -146,9 +169,14 @@ class EpgMatcher {
 
       // 4. Stripped regional suffix on either side
       final strippedCh = _stripRegionalSuffix(ch.name);
-      final tier4 = byStrippedId[strippedCh] ??
-          byStrippedId[ch.name] ??
-          byNormalizedName[_normalize(strippedCh)];
+      final tier4norm = _normalize(strippedCh);
+      final tier4 = (ambiguousStripped.contains(strippedCh)
+              ? null
+              : byStrippedId[strippedCh]) ??
+          (ambiguousStripped.contains(ch.name) ? null : byStrippedId[ch.name]) ??
+          (ambiguousNorms.contains(tier4norm)
+              ? null
+              : byNormalizedName[tier4norm]);
       if (tier4 != null) {
         result[ch.id!] = tier4;
         record(MatchTier.strippedSuffix);
@@ -204,8 +232,13 @@ class EpgMatcher {
         int bestCount = 0;
         for (final cs in callsigns) {
           final csLower = cs.toLowerCase();
-          for (final epgId in epgIds) {
-            if (!epgId.toLowerCase().contains(csLower)) continue;
+          for (var j = 0; j < epgIds.length; j++) {
+            // Review findings 139/140: boundary-anchored match against the
+            // precomputed lowercase list — no per-iteration toLowerCase(),
+            // and a callsign buried mid-run (alnum on both sides) no longer
+            // counts, so ordinary words can't bind to unrelated ids.
+            if (!_callsignHitsBoundary(epgIdsLower[j], csLower)) continue;
+            final epgId = epgIds[j];
             if (epgId.length < bestEpgLen) {
               bestEpgLen = epgId.length;
               bestId = epgId;
@@ -329,11 +362,42 @@ class EpgMatcher {
   /// word boundary handles correctly (the dash is a word boundary).
   static final _callsignRe = RegExp(r'\b[KW][A-Z]{3}\b');
 
+  /// Review finding 139: common English 4-letter K/W words that must never
+  /// enter the callsign tier (DISCOVERY KIDS, WILD EARTH, WEST TV…).
+  static const _callsignStopwords = <String>{
+    'kids', 'wild', 'west', 'wide', 'wine', 'work', 'walk', 'wall', 'want',
+    'warm', 'wash', 'wave', 'ways', 'wear', 'week', 'well', 'went', 'were',
+    'what', 'when', 'whom', 'wind', 'wing', 'wins', 'wire', 'wise', 'wish',
+    'with', 'wolf', 'wood', 'word', 'wore', 'worn', 'kind', 'king', 'know',
+    'knew', 'keep', 'kept', 'kick', 'kill', 'knee',
+  };
+
   static List<String> _extractCallsigns(String originalName) {
     return _callsignRe
         .allMatches(originalName)
         .map((m) => m.group(0)!)
+        .where((cs) => !_callsignStopwords.contains(cs.toLowerCase()))
         .toList(growable: false);
+  }
+
+  /// Review finding 139: a callsign only matches an EPG id at a word/segment
+  /// boundary — i.e. it is a prefix, suffix, or whole segment of an alnum run
+  /// ('kxdf' hits 'cbskxdf.us' and 'kxdf.us', but not a run with letters or
+  /// digits on BOTH sides). Operates on the precomputed lowercase id.
+  static bool _callsignHitsBoundary(String epgIdLower, String csLower) {
+    var idx = epgIdLower.indexOf(csLower);
+    while (idx != -1) {
+      final before = idx == 0 ? null : epgIdLower.codeUnitAt(idx - 1);
+      final afterPos = idx + csLower.length;
+      final after =
+          afterPos >= epgIdLower.length ? null : epgIdLower.codeUnitAt(afterPos);
+      bool isAlnum(int? c) =>
+          c != null &&
+          ((c >= 0x30 && c <= 0x39) || (c >= 0x61 && c <= 0x7a));
+      if (!isAlnum(before) || !isAlnum(after)) return true;
+      idx = epgIdLower.indexOf(csLower, idx + 1);
+    }
+    return false;
   }
 
   static final _stopWords = <String>{

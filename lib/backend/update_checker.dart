@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/http_client.dart';
@@ -167,10 +168,21 @@ class UpdateChecker {
     BuildContext context,
     String apkUrl,
     String version,
+    String? expectedSha256,
   ) async {
+    // Review finding 151: reject any non-https apkUrl (AndroidManifest sets
+    // usesCleartextTraffic=true, so without this an http:// URL is honored and
+    // the APK arrives over cleartext).
     final uri = Uri.tryParse(apkUrl);
-    if (uri == null) {
-      AppLog.warn('UpdateChecker: invalid apkUrl');
+    if (uri == null || uri.scheme.toLowerCase() != 'https') {
+      AppLog.warn('UpdateChecker: apkUrl missing or not https — $apkUrl');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text(
+                  'Update rejected: download URL is not secure (https required)')),
+        );
+      }
       return;
     }
     final progress = ValueNotifier<double>(0);
@@ -207,6 +219,9 @@ class UpdateChecker {
 
     File? outFile;
     final client = HttpClient(); // fix363/LOW-3: hoisted for finally
+    // Review finding 151: declared in the outer scope so the integrity check
+    // after the try/catch/finally can read the computed digest.
+    String? actualSha;
     try {
       final dir = await getApplicationSupportDirectory();
       outFile = File('${dir.path}/Free4Me-IPTV-$version.apk');
@@ -218,6 +233,16 @@ class UpdateChecker {
       final total = response.contentLength;
       var received = 0;
       final sink = outFile.openWrite();
+      // Review finding 151: compute SHA-256 incrementally so the >100MB APK is
+      // never buffered in memory to verify it. crypto's DigestSink lives under
+      // src/ and is NOT exported from package:crypto/crypto.dart, so capture
+      // the single emitted Digest with a tiny local Sink instead.
+      Digest? digest;
+      final hashInput = sha256.startChunkedConversion(
+        ChunkedConversionSink<Digest>.withCallback((digests) {
+          if (digests.isNotEmpty) digest = digests.last;
+        }),
+      );
       await for (final chunk in response) {
         if (cancelled) {
           await sink.close();
@@ -228,9 +253,12 @@ class UpdateChecker {
         }
         received += chunk.length;
         sink.add(chunk);
+        hashInput.add(chunk);
         if (total > 0) progress.value = received / total;
       }
       await sink.close();
+      hashInput.close();
+      actualSha = digest?.toString();
       AppLog.info('UpdateChecker: downloaded $received bytes to ${outFile.path}');
     } catch (e) {
       // fix363/LOW-3: client released in finally; error path no longer leaks it.
@@ -248,6 +276,29 @@ class UpdateChecker {
 
     if (context.mounted) {
       Navigator.of(context, rootNavigator: true).pop(); // dismiss progress
+    }
+    // Review finding 151: verify integrity before handing the file to the
+    // installer. Enforced-if-present, warn-if-absent — the currently-published
+    // version.json carries no sha field, so hard-blocking on null would break
+    // every existing client's update. Flip to hard-block once all releases
+    // emit apkSha256.
+    if (expectedSha256 != null && expectedSha256.isNotEmpty) {
+      if (actualSha == null ||
+          actualSha.toLowerCase() != expectedSha256.toLowerCase()) {
+        AppLog.warn('UpdateChecker: SHA-256 mismatch expected=$expectedSha256 '
+            'actual=$actualSha');
+        await outFile.delete().catchError((_) => outFile!);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Update rejected: file integrity check failed')),
+          );
+        }
+        return;
+      }
+      AppLog.info('UpdateChecker: SHA-256 verified');
+    } else {
+      AppLog.warn('UpdateChecker: no expected SHA-256 in version.json — '
+          'installing unverified APK');
     }
     // Hand off to the Android installer. The user confirms the install prompt.
     final result = await OpenFilex.open(outFile.path);
@@ -312,9 +363,11 @@ class UpdateChecker {
               // fix310: prefer the in-app download + installer flow. Fall back
               // to opening the release page if no direct apkUrl is present.
               final apkUrl = info['apkUrl'] as String?;
+              final apkSha = info['apkSha256'] as String?; // review finding 151
               final remoteVersion = info['latest'] as String? ?? '';
               if (apkUrl != null && apkUrl.isNotEmpty) {
-                await _downloadAndInstall(context, apkUrl, remoteVersion);
+                await _downloadAndInstall(
+                    context, apkUrl, remoteVersion, apkSha);
                 return;
               }
               final rawUrl = info['releaseUrl'] as String?;

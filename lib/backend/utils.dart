@@ -32,6 +32,7 @@ class Utils {
     Source source, {
     void Function(String)? onProgress,
     void Function(int done, int total)? onRowProgress,
+    bool Function()? shouldCancel, // review finding 143
   }) async {
     refreshedSeries.clear();
     // fix620: repair a malformed FTS index BEFORE touching it — a corrupt index
@@ -45,7 +46,7 @@ class Utils {
       AppLog.warn('Utils.refreshSource: FTS pre-flight check failed '
           '(non-fatal, continuing) — $e');
     }
-    await processSource(source, true, onProgress, onRowProgress);
+    await processSource(source, true, onProgress, onRowProgress, shouldCancel);
     // After channels are populated, apply any favorites and last-
     // watched timestamps that an imported backup staged for this
     // if no preserve list is pending.
@@ -63,6 +64,7 @@ class Utils {
     bool wipe = false,
     void Function(String)? onProgress,
     void Function(int done, int total)? onRowProgress,
+    bool Function()? shouldCancel, // review finding 143
   ]) async {
     // fix383: the importers commit the source row UP FRONT (fix376 for Xtream,
     // m3u.dart for M3U) so source.id is known before the bulk channel insert.
@@ -81,29 +83,30 @@ class Utils {
     AppLog.info('fix617 processSource: "${source.name}" — namePreExisted='
         '$namePreExisted; entering withDroppedBrowseIndexes');
     try {
-      // fix518: drop the channels browse indexes around the bulk wipe+reinsert
-      // and rebuild once after, instead of maintaining ~a dozen indexes per
-      // row. Re-entrant — a no-op when refreshAllSources already dropped them
-      // around the whole multi-source loop.
-      await Sql.withDroppedBrowseIndexes(() async {
-        AppLog.info('fix617 processSource: "${source.name}" — indexes dropped,'
-            ' dispatching ${source.sourceType} fetch');
-        switch (source.sourceType) {
-          case SourceType.m3u:
-            await processM3U(source, wipe, null, onProgress);
-            break;
-          case SourceType.m3uUrl:
-            await processM3UUrl(source, wipe, onProgress);
-            break;
-          case SourceType.xtream:
-            await getXtream(source, wipe, onProgress, onRowProgress);
-            break;
-        }
-        AppLog.info('fix617 processSource: "${source.name}" — fetch+write'
-            ' returned (inside withDroppedBrowseIndexes)');
-      }, onProgress: onProgress);
+      // Review finding 142 (supersedes the fix518 placement): the browse-index
+      // drop used to wrap the WHOLE fetch dispatch, so on the single-source
+      // path the ~19 indexes were gone for the entire network download too.
+      // The drop now lives inside each fetcher around ONLY its DB-write phase
+      // (xtream.dart / m3u.dart commit blocks) — still re-entrant, so during
+      // a batch refresh the outer whole-loop drop owns drop+recreate and the
+      // per-fetcher wrap is a pass-through. Degraded-browse window shrinks
+      // from (download+commit) to (commit).
       AppLog.info('fix617 processSource: "${source.name}" —'
-          ' withDroppedBrowseIndexes complete');
+          ' dispatching ${source.sourceType} fetch');
+      switch (source.sourceType) {
+        case SourceType.m3u:
+          await processM3U(source, wipe, null, onProgress, shouldCancel);
+          break;
+        case SourceType.m3uUrl:
+          await processM3UUrl(source, wipe, onProgress, shouldCancel);
+          break;
+        case SourceType.xtream:
+          await getXtream(
+              source, wipe, onProgress, onRowProgress, shouldCancel);
+          break;
+      }
+      AppLog.info('fix617 processSource: "${source.name}" — fetch+write'
+          ' returned');
       // fix386: brand-new Xtream add — fire EPG auto-discovery.
       // The runner is sticky (skips if epgDiscoveryState is set) and
       // is fire-and-forget; a probe failure must not roll back the
@@ -213,6 +216,13 @@ class Utils {
     // wrapper rebuilds it ONCE at end-of-batch via DROP+repopulate. The
     // batchTargetedRebuild closure below is just the "batch succeeded"
     // sentinel; the error path still falls back to a global rebuild.
+    // Review finding 141: cross-isolate advisory lock — the background
+    // WorkManager EPG matcher yields to this foreground catalog refresh so
+    // two isolates never fight for the single sqlite writer. Foreground
+    // (user-initiated) always proceeds even if the lock read fails; the lock
+    // is advisory and the BACKGROUND side is the one that must yield.
+    final gotLock = await Sql.tryAcquireRefreshLock('foreground');
+    try {
     await Sql.withSuspendedFtsTriggers(() async {
       await Sql.withDroppedBrowseIndexes(() async {
         // fix611: one source failing must NEVER stop the rest from
@@ -246,6 +256,10 @@ class Utils {
                 onRowProgress: onSourceRowProgress == null
                     ? null
                     : (done, total) => onSourceRowProgress(s, done, total),
+                // Review finding 143: thread cancel down so it takes effect
+                // MID-source (per HTTP request / per commit batch), not only
+                // between sources.
+                shouldCancel: shouldCancel,
               );
               lastError = null;
               break;
@@ -305,6 +319,11 @@ class Utils {
     } catch (e) {
       AppLog.warn('Utils.refreshAllSources: post-refresh db.sqlite '
           'checkpoint failed (non-fatal) — $e');
+    }
+    } finally {
+      // Review finding 141: the checkpoint above runs INSIDE the lock so the
+      // background isolate cannot start mid-checkpoint.
+      if (gotLock) await Sql.releaseRefreshLock();
     }
   }
 

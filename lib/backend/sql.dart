@@ -73,6 +73,7 @@ class Sql {
     int batchSize = importBatchSize,
     Map<String, String>? memory,
     void Function(int committedClosures)? onBatchCommitted,
+    bool Function()? shouldCancel,
   }) async {
     if (commits.isEmpty) return;
     final shared = memory ?? <String, String>{};
@@ -86,6 +87,15 @@ class Sql {
     var batchIndex = 0;
     var slowCount = 0;
     for (var i = 0; i < commits.length; i += batchSize) {
+      // Review finding 143: cooperative cancel BETWEEN transactions only —
+      // each commitWrite is its own transaction, so breaking here can never
+      // leave a half-written batch. A partial-source write is recoverable
+      // because the next refresh wipes+reinserts the source.
+      if (shouldCancel?.call() ?? false) {
+        AppLog.info(
+            'Sql.commitWriteBatched: cancelled after $batchIndex batch(es)');
+        break;
+      }
       final end = (i + batchSize < commits.length) ? i + batchSize : commits.length;
       final swBatch = Stopwatch()..start();
       await commitWrite(commits.sublist(i, end), memory: shared,
@@ -468,7 +478,34 @@ class Sql {
   /// rebuilt once.
   static const List<String> _keepIndexesDuringRefresh = [
     'index_channel_source_id',
+    // Review finding 129: restorePreserve's UPDATE...FROM joins on
+    // (name, source_id) via index_channel_name_source; dropping it regresses
+    // the preserve merge from ~25ms to ~134s. A plain 2-column index —
+    // insert-maintenance cost during the refresh is negligible vs the
+    // composite CASE browse-tier indexes that stay dropped.
+    'index_channel_name_source',
   ];
+  /// Review finding 134: runs a getAll whose SQL contains a forced INDEXED BY;
+  /// if the index was dropped between the _indexExists gate and execution
+  /// (refresh index-drop burst — a TOCTOU the gate cannot close), SQLite
+  /// throws 'no such index' — retry ONCE with the hint stripped. The hint is a
+  /// planner nudge, never a correctness constraint, so the unhinted query is
+  /// functionally identical. The narrow message match is deliberate: a wrong
+  /// non-match simply rethrows the original error (no silent wrong result).
+  static Future<ResultSet> _getAllHinted(SqliteWriteContext db, String hintedSql,
+      String unhintedSql, List<Object?> params) async {
+    try {
+      return await db.getAll(hintedSql, params);
+    } on SqliteException catch (e) {
+      if (e.message.contains('no such index')) {
+        AppLog.warn(
+            'Sql: forced INDEXED BY index vanished mid-query — retrying unhinted');
+        return await db.getAll(unhintedSql, params);
+      }
+      rethrow;
+    }
+  }
+
   /// fix526: does a named index currently exist? Gates forced `INDEXED BY`
   /// hints so a missing or mid-rebuild index never hard-crashes a query with
   /// "no such index" (which previously left the browse stuck loading).
@@ -1019,6 +1056,15 @@ class Sql {
         filters.searchMethod == SearchMethod.ftsAnd || filters.useKeywords;
 
     if (useFts) {
+      // Review finding 133: a batch refresh suspends the channels_fts sync
+      // triggers and only rebuilds the index at end-of-batch
+      // (withSuspendedFtsTriggers). Any caller not gated by the UI's rebuild
+      // blocking (a TV view / channel-picker text search) would otherwise
+      // MATCH a stale index and silently miss freshly-inserted rows. Fall
+      // back to LIKE (correct, slower) for the rebuild window.
+      if (ftsRebuilding.value) {
+        return _searchLike(filters, rawQuery, mediaTypes, offset, effLimit);
+      }
       // fix519: word-prefix MATCH for the unicode61 channels_fts (migration
       // 35). Each term >= 2 chars becomes a quoted phrase + trailing prefix
       // star ("term"*), so "fox" matches "FOX Sports", "espn" matches
@@ -1219,7 +1265,20 @@ class Sql {
 
     // log can tell us which is the bottleneck.
     final sqlStart = DateTime.now();
-    var results = await db.getAll(sqlQuery, params);
+    // Review finding 134: if the no-query browse embedded a forced INDEXED BY
+    // and the index was dropped between the gate and execution (refresh drop
+    // burst), retry once with the hint stripped instead of hard-crashing.
+    final hintedIdx = sqlQuery.contains(' INDEXED BY idx_fav_browse')
+        ? ' INDEXED BY idx_fav_browse'
+        : sqlQuery.contains(' INDEXED BY idx_browse_src_mt')
+            ? ' INDEXED BY idx_browse_src_mt'
+            : sqlQuery.contains(' INDEXED BY idx_browse_src_grp')
+                ? ' INDEXED BY idx_browse_src_grp'
+                : null;
+    var results = hintedIdx == null
+        ? await db.getAll(sqlQuery, params)
+        : await _getAllHinted(
+            db, sqlQuery, sqlQuery.replaceFirst(hintedIdx, ''), params);
     final sqlElapsed = DateTime.now().difference(sqlStart).inMilliseconds;
 
     final mapStart = DateTime.now();
@@ -1616,6 +1675,17 @@ class Sql {
             ' done, marking complete.');
         return;
       }
+      // Review finding 127: never drop/recreate indexes while a bulk refresh
+      // holds withDroppedBrowseIndexes — the two would resurrect the 5 dead
+      // indexes mid-refresh and desync the drop bookkeeping. Same-isolate
+      // flag is valid (both run on the foreground isolate). The marker stays
+      // UNwritten so maintenance simply retries next launch, matching the
+      // existing catch-block contract below.
+      if (_browseIndexesDropped) {
+        AppLog.info('fix537: index maintenance deferred — a bulk refresh is'
+            ' dropping/rebuilding browse indexes; will retry next launch');
+        return;
+      }
       AppLog.info('fix542: deferred index maintenance starting…');
       final sw = Stopwatch()..start();
       // Bounded memory so the index merge-sorts spill to disk, not RAM (OOM-safe
@@ -1631,12 +1701,29 @@ class Sql {
         await db.execute('DROP INDEX IF EXISTS ${entry.key};');
         await db.execute(entry.value);
       }
-      // VACUUM reclaims the freed pages (cannot run in a transaction; the
-      // writer is between statements here). Best-effort within the larger try.
-      await db.execute('VACUUM;');
+      // Review finding 128: rebuild is complete and durable — record it BEFORE
+      // VACUUM so a storage-constrained box (SQLITE_FULL on VACUUM) cannot
+      // force the whole multi-minute drop+rebuild to rerun every launch.
       await db.execute(
         "INSERT OR REPLACE INTO app_meta (key, value) VALUES ('$marker', '1');",
       );
+      // VACUUM reclaims freed pages; genuinely best-effort. Gated on its own
+      // marker so a box that can never VACUUM does not retry it every launch.
+      // (fix537_vacuum_done is the SAME legacy key checked by the early-return
+      // above — that check fires only when the OLD blocking migration set it,
+      // before this code is reached, so there is no conflict.)
+      final vacDone = await db.getOptional(
+          "SELECT value FROM app_meta WHERE key = 'fix537_vacuum_done'");
+      if (vacDone == null) {
+        try {
+          await db.execute('VACUUM;');
+          await db.execute(
+              "INSERT OR REPLACE INTO app_meta (key, value)"
+              " VALUES ('fix537_vacuum_done', '1');");
+        } catch (e) {
+          AppLog.warn('fix537: VACUUM skipped (best-effort) — $e');
+        }
+      }
       try {
         await db.execute('PRAGMA cache_size = -2000;');
         await db.execute('PRAGMA optimize;');
@@ -2622,7 +2709,13 @@ class Sql {
     const chunkSize = 200;
     final entries = channelIdToEpgId.entries.toList(growable: false);
     final db = await DbFactory.db;
-    await db.writeTransaction((tx) async {
+    // Review finding 130: this is the ONLY epg-assignment writer that called
+    // db.writeTransaction directly with no SQLITE_BUSY retry — it runs from
+    // BOTH the foreground isolate and the Workmanager background isolate, so
+    // cross-isolate contention returned code 5 straight to the caller. The
+    // retry helper is DB-agnostic despite the "epg" name.
+    await _epgWriteWithRetry('setChannelEpgIds',
+        () => db.writeTransaction((tx) async {
       for (var offset = 0; offset < entries.length; offset += chunkSize) {
         final end = offset + chunkSize > entries.length
             ? entries.length
@@ -2649,7 +2742,7 @@ class Sql {
            WHERE id IN (SELECT id FROM _data)
         ''', params);
       }
-    });
+    }));
     AppLog.info(
         'Sql.setChannelEpgIds: wrote ${channelIdToEpgId.length} EPG assignments');
   }
@@ -2676,8 +2769,17 @@ class Sql {
       await tx.execute(
           'DELETE FROM epg_refresh_log WHERE source_id = ?', [sourceId]);
     }));
+    // Review finding 135: programmes_fts is external-content with NO sync
+    // triggers, so deleting a source's rows does not remove its titles from
+    // the trigram index — a deleted source's titles stayed searchable until
+    // the next unrelated rebuild. Rebuild now (outside the delete tx — the
+    // FTS 'rebuild' command is table-scoped, and rebuildProgrammesFts wraps
+    // its own busy-retry). One-time O(remaining rows) cost on a rare manual
+    // action.
+    await rebuildProgrammesFts();
     AppLog.info(
-        'Sql.deleteEpgForSource: removed EPG data for source $sourceId');
+        'Sql.deleteEpgForSource: removed EPG data for source $sourceId'
+        ' (fts rebuilt)');
   }
 
   /// Insert a batch of programs using multi-row VALUES clauses for performance.
@@ -2791,6 +2893,42 @@ class Sql {
   ///
   /// Uses db.execute (not writeTransaction) — PRAGMA wal_checkpoint must run
   /// outside a transaction.
+  static const String _refreshLockKey = 'refresh_lock';
+
+  /// Review finding 141: best-effort cross-isolate advisory lock in db.sqlite
+  /// app_meta (table exists since migration 39 — no new table/migration).
+  /// The foreground catalog refresh takes it; the BACKGROUND WorkManager EPG
+  /// matcher yields when it is held, so two isolates never fight for the
+  /// single sqlite writer during a minutes-long bulk refresh. `owner` is a
+  /// free label; `staleAfter` lets a crashed holder's lock be reclaimed.
+  static Future<bool> tryAcquireRefreshLock(String owner,
+      {Duration staleAfter = const Duration(minutes: 45)}) async {
+    final db = await DbFactory.db;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    return await db.writeTransaction((tx) async {
+      final row = await tx.getOptional(
+          'SELECT value FROM app_meta WHERE key = ?', [_refreshLockKey]);
+      final value = row == null ? null : row['value'] as String?;
+      if (value != null) {
+        final parts = value.split('|'); // owner|acquiredMs
+        final acquiredMs = int.tryParse(parts.length > 1 ? parts[1] : '') ?? 0;
+        if (now - acquiredMs < staleAfter.inMilliseconds) {
+          return false; // held & fresh
+        }
+      }
+      await tx.execute(
+          'INSERT OR REPLACE INTO app_meta (key, value) VALUES (?, ?)',
+          [_refreshLockKey, '$owner|$now']);
+      return true;
+    });
+  }
+
+  static Future<void> releaseRefreshLock() async {
+    final db = await DbFactory.db;
+    await db.execute(
+        'DELETE FROM app_meta WHERE key = ?', [_refreshLockKey]);
+  }
+
   static Future<void> checkpointAndTruncateWal({
     bool epg = true,
     bool db = true,
@@ -3138,6 +3276,25 @@ class Sql {
     return rows.map(rowToChannel).toList();
   }
 
+  /// Review finding 131: keyset-paged variant of [getChannelsForEpgMatching].
+  /// "Re-match all channels" previously materialized an entire source's live
+  /// rows (SELECT *) in one list; the matcher now streams pages (epg_service)
+  /// so peak Dart heap is bounded to one page + the shared channel map.
+  static Future<List<Channel>> getChannelsForEpgMatchingPage(
+    int sourceId, {
+    required int afterId,
+    int limit = 5000,
+  }) async {
+    final db = await DbFactory.db;
+    final rows = await db.getAll(
+      'SELECT * FROM channels'
+      ' WHERE source_id = ? AND media_type = 0'
+      ' AND id > ? ORDER BY id ASC LIMIT ?',
+      [sourceId, afterId, limit],
+    );
+    return rows.map(rowToChannel).toList();
+  }
+
   /// Live channels that need EPG matching: no existing assignment AND no
   /// manual override. Channels already matched (epg_channel_id IS NOT NULL)
   /// or manually pinned are excluded — they don't need re-matching.
@@ -3159,13 +3316,48 @@ class Sql {
     final hint = await _indexExists('idx_epg_unmatched')
         ? ' INDEXED BY idx_epg_unmatched'
         : '';
-    final rows = await db.getAll('''
-      SELECT * FROM channels$hint
-      WHERE source_id = ?
-        AND media_type = 0
-        AND epg_manual_override IS NULL
-        AND epg_channel_id IS NULL
-    ''', [sourceId]);
+    // Review finding 136: the _indexExists gate is a cross-isolate TOCTOU —
+    // the foreground refresh can drop idx_epg_unmatched between this
+    // isolate's check and the getAll. Route through _getAllHinted so a
+    // mid-flight drop degrades to the (identical-result) unhinted query
+    // instead of a hard "no such index" crash aborting the source's match.
+    const needingWhere = ' WHERE source_id = ?'
+        ' AND media_type = 0'
+        ' AND epg_manual_override IS NULL'
+        ' AND epg_channel_id IS NULL';
+    final rows = await _getAllHinted(
+      db,
+      'SELECT * FROM channels$hint$needingWhere',
+      'SELECT * FROM channels$needingWhere',
+      [sourceId],
+    );
+    return rows.map(rowToChannel).toList();
+  }
+
+  /// Review finding 131: keyset-paged variant of [getChannelsNeedingEpgMatch]
+  /// so the matcher streams pages instead of materializing an entire source's
+  /// live rows at once. Same predicate + hint semantics (incl. the finding-136
+  /// unhinted retry); `id > afterId ORDER BY id` is a cheap tail on the seek.
+  static Future<List<Channel>> getChannelsNeedingEpgMatchPage(
+    int sourceId, {
+    required int afterId,
+    int limit = 5000,
+  }) async {
+    var db = await DbFactory.db;
+    final hint = await _indexExists('idx_epg_unmatched')
+        ? ' INDEXED BY idx_epg_unmatched'
+        : '';
+    const pagedWhere = ' WHERE source_id = ?'
+        ' AND media_type = 0'
+        ' AND epg_manual_override IS NULL'
+        ' AND epg_channel_id IS NULL'
+        ' AND id > ? ORDER BY id ASC LIMIT ?';
+    final rows = await _getAllHinted(
+      db,
+      'SELECT * FROM channels$hint$pagedWhere',
+      'SELECT * FROM channels$pagedWhere',
+      [sourceId, afterId, limit],
+    );
     return rows.map(rowToChannel).toList();
   }
 
@@ -3187,13 +3379,15 @@ class Sql {
     int sourceId,
   ) async {
     final db = await EpgDbFactory.db;
+    // Review finding 137: the previous form ran a correlated per-group
+    // subquery (latest title by start_utc) over the ~1.5M-row programmes
+    // table — one extra probe per distinct epg_channel_id. sample_title is
+    // only a display hint, so an arbitrary title is acceptable: MIN(title)
+    // is a plain grouped aggregate the (source_id, epg_channel_id, start_utc)
+    // index groups directly, with no window-function version risk.
     final rows = await db.getAll('''
-      SELECT epg_channel_id,
-             (SELECT title FROM programmes p2
-              WHERE p2.epg_channel_id = p.epg_channel_id
-                AND p2.source_id = p.source_id
-              ORDER BY start_utc DESC LIMIT 1) AS sample_title
-      FROM programmes p
+      SELECT epg_channel_id, MIN(title) AS sample_title
+      FROM programmes
       WHERE source_id = ?
       GROUP BY epg_channel_id
       ORDER BY epg_channel_id ASC
@@ -3391,6 +3585,20 @@ class Sql {
                 await _indexExists('idx_browse_src_mt_safe'))
             ? ' INDEXED BY idx_browse_src_mt_safe'
             : '';
+    // Review finding 132: cap mixed-mode browse depth. innerLimit =
+    // offset+pageSize is fetched and temp-sorted PER SOURCE, so deep pages
+    // re-materialize the whole prefix (page 200 × 5 sources ≈ 36k rows sorted
+    // to slice 36). Beyond this depth return empty — the UI's infinite scroll
+    // treats an empty page as end-of-list; users refine with search long
+    // before here. (~139 pages at pageSize 36.)
+    const int mixedBrowseMaxRows = 5000;
+    if (offset >= mixedBrowseMaxRows) {
+      if (AppLog.enabled) {
+        AppLog.info('Sql.search[$invocation]: branch=no-query-mixed-union'
+            ' offset=$offset >= cap $mixedBrowseMaxRows — returning empty');
+      }
+      return const <Channel>[];
+    }
     final innerLimit = offset + pageSize;
     final parts = <String>[];
     final params = <Object>[];
@@ -3417,7 +3625,14 @@ class Sql {
       ..add(pageSize);
 
     final sqlStart = DateTime.now();
-    final results = await db.getAll(sqlQuery, params);
+    // Review finding 134: the safeHint's _indexExists gate is a TOCTOU vs the
+    // refresh's index-drop burst — retry once unhinted if the forced index
+    // vanished mid-query (the hint is a planner nudge, never a correctness
+    // constraint; each part's partial WHERE is implied by its predicates).
+    final results = safeHint.isEmpty
+        ? await db.getAll(sqlQuery, params)
+        : await _getAllHinted(
+            db, sqlQuery, sqlQuery.replaceAll(safeHint, ''), params);
     final sqlElapsed = DateTime.now().difference(sqlStart).inMilliseconds;
     final mapped = results.map(rowToChannel).toList();
     if (AppLog.enabled) {
@@ -3512,7 +3727,12 @@ class Sql {
     params.add(offset);
     params.add(limit);
 
-    final rows = await db.getAll(sqlQuery, params);
+    // Review finding 134: retry unhinted if idx_fav_browse was dropped between
+    // the _indexExists gate and execution (refresh index-drop burst).
+    final rows = !useFavHint
+        ? await db.getAll(sqlQuery, params)
+        : await _getAllHinted(db, sqlQuery,
+            sqlQuery.replaceFirst(' INDEXED BY idx_fav_browse', ''), params);
     AppLog.info(
       'Sql._searchLike: terms=${terms.length} matched=${rows.length}'
       ' offset=$offset query="$rawQuery"',

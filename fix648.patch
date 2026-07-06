@@ -1,0 +1,2033 @@
+diff --git a/lib/backend/epg_discovery/variants/stalker_xmltv_query_auth.dart b/lib/backend/epg_discovery/variants/stalker_xmltv_query_auth.dart
+index c6d0eaf..765155a 100644
+--- a/lib/backend/epg_discovery/variants/stalker_xmltv_query_auth.dart
++++ b/lib/backend/epg_discovery/variants/stalker_xmltv_query_auth.dart
+@@ -32,24 +32,60 @@ class StalkerXmltvQueryAuth {
+       return null;
+     }
+     try {
+-      final resp = await http
+-          .get(url, headers: const {'User-Agent': 'Free4Me-IPTV/1.0'})
+-          .timeout(_timeout);
+-      final bodyBytes = resp.bodyBytes;
+-      if (!EpgValidator.isValidEpgResponse(resp, bodyBytes)) {
++      // Review finding 149: stream the body and stop after headBytesCap bytes
++      // (the validator only inspects the first 64 KB), instead of buffering a
++      // multi-MB feed just to validate its head. A synthetic http.Response
++      // carries the streamed status + headers so the validator is unchanged.
++      final request = http.Request('GET', url)
++        ..headers['User-Agent'] = 'Free4Me-IPTV/1.0';
++      final client = http.Client();
++      final List<int> bodyBytes = [];
++      try {
++        final streamed = await client.send(request).timeout(_timeout);
++        final completer = Completer<void>();
++        late final StreamSubscription<List<int>> sub;
++        sub = streamed.stream.timeout(_timeout).listen(
++          (chunk) {
++            bodyBytes.addAll(chunk);
++            if (bodyBytes.length >= EpgValidator.headBytesCap) {
++              sub.cancel();
++              if (!completer.isCompleted) completer.complete();
++            }
++          },
++          onDone: () {
++            if (!completer.isCompleted) completer.complete();
++          },
++          onError: (Object e) {
++            if (!completer.isCompleted) completer.completeError(e);
++          },
++          cancelOnError: true,
++        );
++        await completer.future;
++        final capped = bodyBytes.length > EpgValidator.headBytesCap
++            ? bodyBytes.sublist(0, EpgValidator.headBytesCap)
++            : bodyBytes;
++        final resp = http.Response.bytes(
++          capped,
++          streamed.statusCode,
++          headers: streamed.headers,
++        );
++        if (!EpgValidator.isValidEpgResponse(resp, capped)) {
++          AppLog.info(
++              'EpgDiscovery: variant1 — host=$host rejected by validator');
++          return null;
++        }
++        final elapsed = DateTime.now().difference(start).inMilliseconds;
+         AppLog.info(
+-            'EpgDiscovery: variant1 — host=$host rejected by validator');
+-        return null;
++            'EpgDiscovery: variant1 — hit at $host in ${elapsed}ms');
++        return EpgDiscoveryResult(
++          variant: 'stalker-xmltv-query',
++          url: url.toString(),
++          probedAt: start,
++          elapsedMs: elapsed,
++        );
++      } finally {
++        client.close();
+       }
+-      final elapsed = DateTime.now().difference(start).inMilliseconds;
+-      AppLog.info(
+-          'EpgDiscovery: variant1 — hit at $host in ${elapsed}ms');
+-      return EpgDiscoveryResult(
+-        variant: 'stalker-xmltv-query',
+-        url: url.toString(),
+-        probedAt: start,
+-        elapsedMs: elapsed,
+-      );
+     } on TimeoutException {
+       AppLog.info('EpgDiscovery: variant1 — timeout for host=$host');
+       return null;
+diff --git a/lib/backend/epg_matcher.dart b/lib/backend/epg_matcher.dart
+index 6e9bae3..ccd4e03 100644
+--- a/lib/backend/epg_matcher.dart
++++ b/lib/backend/epg_matcher.dart
+@@ -72,12 +72,23 @@ class EpgMatcher {
+     final epgNorms = <String>[];
+     final epgTokens = <Set<String>>[];
+     final epgIds = <String>[];
++    // Review finding 138: keys that map to >1 DISTINCT epgId are ambiguous —
++    // last-wins Map insertion silently bound such channels to whichever XMLTV
++    // entry iterated last. Tiers 3/4 skip these keys and fall through to the
++    // fuzzy tiers (better unmatched than wrong — the fuzzy-tier tie rule).
++    final ambiguousNorms = <String>{};
++    final ambiguousStripped = <String>{};
+ 
+     for (final entry in channelMap.entries) {
+       final epgId = entry.key;
+       final displayName = entry.value;
+       final norm = _normalize(displayName);
+-      byNormalizedName[norm] = epgId;
++      final priorNorm = byNormalizedName[norm];
++      if (priorNorm == null) {
++        byNormalizedName[norm] = epgId;
++      } else if (priorNorm != epgId) {
++        ambiguousNorms.add(norm);
++      }
+       // Also key by the EPG id itself (some feeds reuse names as IDs)
+       byNormalizedName.putIfAbsent(_normalize(epgId), () => epgId);
+ 
+@@ -86,8 +97,19 @@ class EpgMatcher {
+       epgIds.add(epgId);
+ 
+       final stripped = _stripRegionalSuffix(epgId);
+-      if (stripped != epgId) byStrippedId[stripped] = epgId;
++      if (stripped != epgId) {
++        final priorStripped = byStrippedId[stripped];
++        if (priorStripped == null) {
++          byStrippedId[stripped] = epgId;
++        } else if (priorStripped != epgId) {
++          ambiguousStripped.add(stripped);
++        }
++      }
+     }
++    // Review finding 140: lowercased EPG ids, computed ONCE, reused by tier 6
++    // — previously every channel × callsign iteration re-lowercased the whole
++    // id list (O(channels × callsigns × |epg|) allocations).
++    final epgIdsLower = <String>[for (final id in epgIds) id.toLowerCase()];
+ 
+     // Inverted token index: token → list of EPG indices whose token set
+     // contains it. Built once per call and used by tier 5 (token-superset)
+@@ -137,7 +159,8 @@ class EpgMatcher {
+ 
+       // 3. Normalized display-name
+       final normName = _normalize(ch.name);
+-      final tier3 = byNormalizedName[normName];
++      final tier3 =
++          ambiguousNorms.contains(normName) ? null : byNormalizedName[normName];
+       if (tier3 != null) {
+         result[ch.id!] = tier3;
+         record(MatchTier.normalizedName);
+@@ -146,9 +169,14 @@ class EpgMatcher {
+ 
+       // 4. Stripped regional suffix on either side
+       final strippedCh = _stripRegionalSuffix(ch.name);
+-      final tier4 = byStrippedId[strippedCh] ??
+-          byStrippedId[ch.name] ??
+-          byNormalizedName[_normalize(strippedCh)];
++      final tier4norm = _normalize(strippedCh);
++      final tier4 = (ambiguousStripped.contains(strippedCh)
++              ? null
++              : byStrippedId[strippedCh]) ??
++          (ambiguousStripped.contains(ch.name) ? null : byStrippedId[ch.name]) ??
++          (ambiguousNorms.contains(tier4norm)
++              ? null
++              : byNormalizedName[tier4norm]);
+       if (tier4 != null) {
+         result[ch.id!] = tier4;
+         record(MatchTier.strippedSuffix);
+@@ -204,8 +232,13 @@ class EpgMatcher {
+         int bestCount = 0;
+         for (final cs in callsigns) {
+           final csLower = cs.toLowerCase();
+-          for (final epgId in epgIds) {
+-            if (!epgId.toLowerCase().contains(csLower)) continue;
++          for (var j = 0; j < epgIds.length; j++) {
++            // Review findings 139/140: boundary-anchored match against the
++            // precomputed lowercase list — no per-iteration toLowerCase(),
++            // and a callsign buried mid-run (alnum on both sides) no longer
++            // counts, so ordinary words can't bind to unrelated ids.
++            if (!_callsignHitsBoundary(epgIdsLower[j], csLower)) continue;
++            final epgId = epgIds[j];
+             if (epgId.length < bestEpgLen) {
+               bestEpgLen = epgId.length;
+               bestId = epgId;
+@@ -329,13 +362,44 @@ class EpgMatcher {
+   /// word boundary handles correctly (the dash is a word boundary).
+   static final _callsignRe = RegExp(r'\b[KW][A-Z]{3}\b');
+ 
++  /// Review finding 139: common English 4-letter K/W words that must never
++  /// enter the callsign tier (DISCOVERY KIDS, WILD EARTH, WEST TV…).
++  static const _callsignStopwords = <String>{
++    'kids', 'wild', 'west', 'wide', 'wine', 'work', 'walk', 'wall', 'want',
++    'warm', 'wash', 'wave', 'ways', 'wear', 'week', 'well', 'went', 'were',
++    'what', 'when', 'whom', 'wind', 'wing', 'wins', 'wire', 'wise', 'wish',
++    'with', 'wolf', 'wood', 'word', 'wore', 'worn', 'kind', 'king', 'know',
++    'knew', 'keep', 'kept', 'kick', 'kill', 'knee',
++  };
++
+   static List<String> _extractCallsigns(String originalName) {
+     return _callsignRe
+         .allMatches(originalName)
+         .map((m) => m.group(0)!)
++        .where((cs) => !_callsignStopwords.contains(cs.toLowerCase()))
+         .toList(growable: false);
+   }
+ 
++  /// Review finding 139: a callsign only matches an EPG id at a word/segment
++  /// boundary — i.e. it is a prefix, suffix, or whole segment of an alnum run
++  /// ('kxdf' hits 'cbskxdf.us' and 'kxdf.us', but not a run with letters or
++  /// digits on BOTH sides). Operates on the precomputed lowercase id.
++  static bool _callsignHitsBoundary(String epgIdLower, String csLower) {
++    var idx = epgIdLower.indexOf(csLower);
++    while (idx != -1) {
++      final before = idx == 0 ? null : epgIdLower.codeUnitAt(idx - 1);
++      final afterPos = idx + csLower.length;
++      final after =
++          afterPos >= epgIdLower.length ? null : epgIdLower.codeUnitAt(afterPos);
++      bool isAlnum(int? c) =>
++          c != null &&
++          ((c >= 0x30 && c <= 0x39) || (c >= 0x61 && c <= 0x7a));
++      if (!isAlnum(before) || !isAlnum(after)) return true;
++      idx = epgIdLower.indexOf(csLower, idx + 1);
++    }
++    return false;
++  }
++
+   static final _stopWords = <String>{
+     // Words that are too common to be discriminating in matches
+     'tv', 'channel', 'network', 'the',
+diff --git a/lib/backend/epg_service.dart b/lib/backend/epg_service.dart
+index 94be8f9..be19599 100644
+--- a/lib/backend/epg_service.dart
++++ b/lib/backend/epg_service.dart
+@@ -173,6 +173,20 @@ class EpgService {
+   /// `Utils.refreshAllSources` cadence so we don't surprise providers with
+   /// burst traffic.
+   static Future<void> refreshAllSources({bool background = false}) async {
++    // Review finding 141: the BACKGROUND WorkManager pass yields to a
++    // foreground catalog refresh (cross-isolate advisory lock in app_meta) —
++    // two isolates must never fight for the single sqlite writer on a 2GB
++    // box. Deferrable: the task re-runs on the next WorkManager cadence.
++    // The foreground (user-initiated) path is NOT gated.
++    if (background) {
++      final ok = await Sql.tryAcquireRefreshLock('background');
++      if (!ok) {
++        AppLog.info(
++            'EPG: skipping background refresh — a catalog refresh holds the lock');
++        return;
++      }
++    }
++    try {
+     final eligible = (await Sql.getSources())
+         .where((s) => s.enabled && resolveEpgUrl(s) != null)
+         .toList(growable: false);
+@@ -210,6 +224,9 @@ class EpgService {
+     } catch (e) {
+       AppLog.warn('EPG: post-refresh FTS rebuild failed — $e');
+     }
++    } finally {
++      if (background) await Sql.releaseRefreshLock();
++    }
+   }
+ 
+   /// Step 1 — Download and parse XMLTV, insert programs.
+@@ -324,11 +341,12 @@ class EpgService {
+   }) async {
+     if (source.id == null) return;
+ 
+-    final toMatch = forceAll
+-        ? (await Sql.getChannelsForEpgMatching(source.id!))
+-              .where((c) => c.epgManualOverride == null)
+-              .toList()
+-        : await Sql.getChannelsNeedingEpgMatch(source.id!);
++    // Review finding 131: stream keyset pages instead of materializing an
++    // entire source's live rows (SELECT *) into one list — bounds peak Dart
++    // heap to one page (+ the shared channelMap) on 100k+-channel sources.
++    // Page size == _pageSize; within each page the existing isolate batching
++    // applies unchanged. Total is pre-counted for the progress message.
++    const pageSize = 5000;
+ 
+     // finding 44: the old manual-override map + loop here were dead — both
+     // feeders exclude override rows (forceAll filters epgManualOverride==null;
+@@ -336,51 +354,74 @@ class EpgService {
+     // toMatch never contains one and the map was always empty. Overrides are
+     // preserved simply by not being re-matched (their epg_channel_id is left
+     // untouched).
+-    AppLog.info(
+-      'EPG: matching ${toMatch.length} channels'
+-      ' (${forceAll ? "full re-match" : "unmatched only"})'
+-      ' for "${source.name}"'
+-      ' channelMap=${channelMap.length}',
+-    );
+-
+-    if (toMatch.isEmpty) {
+-      AppLog.info('EPG: no unmatched channels — skipping matcher');
+-      onProgress?.call(XmltvProgress(
+-        programsInserted: 0,
+-        matchingChannelsDone: 0,
+-        matchingChannelsTotal: 0,
+-        statusMessage: 'All channels already matched',
+-      ));
+-      return;
+-    }
+-
++    var totalToMatch = 0;
+     final allMatched = <int, String>{};
+     final tierCounts = <MatchTier, int>{};
+     final sampleUnmatched = <String>[];
+-
+-    for (int i = 0; i < toMatch.length; i += _matchBatchSize) {
+-      final end = min(i + _matchBatchSize, toMatch.length);
+-      final batch = toMatch.sublist(i, end);
+-
+-      final (batchMatched, batchReport) =
+-          await compute(_matchInIsolate, (channelMap, batch));
+-
+-      allMatched.addAll(batchMatched);
+-      for (final e in batchReport.counts.entries) {
+-        tierCounts[e.key] = (tierCounts[e.key] ?? 0) + e.value;
+-      }
+-      if (sampleUnmatched.length < 10) {
+-        sampleUnmatched.addAll(
+-          batchReport.sampleUnmatched.take(10 - sampleUnmatched.length),
++    var matchedSoFar = 0;
++    var afterId = 0;
++    var firstPage = true;
++
++    while (true) {
++      var page = forceAll
++          ? (await Sql.getChannelsForEpgMatchingPage(source.id!,
++                  afterId: afterId, limit: pageSize))
++              .where((c) => c.epgManualOverride == null)
++              .toList()
++          : await Sql.getChannelsNeedingEpgMatchPage(source.id!,
++              afterId: afterId, limit: pageSize);
++      if (firstPage) {
++        firstPage = false;
++        AppLog.info(
++          'EPG: matching (paged, pageSize=$pageSize)'
++          ' (${forceAll ? "full re-match" : "unmatched only"})'
++          ' for "${source.name}"'
++          ' channelMap=${channelMap.length}',
+         );
++        if (page.isEmpty) {
++          AppLog.info('EPG: no unmatched channels — skipping matcher');
++          onProgress?.call(XmltvProgress(
++            programsInserted: 0,
++            matchingChannelsDone: 0,
++            matchingChannelsTotal: 0,
++            statusMessage: 'All channels already matched',
++          ));
++          return;
++        }
+       }
++      if (page.isEmpty) break;
++      // Keyset cursor: the paged queries ORDER BY id ASC, so the last row's id
++      // is the next cursor even after the override filter above.
++      final lastId = page.last.id;
++      totalToMatch += page.length;
++
++      for (int i = 0; i < page.length; i += _matchBatchSize) {
++        final end = min(i + _matchBatchSize, page.length);
++        final batch = page.sublist(i, end);
++
++        final (batchMatched, batchReport) =
++            await compute(_matchInIsolate, (channelMap, batch));
++
++        allMatched.addAll(batchMatched);
++        for (final e in batchReport.counts.entries) {
++          tierCounts[e.key] = (tierCounts[e.key] ?? 0) + e.value;
++        }
++        if (sampleUnmatched.length < 10) {
++          sampleUnmatched.addAll(
++            batchReport.sampleUnmatched.take(10 - sampleUnmatched.length),
++          );
++        }
+ 
+-      onProgress?.call(XmltvProgress(
+-        programsInserted: 0,
+-        matchingChannelsDone: end,
+-        matchingChannelsTotal: toMatch.length,
+-        statusMessage: 'Matching channels: $end / ${toMatch.length}',
+-      ));
++        matchedSoFar = totalToMatch - (page.length - end);
++        onProgress?.call(XmltvProgress(
++          programsInserted: 0,
++          matchingChannelsDone: matchedSoFar,
++          matchingChannelsTotal: totalToMatch,
++          statusMessage: 'Matching channels: $matchedSoFar…',
++        ));
++      }
++      if (page.length < pageSize || lastId == null) break;
++      afterId = lastId;
+     }
+ 
+     // finding 44: merged == matched (no overrides in toMatch, see above).
+@@ -397,7 +438,7 @@ class EpgService {
+     final report = MatchReport(
+       counts: tierCounts,
+       sampleUnmatched: sampleUnmatched,
+-      totalChannels: toMatch.length,
++      totalChannels: totalToMatch,
+     );
+     AppLog.info('EPG: match done "${source.name}" — $report');
+     if (report.sampleUnmatched.isNotEmpty) {
+diff --git a/lib/backend/http_client.dart b/lib/backend/http_client.dart
+index f38c67a..6fc1d3d 100644
+--- a/lib/backend/http_client.dart
++++ b/lib/backend/http_client.dart
+@@ -4,6 +4,27 @@ import 'dart:io';
+ import 'package:http/http.dart' as http;
+ import 'package:http/io_client.dart';
+ 
++/// Review finding 150: classifies why an AppHttp request did not yield a 200
++/// body, so callers can distinguish PERMANENT failures (auth/credentials/gone
++/// — do not keep retrying forever) from TRANSIENT ones (timeout/socket/5xx —
++/// safe to preserve prior data and try again later).
++enum HttpFailureKind {
++  /// 401/403 (and 407): credentials rejected. Permanent until fixed.
++  authRejected,
++
++  /// 404/410: resource/line gone. Permanent.
++  notFound,
++
++  /// Any other non-200 (incl. 5xx that survived the one retry). Transient-ish.
++  httpError,
++
++  /// TimeoutException after the final attempt.
++  timeout,
++
++  /// SocketException / HttpException / other network error after final attempt.
++  network,
++}
++
+ /// Free4Me-IPTV: a single shared HTTP client with sane timeouts, keep-alive,
+ /// and a one-shot retry helper. Used by all source-refresh and pre-warm code.
+ class AppHttp {
+@@ -27,6 +48,7 @@ class AppHttp {
+     Uri url, {
+     Duration timeout = const Duration(seconds: 20),
+     Map<String, String>? headers,
++    void Function(HttpFailureKind kind, int? statusCode)? onFailure,
+   }) async {
+     for (int attempt = 0; attempt < 2; attempt++) {
+       try {
+@@ -35,16 +57,34 @@ class AppHttp {
+           await Future.delayed(const Duration(milliseconds: 500));
+           continue;
+         }
+-        if (resp.statusCode != 200) return null;
++        if (resp.statusCode != 200) {
++          final sc = resp.statusCode;
++          if (sc == 401 || sc == 403 || sc == 407) {
++            onFailure?.call(HttpFailureKind.authRejected, sc);
++          } else if (sc == 404 || sc == 410) {
++            onFailure?.call(HttpFailureKind.notFound, sc);
++          } else {
++            onFailure?.call(HttpFailureKind.httpError, sc);
++          }
++          return null;
++        }
+         return resp;
+       } on TimeoutException catch (_) {
+-        if (attempt == 1) return null;
++        if (attempt == 1) {
++          onFailure?.call(HttpFailureKind.timeout, null);
++          return null;
++        }
+       } on SocketException catch (_) {
+-        if (attempt == 1) return null;
++        if (attempt == 1) {
++          onFailure?.call(HttpFailureKind.network, null);
++          return null;
++        }
+         await Future.delayed(const Duration(milliseconds: 500));
+       } on HttpException catch (_) {
++        onFailure?.call(HttpFailureKind.network, null);
+         return null;
+       } catch (_) {
++        onFailure?.call(HttpFailureKind.network, null);
+         return null;
+       }
+     }
+diff --git a/lib/backend/m3u.dart b/lib/backend/m3u.dart
+index e8e3473..8b77a9b 100644
+--- a/lib/backend/m3u.dart
++++ b/lib/backend/m3u.dart
+@@ -34,6 +34,7 @@ Future<void> processM3U(
+   bool wipe, [
+   String? path,
+   void Function(String)? onProgress,
++  bool Function()? shouldCancel, // review finding 143
+ ]) async {
+   path ??= source.url;
+   List<ChannelPreserve>? preserve;
+@@ -175,15 +176,30 @@ Future<void> processM3U(
+     contentStatements.insert(0, Sql.wipeSource(sourceId));
+   }
+   onProgress?.call('Loading channels: $channelCount…');
+-  await Sql.commitWriteBatched(contentStatements, memory: memory);
+-
+-  final tail = <Future<void> Function(SqliteWriteContext, Map<String, String>)>[
+-    Sql.updateGroups(),
+-  ];
+-  if (preserve != null) {
+-    tail.add(Sql.restorePreserve(preserve));
++  // Review finding 143: a cancel during the download phase skips the write
++  // entirely for this in-flight source (same recoverable state as a
++  // between-source cancel — the next refresh wipes+reinserts).
++  if (shouldCancel?.call() ?? false) {
++    onProgress?.call('Cancelled');
++    AppLog.info('M3U: cancelled before write phase source="${source.name}"');
++    return;
+   }
+-  await Sql.commitWrite(tail, memory: memory);
++  // Review finding 142: browse-index drop now wraps ONLY the DB-write phase
++  // (was around the whole fetch dispatch in Utils.processSource). Re-entrant —
++  // a pass-through when refreshAllSources' whole-loop drop is active.
++  await Sql.withDroppedBrowseIndexes(() async {
++    await Sql.commitWriteBatched(contentStatements,
++        memory: memory, shouldCancel: shouldCancel);
++
++    final tail =
++        <Future<void> Function(SqliteWriteContext, Map<String, String>)>[
++      Sql.updateGroups(),
++    ];
++    if (preserve != null) {
++      tail.add(Sql.restorePreserve(preserve));
++    }
++    await Sql.commitWrite(tail, memory: memory);
++  }, onProgress: onProgress);
+   // fix268: persist the channel count from this refresh. M3U is a flat list
+   // (no movie/series split at parse time), so only the total is recorded.
+   if (source.id != null) {
+@@ -282,6 +298,7 @@ Future<void> processM3UUrl(
+   Source source,
+   bool wipe, [
+   void Function(String)? onProgress,
++  bool Function()? shouldCancel, // review finding 143
+ ]) async {
+   AppLog.info('M3U: downloading source="${source.name}" url="${source.url}"');
+   onProgress?.call('Downloading playlist…');
+@@ -291,7 +308,7 @@ Future<void> processM3UUrl(
+   String? path;
+   try {
+     path = await downloadM3U(source.url!);
+-    await processM3U(source, wipe, path, onProgress);
++    await processM3U(source, wipe, path, onProgress, shouldCancel);
+   } catch (e) {
+     AppLog.warn('M3U: download failed source="${source.name}" error=$e');
+     rethrow;
+diff --git a/lib/backend/search_perf_test.dart b/lib/backend/search_perf_test.dart
+index 3673c43..1d63594 100644
+--- a/lib/backend/search_perf_test.dart
++++ b/lib/backend/search_perf_test.dart
+@@ -41,6 +41,13 @@ class SearchMethodPerfResult {
+   });
+ }
+ 
++/// Review finding 157: cooperative cancel for the perf benchmark so a Back
++/// press / dialog dispose stops the (DB-hammering) run instead of orphaning it.
++class SearchPerfCancelToken {
++  bool cancelled = false;
++  void cancel() => cancelled = true;
++}
++
+ class SearchPerfTest {
+   /// Hard cap on how many channel names we sample to build the probe queries —
+   /// keeps the test fast on a 1M+ row catalog (the SELECT is the only
+@@ -60,6 +67,7 @@ class SearchPerfTest {
+     required List<int> enabledSourceIds,
+     required bool safeMode,
+     void Function(String)? onProgress,
++    SearchPerfCancelToken? cancelToken, // review finding 157
+   }) async {
+     if (enabledSourceIds.isEmpty) {
+       throw Exception('No enabled sources — add or enable a source first.');
+@@ -73,12 +81,14 @@ class SearchPerfTest {
+     final results = <SearchMethodPerfResult>[];
+     try {
+       for (final method in SearchMethod.values) {
++        if (cancelToken?.cancelled == true) break; // review finding 157
+         onProgress?.call('Testing ${_label(method)}…');
+         results.add(await _benchmarkMethod(
+           method: method,
+           probes: probes,
+           enabledSourceIds: enabledSourceIds,
+           safeMode: safeMode,
++          cancelToken: cancelToken,
+         ));
+       }
+     } finally {
+@@ -103,6 +113,7 @@ class SearchPerfTest {
+     required List<String> probes,
+     required List<int> enabledSourceIds,
+     required bool safeMode,
++    SearchPerfCancelToken? cancelToken, // review finding 157
+   }) async {
+     // Drop SQLite's own page cache so the cold run pays a fresh read (best we
+     // can do — the OS file cache is out of reach from Dart).
+@@ -126,6 +137,7 @@ class SearchPerfTest {
+     Future<List<double>> runPass() async {
+       final times = <double>[];
+       for (final q in probes) {
++        if (cancelToken?.cancelled == true) break; // review finding 157
+         final sw = Stopwatch()..start();
+         final rows = await Sql.search(mk(q));
+         sw.stop();
+diff --git a/lib/backend/sql.dart b/lib/backend/sql.dart
+index 719eac2..eee6192 100644
+--- a/lib/backend/sql.dart
++++ b/lib/backend/sql.dart
+@@ -73,6 +73,7 @@ class Sql {
+     int batchSize = importBatchSize,
+     Map<String, String>? memory,
+     void Function(int committedClosures)? onBatchCommitted,
++    bool Function()? shouldCancel,
+   }) async {
+     if (commits.isEmpty) return;
+     final shared = memory ?? <String, String>{};
+@@ -86,6 +87,15 @@ class Sql {
+     var batchIndex = 0;
+     var slowCount = 0;
+     for (var i = 0; i < commits.length; i += batchSize) {
++      // Review finding 143: cooperative cancel BETWEEN transactions only —
++      // each commitWrite is its own transaction, so breaking here can never
++      // leave a half-written batch. A partial-source write is recoverable
++      // because the next refresh wipes+reinserts the source.
++      if (shouldCancel?.call() ?? false) {
++        AppLog.info(
++            'Sql.commitWriteBatched: cancelled after $batchIndex batch(es)');
++        break;
++      }
+       final end = (i + batchSize < commits.length) ? i + batchSize : commits.length;
+       final swBatch = Stopwatch()..start();
+       await commitWrite(commits.sublist(i, end), memory: shared,
+@@ -468,7 +478,34 @@ class Sql {
+   /// rebuilt once.
+   static const List<String> _keepIndexesDuringRefresh = [
+     'index_channel_source_id',
++    // Review finding 129: restorePreserve's UPDATE...FROM joins on
++    // (name, source_id) via index_channel_name_source; dropping it regresses
++    // the preserve merge from ~25ms to ~134s. A plain 2-column index —
++    // insert-maintenance cost during the refresh is negligible vs the
++    // composite CASE browse-tier indexes that stay dropped.
++    'index_channel_name_source',
+   ];
++  /// Review finding 134: runs a getAll whose SQL contains a forced INDEXED BY;
++  /// if the index was dropped between the _indexExists gate and execution
++  /// (refresh index-drop burst — a TOCTOU the gate cannot close), SQLite
++  /// throws 'no such index' — retry ONCE with the hint stripped. The hint is a
++  /// planner nudge, never a correctness constraint, so the unhinted query is
++  /// functionally identical. The narrow message match is deliberate: a wrong
++  /// non-match simply rethrows the original error (no silent wrong result).
++  static Future<ResultSet> _getAllHinted(SqliteWriteContext db, String hintedSql,
++      String unhintedSql, List<Object?> params) async {
++    try {
++      return await db.getAll(hintedSql, params);
++    } on SqliteException catch (e) {
++      if (e.message.contains('no such index')) {
++        AppLog.warn(
++            'Sql: forced INDEXED BY index vanished mid-query — retrying unhinted');
++        return await db.getAll(unhintedSql, params);
++      }
++      rethrow;
++    }
++  }
++
+   /// fix526: does a named index currently exist? Gates forced `INDEXED BY`
+   /// hints so a missing or mid-rebuild index never hard-crashes a query with
+   /// "no such index" (which previously left the browse stuck loading).
+@@ -1019,6 +1056,15 @@ class Sql {
+         filters.searchMethod == SearchMethod.ftsAnd || filters.useKeywords;
+ 
+     if (useFts) {
++      // Review finding 133: a batch refresh suspends the channels_fts sync
++      // triggers and only rebuilds the index at end-of-batch
++      // (withSuspendedFtsTriggers). Any caller not gated by the UI's rebuild
++      // blocking (a TV view / channel-picker text search) would otherwise
++      // MATCH a stale index and silently miss freshly-inserted rows. Fall
++      // back to LIKE (correct, slower) for the rebuild window.
++      if (ftsRebuilding.value) {
++        return _searchLike(filters, rawQuery, mediaTypes, offset, effLimit);
++      }
+       // fix519: word-prefix MATCH for the unicode61 channels_fts (migration
+       // 35). Each term >= 2 chars becomes a quoted phrase + trailing prefix
+       // star ("term"*), so "fox" matches "FOX Sports", "espn" matches
+@@ -1219,7 +1265,20 @@ class Sql {
+ 
+     // log can tell us which is the bottleneck.
+     final sqlStart = DateTime.now();
+-    var results = await db.getAll(sqlQuery, params);
++    // Review finding 134: if the no-query browse embedded a forced INDEXED BY
++    // and the index was dropped between the gate and execution (refresh drop
++    // burst), retry once with the hint stripped instead of hard-crashing.
++    final hintedIdx = sqlQuery.contains(' INDEXED BY idx_fav_browse')
++        ? ' INDEXED BY idx_fav_browse'
++        : sqlQuery.contains(' INDEXED BY idx_browse_src_mt')
++            ? ' INDEXED BY idx_browse_src_mt'
++            : sqlQuery.contains(' INDEXED BY idx_browse_src_grp')
++                ? ' INDEXED BY idx_browse_src_grp'
++                : null;
++    var results = hintedIdx == null
++        ? await db.getAll(sqlQuery, params)
++        : await _getAllHinted(
++            db, sqlQuery, sqlQuery.replaceFirst(hintedIdx, ''), params);
+     final sqlElapsed = DateTime.now().difference(sqlStart).inMilliseconds;
+ 
+     final mapStart = DateTime.now();
+@@ -1616,6 +1675,17 @@ class Sql {
+             ' done, marking complete.');
+         return;
+       }
++      // Review finding 127: never drop/recreate indexes while a bulk refresh
++      // holds withDroppedBrowseIndexes — the two would resurrect the 5 dead
++      // indexes mid-refresh and desync the drop bookkeeping. Same-isolate
++      // flag is valid (both run on the foreground isolate). The marker stays
++      // UNwritten so maintenance simply retries next launch, matching the
++      // existing catch-block contract below.
++      if (_browseIndexesDropped) {
++        AppLog.info('fix537: index maintenance deferred — a bulk refresh is'
++            ' dropping/rebuilding browse indexes; will retry next launch');
++        return;
++      }
+       AppLog.info('fix542: deferred index maintenance starting…');
+       final sw = Stopwatch()..start();
+       // Bounded memory so the index merge-sorts spill to disk, not RAM (OOM-safe
+@@ -1631,12 +1701,29 @@ class Sql {
+         await db.execute('DROP INDEX IF EXISTS ${entry.key};');
+         await db.execute(entry.value);
+       }
+-      // VACUUM reclaims the freed pages (cannot run in a transaction; the
+-      // writer is between statements here). Best-effort within the larger try.
+-      await db.execute('VACUUM;');
++      // Review finding 128: rebuild is complete and durable — record it BEFORE
++      // VACUUM so a storage-constrained box (SQLITE_FULL on VACUUM) cannot
++      // force the whole multi-minute drop+rebuild to rerun every launch.
+       await db.execute(
+         "INSERT OR REPLACE INTO app_meta (key, value) VALUES ('$marker', '1');",
+       );
++      // VACUUM reclaims freed pages; genuinely best-effort. Gated on its own
++      // marker so a box that can never VACUUM does not retry it every launch.
++      // (fix537_vacuum_done is the SAME legacy key checked by the early-return
++      // above — that check fires only when the OLD blocking migration set it,
++      // before this code is reached, so there is no conflict.)
++      final vacDone = await db.getOptional(
++          "SELECT value FROM app_meta WHERE key = 'fix537_vacuum_done'");
++      if (vacDone == null) {
++        try {
++          await db.execute('VACUUM;');
++          await db.execute(
++              "INSERT OR REPLACE INTO app_meta (key, value)"
++              " VALUES ('fix537_vacuum_done', '1');");
++        } catch (e) {
++          AppLog.warn('fix537: VACUUM skipped (best-effort) — $e');
++        }
++      }
+       try {
+         await db.execute('PRAGMA cache_size = -2000;');
+         await db.execute('PRAGMA optimize;');
+@@ -2622,7 +2709,13 @@ class Sql {
+     const chunkSize = 200;
+     final entries = channelIdToEpgId.entries.toList(growable: false);
+     final db = await DbFactory.db;
+-    await db.writeTransaction((tx) async {
++    // Review finding 130: this is the ONLY epg-assignment writer that called
++    // db.writeTransaction directly with no SQLITE_BUSY retry — it runs from
++    // BOTH the foreground isolate and the Workmanager background isolate, so
++    // cross-isolate contention returned code 5 straight to the caller. The
++    // retry helper is DB-agnostic despite the "epg" name.
++    await _epgWriteWithRetry('setChannelEpgIds',
++        () => db.writeTransaction((tx) async {
+       for (var offset = 0; offset < entries.length; offset += chunkSize) {
+         final end = offset + chunkSize > entries.length
+             ? entries.length
+@@ -2649,7 +2742,7 @@ class Sql {
+            WHERE id IN (SELECT id FROM _data)
+         ''', params);
+       }
+-    });
++    }));
+     AppLog.info(
+         'Sql.setChannelEpgIds: wrote ${channelIdToEpgId.length} EPG assignments');
+   }
+@@ -2676,8 +2769,17 @@ class Sql {
+       await tx.execute(
+           'DELETE FROM epg_refresh_log WHERE source_id = ?', [sourceId]);
+     }));
++    // Review finding 135: programmes_fts is external-content with NO sync
++    // triggers, so deleting a source's rows does not remove its titles from
++    // the trigram index — a deleted source's titles stayed searchable until
++    // the next unrelated rebuild. Rebuild now (outside the delete tx — the
++    // FTS 'rebuild' command is table-scoped, and rebuildProgrammesFts wraps
++    // its own busy-retry). One-time O(remaining rows) cost on a rare manual
++    // action.
++    await rebuildProgrammesFts();
+     AppLog.info(
+-        'Sql.deleteEpgForSource: removed EPG data for source $sourceId');
++        'Sql.deleteEpgForSource: removed EPG data for source $sourceId'
++        ' (fts rebuilt)');
+   }
+ 
+   /// Insert a batch of programs using multi-row VALUES clauses for performance.
+@@ -2791,6 +2893,42 @@ class Sql {
+   ///
+   /// Uses db.execute (not writeTransaction) — PRAGMA wal_checkpoint must run
+   /// outside a transaction.
++  static const String _refreshLockKey = 'refresh_lock';
++
++  /// Review finding 141: best-effort cross-isolate advisory lock in db.sqlite
++  /// app_meta (table exists since migration 39 — no new table/migration).
++  /// The foreground catalog refresh takes it; the BACKGROUND WorkManager EPG
++  /// matcher yields when it is held, so two isolates never fight for the
++  /// single sqlite writer during a minutes-long bulk refresh. `owner` is a
++  /// free label; `staleAfter` lets a crashed holder's lock be reclaimed.
++  static Future<bool> tryAcquireRefreshLock(String owner,
++      {Duration staleAfter = const Duration(minutes: 45)}) async {
++    final db = await DbFactory.db;
++    final now = DateTime.now().millisecondsSinceEpoch;
++    return await db.writeTransaction((tx) async {
++      final row = await tx.getOptional(
++          'SELECT value FROM app_meta WHERE key = ?', [_refreshLockKey]);
++      final value = row == null ? null : row['value'] as String?;
++      if (value != null) {
++        final parts = value.split('|'); // owner|acquiredMs
++        final acquiredMs = int.tryParse(parts.length > 1 ? parts[1] : '') ?? 0;
++        if (now - acquiredMs < staleAfter.inMilliseconds) {
++          return false; // held & fresh
++        }
++      }
++      await tx.execute(
++          'INSERT OR REPLACE INTO app_meta (key, value) VALUES (?, ?)',
++          [_refreshLockKey, '$owner|$now']);
++      return true;
++    });
++  }
++
++  static Future<void> releaseRefreshLock() async {
++    final db = await DbFactory.db;
++    await db.execute(
++        'DELETE FROM app_meta WHERE key = ?', [_refreshLockKey]);
++  }
++
+   static Future<void> checkpointAndTruncateWal({
+     bool epg = true,
+     bool db = true,
+@@ -3138,6 +3276,25 @@ class Sql {
+     return rows.map(rowToChannel).toList();
+   }
+ 
++  /// Review finding 131: keyset-paged variant of [getChannelsForEpgMatching].
++  /// "Re-match all channels" previously materialized an entire source's live
++  /// rows (SELECT *) in one list; the matcher now streams pages (epg_service)
++  /// so peak Dart heap is bounded to one page + the shared channel map.
++  static Future<List<Channel>> getChannelsForEpgMatchingPage(
++    int sourceId, {
++    required int afterId,
++    int limit = 5000,
++  }) async {
++    final db = await DbFactory.db;
++    final rows = await db.getAll(
++      'SELECT * FROM channels'
++      ' WHERE source_id = ? AND media_type = 0'
++      ' AND id > ? ORDER BY id ASC LIMIT ?',
++      [sourceId, afterId, limit],
++    );
++    return rows.map(rowToChannel).toList();
++  }
++
+   /// Live channels that need EPG matching: no existing assignment AND no
+   /// manual override. Channels already matched (epg_channel_id IS NOT NULL)
+   /// or manually pinned are excluded — they don't need re-matching.
+@@ -3159,13 +3316,48 @@ class Sql {
+     final hint = await _indexExists('idx_epg_unmatched')
+         ? ' INDEXED BY idx_epg_unmatched'
+         : '';
+-    final rows = await db.getAll('''
+-      SELECT * FROM channels$hint
+-      WHERE source_id = ?
+-        AND media_type = 0
+-        AND epg_manual_override IS NULL
+-        AND epg_channel_id IS NULL
+-    ''', [sourceId]);
++    // Review finding 136: the _indexExists gate is a cross-isolate TOCTOU —
++    // the foreground refresh can drop idx_epg_unmatched between this
++    // isolate's check and the getAll. Route through _getAllHinted so a
++    // mid-flight drop degrades to the (identical-result) unhinted query
++    // instead of a hard "no such index" crash aborting the source's match.
++    const needingWhere = ' WHERE source_id = ?'
++        ' AND media_type = 0'
++        ' AND epg_manual_override IS NULL'
++        ' AND epg_channel_id IS NULL';
++    final rows = await _getAllHinted(
++      db,
++      'SELECT * FROM channels$hint$needingWhere',
++      'SELECT * FROM channels$needingWhere',
++      [sourceId],
++    );
++    return rows.map(rowToChannel).toList();
++  }
++
++  /// Review finding 131: keyset-paged variant of [getChannelsNeedingEpgMatch]
++  /// so the matcher streams pages instead of materializing an entire source's
++  /// live rows at once. Same predicate + hint semantics (incl. the finding-136
++  /// unhinted retry); `id > afterId ORDER BY id` is a cheap tail on the seek.
++  static Future<List<Channel>> getChannelsNeedingEpgMatchPage(
++    int sourceId, {
++    required int afterId,
++    int limit = 5000,
++  }) async {
++    var db = await DbFactory.db;
++    final hint = await _indexExists('idx_epg_unmatched')
++        ? ' INDEXED BY idx_epg_unmatched'
++        : '';
++    const pagedWhere = ' WHERE source_id = ?'
++        ' AND media_type = 0'
++        ' AND epg_manual_override IS NULL'
++        ' AND epg_channel_id IS NULL'
++        ' AND id > ? ORDER BY id ASC LIMIT ?';
++    final rows = await _getAllHinted(
++      db,
++      'SELECT * FROM channels$hint$pagedWhere',
++      'SELECT * FROM channels$pagedWhere',
++      [sourceId, afterId, limit],
++    );
+     return rows.map(rowToChannel).toList();
+   }
+ 
+@@ -3187,13 +3379,15 @@ class Sql {
+     int sourceId,
+   ) async {
+     final db = await EpgDbFactory.db;
++    // Review finding 137: the previous form ran a correlated per-group
++    // subquery (latest title by start_utc) over the ~1.5M-row programmes
++    // table — one extra probe per distinct epg_channel_id. sample_title is
++    // only a display hint, so an arbitrary title is acceptable: MIN(title)
++    // is a plain grouped aggregate the (source_id, epg_channel_id, start_utc)
++    // index groups directly, with no window-function version risk.
+     final rows = await db.getAll('''
+-      SELECT epg_channel_id,
+-             (SELECT title FROM programmes p2
+-              WHERE p2.epg_channel_id = p.epg_channel_id
+-                AND p2.source_id = p.source_id
+-              ORDER BY start_utc DESC LIMIT 1) AS sample_title
+-      FROM programmes p
++      SELECT epg_channel_id, MIN(title) AS sample_title
++      FROM programmes
+       WHERE source_id = ?
+       GROUP BY epg_channel_id
+       ORDER BY epg_channel_id ASC
+@@ -3391,6 +3585,20 @@ class Sql {
+                 await _indexExists('idx_browse_src_mt_safe'))
+             ? ' INDEXED BY idx_browse_src_mt_safe'
+             : '';
++    // Review finding 132: cap mixed-mode browse depth. innerLimit =
++    // offset+pageSize is fetched and temp-sorted PER SOURCE, so deep pages
++    // re-materialize the whole prefix (page 200 × 5 sources ≈ 36k rows sorted
++    // to slice 36). Beyond this depth return empty — the UI's infinite scroll
++    // treats an empty page as end-of-list; users refine with search long
++    // before here. (~139 pages at pageSize 36.)
++    const int mixedBrowseMaxRows = 5000;
++    if (offset >= mixedBrowseMaxRows) {
++      if (AppLog.enabled) {
++        AppLog.info('Sql.search[$invocation]: branch=no-query-mixed-union'
++            ' offset=$offset >= cap $mixedBrowseMaxRows — returning empty');
++      }
++      return const <Channel>[];
++    }
+     final innerLimit = offset + pageSize;
+     final parts = <String>[];
+     final params = <Object>[];
+@@ -3417,7 +3625,14 @@ class Sql {
+       ..add(pageSize);
+ 
+     final sqlStart = DateTime.now();
+-    final results = await db.getAll(sqlQuery, params);
++    // Review finding 134: the safeHint's _indexExists gate is a TOCTOU vs the
++    // refresh's index-drop burst — retry once unhinted if the forced index
++    // vanished mid-query (the hint is a planner nudge, never a correctness
++    // constraint; each part's partial WHERE is implied by its predicates).
++    final results = safeHint.isEmpty
++        ? await db.getAll(sqlQuery, params)
++        : await _getAllHinted(
++            db, sqlQuery, sqlQuery.replaceAll(safeHint, ''), params);
+     final sqlElapsed = DateTime.now().difference(sqlStart).inMilliseconds;
+     final mapped = results.map(rowToChannel).toList();
+     if (AppLog.enabled) {
+@@ -3512,7 +3727,12 @@ class Sql {
+     params.add(offset);
+     params.add(limit);
+ 
+-    final rows = await db.getAll(sqlQuery, params);
++    // Review finding 134: retry unhinted if idx_fav_browse was dropped between
++    // the _indexExists gate and execution (refresh index-drop burst).
++    final rows = !useFavHint
++        ? await db.getAll(sqlQuery, params)
++        : await _getAllHinted(db, sqlQuery,
++            sqlQuery.replaceFirst(' INDEXED BY idx_fav_browse', ''), params);
+     AppLog.info(
+       'Sql._searchLike: terms=${terms.length} matched=${rows.length}'
+       ' offset=$offset query="$rawQuery"',
+diff --git a/lib/backend/update_checker.dart b/lib/backend/update_checker.dart
+index 097b289..92804ab 100644
+--- a/lib/backend/update_checker.dart
++++ b/lib/backend/update_checker.dart
+@@ -2,6 +2,7 @@ import 'dart:async';
+ import 'dart:convert';
+ import 'dart:io';
+ 
++import 'package:crypto/crypto.dart';
+ import 'package:flutter/material.dart';
+ import 'package:open_tv/backend/app_logger.dart';
+ import 'package:open_tv/backend/http_client.dart';
+@@ -167,10 +168,21 @@ class UpdateChecker {
+     BuildContext context,
+     String apkUrl,
+     String version,
++    String? expectedSha256,
+   ) async {
++    // Review finding 151: reject any non-https apkUrl (AndroidManifest sets
++    // usesCleartextTraffic=true, so without this an http:// URL is honored and
++    // the APK arrives over cleartext).
+     final uri = Uri.tryParse(apkUrl);
+-    if (uri == null) {
+-      AppLog.warn('UpdateChecker: invalid apkUrl');
++    if (uri == null || uri.scheme.toLowerCase() != 'https') {
++      AppLog.warn('UpdateChecker: apkUrl missing or not https — $apkUrl');
++      if (context.mounted) {
++        ScaffoldMessenger.of(context).showSnackBar(
++          const SnackBar(
++              content: Text(
++                  'Update rejected: download URL is not secure (https required)')),
++        );
++      }
+       return;
+     }
+     final progress = ValueNotifier<double>(0);
+@@ -207,6 +219,9 @@ class UpdateChecker {
+ 
+     File? outFile;
+     final client = HttpClient(); // fix363/LOW-3: hoisted for finally
++    // Review finding 151: declared in the outer scope so the integrity check
++    // after the try/catch/finally can read the computed digest.
++    String? actualSha;
+     try {
+       final dir = await getApplicationSupportDirectory();
+       outFile = File('${dir.path}/Free4Me-IPTV-$version.apk');
+@@ -218,6 +233,16 @@ class UpdateChecker {
+       final total = response.contentLength;
+       var received = 0;
+       final sink = outFile.openWrite();
++      // Review finding 151: compute SHA-256 incrementally so the >100MB APK is
++      // never buffered in memory to verify it. crypto's DigestSink lives under
++      // src/ and is NOT exported from package:crypto/crypto.dart, so capture
++      // the single emitted Digest with a tiny local Sink instead.
++      Digest? digest;
++      final hashInput = sha256.startChunkedConversion(
++        ChunkedConversionSink<Digest>.withCallback((digests) {
++          if (digests.isNotEmpty) digest = digests.last;
++        }),
++      );
+       await for (final chunk in response) {
+         if (cancelled) {
+           await sink.close();
+@@ -228,9 +253,12 @@ class UpdateChecker {
+         }
+         received += chunk.length;
+         sink.add(chunk);
++        hashInput.add(chunk);
+         if (total > 0) progress.value = received / total;
+       }
+       await sink.close();
++      hashInput.close();
++      actualSha = digest?.toString();
+       AppLog.info('UpdateChecker: downloaded $received bytes to ${outFile.path}');
+     } catch (e) {
+       // fix363/LOW-3: client released in finally; error path no longer leaks it.
+@@ -249,6 +277,29 @@ class UpdateChecker {
+     if (context.mounted) {
+       Navigator.of(context, rootNavigator: true).pop(); // dismiss progress
+     }
++    // Review finding 151: verify integrity before handing the file to the
++    // installer. Enforced-if-present, warn-if-absent — the currently-published
++    // version.json carries no sha field, so hard-blocking on null would break
++    // every existing client's update. Flip to hard-block once all releases
++    // emit apkSha256.
++    if (expectedSha256 != null && expectedSha256.isNotEmpty) {
++      if (actualSha == null ||
++          actualSha.toLowerCase() != expectedSha256.toLowerCase()) {
++        AppLog.warn('UpdateChecker: SHA-256 mismatch expected=$expectedSha256 '
++            'actual=$actualSha');
++        await outFile.delete().catchError((_) => outFile!);
++        if (context.mounted) {
++          ScaffoldMessenger.of(context).showSnackBar(
++            const SnackBar(content: Text('Update rejected: file integrity check failed')),
++          );
++        }
++        return;
++      }
++      AppLog.info('UpdateChecker: SHA-256 verified');
++    } else {
++      AppLog.warn('UpdateChecker: no expected SHA-256 in version.json — '
++          'installing unverified APK');
++    }
+     // Hand off to the Android installer. The user confirms the install prompt.
+     final result = await OpenFilex.open(outFile.path);
+     AppLog.info('UpdateChecker: installer result ${result.type} ${result.message}');
+@@ -312,9 +363,11 @@ class UpdateChecker {
+               // fix310: prefer the in-app download + installer flow. Fall back
+               // to opening the release page if no direct apkUrl is present.
+               final apkUrl = info['apkUrl'] as String?;
++              final apkSha = info['apkSha256'] as String?; // review finding 151
+               final remoteVersion = info['latest'] as String? ?? '';
+               if (apkUrl != null && apkUrl.isNotEmpty) {
+-                await _downloadAndInstall(context, apkUrl, remoteVersion);
++                await _downloadAndInstall(
++                    context, apkUrl, remoteVersion, apkSha);
+                 return;
+               }
+               final rawUrl = info['releaseUrl'] as String?;
+diff --git a/lib/backend/utils.dart b/lib/backend/utils.dart
+index 05e07f8..4e0b808 100644
+--- a/lib/backend/utils.dart
++++ b/lib/backend/utils.dart
+@@ -32,6 +32,7 @@ class Utils {
+     Source source, {
+     void Function(String)? onProgress,
+     void Function(int done, int total)? onRowProgress,
++    bool Function()? shouldCancel, // review finding 143
+   }) async {
+     refreshedSeries.clear();
+     // fix620: repair a malformed FTS index BEFORE touching it — a corrupt index
+@@ -45,7 +46,7 @@ class Utils {
+       AppLog.warn('Utils.refreshSource: FTS pre-flight check failed '
+           '(non-fatal, continuing) — $e');
+     }
+-    await processSource(source, true, onProgress, onRowProgress);
++    await processSource(source, true, onProgress, onRowProgress, shouldCancel);
+     // After channels are populated, apply any favorites and last-
+     // watched timestamps that an imported backup staged for this
+     // if no preserve list is pending.
+@@ -63,6 +64,7 @@ class Utils {
+     bool wipe = false,
+     void Function(String)? onProgress,
+     void Function(int done, int total)? onRowProgress,
++    bool Function()? shouldCancel, // review finding 143
+   ]) async {
+     // fix383: the importers commit the source row UP FRONT (fix376 for Xtream,
+     // m3u.dart for M3U) so source.id is known before the bulk channel insert.
+@@ -81,29 +83,30 @@ class Utils {
+     AppLog.info('fix617 processSource: "${source.name}" — namePreExisted='
+         '$namePreExisted; entering withDroppedBrowseIndexes');
+     try {
+-      // fix518: drop the channels browse indexes around the bulk wipe+reinsert
+-      // and rebuild once after, instead of maintaining ~a dozen indexes per
+-      // row. Re-entrant — a no-op when refreshAllSources already dropped them
+-      // around the whole multi-source loop.
+-      await Sql.withDroppedBrowseIndexes(() async {
+-        AppLog.info('fix617 processSource: "${source.name}" — indexes dropped,'
+-            ' dispatching ${source.sourceType} fetch');
+-        switch (source.sourceType) {
+-          case SourceType.m3u:
+-            await processM3U(source, wipe, null, onProgress);
+-            break;
+-          case SourceType.m3uUrl:
+-            await processM3UUrl(source, wipe, onProgress);
+-            break;
+-          case SourceType.xtream:
+-            await getXtream(source, wipe, onProgress, onRowProgress);
+-            break;
+-        }
+-        AppLog.info('fix617 processSource: "${source.name}" — fetch+write'
+-            ' returned (inside withDroppedBrowseIndexes)');
+-      }, onProgress: onProgress);
++      // Review finding 142 (supersedes the fix518 placement): the browse-index
++      // drop used to wrap the WHOLE fetch dispatch, so on the single-source
++      // path the ~19 indexes were gone for the entire network download too.
++      // The drop now lives inside each fetcher around ONLY its DB-write phase
++      // (xtream.dart / m3u.dart commit blocks) — still re-entrant, so during
++      // a batch refresh the outer whole-loop drop owns drop+recreate and the
++      // per-fetcher wrap is a pass-through. Degraded-browse window shrinks
++      // from (download+commit) to (commit).
+       AppLog.info('fix617 processSource: "${source.name}" —'
+-          ' withDroppedBrowseIndexes complete');
++          ' dispatching ${source.sourceType} fetch');
++      switch (source.sourceType) {
++        case SourceType.m3u:
++          await processM3U(source, wipe, null, onProgress, shouldCancel);
++          break;
++        case SourceType.m3uUrl:
++          await processM3UUrl(source, wipe, onProgress, shouldCancel);
++          break;
++        case SourceType.xtream:
++          await getXtream(
++              source, wipe, onProgress, onRowProgress, shouldCancel);
++          break;
++      }
++      AppLog.info('fix617 processSource: "${source.name}" — fetch+write'
++          ' returned');
+       // fix386: brand-new Xtream add — fire EPG auto-discovery.
+       // The runner is sticky (skips if epgDiscoveryState is set) and
+       // is fire-and-forget; a probe failure must not roll back the
+@@ -213,6 +216,13 @@ class Utils {
+     // wrapper rebuilds it ONCE at end-of-batch via DROP+repopulate. The
+     // batchTargetedRebuild closure below is just the "batch succeeded"
+     // sentinel; the error path still falls back to a global rebuild.
++    // Review finding 141: cross-isolate advisory lock — the background
++    // WorkManager EPG matcher yields to this foreground catalog refresh so
++    // two isolates never fight for the single sqlite writer. Foreground
++    // (user-initiated) always proceeds even if the lock read fails; the lock
++    // is advisory and the BACKGROUND side is the one that must yield.
++    final gotLock = await Sql.tryAcquireRefreshLock('foreground');
++    try {
+     await Sql.withSuspendedFtsTriggers(() async {
+       await Sql.withDroppedBrowseIndexes(() async {
+         // fix611: one source failing must NEVER stop the rest from
+@@ -246,6 +256,10 @@ class Utils {
+                 onRowProgress: onSourceRowProgress == null
+                     ? null
+                     : (done, total) => onSourceRowProgress(s, done, total),
++                // Review finding 143: thread cancel down so it takes effect
++                // MID-source (per HTTP request / per commit batch), not only
++                // between sources.
++                shouldCancel: shouldCancel,
+               );
+               lastError = null;
+               break;
+@@ -306,6 +320,11 @@ class Utils {
+       AppLog.warn('Utils.refreshAllSources: post-refresh db.sqlite '
+           'checkpoint failed (non-fatal) — $e');
+     }
++    } finally {
++      // Review finding 141: the checkpoint above runs INSIDE the lock so the
++      // background isolate cannot start mid-checkpoint.
++      if (gotLock) await Sql.releaseRefreshLock();
++    }
+   }
+ 
+   // fix580: memoized so the Player can read the resolved value synchronously at
+diff --git a/lib/backend/xtream.dart b/lib/backend/xtream.dart
+index 07a85cd..2a601ba 100644
+--- a/lib/backend/xtream.dart
++++ b/lib/backend/xtream.dart
+@@ -32,6 +32,7 @@ Future<void> getXtream(
+   bool wipe, [
+   void Function(String)? onProgress,
+   void Function(int done, int total)? onRowProgress,
++  bool Function()? shouldCancel, // review finding 143
+ ]) async {
+   List<Future<void> Function(SqliteWriteContext, Map<String, String>)>
+   statements = [];
+@@ -117,7 +118,8 @@ Future<void> getXtream(
+           'Xtream.fix301: bulk VOD count ${vods.length} looks short for'
+           ' ${vodCats.length} categories — refetching per category',
+         );
+-        vods = await _fetchVodPerCategory(source, vodCats, vods, onProgress);
++        vods = await _fetchVodPerCategory(source, vodCats, vods, onProgress,
++            shouldCancel: shouldCancel);
+       }
+       movieCount = vods.length;
+       onProgress?.call('Loading $movieCount movies…');
+@@ -344,7 +346,22 @@ Future<void> getXtream(
+   if (source.id != null) {
+     await Sql.logRefreshQueryPlans(source.id!);
+   }
++  // Review finding 143: a cancel during download skips the write entirely for
++  // the in-flight source (recoverable — next refresh wipes+reinserts).
++  if (shouldCancel?.call() ?? false) {
++    onProgress?.call('Cancelled');
++    AppLog.info('getXtream: cancelled before write phase'
++        ' source="${source.name}"');
++    return;
++  }
+   final swCommit = Stopwatch()..start();
++  // Review finding 142: browse-index drop now wraps ONLY this DB-write phase
++  // (was around the whole fetch dispatch in Utils.processSource), so on the
++  // single-source path browse stays indexed through the entire download.
++  // Re-entrant — a pass-through during a batch refresh. Nested OUTSIDE
++  // withSuspendedFtsTriggers to preserve the single-source ordering the
++  // fix521/fix518 wrappers expect.
++  await Sql.withDroppedBrowseIndexes(() async {
+   // fix361/Issue4: suspend FTS triggers around the bulk wipe+reinsert so a
+   // large catalog (Dino ~148K rows) doesn't fire per-row FTS maintenance;
+   // index rebuilt once afterwards. No-op when no FTS method is active.
+@@ -352,6 +369,7 @@ Future<void> getXtream(
+     await Sql.commitWriteBatched(
+       statements,
+       memory: memory,
++      shouldCancel: shouldCancel, // review finding 143
+       onBatchCommitted: onRowProgress == null
+           ? null
+           : (committedClosures) {
+@@ -361,6 +379,7 @@ Future<void> getXtream(
+             },
+     );
+   }, refreshedSourceId: source.id);
++  }, onProgress: onProgress);
+   swCommit.stop();
+   AppLog.info('getXtream: DB commit phase for source="${source.name}" '
+       'took ${swCommit.elapsedMilliseconds}ms ($totalRows fetched rows)');
+@@ -408,13 +427,29 @@ Future<dynamic> getXtreamHttpData(
+     final settings =
+         SettingsService.cached ?? await SettingsService.getSettings();
+     final timeoutSecs = settings.devImportFetchTimeoutSecs;
++    // Review finding 150: distinguish PERMANENT auth failures (401/403/407)
++    // from transient network/timeout — a rejected line must surface as
++    // disabled/expired instead of silently preserving a stale catalog forever.
++    HttpFailureKind? failKind;
+     final response = await AppHttp.getWithRetry(
+       url,
+       timeout: timeoutSecs > 0
+           ? Duration(seconds: timeoutSecs)
+           : const Duration(seconds: 20),
++      onFailure: (k, sc) => failKind = k,
+     );
+-    if (response == null) return null;
++    if (response == null) {
++      if (failKind == HttpFailureKind.authRejected) {
++        AppLog.warn('Xtream: credentials REJECTED (auth) action="$action" '
++            'source="${source.name}" — flagging source disabled');
++        // Reuses the existing Source.status field; isSourceExpired() already
++        // treats 'disabled' as expired, so the guide/UI surfaces the dead line
++        // with no new plumbing. (An auth reject means the account-info call
++        // also 401s, so a later user_info fetch cannot clobber this back.)
++        source.status = 'disabled';
++      }
++      return null;
++    }
+     // fix222: when debug logging is on, dump the raw response body to a file in
+     // the app dir so it can be exported and replayed in a sandbox for true
+     // apples-to-apples timing. One file per action+source; overwritten each run.
+@@ -601,8 +636,9 @@ Future<List<XtreamStream>> _fetchVodPerCategory(
+   Source source,
+   List<XtreamCategory> vodCats,
+   List<XtreamStream> bulk,
+-  void Function(String)? onProgress,
+-) async {
++  void Function(String)? onProgress, {
++  bool Function()? shouldCancel, // review finding 143
++}) async {
+   final byId = <String, XtreamStream>{};
+   void add(XtreamStream s) {
+     final id = s.streamId;
+@@ -614,6 +650,9 @@ Future<List<XtreamStream>> _fetchVodPerCategory(
+   }
+   var done = 0;
+   for (final cat in vodCats) {
++    // Review finding 143: mid-source cancel — stop issuing per-category HTTP
++    // calls; the partial collection is treated like any truncated fetch.
++    if (shouldCancel?.call() ?? false) break;
+     final cid = cat.categoryId;
+     if (cid == null || cid.isEmpty) continue;
+     final raw =
+diff --git a/lib/channel_tile.dart b/lib/channel_tile.dart
+index 8533b47..c194786 100644
+--- a/lib/channel_tile.dart
++++ b/lib/channel_tile.dart
+@@ -155,6 +155,11 @@ class _ChannelTileState extends State<ChannelTile> {
+   // targeted directly from outside), else create our own exactly as before.
+   late final FocusNode _focusNode = widget.focusNode ?? FocusNode();
+   late final bool _ownsFocusNode = widget.focusNode == null;
++  // Review finding 152: hold the listener in a named field so it can be
++  // removed on dispose — on caller-supplied (reused) nodes the anonymous
++  // listener otherwise stacked one per mount and re-fired prewarm/onFocusGained
++  // for disposed tiles bound to a still-live shared node.
++  late final VoidCallback _focusListener = _onFocusChanged;
+ 
+   // fix586 (#6): TV remotes cannot fire InkWell.onLongPress (it is a touch
+   // gesture), so the context menu — and its "Open in Multi-view" entry — was
+@@ -240,30 +245,36 @@ class _ChannelTileState extends State<ChannelTile> {
+       }
+       return KeyEventResult.ignored;
+     };
+-    _focusNode.addListener(() {
+-      if (mounted) setState(() {});
+-      if (_focusNode.hasFocus) {
+-        widget.onFocusGained?.call(widget.channel); // fix589 (#5)
+-        _maybePrewarm();
+-        // fix560: requestFocus() alone does not scroll the focused widget
+-        // into view when it sits inside a shrink-wrapped, non-scrolling grid
+-        // nested in an ancestor Scrollable (the TV search results layout,
+-        // fix557). Mirrors the proven channel_schedule.dart pattern of
+-        // calling ensureVisible in a post-frame callback once the newly-
+-        // focused tile is actually built/laid out.
+-        WidgetsBinding.instance.addPostFrameCallback((_) {
+-          if (!mounted || !_focusNode.hasFocus) return;
+-          final ctx = _focusNode.context;
+-          if (ctx == null) return;
+-          Scrollable.ensureVisible(
+-            ctx,
+-            alignment: 0.5,
+-            duration: const Duration(milliseconds: 200),
+-            curve: Curves.easeOut,
+-          );
+-        });
+-      }
+-    });
++    _focusNode.addListener(_focusListener);
++  }
++
++  // Review finding 152: guard the WHOLE body on `mounted` (the old form only
++  // guarded setState, so the hasFocus branch — prewarm HTTP + onFocusGained —
++  // could still fire on a disposed State bound to a live shared node).
++  void _onFocusChanged() {
++    if (!mounted) return;
++    setState(() {});
++    if (_focusNode.hasFocus) {
++      widget.onFocusGained?.call(widget.channel); // fix589 (#5)
++      _maybePrewarm();
++      // fix560: requestFocus() alone does not scroll the focused widget
++      // into view when it sits inside a shrink-wrapped, non-scrolling grid
++      // nested in an ancestor Scrollable (the TV search results layout,
++      // fix557). Mirrors the proven channel_schedule.dart pattern of
++      // calling ensureVisible in a post-frame callback once the newly-
++      // focused tile is actually built/laid out.
++      WidgetsBinding.instance.addPostFrameCallback((_) {
++        if (!mounted || !_focusNode.hasFocus) return;
++        final ctx = _focusNode.context;
++        if (ctx == null) return;
++        Scrollable.ensureVisible(
++          ctx,
++          alignment: 0.5,
++          duration: const Duration(milliseconds: 200),
++          curve: Curves.easeOut,
++        );
++      });
++    }
+   }
+ 
+   void _maybePrewarm() {
+@@ -298,6 +309,10 @@ class _ChannelTileState extends State<ChannelTile> {
+     // fix558: only dispose a node we created — a caller-supplied node is the
+     // caller's responsibility (e.g. it's reused across rebuilds to stay a
+     // stable cross-section target).
++    // Review finding 152: detach our listener for BOTH owned and supplied
++    // nodes (harmless on an owned node about to be disposed; essential on a
++    // reused supplied node).
++    _focusNode.removeListener(_focusListener);
+     if (_ownsFocusNode) _focusNode.dispose();
+     super.dispose();
+   }
+diff --git a/lib/player/cast_controller.dart b/lib/player/cast_controller.dart
+index db341a5..5146ba1 100644
+--- a/lib/player/cast_controller.dart
++++ b/lib/player/cast_controller.dart
+@@ -121,15 +121,29 @@ class CastController {
+     if (u.contains('.mpd')) return 'application/dash+xml';
+     if (u.endsWith('.mp4') || u.endsWith('.m4v')) return 'video/mp4';
+     if (u.endsWith('.mkv')) return 'video/x-matroska';
+-    if (u.endsWith('.ts') || u.contains('mpeg')) return 'video/mp2t';
+-    return 'video/mp4';
++    // Review finding 153: TS is inferred only from a real trailing container
++    // extension — the old anywhere-in-URL contains('mpeg') false-hid the Cast
++    // button for any host/path containing 'mpeg' (cdn/mpeg4/, tv-mpeg.*).
++    if (u.endsWith('.ts') ||
++        u.endsWith('.mts') ||
++        u.endsWith('.m2ts') ||
++        u.endsWith('.mpeg') ||
++        u.endsWith('.mpg') ||
++        u.endsWith('.mp2t')) {
++      return 'video/mp2t';
++    }
++    // No recognized container extension. Bare Xtream live URLs
++    // (http://host/user/pass/12345) are raw MPEG-TS the Default Media Receiver
++    // cannot play, so treat unknown as non-castable rather than optimistically
++    // claiming video/mp4 (which made the button appear then the cast fail).
++    return 'video/unknown';
+   }
+ 
+   /// Whether [url] is castable via the Default Media Receiver.
+   /// MPEG-TS and RTMP are not supported by Google's default receiver.
+   static bool isCastable(String url) {
+     final mime = mimeTypeFor(url);
+-    return mime != 'video/mp2t';
++    return mime != 'video/mp2t' && mime != 'video/unknown';
+   }
+ 
+   static CastState _parseState(String? s) => switch (s) {
+diff --git a/lib/player/overlay_player_controller.dart b/lib/player/overlay_player_controller.dart
+index 8ef4cbf..d34f48c 100644
+--- a/lib/player/overlay_player_controller.dart
++++ b/lib/player/overlay_player_controller.dart
+@@ -26,6 +26,10 @@ class OverlayPlayerController extends ChangeNotifier {
+   Source? _source;
+   MpvEngine? _engine;
+   Alignment _corner = Alignment.bottomRight;
++  // Review finding 147: monotonic token so a superseded in-flight startOverlay
++  // disposes its locally-created engine instead of leaking it, and a
++  // stopOverlay racing an in-flight start wins.
++  int _startGeneration = 0;
+ 
+   Channel? get channel => _channel;
+   MpvEngine? get engine => _engine;
+@@ -98,12 +102,6 @@ class OverlayPlayerController extends ChangeNotifier {
+     }
+   }
+ 
+-  /// Mutes the currently active main player so audio doesn't bleed during
+-  /// the swap navigation transition.
+-  Future<void> muteMain() async {
+-    AppLog.info('OverlayController: muteMain');
+-    await _mainEngine?.setVolume(0.0);
+-  }
+ 
+   /// fix106: registers [halt] as the synchronous shutdown callback for the
+   /// current main player. Called by the Player in [initState] immediately
+@@ -143,8 +141,8 @@ class OverlayPlayerController extends ChangeNotifier {
+     return null;
+   }
+ 
+-  /// fix116: like consumeOverlay but RETURNS the live engine instead of
+-  /// disposing it, so the caller (swap) can hand it to the new full-screen
++  /// fix116: RETURNS the live engine instead of disposing it, so the caller
++  /// (swap) can hand it to the new full-screen
+   /// Player. The overlay's references are cleared but the engine keeps
+   /// playing. Returns null if no overlay is active.
+   ({Channel ch, Settings s, Source? src, MpvEngine engine})?
+@@ -202,7 +200,9 @@ class OverlayPlayerController extends ChangeNotifier {
+     bool forceMuted = false,
+   }) async {
+     AppLog.info('OverlayController: startOverlay channel="${ch.name}"');
++    final int gen = ++_startGeneration; // review finding 147
+     await _disposeEngine();
++    if (gen != _startGeneration) return; // superseded during dispose
+     _channel = ch;
+     _settings = s;
+     _source = src;
+@@ -228,6 +228,12 @@ class OverlayPlayerController extends ChangeNotifier {
+     // player's registerMain may not have fired yet.
+     final fullScreenActive = forceMuted || _mainEngine != null;
+     await engine.setVolume(fullScreenActive ? 0.0 : 1.0);
++    if (gen != _startGeneration) {
++      // Review finding 147: a newer start/stop superseded us before we stored
++      // this engine — dispose the orphan so it does not keep decoding.
++      await engine.dispose();
++      return;
++    }
+     _engine = engine;
+     notifyListeners();
+ 
+@@ -243,6 +249,7 @@ class OverlayPlayerController extends ChangeNotifier {
+   /// Stop the overlay and release all resources.
+   Future<void> stopOverlay() async {
+     AppLog.info('OverlayController: stopOverlay channel="${_channel?.name ?? 'none'}"');
++    ++_startGeneration; // review finding 147: invalidate any in-flight start
+     await _disposeEngine();
+     _channel = null;
+     _settings = null;
+@@ -256,23 +263,6 @@ class OverlayPlayerController extends ChangeNotifier {
+   }
+ 
+ 
+-  /// Returns a snapshot of the current overlay state and disposes the engine,
+-  /// clearing the channel.  Returns null if no overlay is active.
+-  Future<({Channel ch, Settings s, Source? src})?> consumeOverlay() async {
+-    AppLog.info('OverlayController: consumeOverlay channel="${_channel?.name ?? 'none'}"');
+-    final ch = _channel;
+-    final s = _settings;
+-    final src = _source;
+-    if (ch == null || s == null) return null;
+-
+-    await _disposeEngine();
+-    _channel = null;
+-    _settings = null;
+-    _source = null;
+-    notifyListeners();
+-    return (ch: ch, s: s, src: src);
+-  }
+-
+ 
+   Future<void> _disposeEngine() async {
+     final e = _engine;
+diff --git a/lib/tv/tv_browse_view.dart b/lib/tv/tv_browse_view.dart
+index 9cf4c56..1b13578 100644
+--- a/lib/tv/tv_browse_view.dart
++++ b/lib/tv/tv_browse_view.dart
+@@ -1,6 +1,7 @@
+ import 'dart:async';
+ 
+ import 'package:flutter/material.dart';
++import 'package:open_tv/backend/app_logger.dart';
+ import 'package:open_tv/backend/settings_service.dart';
+ import 'package:open_tv/backend/sql.dart';
+ import 'package:open_tv/channel_tile.dart';
+@@ -61,6 +62,7 @@ class _TvBrowseViewState extends State<TvBrowseView> {
+   String _selectedLabel = 'Favorites';
+   List<Channel> _items = [];
+   bool _ready = false;
++  bool _error = false; // review finding 154
+   bool _loading = false;
+   int _inv = 0;
+   final ScrollController _gridController = ScrollController();
+@@ -78,6 +80,7 @@ class _TvBrowseViewState extends State<TvBrowseView> {
+   }
+ 
+   Future<void> _init() async {
++    _error = false; // review finding 154
+     final s = SettingsService.cached ?? widget.settings;
+     final sources = await Sql.getSources();
+     final enabled = await Sql.getEnabledSourcesMinimal();
+@@ -100,8 +103,13 @@ class _TvBrowseViewState extends State<TvBrowseView> {
+         groups.addAll(batch);
+         if (batch.length < pageSize) break;
+       }
+-    } catch (_) {
++    } catch (e, st) {
++      // Review finding 154: a rail browse-query failure was swallowed and
++      // rendered as an empty rail ("no categories"). Surface it so the user
++      // can retry instead of seeing a silent empty screen.
++      AppLog.error('TvBrowse: category rail load failed — $e\n$st');
+       groups = [];
++      if (mounted) setState(() => _error = true);
+     }
+     if (!mounted) return;
+     setState(() {
+@@ -190,7 +198,13 @@ class _TvBrowseViewState extends State<TvBrowseView> {
+       children: [
+         SizedBox(width: 210, child: _rail()),
+         const VerticalDivider(width: 1),
+-        Expanded(child: _ready ? _content() : const SizedBox.shrink()),
++        Expanded(
++          child: !_ready
++              ? const SizedBox.shrink()
++              : _error
++                  ? _errorState()
++                  : _content(),
++        ),
+       ],
+     );
+   }
+@@ -224,6 +238,39 @@ class _TvBrowseViewState extends State<TvBrowseView> {
+     );
+   }
+ 
++  Widget _errorState() {
++    // Review finding 154: D-pad-focusable Retry (reuses _FocusTile so it gets
++    // the app's focus ring and remote reachability).
++    return Center(
++      child: Column(
++        mainAxisSize: MainAxisSize.min,
++        children: [
++          const Text(
++            'Couldn\u2019t load categories.\nCheck the source, then retry.',
++            textAlign: TextAlign.center,
++            style: TextStyle(color: Colors.white70),
++          ),
++          const SizedBox(height: 12),
++          SizedBox(
++            width: 160,
++            child: _FocusTile(
++              selected: true,
++              onTap: _init,
++              child: const Row(
++                mainAxisAlignment: MainAxisAlignment.center,
++                children: [
++                  Icon(Icons.refresh, size: 18),
++                  SizedBox(width: 8),
++                  Text('Retry'),
++                ],
++              ),
++            ),
++          ),
++        ],
++      ),
++    );
++  }
++
+   Widget _content() {
+     if (_items.isEmpty) {
+       if (_loading) return const Center(child: Text('Loading…'));
+diff --git a/lib/tv/tv_categories_view.dart b/lib/tv/tv_categories_view.dart
+index 7ed9714..b00cdce 100644
+--- a/lib/tv/tv_categories_view.dart
++++ b/lib/tv/tv_categories_view.dart
+@@ -1,4 +1,5 @@
+ import 'package:flutter/material.dart';
++import 'package:open_tv/backend/app_logger.dart';
+ import 'package:open_tv/backend/settings_service.dart';
+ import 'package:open_tv/backend/sql.dart';
+ import 'package:open_tv/channel_tile.dart';
+@@ -41,6 +42,7 @@ class _TvCategoriesViewState extends State<TvCategoriesView> {
+   Map<int, int?> _sourceColors = {};
+   List<int> _sourceIds = [];
+   bool _ready = false;
++  bool _loadFailed = false; // review finding 155
+   int _inv = 0;
+ 
+   @override
+@@ -58,6 +60,7 @@ class _TvCategoriesViewState extends State<TvCategoriesView> {
+     // fix527-style paged category fetch so providers with >36 categories aren't
+     // truncated.
+     var groups = <Channel>[];
++    var loadFailed = false; // review finding 155
+     try {
+       for (var page = 1; groups.length < _cap; page++) {
+         final batch = await Sql.search(Filters(
+@@ -72,8 +75,13 @@ class _TvCategoriesViewState extends State<TvCategoriesView> {
+         groups.addAll(batch);
+         if (batch.length < pageSize) break;
+       }
+-    } catch (_) {
++    } catch (e, st) {
+       groups = [];
++      loadFailed = true;
++      // Review finding 155: a categories-query failure was swallowed and shown
++      // as a genuinely-empty list. AppLog scrubs source credentials.
++      AppLog.warn('TvCategoriesView: categories query failed for '
++          '${_typeLabel(_selectedType)} — $e\n$st');
+     }
+     if (!mounted || inv != _inv) return;
+     setState(() {
+@@ -84,6 +92,7 @@ class _TvCategoriesViewState extends State<TvCategoriesView> {
+       _sourceIds = ids;
+       _groups = groups.take(_cap).toList();
+       _ready = true;
++      _loadFailed = loadFailed;
+     });
+   }
+ 
+@@ -98,6 +107,7 @@ class _TvCategoriesViewState extends State<TvCategoriesView> {
+     setState(() {
+       _selectedType = t;
+       _ready = false;
++      _loadFailed = false; // review finding 155
+       _groups = [];
+     });
+     _load();
+@@ -177,6 +187,26 @@ class _TvCategoriesViewState extends State<TvCategoriesView> {
+     if (!_ready) {
+       return const Center(child: CircularProgressIndicator());
+     }
++    if (_loadFailed) {
++      // Review finding 155: distinct from genuinely-empty. autofocus so a
++      // D-pad-only remote can reach the Retry button.
++      return Center(
++        child: Column(
++          mainAxisSize: MainAxisSize.min,
++          children: [
++            const Text('Could not load categories',
++                style: TextStyle(color: Colors.white70)),
++            const SizedBox(height: 12),
++            TextButton.icon(
++              autofocus: true,
++              onPressed: _load,
++              icon: const Icon(Icons.refresh, size: 18),
++              label: const Text('Retry'),
++            ),
++          ],
++        ),
++      );
++    }
+     if (_groups.isEmpty) {
+       return Center(
+         child: Text('No ${_typeLabel(_selectedType)} categories',
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 5ff6f23..1269867 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,13 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '3.0.2': [
++    'Internal reliability pass (code-review Wave 3): faster and safer EPG '
++        'matching on very large sources, more accurate channel-to-guide '
++        'matching, fewer wrong Cast buttons, retry prompts instead of '
++        'silent empty category screens, and update downloads are now '
++        'integrity-checked.',
++  ],
+   '3.0.1': [
+     'More reliability fixes from the code review: the player no longer gets '
+         'stuck on "Buffering" after a reconnect hiccup, a held OK button no '
+diff --git a/lib/widgets/now_next_strip.dart b/lib/widgets/now_next_strip.dart
+index 45dcb66..d2d0946 100644
+--- a/lib/widgets/now_next_strip.dart
++++ b/lib/widgets/now_next_strip.dart
+@@ -1,3 +1,5 @@
++import 'dart:async';
++
+ import 'package:flutter/material.dart';
+ import 'package:open_tv/backend/settings_service.dart';
+ import 'package:open_tv/backend/sql.dart';
+@@ -25,6 +27,7 @@ class NowNextStrip extends StatefulWidget {
+ 
+ class _NowNextStripState extends State<NowNextStrip> {
+   (Program?, Program?)? _data;
++  Timer? _rollover;
+ 
+   @override
+   void initState() {
+@@ -32,9 +35,56 @@ class _NowNextStripState extends State<NowNextStrip> {
+     _load();
+   }
+ 
++  @override
++  void didUpdateWidget(covariant NowNextStrip oldWidget) {
++    super.didUpdateWidget(oldWidget);
++    // Review finding 156: element reuse on channel swap (e.g. a multi-view
++    // cell) kept the previous channel's Now/Next until a full remount. Reload
++    // when the identity changes.
++    if (oldWidget.epgChannelId != widget.epgChannelId ||
++        oldWidget.sourceId != widget.sourceId) {
++      _rollover?.cancel();
++      _data = null; // clear stale channel data while the new load is in flight
++      _load();
++    }
++  }
++
++  @override
++  void dispose() {
++    _rollover?.cancel();
++    super.dispose();
++  }
++
+   Future<void> _load() async {
+-    final data = await Sql.getNowNext(widget.epgChannelId, widget.sourceId);
+-    if (mounted) setState(() => _data = data);
++    (Program?, Program?)? data;
++    try {
++      data = await Sql.getNowNext(widget.epgChannelId, widget.sourceId);
++    } catch (_) {
++      // Review finding 156: fail soft — keep whatever is on screen and retry
++      // on the next didUpdateWidget / scheduled rollover rather than crashing
++      // the cell.
++      return;
++    }
++    if (!mounted) return;
++    setState(() => _data = data);
++    _scheduleRollover(data);
++  }
++
++  void _scheduleRollover((Program?, Program?)? data) {
++    _rollover?.cancel();
++    final now = data?.$1;
++    if (now == null) return;
++    // Re-query shortly after the current programme's stop so "Now" advances.
++    var delay = now.stopTime.difference(DateTime.now()) +
++        const Duration(seconds: 2);
++    if (delay < const Duration(seconds: 1)) delay = const Duration(seconds: 30);
++    // Cap far-future stops (or clock skew) so a bad EPG stop_utc can't overflow
++    // the Timer or leave it never firing.
++    const maxDelay = Duration(hours: 3);
++    if (delay > maxDelay) delay = maxDelay;
++    _rollover = Timer(delay, () {
++      if (mounted) _load();
++    });
+   }
+ 
+   @override
+diff --git a/lib/widgets/search_perf_dialog.dart b/lib/widgets/search_perf_dialog.dart
+index bd7503f..7d30bb0 100644
+--- a/lib/widgets/search_perf_dialog.dart
++++ b/lib/widgets/search_perf_dialog.dart
+@@ -42,6 +42,7 @@ class _SearchPerfDialog extends StatefulWidget {
+ }
+ 
+ class _SearchPerfDialogState extends State<_SearchPerfDialog> {
++  final SearchPerfCancelToken _cancel = SearchPerfCancelToken(); // finding 157
+   bool _running = true;
+   String _status = 'Starting…';
+   Object? _error;
+@@ -54,11 +55,18 @@ class _SearchPerfDialogState extends State<_SearchPerfDialog> {
+     _run();
+   }
+ 
++  @override
++  void dispose() {
++    _cancel.cancel(); // review finding 157: stop the run if still in flight
++    super.dispose();
++  }
++
+   Future<void> _run() async {
+     try {
+       final results = await SearchPerfTest.run(
+         enabledSourceIds: widget.enabledSourceIds,
+         safeMode: widget.safeMode,
++        cancelToken: _cancel,
+         onProgress: (s) {
+           if (mounted) setState(() => _status = s);
+         },
+@@ -84,7 +92,13 @@ class _SearchPerfDialogState extends State<_SearchPerfDialog> {
+ 
+   @override
+   Widget build(BuildContext context) {
+-    return AlertDialog(
++    // Review finding 157: Back cancels the work instead of orphaning it.
++    return PopScope(
++      canPop: true,
++      onPopInvokedWithResult: (didPop, result) {
++        if (didPop) _cancel.cancel();
++      },
++      child: AlertDialog(
+       title: const Text('Search performance'),
+       content: _running
+           ? _buildRunning()
+@@ -92,7 +106,18 @@ class _SearchPerfDialogState extends State<_SearchPerfDialog> {
+               ? Text('Could not run the test:\n$_error')
+               : _buildResults(context),
+       actions: _running
+-          ? null
++          ? [
++              // Review finding 157: focusable Cancel so a D-pad user isn't
++              // forced onto the raw Back key.
++              TextButton(
++                autofocus: true,
++                onPressed: () {
++                  _cancel.cancel();
++                  Navigator.of(context).pop();
++                },
++                child: const Text('Cancel'),
++              ),
++            ]
+           : _error != null
+               ? [
+                   TextButton(
+@@ -111,6 +136,7 @@ class _SearchPerfDialogState extends State<_SearchPerfDialog> {
+                     child: Text('Use ${_methodLabel(_selected!)}'),
+                   ),
+                 ],
++    ),
+     );
+   }
+ 
+diff --git a/lib/widgets/sources_refresh_dialog.dart b/lib/widgets/sources_refresh_dialog.dart
+index bd512ce..693db0f 100644
+--- a/lib/widgets/sources_refresh_dialog.dart
++++ b/lib/widgets/sources_refresh_dialog.dart
+@@ -269,6 +269,11 @@ Future<void> showSourcesRefreshDialog(BuildContext context) async {
+                 onSourceFailed: (Source source, Object err) {
+                   setSt(() => failedSources.add(source.name));
+                 },
++                // Review finding 158: the FTS-recovery retry omitted
++                // shouldCancel, so Cancel became a permanent lying
++                // "Cancelling…" no-op during the retry. Now honored, matching
++                // the first attempt.
++                shouldCancel: () => cancelRequested,
+               );
+             },
+           );
+diff --git a/pubspec.yaml b/pubspec.yaml
+index b0d9321..2455c36 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 3.0.1+645
++version: 3.0.2+646
+ 
+ environment:
+   sdk: ^3.10.7
+@@ -34,6 +34,10 @@ dependencies:
+   # The following adds the Cupertino Icons font to your application.
+   # Use with the CupertinoIcons class for iOS style icons.
+   cupertino_icons: ^1.0.8
++
++  # Review finding 151: direct dep for the update-APK SHA-256 verification in
++  # update_checker.dart (was only present transitively).
++  crypto: ^3.0.0
+   cached_network_image: ^3.4.1
+   form_builder_validators: ^11.2.0
+   flutter_form_builder: ^10.0.1
+diff --git a/test/edit_dialog_385_test.dart b/test/edit_dialog_385_test.dart
+index 052abb7..1f986d4 100644
+--- a/test/edit_dialog_385_test.dart
++++ b/test/edit_dialog_385_test.dart
+@@ -26,6 +26,10 @@
+ // is the cheapest reliable signal.
+ 
+ import 'package:flutter_test/flutter_test.dart';
++import 'package:flutter/material.dart';
++import 'package:open_tv/edit_dialog.dart';
++import 'package:open_tv/models/source.dart';
++import 'package:open_tv/models/source_type.dart';
+ import 'dart:io';
+ 
+ void main() {
+@@ -110,6 +114,63 @@ void main() {
+       expect(cancelAutofocus, isTrue,
+           reason: 'Cancel must be autofocused (fix385 #6).');
+     });
++
++    // Review finding 159: a real behavioral test — the two grep tests above
++    // only prove the source TEXT contains `autofocus: true` near "Cancel";
++    // this proves the Cancel button actually OWNS D-pad focus on open and Save
++    // does not. EditDialog.initState fires Sql.getSources() fire-and-forget
++    // with a swallowing catchError + mounted guard, so no DB is needed; the
++    // _cancelFocus.requestFocus() runs in a post-frame, hence pumpAndSettle.
++    testWidgets('Cancel button holds primary focus on open (D-pad guard)',
++        (tester) async {
++      final source = Source(
++        id: 1,
++        name: 'Src',
++        sourceType: SourceType.m3u, // no network probe on open
++        url: 'http://example.com/list.m3u',
++      );
++      await tester.pumpWidget(MaterialApp(
++        home: Scaffold(
++          body: EditDialog(source: source, afterSave: () async {}),
++        ),
++      ));
++      await tester.pumpAndSettle();
++
++      final cancelFinder = find.widgetWithText(TextButton, 'Cancel');
++      expect(cancelFinder, findsOneWidget);
++
++      // The autofocused Cancel button owns primary focus. Assert via the
++      // primaryFocus node's position in the tree, not Focus.of(...scopeOk:
++      // true) — that resolves to the shared enclosing FocusScope, which reports
++      // hasFocus==true for BOTH buttons and cannot distinguish them.
++      final primary = FocusManager.instance.primaryFocus;
++      expect(primary, isNotNull,
++          reason: 'Something must hold focus after the dialog opens.');
++
++      // Walk up from the primary-focus context: it must sit inside the Cancel
++      // button, and must NOT sit inside the Save button.
++      bool focusIsInside(Finder buttonFinder) {
++        final ctx = primary!.context;
++        if (ctx == null) return false;
++        final target = tester.element(buttonFinder);
++        var inside = false;
++        ctx.visitAncestorElements((el) {
++          if (el == target) {
++            inside = true;
++            return false;
++          }
++          return true;
++        });
++        return inside;
++      }
++
++      expect(focusIsInside(cancelFinder), isTrue,
++          reason: 'Cancel must own D-pad focus on open (fix385 #6).');
++
++      final saveFinder = find.widgetWithText(TextButton, 'Save');
++      expect(focusIsInside(saveFinder), isFalse,
++          reason: 'Save must not steal focus on open (fix385 #6).');
++    });
+   });
+ 
+   group('fix385 — Edit dialog: counts moved to top', () {

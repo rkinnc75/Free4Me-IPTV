@@ -34,6 +34,7 @@ Future<void> processM3U(
   bool wipe, [
   String? path,
   void Function(String)? onProgress,
+  bool Function()? shouldCancel, // review finding 143
 ]) async {
   path ??= source.url;
   List<ChannelPreserve>? preserve;
@@ -175,15 +176,30 @@ Future<void> processM3U(
     contentStatements.insert(0, Sql.wipeSource(sourceId));
   }
   onProgress?.call('Loading channels: $channelCount…');
-  await Sql.commitWriteBatched(contentStatements, memory: memory);
-
-  final tail = <Future<void> Function(SqliteWriteContext, Map<String, String>)>[
-    Sql.updateGroups(),
-  ];
-  if (preserve != null) {
-    tail.add(Sql.restorePreserve(preserve));
+  // Review finding 143: a cancel during the download phase skips the write
+  // entirely for this in-flight source (same recoverable state as a
+  // between-source cancel — the next refresh wipes+reinserts).
+  if (shouldCancel?.call() ?? false) {
+    onProgress?.call('Cancelled');
+    AppLog.info('M3U: cancelled before write phase source="${source.name}"');
+    return;
   }
-  await Sql.commitWrite(tail, memory: memory);
+  // Review finding 142: browse-index drop now wraps ONLY the DB-write phase
+  // (was around the whole fetch dispatch in Utils.processSource). Re-entrant —
+  // a pass-through when refreshAllSources' whole-loop drop is active.
+  await Sql.withDroppedBrowseIndexes(() async {
+    await Sql.commitWriteBatched(contentStatements,
+        memory: memory, shouldCancel: shouldCancel);
+
+    final tail =
+        <Future<void> Function(SqliteWriteContext, Map<String, String>)>[
+      Sql.updateGroups(),
+    ];
+    if (preserve != null) {
+      tail.add(Sql.restorePreserve(preserve));
+    }
+    await Sql.commitWrite(tail, memory: memory);
+  }, onProgress: onProgress);
   // fix268: persist the channel count from this refresh. M3U is a flat list
   // (no movie/series split at parse time), so only the total is recorded.
   if (source.id != null) {
@@ -282,6 +298,7 @@ Future<void> processM3UUrl(
   Source source,
   bool wipe, [
   void Function(String)? onProgress,
+  bool Function()? shouldCancel, // review finding 143
 ]) async {
   AppLog.info('M3U: downloading source="${source.name}" url="${source.url}"');
   onProgress?.call('Downloading playlist…');
@@ -291,7 +308,7 @@ Future<void> processM3UUrl(
   String? path;
   try {
     path = await downloadM3U(source.url!);
-    await processM3U(source, wipe, path, onProgress);
+    await processM3U(source, wipe, path, onProgress, shouldCancel);
   } catch (e) {
     AppLog.warn('M3U: download failed source="${source.name}" error=$e');
     rethrow;

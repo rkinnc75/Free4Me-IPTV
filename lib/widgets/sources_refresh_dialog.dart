@@ -269,6 +269,11 @@ Future<void> showSourcesRefreshDialog(BuildContext context) async {
                 onSourceFailed: (Source source, Object err) {
                   setSt(() => failedSources.add(source.name));
                 },
+                // Review finding 158: the FTS-recovery retry omitted
+                // shouldCancel, so Cancel became a permanent lying
+                // "Cancelling…" no-op during the retry. Now honored, matching
+                // the first attempt.
+                shouldCancel: () => cancelRequested,
               );
             },
           );

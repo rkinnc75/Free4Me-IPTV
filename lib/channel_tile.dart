@@ -155,6 +155,11 @@ class _ChannelTileState extends State<ChannelTile> {
   // targeted directly from outside), else create our own exactly as before.
   late final FocusNode _focusNode = widget.focusNode ?? FocusNode();
   late final bool _ownsFocusNode = widget.focusNode == null;
+  // Review finding 152: hold the listener in a named field so it can be
+  // removed on dispose — on caller-supplied (reused) nodes the anonymous
+  // listener otherwise stacked one per mount and re-fired prewarm/onFocusGained
+  // for disposed tiles bound to a still-live shared node.
+  late final VoidCallback _focusListener = _onFocusChanged;
 
   // fix586 (#6): TV remotes cannot fire InkWell.onLongPress (it is a touch
   // gesture), so the context menu — and its "Open in Multi-view" entry — was
@@ -240,30 +245,36 @@ class _ChannelTileState extends State<ChannelTile> {
       }
       return KeyEventResult.ignored;
     };
-    _focusNode.addListener(() {
-      if (mounted) setState(() {});
-      if (_focusNode.hasFocus) {
-        widget.onFocusGained?.call(widget.channel); // fix589 (#5)
-        _maybePrewarm();
-        // fix560: requestFocus() alone does not scroll the focused widget
-        // into view when it sits inside a shrink-wrapped, non-scrolling grid
-        // nested in an ancestor Scrollable (the TV search results layout,
-        // fix557). Mirrors the proven channel_schedule.dart pattern of
-        // calling ensureVisible in a post-frame callback once the newly-
-        // focused tile is actually built/laid out.
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted || !_focusNode.hasFocus) return;
-          final ctx = _focusNode.context;
-          if (ctx == null) return;
-          Scrollable.ensureVisible(
-            ctx,
-            alignment: 0.5,
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeOut,
-          );
-        });
-      }
-    });
+    _focusNode.addListener(_focusListener);
+  }
+
+  // Review finding 152: guard the WHOLE body on `mounted` (the old form only
+  // guarded setState, so the hasFocus branch — prewarm HTTP + onFocusGained —
+  // could still fire on a disposed State bound to a live shared node).
+  void _onFocusChanged() {
+    if (!mounted) return;
+    setState(() {});
+    if (_focusNode.hasFocus) {
+      widget.onFocusGained?.call(widget.channel); // fix589 (#5)
+      _maybePrewarm();
+      // fix560: requestFocus() alone does not scroll the focused widget
+      // into view when it sits inside a shrink-wrapped, non-scrolling grid
+      // nested in an ancestor Scrollable (the TV search results layout,
+      // fix557). Mirrors the proven channel_schedule.dart pattern of
+      // calling ensureVisible in a post-frame callback once the newly-
+      // focused tile is actually built/laid out.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_focusNode.hasFocus) return;
+        final ctx = _focusNode.context;
+        if (ctx == null) return;
+        Scrollable.ensureVisible(
+          ctx,
+          alignment: 0.5,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      });
+    }
   }
 
   void _maybePrewarm() {
@@ -298,6 +309,10 @@ class _ChannelTileState extends State<ChannelTile> {
     // fix558: only dispose a node we created — a caller-supplied node is the
     // caller's responsibility (e.g. it's reused across rebuilds to stay a
     // stable cross-section target).
+    // Review finding 152: detach our listener for BOTH owned and supplied
+    // nodes (harmless on an owned node about to be disposed; essential on a
+    // reused supplied node).
+    _focusNode.removeListener(_focusListener);
     if (_ownsFocusNode) _focusNode.dispose();
     super.dispose();
   }

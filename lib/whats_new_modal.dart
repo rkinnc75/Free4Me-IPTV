@@ -6,6 +6,13 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '3.0.2': [
+    'Internal reliability pass (code-review Wave 3): faster and safer EPG '
+        'matching on very large sources, more accurate channel-to-guide '
+        'matching, fewer wrong Cast buttons, retry prompts instead of '
+        'silent empty category screens, and update downloads are now '
+        'integrity-checked.',
+  ],
   '3.0.1': [
     'More reliability fixes from the code review: the player no longer gets '
         'stuck on "Buffering" after a reconnect hiccup, a held OK button no '

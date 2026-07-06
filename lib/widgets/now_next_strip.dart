@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
@@ -25,6 +27,7 @@ class NowNextStrip extends StatefulWidget {
 
 class _NowNextStripState extends State<NowNextStrip> {
   (Program?, Program?)? _data;
+  Timer? _rollover;
 
   @override
   void initState() {
@@ -32,9 +35,56 @@ class _NowNextStripState extends State<NowNextStrip> {
     _load();
   }
 
+  @override
+  void didUpdateWidget(covariant NowNextStrip oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Review finding 156: element reuse on channel swap (e.g. a multi-view
+    // cell) kept the previous channel's Now/Next until a full remount. Reload
+    // when the identity changes.
+    if (oldWidget.epgChannelId != widget.epgChannelId ||
+        oldWidget.sourceId != widget.sourceId) {
+      _rollover?.cancel();
+      _data = null; // clear stale channel data while the new load is in flight
+      _load();
+    }
+  }
+
+  @override
+  void dispose() {
+    _rollover?.cancel();
+    super.dispose();
+  }
+
   Future<void> _load() async {
-    final data = await Sql.getNowNext(widget.epgChannelId, widget.sourceId);
-    if (mounted) setState(() => _data = data);
+    (Program?, Program?)? data;
+    try {
+      data = await Sql.getNowNext(widget.epgChannelId, widget.sourceId);
+    } catch (_) {
+      // Review finding 156: fail soft — keep whatever is on screen and retry
+      // on the next didUpdateWidget / scheduled rollover rather than crashing
+      // the cell.
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _data = data);
+    _scheduleRollover(data);
+  }
+
+  void _scheduleRollover((Program?, Program?)? data) {
+    _rollover?.cancel();
+    final now = data?.$1;
+    if (now == null) return;
+    // Re-query shortly after the current programme's stop so "Now" advances.
+    var delay = now.stopTime.difference(DateTime.now()) +
+        const Duration(seconds: 2);
+    if (delay < const Duration(seconds: 1)) delay = const Duration(seconds: 30);
+    // Cap far-future stops (or clock skew) so a bad EPG stop_utc can't overflow
+    // the Timer or leave it never firing.
+    const maxDelay = Duration(hours: 3);
+    if (delay > maxDelay) delay = maxDelay;
+    _rollover = Timer(delay, () {
+      if (mounted) _load();
+    });
   }
 
   @override

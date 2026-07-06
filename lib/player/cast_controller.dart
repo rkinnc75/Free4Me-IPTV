@@ -121,15 +121,29 @@ class CastController {
     if (u.contains('.mpd')) return 'application/dash+xml';
     if (u.endsWith('.mp4') || u.endsWith('.m4v')) return 'video/mp4';
     if (u.endsWith('.mkv')) return 'video/x-matroska';
-    if (u.endsWith('.ts') || u.contains('mpeg')) return 'video/mp2t';
-    return 'video/mp4';
+    // Review finding 153: TS is inferred only from a real trailing container
+    // extension — the old anywhere-in-URL contains('mpeg') false-hid the Cast
+    // button for any host/path containing 'mpeg' (cdn/mpeg4/, tv-mpeg.*).
+    if (u.endsWith('.ts') ||
+        u.endsWith('.mts') ||
+        u.endsWith('.m2ts') ||
+        u.endsWith('.mpeg') ||
+        u.endsWith('.mpg') ||
+        u.endsWith('.mp2t')) {
+      return 'video/mp2t';
+    }
+    // No recognized container extension. Bare Xtream live URLs
+    // (http://host/user/pass/12345) are raw MPEG-TS the Default Media Receiver
+    // cannot play, so treat unknown as non-castable rather than optimistically
+    // claiming video/mp4 (which made the button appear then the cast fail).
+    return 'video/unknown';
   }
 
   /// Whether [url] is castable via the Default Media Receiver.
   /// MPEG-TS and RTMP are not supported by Google's default receiver.
   static bool isCastable(String url) {
     final mime = mimeTypeFor(url);
-    return mime != 'video/mp2t';
+    return mime != 'video/mp2t' && mime != 'video/unknown';
   }
 
   static CastState _parseState(String? s) => switch (s) {
