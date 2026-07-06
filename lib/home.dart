@@ -476,37 +476,56 @@ class _HomeState extends State<Home> {
     // fix349: when background processing is enabled, keep the scan alive via
     // a foreground service if the user switches away (same pattern as the
     // fix318 source refresh). Work stays on the main isolate.
-    await BackgroundTaskService.run<void>(
-      enabled: settings.backgroundProcessing,
-      title: 'Scanning streams',
-      work: (update) => StreamScanner.scan(
-        channels: scanList,
-        maxChannels: maxCount,
-        timeout: timeout,
-        isCancelled: () => _scanCancelled,
-        onProgress: (done, total) {
-          _scanProgress.value = (done: done, total: total);
-          // Trigger a parent rebuild so green outlines on tiles refresh as
-          // each result lands.
-          if (mounted) setState(() {});
-          update('$done / $total streams tested');
-        },
-      ),
-    );
-
-    if (mounted) {
-      if (!_scanCancelled) Navigator.of(context, rootNavigator: true).pop();
-      // fix306: copy the freshly-persisted validation results onto the
-      // in-memory channel objects so the validated flag is reflected on every
-      // scanned tile even after StreamScanner.results is later cleared. Done in
-      // place — no reload, so the scroll position is preserved.
-      for (final ch in channels) {
-        final id = ch.id;
-        if (id != null && StreamScanner.results.containsKey(id)) {
-          ch.streamValidated = StreamScanner.results[id];
+    // finding 115 + finding 116: wrap the scan and finalize in try/finally so
+    // _isScanning is always cleared and the modal is always dismissed even on
+    // throw/cancel, and guard the onProgress callback against a disposed State
+    // (mounted flips false in dispose before _scanProgress.dispose() runs).
+    try {
+      await BackgroundTaskService.run<void>(
+        enabled: settings.backgroundProcessing,
+        title: 'Scanning streams',
+        work: (update) => StreamScanner.scan(
+          channels: scanList,
+          maxChannels: maxCount,
+          timeout: timeout,
+          isCancelled: () => _scanCancelled,
+          onProgress: (done, total) {
+            // finding 116
+            if (!mounted) return;
+            _scanProgress.value = (done: done, total: total);
+            // Trigger a parent rebuild so green outlines on tiles refresh as
+            // each result lands.
+            if (mounted) setState(() {});
+            update('$done / $total streams tested');
+          },
+        ),
+      );
+      if (mounted) {
+        // fix306: copy the freshly-persisted validation results onto the
+        // in-memory channel objects so the validated flag is reflected on every
+        // scanned tile even after StreamScanner.results is later cleared. Done in
+        // place — no reload, so the scroll position is preserved.
+        for (final ch in channels) {
+          final id = ch.id;
+          if (id != null && StreamScanner.results.containsKey(id)) {
+            ch.streamValidated = StreamScanner.results[id];
+          }
         }
       }
-      setState(() => _isScanning = false);
+    } finally {
+      // Always dismiss the modal barrier (barrierDismissible:false, no PopScope)
+      // and re-enable the Scan button, regardless of success/cancel/throw. Pop
+      // via canPop() rather than gating on !_scanCancelled — on cancel the
+      // dialog was already popped by the Cancel button, so canPop() prevents a
+      // double-pop of the underlying route.
+      if (mounted) {
+        if (Navigator.of(context, rootNavigator: true).canPop()) {
+          Navigator.of(context, rootNavigator: true).pop();
+        }
+        setState(() => _isScanning = false);
+      } else {
+        _isScanning = false;
+      }
     }
   }
 
@@ -937,6 +956,8 @@ class _HomeState extends State<Home> {
                                         ? (enabled) async {
                                             await Sql.setGroupEnabled(
                                                 channel.id!, enabled);
+                                            // finding 117
+                                            if (!mounted) return;
                                             setState(() =>
                                                 channel.groupEnabled = enabled);
                                           }

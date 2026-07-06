@@ -41,8 +41,9 @@ class StalkerXmltvCookieAuth {
   static Future<EpgDiscoveryResult?> probe(
     String host,
     String username,
-    String password,
-  ) async {
+    String password, {
+    http.Client? client, // finding 124: test seam; defaults to a real client.
+  }) async {
     final start = DateTime.now();
 
     final handshakeUrl = Uri.tryParse(
@@ -55,11 +56,12 @@ class StalkerXmltvCookieAuth {
       return null;
     }
 
-    final client = http.Client();
+    final ownClient = client == null;
+    final httpClient = client ?? http.Client();
     try {
       // Step A — handshake.
       final handshakeStart = DateTime.now();
-      final handshakeResp = await client
+      final handshakeResp = await httpClient
           .get(
             handshakeUrl,
             headers: {
@@ -102,7 +104,7 @@ class StalkerXmltvCookieAuth {
             'skipping xmltv');
         return null;
       }
-      final xmltvResp = await client
+      final xmltvResp = await httpClient
           .get(
             xmltvUrl,
             headers: {
@@ -115,6 +117,34 @@ class StalkerXmltvCookieAuth {
       if (!EpgValidator.isValidEpgResponse(xmltvResp, bodyBytes)) {
         AppLog.info(
             'EpgDiscovery: variant2 — host=$host rejected by validator');
+        return null;
+      }
+      // finding 124: The persisted URL is fetched at refresh time WITHOUT any
+      // cookie/bearer header (xmltv_parser.dart -> AppHttp.buildGetRequest
+      // sends no auth), and the handshake token is ephemeral so replaying it
+      // is impossible. Only persist this URL if the portal also serves valid
+      // XMLTV at xmltv.php?type=itv WITHOUT auth; otherwise every future
+      // refresh would 401. If the unauthenticated fetch is rejected, fall
+      // through to null so the walker tries variant 3.
+      final remainingReval =
+          _totalTimeout - DateTime.now().difference(handshakeStart);
+      if (remainingReval <= Duration.zero) {
+        AppLog.info(
+            'EpgDiscovery: variant2 — no budget left to re-validate '
+            'unauthenticated fetch for host=$host, skipping');
+        return null;
+      }
+      final revalResp = await httpClient
+          .get(
+            xmltvUrl,
+            headers: {'User-Agent': 'Mozilla/5.0'},
+          )
+          .timeout(remainingReval);
+      if (!EpgValidator.isValidEpgResponse(revalResp, revalResp.bodyBytes)) {
+        AppLog.info(
+            'EpgDiscovery: variant2 — host=$host serves XMLTV only with '
+            'cookie auth; unauthenticated fetch rejected, not persisting '
+            '(refresh pipeline cannot replay the handshake)');
         return null;
       }
       final elapsed = DateTime.now().difference(start).inMilliseconds;
@@ -133,7 +163,7 @@ class StalkerXmltvCookieAuth {
       AppLog.warn('EpgDiscovery: variant2 — error for host=$host: $e');
       return null;
     } finally {
-      client.close();
+      if (ownClient) httpClient.close();
     }
   }
 }

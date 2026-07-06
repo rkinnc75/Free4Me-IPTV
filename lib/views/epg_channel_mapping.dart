@@ -1,3 +1,4 @@
+import 'dart:async'; // finding 125
 import 'package:flutter/material.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/widgets/dpad_text_field.dart';
@@ -26,11 +27,22 @@ class _EpgChannelMappingViewState extends State<EpgChannelMappingView> {
   List<(String, String)>? _epgIds; // (epg_channel_id, sample_title)
   String _channelFilter = '';
   String? _error;
+  // finding 125: debounce filter input + memoize the filtered list per build
+  Timer? _debounce;
+  List<Channel>? _filteredCache;
+  String? _filteredCacheKey;
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    // finding 125: cancel the pending filter debounce timer
+    _debounce?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -51,12 +63,21 @@ class _EpgChannelMappingViewState extends State<EpgChannelMappingView> {
   }
 
   List<Channel> get _filtered {
+    // finding 125: memoize the filtered list keyed on the query + list identity
+    // so the expensive .where().toList() runs once per (query, channel-list)
+    // rather than on every build.
+    final channels = _channels ?? const <Channel>[];
     final q = _channelFilter.trim().toLowerCase();
-    final channels = _channels ?? [];
-    if (q.isEmpty) return channels;
-    return channels
-        .where((c) => c.name.toLowerCase().contains(q))
-        .toList();
+    final key = '${identityHashCode(channels)}|$q';
+    if (_filteredCacheKey == key && _filteredCache != null) {
+      return _filteredCache!;
+    }
+    final result = q.isEmpty
+        ? channels
+        : channels.where((c) => c.name.toLowerCase().contains(q)).toList();
+    _filteredCacheKey = key;
+    _filteredCache = result;
+    return result;
   }
 
   @override
@@ -78,7 +99,15 @@ class _EpgChannelMappingViewState extends State<EpgChannelMappingView> {
                 ),
                 filled: true,
               ),
-              onChanged: (v) => setState(() => _channelFilter = v),
+              // finding 125: debounce filter input so we don't re-filter the
+              // (possibly large) channel list on every keystroke.
+              onChanged: (v) {
+                _debounce?.cancel();
+                _debounce = Timer(const Duration(milliseconds: 200), () {
+                  if (!mounted) return;
+                  setState(() => _channelFilter = v);
+                });
+              },
             ),
           ),
         ),

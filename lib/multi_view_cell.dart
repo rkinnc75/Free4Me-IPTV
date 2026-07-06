@@ -170,6 +170,23 @@ class _MultiViewCellState extends State<MultiViewCell> {
     if (widget.channel != old.channel && widget.channel != null) {
       _disposeEngine();
       _startEngine(widget.channel!);
+    } else if (widget.channel == null && old.channel != null) {
+      // finding 85: cell was closed (channel nulled by
+      // MultiViewScreen._closeCell). The stable ValueKey('cell_$i') means this
+      // State is REUSED, not remounted, so dispose() won't run — tear the
+      // engine down here or it keeps streaming (full-volume audio if this cell
+      // is still focused). _disposeEngine also cancels the slow-recovery timer
+      // (finding 86), covering the case where the cell was mid slow-recovery.
+      _recoveryTimer?.cancel();
+      _recoveryTimer = null;
+      _disposeEngine();
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = false;
+          _retryMessage = null;
+        });
+      }
     }
     if (widget.isFocused != old.isFocused) {
       AppLog.info(
@@ -218,7 +235,9 @@ class _MultiViewCellState extends State<MultiViewCell> {
     _disposeEngine();
     _recoveryTimer?.cancel();
     _recoveryTimer = Timer(_recoverySlowInterval, () {
-      if (!mounted) return;
+      // finding 86: defense-in-depth — also honor the generation token so a
+      // callback that somehow survives teardown is a no-op.
+      if (!mounted || generation != _openGeneration) return;
       AppLog.info(
         'MultiViewCell: slow recovery attempt $attempt/$_recoverySlowMax'
         ' cell=${widget.cellIndex} channel="${ch.name}"',
@@ -343,6 +362,12 @@ class _MultiViewCellState extends State<MultiViewCell> {
     _eofRetryScheduled = false;
     _startupWatchdog?.cancel(); // fix94
     _startupWatchdog = null;
+    // finding 86: a pending slow-recovery Timer must not survive teardown and
+    // fire later — it would open a duplicate connection (e.g. during
+    // full-screen promotion). _disposeEngine is the single teardown authority
+    // _promoteToFullScreen relies on, so cancel it here too.
+    _recoveryTimer?.cancel(); // fix246
+    _recoveryTimer = null;
     if (e != null) {
       // dispose() is async; we fire-and-forget since the widget is gone.
       // Wrap with .catchError so a native dispose failure (rare but possible)
@@ -429,7 +454,17 @@ class _MultiViewCellState extends State<MultiViewCell> {
       _recoveryTimer?.cancel();
       _recoveryTimer = null;
     }
-    _lastErrorAt = null;
+    // finding 88: only clear the stable clock on a fresh (non-retry) start.
+    // On a retry, STAMP it to now — a retry restart is a disturbance, so 15s
+    // of clean playback afterward replenishes ALL budgets via the
+    // bufferingStream gate (`_lastErrorAt != null && diff > 15s`). Nulling it
+    // unconditionally (old behavior) meant that gate never armed after any
+    // restart-based recovery, so budgets only ever counted up.
+    if (isRetry) {
+      _lastErrorAt = DateTime.now();
+    } else {
+      _lastErrorAt = null;
+    }
     _lastBufferingState = null;
     _eofRetryScheduled = false;
     AppLog.info(
@@ -818,6 +853,15 @@ class _MultiViewCellState extends State<MultiViewCell> {
     // promotion (no _engine, _loading true). After the Player pops,
     // we restart the cell so the user gets video back when they
     // return to multi-view.
+    //
+    // finding 91: transfer audio focus to THIS cell FIRST. Otherwise,
+    // promoting an unfocused cell leaves the focused sibling at volume 1.0
+    // streaming beneath the pushed Player — the user hears sibling audio
+    // mixed with the full-screen audio for the whole session. onFocusTap()
+    // moves _focusedCell in MultiViewScreen, muting every other cell. Placed
+    // here so all three entry points (double-tap, D-pad menu, long-press)
+    // transfer focus — onDoubleTap/onLongPress do not call it themselves.
+    widget.onFocusTap();
     _disposeEngine();
     setState(() => _loading = true);
 

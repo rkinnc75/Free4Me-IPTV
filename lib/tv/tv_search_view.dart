@@ -50,10 +50,21 @@ class _TvSearchViewState extends State<TvSearchView> {
   List<int> _sourceIds = [];
   bool _ready = false;
   bool _loading = false;
+  // finding 112: set when _run's async work throws, so the empty state shows a
+  // recoverable error instead of stranding the UI on 'Searching…' forever.
+  String? _searchError;
   // fix603: set when the user explicitly submits (Enter/Go) so the first result
   // card is focused once the async search returns. NOT set by the debounced
   // type-ahead, so typing never yanks focus out of the field.
   bool _pendingFocusFirst = false;
+  // finding 111: per-shelf render cap. Even when a broad query returns
+  // hundreds of matches (up to the SQL limit of 300, finding 113), each
+  // shrink-wrapped + NeverScrollableScrollPhysics grid builds EVERY tile at
+  // once (virtualization is disabled), so an uncapped shelf would spin up
+  // hundreds of ChannelTiles / FocusNodes / CachedNetworkImage fetches in one
+  // frame — a multi-second stall on a 2GB box. Cap rendered tiles per shelf;
+  // the header still shows the true match count.
+  static const int _shelfCap = 100;
   // fix509: five logical groups.
   List<Channel> _onNow = [];
   List<Channel> _comingUp = [];
@@ -123,6 +134,7 @@ class _TvSearchViewState extends State<TvSearchView> {
           _movies = [];
           _series = [];
           _loading = false;
+          _searchError = null; // finding 112
         });
       }
       return;
@@ -135,111 +147,142 @@ class _TvSearchViewState extends State<TvSearchView> {
     final focusFirst = _pendingFocusFirst;
     _pendingFocusFirst = false;
     setState(() => _loading = true);
-    final s = SettingsService.cached ?? widget.settings;
-    // fix554: instrument the full TV-search wall-clock. Only Sql.search was
-    // logged before; the EPG "what's on" phase (searchPrograms +
-    // getLiveChannelsByEpg) ran serially per query and was invisible. Times
-    // each phase so the field log shows where the Go->results lag actually is.
-    final swTotal = Stopwatch()..start();
+    // finding 112: wrap the async work so a thrown query surfaces an error
+    // instead of leaving the spinner up forever. The `inv == _inv` guard in
+    // catch scopes the clear to the CURRENT run — a superseded (stale) run
+    // must not touch a newer in-flight run's spinner (hence no bare finally).
+    try {
+      final s = SettingsService.cached ?? widget.settings;
+      // fix554: instrument the full TV-search wall-clock. Only Sql.search was
+      // logged before; the EPG "what's on" phase (searchPrograms +
+      // getLiveChannelsByEpg) ran serially per query and was invisible. Times
+      // each phase so the field log shows where the Go->results lag actually is.
+      final swTotal = Stopwatch()..start();
 
-    // Channel-name matches across all media types.
-    final swName = Stopwatch()..start();
-    final nameResults = await Sql.search(Filters(
-      query: query,
-      viewType: ViewType.all,
-      mediaTypes: const [MediaType.livestream, MediaType.movie, MediaType.serie],
-      sourceIds: _sourceIds,
-      searchMethod: s.searchMethod,
-      safeMode: s.safeMode,
-      // fix557: TV search previously inherited the global 36-per-page cap
-      // silently — "fox" showed 34 results while the Live category alone has
-      // 100+. Search isn't a paged browse; raise the ceiling so a real query
-      // returns effectively everything, while still bounding a pathological
-      // 1-2 char query from returning the whole catalog.
-      limit: 1000,
-    ));
-    swName.stop();
+      // Channel-name matches across all media types.
+      final swName = Stopwatch()..start();
+      final nameResults = await Sql.search(Filters(
+        query: query,
+        viewType: ViewType.all,
+        mediaTypes: const [
+          MediaType.livestream,
+          MediaType.movie,
+          MediaType.serie
+        ],
+        sourceIds: _sourceIds,
+        searchMethod: s.searchMethod,
+        safeMode: s.safeMode,
+        // fix557: TV search previously inherited the global 36-per-page cap
+        // silently — "fox" showed 34 results while the Live category alone has
+        // 100+. Search isn't a paged browse; raise the ceiling so a real query
+        // returns effectively everything, while still bounding a pathological
+        // 1-2 char query from returning the whole catalog.
+        // finding 113: lowered 1000 -> 300 — the belt to the per-shelf render
+        // cap's suspenders (finding 111). 300 comfortably exceeds
+        // _shelfCap(100) x 3 media-type shelves, so no shelf is starved, while
+        // cutting the worst-case fetch/marshal cost across the >1M-row channels
+        // table ~3x.
+        limit: 300,
+      ));
+      swName.stop();
 
-    // EPG "what's on" matches → resolve to the live channels airing them,
-    // within the forward-only window (clamped to the EPG forecast).
-    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    final hours = widget.settings.epgSearchHours
-        .clamp(
-          SettingBounds.epgSearchHoursMin,
-          SettingBounds.epgSearchHoursMax(widget.settings.epgForecastDays),
-        )
-        .toInt();
-    final swProg = Stopwatch()..start();
-    final programmes = await Sql.searchPrograms(
-      query: query,
-      sourceIds: _sourceIds,
-      nowEpoch: now,
-      windowEndEpoch: now + hours * 3600,
-    );
-    swProg.stop();
-    final epgIds = programmes.map((p) => p.epgChannelId).toSet().toList();
-    final swEpgCh = Stopwatch()..start();
-    final epgChannels =
-        await Sql.getLiveChannelsByEpg(_sourceIds, epgIds, safeMode: s.safeMode);
-    swEpgCh.stop();
-    if (!mounted || inv != _inv) return;
+      // EPG "what's on" matches → resolve to the live channels airing them,
+      // within the forward-only window (clamped to the EPG forecast).
+      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      final hours = widget.settings.epgSearchHours
+          .clamp(
+            SettingBounds.epgSearchHoursMin,
+            SettingBounds.epgSearchHoursMax(widget.settings.epgForecastDays),
+          )
+          .toInt();
+      final swProg = Stopwatch()..start();
+      final programmes = await Sql.searchPrograms(
+        query: query,
+        sourceIds: _sourceIds,
+        nowEpoch: now,
+        windowEndEpoch: now + hours * 3600,
+      );
+      swProg.stop();
+      final epgIds = programmes.map((p) => p.epgChannelId).toSet().toList();
+      final swEpgCh = Stopwatch()..start();
+      final epgChannels = await Sql.getLiveChannelsByEpg(_sourceIds, epgIds,
+          safeMode: s.safeMode);
+      swEpgCh.stop();
+      // finding 112: a superseded (stale) run must not touch state — leave the
+      // newer in-flight run's _loading/_searchError untouched (early return,
+      // inside the try so the catch's `inv == _inv` guard is the only clearer).
+      if (!mounted || inv != _inv) return;
 
-    // Merge into 5 groups. EPG title matches answer "what's on" — split the
-    // live channels they resolve to into On now (a matched programme airing
-    // now) vs Coming up (a matched programme starting later in the window),
-    // first-match-wins per channel, in programme start order. Then
-    // channel-NAME matches fill Channels (livestreams not already shown) /
-    // Movies / Series.
-    final onNow = <Channel>[];
-    final comingUp = <Channel>[];
-    final channels = <Channel>[];
-    final movies = <Channel>[];
-    final series = <Channel>[];
-    final seenLive = <int>{};
-    for (final p in programmes) {
-      final ch = epgChannels['${p.sourceId}|${p.epgChannelId}'];
-      if (ch == null || ch.id == null || !seenLive.add(ch.id!)) continue;
-      (p.isOnNow(now) ? onNow : comingUp).add(ch);
-    }
-    for (final ch in nameResults) {
-      switch (ch.mediaType) {
-        case MediaType.livestream:
-          if (ch.id == null || seenLive.add(ch.id!)) channels.add(ch);
-          break;
-        case MediaType.movie:
-          movies.add(ch);
-          break;
-        case MediaType.serie:
-          series.add(ch);
-          break;
-        default:
-          break;
+      // Merge into 5 groups. EPG title matches answer "what's on" — split the
+      // live channels they resolve to into On now (a matched programme airing
+      // now) vs Coming up (a matched programme starting later in the window),
+      // first-match-wins per channel, in programme start order. Then
+      // channel-NAME matches fill Channels (livestreams not already shown) /
+      // Movies / Series.
+      final onNow = <Channel>[];
+      final comingUp = <Channel>[];
+      final channels = <Channel>[];
+      final movies = <Channel>[];
+      final series = <Channel>[];
+      final seenLive = <int>{};
+      for (final p in programmes) {
+        final ch = epgChannels['${p.sourceId}|${p.epgChannelId}'];
+        if (ch == null || ch.id == null || !seenLive.add(ch.id!)) continue;
+        (p.isOnNow(now) ? onNow : comingUp).add(ch);
       }
-    }
-    AppLog.info('TvSearch._run: query="$query" total=${swTotal.elapsedMilliseconds}ms '
-        '(name=${swName.elapsedMilliseconds}ms/${nameResults.length} '
-        'epgProg=${swProg.elapsedMilliseconds}ms/${programmes.length} '
-        'epgCh=${swEpgCh.elapsedMilliseconds}ms/${epgChannels.length}) '
-        // fix592: per-shelf breakdown so a "missing series/movies" report is
-        // diagnosable from the log (which media types the name match returned).
-        'shelves[onNow=${onNow.length} comingUp=${comingUp.length} '
-        'channels=${channels.length} movies=${movies.length} '
-        'series=${series.length}]');
-    setState(() {
-      _onNow = onNow;
-      _comingUp = comingUp;
-      _channels = channels;
-      _movies = movies;
-      _series = series;
-      _loading = false;
-    });
-    // fix603: an explicit submit (Enter/Go) lands focus on the first result
-    // card once results are built. Post-frame so the shelves (and their nodes)
-    // exist. If there are no results, focus simply stays in the field.
-    if (focusFirst) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _firstResultNode()?.requestFocus();
+      for (final ch in nameResults) {
+        switch (ch.mediaType) {
+          case MediaType.livestream:
+            if (ch.id == null || seenLive.add(ch.id!)) channels.add(ch);
+            break;
+          case MediaType.movie:
+            movies.add(ch);
+            break;
+          case MediaType.serie:
+            series.add(ch);
+            break;
+          default:
+            break;
+        }
+      }
+      AppLog.info(
+          'TvSearch._run: query="$query" total=${swTotal.elapsedMilliseconds}ms '
+          '(name=${swName.elapsedMilliseconds}ms/${nameResults.length} '
+          'epgProg=${swProg.elapsedMilliseconds}ms/${programmes.length} '
+          'epgCh=${swEpgCh.elapsedMilliseconds}ms/${epgChannels.length}) '
+          // fix592: per-shelf breakdown so a "missing series/movies" report is
+          // diagnosable from the log (which media types the name match returned).
+          'shelves[onNow=${onNow.length} comingUp=${comingUp.length} '
+          'channels=${channels.length} movies=${movies.length} '
+          'series=${series.length}]');
+      setState(() {
+        _onNow = onNow;
+        _comingUp = comingUp;
+        _channels = channels;
+        _movies = movies;
+        _series = series;
+        _loading = false;
+        _searchError = null; // finding 112: success clears any prior error
       });
+      // fix603: an explicit submit (Enter/Go) lands focus on the first result
+      // card once results are built. Post-frame so the shelves (and their nodes)
+      // exist. If there are no results, focus simply stays in the field.
+      if (focusFirst) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _firstResultNode()?.requestFocus();
+        });
+      }
+    } catch (e, st) {
+      // finding 112: surface the failure instead of a perpetual spinner.
+      // AppLog.error takes a single String (see app_logger.dart), so fold the
+      // stack trace into the message.
+      AppLog.error('TvSearch._run failed: query="$query" $e\n$st');
+      if (mounted && inv == _inv) {
+        setState(() {
+          _loading = false;
+          _searchError = 'Search failed. Try again.';
+        });
+      }
     }
   }
 
@@ -332,10 +375,18 @@ class _TvSearchViewState extends State<TvSearchView> {
           child: empty
               ? Center(
                   child: Text(
+                    // finding 112: a failed search shows a recoverable error
+                    // instead of hanging on 'Searching…' forever.
                     _controller.text.trim().length < 2
                         ? "Type to search channels and what's on"
-                        : (_loading ? 'Searching…' : 'No results'),
-                    style: Theme.of(context).textTheme.titleMedium,
+                        : (_searchError ??
+                            (_loading ? 'Searching…' : 'No results')),
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: _searchError != null &&
+                                  _controller.text.trim().length >= 2
+                              ? Theme.of(context).colorScheme.error
+                              : null,
+                        ),
                   ),
                 )
               : ListView(children: _buildShelves()),
@@ -470,13 +521,19 @@ class _TvSearchViewState extends State<TvSearchView> {
     bool autofocusFirst = false,
     String? previousSectionTitle,
   }) {
+    // finding 111: bound the rendered tiles for this shelf. The header below
+    // still reports the true match count (items.length); everything that
+    // drives layout/nodes/the in-player playlist uses `capped`.
+    final capped =
+        items.length > _shelfCap ? items.sublist(0, _shelfCap) : items;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
           child: Text(
-            '$title (${items.length})',
+            // finding 111: show the true match count, but note the render cap.
+            '$title (${items.length}${items.length > _shelfCap ? ", showing $_shelfCap" : ""})',
             style: Theme.of(context).textTheme.titleMedium,
           ),
         ),
@@ -493,22 +550,25 @@ class _TvSearchViewState extends State<TvSearchView> {
             builder: (context, constraints) {
               const maxExtent = 130.0;
               const spacing = 6.0;
+              // finding 111: all layout/node/row math is over `capped`, so at
+              // most _shelfCap tiles + FocusNodes are ever built per shelf.
               final columns =
                   (constraints.maxWidth / (maxExtent + spacing)).ceil().clamp(
                         1,
-                        items.isEmpty ? 1 : items.length,
+                        capped.isEmpty ? 1 : capped.length,
                       );
-              final lastRowStart =
-                  items.isEmpty ? 0 : ((items.length - 1) ~/ columns) * columns;
+              final lastRowStart = capped.isEmpty
+                  ? 0
+                  : ((capped.length - 1) ~/ columns) * columns;
               // fix563: one stable node per item. Capture THIS section's last
               // row (for the next section to target) and read the PREVIOUS
               // section's last row (already captured this frame — a ListView
               // lays its children out top to bottom) for this section's
               // top-row cross-section UP.
-              final myNodes = _nodesFor(title, items.length);
-              _lastRowCache[title] = items.isEmpty
+              final myNodes = _nodesFor(title, capped.length);
+              _lastRowCache[title] = capped.isEmpty
                   ? const <FocusNode>[]
-                  : myNodes.sublist(lastRowStart, items.length);
+                  : myNodes.sublist(lastRowStart, capped.length);
               final prevLastRow = previousSectionTitle == null
                   ? null
                   : _lastRowCache[previousSectionTitle];
@@ -523,9 +583,9 @@ class _TvSearchViewState extends State<TvSearchView> {
                   mainAxisSpacing: spacing,
                   crossAxisSpacing: spacing,
                 ),
-                itemCount: items.length,
+                itemCount: capped.length, // finding 111
                 itemBuilder: (context, i) {
-                  final ch = items[i];
+                  final ch = capped[i]; // finding 111
                   final col = i % columns;
                   return ChannelTile(
                     key: ValueKey('search-$title-${ch.id ?? ch.name}-$i'),
@@ -536,7 +596,9 @@ class _TvSearchViewState extends State<TvSearchView> {
                     showSourceEdgeBar: true,
                     poster: true,
                     autofocus: autofocusFirst && i == 0,
-                    playlist: items,
+                    // finding 111: the in-player up/down list matches what is
+                    // on screen (capped to _shelfCap), keeping it consistent.
+                    playlist: capped,
                     playlistIndex: i,
                     // fix563: every tile owns a stable node, and arrow-UP moves
                     // focus by DIRECT NODE REFERENCE (see _upTargetFor) rather

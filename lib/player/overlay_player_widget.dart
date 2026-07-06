@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // finding 108: LogicalKeyboardKey for Back/Esc escape hatch
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/models/app_navigator.dart';
 import 'package:open_tv/player.dart';
@@ -76,9 +77,27 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
     return Positioned(
       left: pos.dx,
       top: pos.dy,
-      child: Material(
-        color: Colors.transparent,
-        child: _buildCard(context, size, padding, snapped),
+      // finding 108: defensive D-pad dismiss — Back/Esc closes an overlay that
+      // is somehow active on a D-pad device. canRequestFocus:false /
+      // skipTraversal:true so it never steals focus or alters traversal; it
+      // only intercepts Back if a key event happens to route through here.
+      child: Focus(
+        autofocus: false,
+        canRequestFocus: false,
+        skipTraversal: true,
+        onKeyEvent: (node, event) {
+          if (event is KeyDownEvent &&
+              (event.logicalKey == LogicalKeyboardKey.goBack ||
+                  event.logicalKey == LogicalKeyboardKey.escape)) {
+            _ctrl.stopOverlay();
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+        child: Material(
+          color: Colors.transparent,
+          child: _buildCard(context, size, padding, snapped),
+        ),
       ),
     );
   }

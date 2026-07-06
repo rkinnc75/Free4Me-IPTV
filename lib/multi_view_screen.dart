@@ -71,11 +71,16 @@ class MultiViewScreen extends StatefulWidget {
   State<MultiViewScreen> createState() => _MultiViewScreenState();
 }
 
-class _MultiViewScreenState extends State<MultiViewScreen> {
+class _MultiViewScreenState extends State<MultiViewScreen>
+    with WidgetsBindingObserver {
   late final int _cellCount = widget.layout.cellCount;
   late final List<Channel?> _channels;
   int _focusedCell = 0;
   bool _restored = false;
+
+  /// finding 122: true while the app is backgrounded — the cell subtree is
+  /// torn down so all mpv engines dispose instead of decoding 4 hidden streams.
+  bool _backgrounded = false;
 
   // Audio focus
   AudioSession? _audioSession;
@@ -93,6 +98,7 @@ class _MultiViewScreenState extends State<MultiViewScreen> {
       if (mounted) _seedInitialChannel();
     }));
     _initAudioSession();
+    WidgetsBinding.instance.addObserver(this); // finding 122
   }
 
   /// Configure the audio session for video playback and subscribe to
@@ -128,14 +134,15 @@ class _MultiViewScreenState extends State<MultiViewScreen> {
           if (mounted) setState(() {});
         } else {
           // Interruption over.
-          if (event.type == AudioInterruptionType.pause ||
-              event.type == AudioInterruptionType.unknown) {
-            _interrupted = false;
-            AppLog.info(
-              'MultiViewScreen: audio interruption ended — restoring focus',
-            );
-            if (mounted) setState(() {});
-          }
+          // finding 123: clear _interrupted on EVERY end event regardless of
+          // type — begin sets it for all types (incl. duck), so end must
+          // symmetrically clear it or duck-end leaves all cells muted forever.
+          _interrupted = false;
+          AppLog.info(
+            'MultiViewScreen: audio interruption ended (${event.type.name})'
+            ' — restoring focus',
+          );
+          if (mounted) setState(() {});
         }
       });
     } catch (e) {
@@ -145,10 +152,29 @@ class _MultiViewScreenState extends State<MultiViewScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this); // finding 122
     AppLog.info('MultiViewScreen: disposing — layout=${widget.layout.name}');
     _interruptionSub?.cancel();
     _audioSession?.setActive(false).ignore();
     super.dispose();
+  }
+
+  // finding 122: Multi-view has no PiP/background mode. When the app is hidden,
+  // tear the cell subtree down so every MultiViewCell disposes its mpv engine
+  // (MultiViewCell exposes no screen-facing pause API, and its didUpdateWidget
+  // ignores channel→null, so unmounting is the only single-file way to stop the
+  // engines). On resume, rebuild — each cell's initState re-opens its stream.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    final shouldBackground =
+        state == AppLifecycleState.paused || state == AppLifecycleState.hidden;
+    if (shouldBackground == _backgrounded) return;
+    AppLog.info(
+      'MultiViewScreen: lifecycle=$state — '
+      '${shouldBackground ? "tearing down cells" : "rebuilding cells"}',
+    );
+    if (mounted) setState(() => _backgrounded = shouldBackground);
   }
 
   /// Restore persisted channel IDs for the current layout. The stored
@@ -329,7 +355,12 @@ class _MultiViewScreenState extends State<MultiViewScreen> {
       // fix172: contain D-pad traversal to the cells.
       body: !_restored
           ? const Center(child: CircularProgressIndicator())
-          : FocusTraversalGroup(
+          // finding 122: while backgrounded, render a plain black box so every
+          // MultiViewCell unmounts and disposes its mpv engine (not the spinner,
+          // which would misleadingly imply a load in progress).
+          : _backgrounded
+              ? const SizedBox.expand()
+              : FocusTraversalGroup(
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final w = constraints.maxWidth;

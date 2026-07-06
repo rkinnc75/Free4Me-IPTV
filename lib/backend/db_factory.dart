@@ -9,6 +9,9 @@ class DbFactory {
   static SqliteDatabase? _db;
   // fix238: cached timing wrapper handed out by the `db` getter.
   static TimedWriteContext? _timedDb;
+  // finding 60: memoize the OPEN FUTURE (not the awaited result) so N in-flight
+  // callers share ONE _createDB() — same idiom as EpgDbFactory (finding 57).
+  static Future<SqliteDatabase>? _dbFuture;
 
   static Future<SqliteDatabase> _createDB() async {
     var db = SqliteDatabase(path: "${await Utils.appDir}/db.sqlite");
@@ -1034,7 +1037,17 @@ class DbFactory {
       await db.execute('PRAGMA temp_store = FILE;');
       await db.execute('PRAGMA cache_size = -32768;');
     } catch (_) {}
-    await migrations.migrate(db);
+    // finding 59: no down-migrations exist — installing an older APK over a
+    // newer db.sqlite makes migrate() throw MigrationError on every open. Log
+    // a clear downgrade diagnostic and rethrow (never silently wipe user data).
+    try {
+      await migrations.migrate(db);
+    } on MigrationError catch (e) {
+      AppLog.error('DB open failed: app was likely downgraded to an older '
+          'version than this database was created for (db.sqlite). '
+          'Reinstall the newer version or clear app data to reset. Detail: $e');
+      rethrow;
+    }
     try {
       await db.execute('PRAGMA cache_size = -2000;');
     } catch (_) {}
@@ -1089,10 +1102,25 @@ class DbFactory {
   }
 
   static Future<SqliteWriteContext> get db async {
-    _db ??= await _createDB();
+    // finding 60: memoize the open future and reset it on failure so concurrent
+    // callers share one _createDB() (no duplicate migration/ANALYZE, no leaked
+    // second SqliteDatabase) and a failed open is retried on next access.
+    var future = _dbFuture;
+    if (future == null) {
+      future = _createDB();
+      _dbFuture = future;
+    }
+    final SqliteDatabase database;
+    try {
+      database = await future;
+    } catch (e) {
+      if (identical(_dbFuture, future)) _dbFuture = null;
+      rethrow;
+    }
     // fix238: hand callers a timing wrapper (slow-query logging) instead of the
     // raw database. The wrapper exposes the SqliteWriteContext surface all
     // callers use; the raw instance is retained in _db for lifecycle.
+    _db ??= database;
     _timedDb ??= TimedWriteContext(_db!);
     return _timedDb!;
   }
@@ -1176,7 +1204,17 @@ class EpgDbFactory {
           SELECT id, title FROM programmes;
         ''');
       }));
-    await migrations.migrate(db);
+    // finding 59: no down-migrations exist — installing an older APK over a
+    // newer epg.sqlite makes migrate() throw MigrationError on every open. Log
+    // a clear downgrade diagnostic and rethrow (never silently wipe user data).
+    try {
+      await migrations.migrate(db);
+    } on MigrationError catch (e) {
+      AppLog.error('DB open failed: app was likely downgraded to an older '
+          'version than this database was created for (epg.sqlite). '
+          'Reinstall the newer version or clear app data to reset. Detail: $e');
+      rethrow;
+    }
 
     AppLog.info('EpgDb: opened epg.sqlite');
 
@@ -1236,7 +1274,22 @@ class EpgDbFactory {
   // select). With the future memoized, concurrent callers await the same open.
   static Future<SqliteDatabase>? _dbFuture;
 
+  // finding 57: keep the concurrent-caller dedup (fix644) but clear the memo on
+  // failure so the next caller retries. A transient open/migration failure
+  // (e.g. SQLITE_BUSY under cross-isolate contention) must not permanently
+  // poison the memo and kill all EPG features for the session.
   static Future<SqliteDatabase> get db async {
-    return _dbFuture ??= _createDB();
+    final existing = _dbFuture;
+    if (existing != null) return existing;
+    final future = _createDB();
+    _dbFuture = future;
+    try {
+      return await future;
+    } catch (e) {
+      // Only clear if it is still OUR future (a concurrent successful retry
+      // may have replaced it).
+      if (identical(_dbFuture, future)) _dbFuture = null;
+      rethrow;
+    }
   }
 }

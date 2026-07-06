@@ -23,6 +23,10 @@ const String getLiveStreamCategories = "get_live_categories";
 const String getVodCategories = "get_vod_categories";
 const String liveStreamExtension = "ts";
 
+// finding 66: cap the debug raw-response dump so a large provider catalog
+// (hundreds of MB) can't fill the app dir on every refresh.
+const int _kMaxDumpBytes = 256 * 1024;
+
 Future<void> getXtream(
   Source source,
   bool wipe, [
@@ -303,7 +307,11 @@ Future<void> getXtream(
       // job), so persist the disable explicitly.
       await Sql.setSourceEnabled(false, source.id!);
     }
-    await Sql.updateSource(source);
+    // finding 64: updateSource (counts/maxConnections/expDate/status) is moved
+    // to AFTER the commit below, so lastLiveCount/lastMovieCount/lastSeriesCount
+    // are only persisted once the wipe+inserts+restorePreserve have committed.
+    // A crash mid-commit then leaves the OLD counts, so fix321/shouldRetryType
+    // still sees lastCount>0 on retry and the preserve path fires.
   }
   onProgress?.call('Saving to database…');
   final totalRows = liveCount + movieCount + seriesCount;
@@ -336,6 +344,15 @@ Future<void> getXtream(
   swCommit.stop();
   AppLog.info('getXtream: DB commit phase for source="${source.name}" '
       'took ${swCommit.elapsedMilliseconds}ms ($totalRows fetched rows)');
+  // finding 64: persist source counts/status ONLY after a successful commit.
+  // If commitWriteBatched threw above we never reach here, so the old counts
+  // survive and the retry preserve path stays protected. Residual risk: a
+  // single commit is still split at importBatchSize so process death mid-commit
+  // can leave a partial catalog — a shadow/generation column is a larger
+  // follow-up, not done here.
+  if (source.id != null) {
+    await Sql.updateSource(source);
+  }
 }
 
 List<T> processJsonList<T>(
@@ -375,10 +392,18 @@ Future<dynamic> getXtreamHttpData(
       try {
         final dir = await Utils.appDir;
         final safeAction = action.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '_');
+        // finding 66: cap the dump to the first 256 KB (enough to diagnose the
+        // JSON shape) so a huge catalog body doesn't write hundreds of MB.
+        final body = response.body;
+        final dump = body.length > _kMaxDumpBytes
+            ? '${body.substring(0, _kMaxDumpBytes)}'
+                '\n/*…truncated ${body.length - _kMaxDumpBytes} bytes…*/'
+            : body;
         final f = File('$dir/xtream_dump_${source.id}_$safeAction.json');
-        await f.writeAsString(response.body);
+        await f.writeAsString(dump);
         AppLog.info('Xtream: dumped raw response action="$action" '
-            'source=${source.id} bytes=${response.body.length} to ${f.path}');
+            'source=${source.id} bytes=${body.length} (capped to '
+            '${dump.length}) to ${f.path}');
       } catch (e) {
         AppLog.warn('Xtream: raw-dump failed action="$action" error=$e');
       }
@@ -485,7 +510,10 @@ Future<bool> checkXtreamAuth(Source source) async {
 /// entry point but tests can exercise this directly.
 bool parseXtreamAuthResponse(dynamic data) {
   if (data is Map && data['user_info'] is Map) {
-    return (data['user_info'] as Map)['auth'] == 1;
+    // finding 68: coerce string/bool auth values — panels return auth as int 1,
+    // string "1", or bool true. auth==0 (int or string) still returns false.
+    final a = (data['user_info'] as Map)['auth'];
+    return a == 1 || a == '1' || a == true;
   }
   return false;
 }
@@ -737,11 +765,19 @@ Future<void> getEpisodes(Channel channel) async {
   var seriesId = int.parse(channel.url!);
   var source = await Sql.getSourceFromId(channel.sourceId);
   source.urlOrigin = Uri.parse(source.url!).origin;
-  var episodes = XtreamSeries.fromJson(
-    await getXtreamHttpData(getSeriesInfo, source, {
-      'series_id': seriesId.toString(),
-    }),
-  ).episodes;
+  // finding 69: null-check the response before fromJson (its param type is
+  // non-nullable Map<String,dynamic>). `is! Map<String, dynamic>` also guards
+  // the finding-65 case where the provider returns a 200 non-Map error body.
+  // The thrown Exception surfaces as a readable message instead of a raw
+  // TypeError via channel_tile's Error.tryAsync.
+  final seriesData = await getXtreamHttpData(getSeriesInfo, source, {
+    'series_id': seriesId.toString(),
+  });
+  if (seriesData is! Map<String, dynamic>) {
+    throw Exception(
+        'Could not load episodes — provider unreachable or returned no data');
+  }
+  var episodes = XtreamSeries.fromJson(seriesData).episodes;
   episodes.sort((a, b) {
     int seasonA = int.tryParse(a.season ?? "") ?? 0;
     int seasonB = int.tryParse(b.season ?? "") ?? 0;

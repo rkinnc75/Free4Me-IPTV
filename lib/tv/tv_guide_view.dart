@@ -71,6 +71,9 @@ class TvGuideViewState extends State<TvGuideView> {
   late int _windowEnd;
   bool _ready = false;
   bool _loading = false;
+  // finding 71: a load failure (DB throw in _init/_loadGuide) surfaces here so
+  // the guide shows a focusable Retry instead of a permanently blank tab.
+  String? _error;
   int _inv = 0;
   // fix510: hero live-preview state.
   Channel? _focused;
@@ -151,6 +154,29 @@ class TvGuideViewState extends State<TvGuideView> {
     super.dispose();
   }
 
+  // finding 71: reusable error surface with a focusable Retry so a load failure
+  // never strands the default Live landing tab with an empty, unfocusable body.
+  Widget _errorRetry(String msg, VoidCallback onRetry) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(msg, textAlign: TextAlign.center),
+          const SizedBox(height: 12),
+          _FocusTile(
+            selected: false,
+            autofocus: true,
+            onTap: onRetry,
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              child: Text('Retry'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _init() async {
     // fix645: snapshot the category-change generation FIRST — a toggle landing
     // while this init runs will differ from the snapshot and trigger another
@@ -160,6 +186,9 @@ class TvGuideViewState extends State<TvGuideView> {
     // alive in IndexedStack, so widget.settings can go stale if Safe Mode is
     // toggled afterward. Prefer the live SettingsService.cached value.
     final s = SettingsService.cached ?? widget.settings;
+    // finding 71: guard the whole init so one thrown DB call surfaces a Retry
+    // instead of leaving the default Live landing tab permanently blank.
+    try {
     final sources = await Sql.getSources();
     final enabled = await Sql.getEnabledSourcesMinimal();
     final enabledIds = enabled.map((e) => e.id).whereType<int>().toList();
@@ -182,8 +211,19 @@ class TvGuideViewState extends State<TvGuideView> {
         groups.addAll(batch);
         if (batch.length < pageSize) break;
       }
-    } catch (_) {
-      groups = [];
+    } catch (e, st) {
+      // finding 72: don't swallow a browse-query failure and render an empty
+      // rail silently — log it and surface the shared Retry error state
+      // (finding 71). A legitimately empty provider throws nothing and falls
+      // through to the normal 'no categories' render below.
+      AppLog.error('Guide category rail query failed: $e\n$st');
+      if (mounted) {
+        setState(() {
+          _error = 'Could not load channel categories.';
+          _ready = true;
+        });
+      }
+      return;
     }
     // fix510: gate the always-live hero preview. Capable boxes default ON;
     // low-RAM (Onn/Amlogic) defaults to art-first unless the owner opts in.
@@ -201,6 +241,17 @@ class TvGuideViewState extends State<TvGuideView> {
       _ready = true;
     });
     await _loadGuide(null);
+    } catch (e, st) {
+      // finding 71: init-level DB failure (getSources / lowRam probe / initial
+      // _loadGuide) — log and surface the shared Retry error state.
+      AppLog.error('Guide _init failed: $e\n$st');
+      if (mounted) {
+        setState(() {
+          _error = 'Could not load the guide.';
+          _ready = true;
+        });
+      }
+    }
   }
 
   Future<void> _loadGuide(int? groupId, {bool enterChannels = false}) async {
@@ -224,6 +275,10 @@ class TvGuideViewState extends State<TvGuideView> {
     // fix524 (safe-mode TV leak): use the live settings value, not the possibly
     // stale widget.settings (the guide is kept alive across Settings changes).
     final s = SettingsService.cached ?? widget.settings;
+    // finding 71: guard the awaited load so a DB throw surfaces Retry instead of
+    // a silently-empty grid, and the finally always clears _loading for the
+    // winning invocation (a superseded load leaves the newer one's flag alone).
+    try {
     // Load the scoped channels, paged up to the cap (keeps the grid bounded).
     final channels = <Channel>[];
     for (var page = 1; channels.length < _channelCap; page++) {
@@ -288,6 +343,19 @@ class TvGuideViewState extends State<TvGuideView> {
           if (firstId != null) _channelNodes[firstId]?.requestFocus();
         }
       });
+    }
+    } catch (e, st) {
+      // finding 71: surface the shared Retry error state on a load failure.
+      AppLog.error('Guide _loadGuide failed: $e\n$st');
+      if (mounted && inv == _inv) {
+        setState(() => _error = 'Could not load the guide.');
+      }
+    } finally {
+      // finding 71: always clear _loading for the winning invocation — a
+      // superseded load (inv != _inv) must not stomp the newer load's flag.
+      if (mounted && inv == _inv && _loading) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -435,6 +503,13 @@ class TvGuideViewState extends State<TvGuideView> {
 
   @override
   Widget build(BuildContext context) {
+    // finding 71: a load failure shows a focusable Retry instead of a blank tab.
+    if (_error != null) {
+      return _errorRetry(_error!, () {
+        setState(() => _error = null);
+        _init();
+      });
+    }
     if (!_ready) return const SizedBox.shrink();
     // fix597 (#4 redesign): top band = 70% preview (left) + channel info
     // (right); below = swapping rail (left) + passive EPG grid (right). The
@@ -525,15 +600,20 @@ class TvGuideViewState extends State<TvGuideView> {
         ),
       );
     }
-    return ListView(
+    // finding 74: lazy builder so a provider with thousands of categories does
+    // not eagerly build every tile (and FocusNode) up front. Index 0 is the
+    // synthetic "Favorites" item; the rest are the real categories.
+    final cats = _groups.where((g) => g.id != null).toList();
+    return ListView.builder(
       key: const ValueKey('rail-categories'),
       padding: const EdgeInsets.symmetric(vertical: 8),
-      children: [
+      itemCount: cats.length + 1,
+      itemBuilder: (context, i) {
         // fix545: top item is "Favorites" (replacing "All channels").
-        _categoryItem(null, 'Favorites', Icons.star),
-        for (final g in _groups)
-          if (g.id != null) _categoryItem(g.id, g.name, Icons.folder_outlined),
-      ],
+        if (i == 0) return _categoryItem(null, 'Favorites', Icons.star);
+        final g = cats[i - 1];
+        return _categoryItem(g.id, g.name, Icons.folder_outlined);
+      },
     );
   }
 
@@ -1071,7 +1151,11 @@ class TvGuideViewState extends State<TvGuideView> {
               ? scheme.primary.withValues(alpha: 0.22)
               : scheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(4),
-          child: InkWell(
+          // finding 75: passive grid — exclude programme blocks from D-pad focus
+          // traversal so RIGHT from a rail channel never lands inside the grid.
+          // onTap still works for touch builds (a tap needs no focus).
+          child: ExcludeFocus(
+            child: InkWell(
             onTap: () => _play(ch),
             borderRadius: BorderRadius.circular(4),
             child: Padding(
@@ -1087,6 +1171,7 @@ class TvGuideViewState extends State<TvGuideView> {
                     )),
               ),
             ),
+          ),
           ),
         ),
       ),

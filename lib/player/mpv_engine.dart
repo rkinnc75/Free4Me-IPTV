@@ -480,7 +480,10 @@ class MpvEngine implements PlayerEngine {
 
   @override
   Future<void> seek(Duration position) async {
-    if (_player.state.duration <= Duration.zero) return;
+    // finding 98: gate the duration<=0 early-return on !_dvrActive so live-DVR
+    // transport seeks reach mpv (force-seekable=yes lets it seek the disk-backed
+    // demuxer cache without a reported duration). VOD/non-DVR-live still skip.
+    if (!_dvrActive && _player.state.duration <= Duration.zero) return;
     await _player.seek(position);
   }
 
