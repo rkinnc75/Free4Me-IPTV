@@ -1,6 +1,6 @@
 {
-  "latest": "3.0.1",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v3.0.1",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v3.0.1/Free4Me-IPTV-3.0.1-arm64.apk",
-  "releaseNotes": "\u2022 More reliability fixes from the code review: the player no longer gets stuck on \"Buffering\" after a reconnect hiccup, a held OK button no longer rapidly toggles play/pause, and your movie resume point is now saved when you channel-surf or background the app (and never overwritten with 0 by a failed open).\n\u2022 Removing or refreshing a source now fully cleans up its leftover data (saved positions, stream headers), and crashed/leaked DVR cache folders are swept on startup.\n\u2022 Guide: fixed a double-Back that could exit the app from the channel rail, and the guide now shows an error state instead of a silent blank screen if it fails to load.\n\u2022 Mini-player is now hidden on TV/remote-only devices where it can't be controlled.\n\u2022 Plus more stability fixes across playback, database, and settings."
+  "latest": "3.0.2",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v3.0.2",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v3.0.2/Free4Me-IPTV-3.0.2-arm64.apk",
+  "releaseNotes": "\u2022 Internal reliability pass (code-review Wave 3): faster and safer EPG matching on very large sources, more accurate channel-to-guide matching, fewer wrong Cast buttons, retry prompts instead of silent empty category screens, and update downloads are now integrity-checked."
 }
