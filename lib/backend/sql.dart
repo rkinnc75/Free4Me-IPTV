@@ -2081,11 +2081,37 @@ class Sql {
     });
   }
 
+  // finding 63: does the source still have any rows of this media type? Used by
+  // the Xtream refresh to preserve existing rows on a transient empty fetch even
+  // when the recorded last_*_count is NULL/0 (which shouldRetryType gates on).
+  // Authoritative over the drift-prone last_*_count columns.
+  static Future<bool> sourceHasMediaType(int sourceId, MediaType t) async {
+    var db = await DbFactory.db;
+    final r = await db.getOptional(
+      'SELECT 1 FROM channels WHERE source_id = ? AND media_type = ? LIMIT 1',
+      [sourceId, t.index],
+    );
+    return r != null;
+  }
+
   static Future<void> deleteSource(int sourceId) async {
     // Clean up EPG data in epg.sqlite first (cross-file FK can't cascade).
     await deleteEpgForSource(sourceId);
     var db = await DbFactory.db;
     await db.writeTransaction((tx) async {
+      // finding 55: ON DELETE CASCADE on movie_positions/channel_http_headers is
+      // inert (PRAGMA foreign_keys is OFF), so delete the dependent rows
+      // explicitly BEFORE the channels DELETE while the subquery can still see
+      // the channel ids. rowids are reused after a wipe, so leaving these rows
+      // would misbind them to new channels.
+      await tx.execute(
+          "DELETE FROM movie_positions WHERE channel_id IN "
+          "(SELECT id FROM channels WHERE source_id = ?)",
+          [sourceId]);
+      await tx.execute(
+          "DELETE FROM channel_http_headers WHERE channel_id IN "
+          "(SELECT id FROM channels WHERE source_id = ?)",
+          [sourceId]);
       await tx.execute("DELETE FROM channels WHERE source_id = ?", [sourceId]);
       await tx.execute("DELETE FROM groups WHERE source_id = ?", [sourceId]);
       await tx.execute("DELETE FROM sources WHERE id = ?", [sourceId]);
@@ -2124,11 +2150,37 @@ class Sql {
       // wiping them. keepMediaTypes holds those media_type indices; their rows
       // (and groups used only by them) are left untouched.
       if (keepMediaTypes.isEmpty) {
+        // finding 55: cascades are inert (PRAGMA foreign_keys is OFF); delete
+        // dependent rows explicitly BEFORE channels, for exactly the channel
+        // ids about to be removed.
+        await tx.execute(
+            'DELETE FROM movie_positions WHERE channel_id IN '
+            '(SELECT id FROM channels WHERE source_id = ?)',
+            [sourceId]);
+        await tx.execute(
+            'DELETE FROM channel_http_headers WHERE channel_id IN '
+            '(SELECT id FROM channels WHERE source_id = ?)',
+            [sourceId]);
         await tx.execute(
             'DELETE FROM channels WHERE source_id = ?', [sourceId]);
         await tx.execute('DELETE FROM groups WHERE source_id = ?', [sourceId]);
       } else {
         final placeholders = List.filled(keepMediaTypes.length, '?').join(',');
+        // finding 55: mirror the channels predicate so dependents are deleted
+        // for exactly the channel ids about to be removed (media_type NOT IN
+        // the kept set), BEFORE the channels DELETE.
+        await tx.execute(
+          'DELETE FROM movie_positions WHERE channel_id IN '
+          '(SELECT id FROM channels WHERE source_id = ? '
+          ' AND media_type NOT IN ($placeholders))',
+          [sourceId, ...keepMediaTypes],
+        );
+        await tx.execute(
+          'DELETE FROM channel_http_headers WHERE channel_id IN '
+          '(SELECT id FROM channels WHERE source_id = ? '
+          ' AND media_type NOT IN ($placeholders))',
+          [sourceId, ...keepMediaTypes],
+        );
         await tx.execute(
           'DELETE FROM channels WHERE source_id = ? '
           'AND media_type NOT IN ($placeholders)',

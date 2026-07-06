@@ -223,6 +223,26 @@ Future<void> getXtream(
         failCount = XtreamRefreshLogic.reconcileFailCount(failCount);
       }
     }
+    // finding 63: shouldRetryType only fires when lastCount>0, so a type whose
+    // recorded last_*_count is NULL/0 never retries AND is never preserved — a
+    // transient empty fetch would then wipe its existing rows. Drive the
+    // keep/preserve decision off whether rows ACTUALLY exist in the DB, not off
+    // the possibly-stale last_*_count column, so NULL/0-lastCount sources are
+    // protected too. (This is independent of the retry above, which still helps
+    // recover the lastCount>0 case.)
+    if (source.id != null) {
+      Future<void> preserveIfEmptyButHasRows(int count, MediaType t) async {
+        if (count == 0 &&
+            !keepMediaTypes.contains(t.index) &&
+            await Sql.sourceHasMediaType(source.id!, t)) {
+          keepMediaTypes.add(t.index);
+        }
+      }
+
+      await preserveIfEmptyButHasRows(liveCount, MediaType.livestream);
+      await preserveIfEmptyButHasRows(movieCount, MediaType.movie);
+      await preserveIfEmptyButHasRows(seriesCount, MediaType.serie);
+    }
     if (keepMediaTypes.isNotEmpty) {
       AppLog.warn(
         'Xtream.fix321: preserving existing rows for media types '
@@ -359,7 +379,17 @@ List<T> processJsonList<T>(
   dynamic jsonData,
   T Function(Map<String, dynamic>) fromJson,
 ) {
-  if (jsonData is! List) return [];
+  // finding 65: an HTTP-200 non-array body (auth error object, HTML,
+  // {user_info:{auth:0}}) is a provider failure, NOT a legitimately empty
+  // content type. Log the shape and throw so the caller's catch increments
+  // failCount and the preserve/retry path runs. A genuine empty array ([])
+  // still returns [] below.
+  if (jsonData is! List) {
+    AppLog.warn('Xtream.processJsonList: expected a JSON array but got '
+        '${jsonData.runtimeType}'
+        '${jsonData is Map ? ' keys=${jsonData.keys.take(5).toList()}' : ''}');
+    throw const FormatException('Xtream response was not a JSON array');
+  }
   return jsonData
       .map((json) => fromJson(json as Map<String, dynamic>))
       .toList();
@@ -415,27 +445,8 @@ Future<dynamic> getXtreamHttpData(
   }
 }
 
-/// fix184/186: fetch the Xtream account's max_connections from user_info.
-/// Returns null on any failure (unknown → caller leaves the limit unset).
-Future<int?> fetchXtreamMaxConnections(Source source) async {
-  try {
-    // Empty action → base player_api.php auth call that returns user_info.
-    final data = await getXtreamHttpData('', source);
-    if (data is Map && data['user_info'] is Map) {
-      final raw = data['user_info']['max_connections'];
-      final n = raw is int ? raw : int.tryParse(raw?.toString() ?? '');
-      if (n != null && n > 0) {
-        AppLog.info(
-            'Xtream: source "${source.name}" max_connections=$n');
-        return n;
-      }
-    }
-  } catch (e) {
-    AppLog.warn(
-        'Xtream: max_connections fetch failed for "${source.name}" — $e');
-  }
-  return null;
-}
+// finding 67: the old max_connections-only probe was dead code (no callers) —
+// removed. max_connections is now pulled via fetchXtreamAccountInfo below.
 
 /// fix641: account info pulled from a single player_api.php user_info response
 /// — max_connections (fix184), plus exp_date + status. Each field is null when
@@ -494,7 +505,7 @@ bool isSourceExpired(Source source) {
 /// auth=1 but max_connections was missing or 0 (e.g. A3000/Media4u
 /// test users with limited permissions — their user_info reports
 /// auth=1 but max_connections=0, which the old
-/// fetchXtreamMaxConnections reported as null).
+/// max_connections-only probe reported as null).
 Future<bool> checkXtreamAuth(Source source) async {
   try {
     final data = await getXtreamHttpData('', source);

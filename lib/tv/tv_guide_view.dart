@@ -7,6 +7,7 @@ import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/epg_service.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
+import 'package:open_tv/confirm_exit_scope.dart'; // finding 70
 import 'package:open_tv/models/channel.dart';
 import 'package:open_tv/models/playback_playlist.dart';
 import 'package:open_tv/models/device_detector.dart';
@@ -524,6 +525,9 @@ class TvGuideViewState extends State<TvGuideView> {
       canPop: _railMode != RailMode.channels,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
+        // finding 70: tell the shell's ConfirmExitScope this Back was consumed
+        // here so it doesn't also arm the exit prompt on the same press.
+        ConfirmExitScope.notePopConsumed();
         _swapToCategories();
       },
       child: Column(

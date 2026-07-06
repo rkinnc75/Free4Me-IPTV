@@ -121,10 +121,10 @@ class _EditDialogState extends State<EditDialog> {
   }
 
   /// fix385/#16: run a cheap connection probe appropriate for the
-  /// source type. Xtream → fetchXtreamMaxConnections (calls
-  /// player_api.php?action= which returns user_info, no channel
-  /// fetch). M3U URL → HEAD on the URL, expect 2xx. M3U file →
-  /// just check the file path exists and is non-empty.
+  /// source type. Xtream → checkXtreamAuth (calls player_api.php?action=
+  /// which returns user_info, no channel fetch). M3U URL → HEAD on the
+  /// URL, expect 2xx. M3U file → just check the file path exists and is
+  /// non-empty.
   ///
   /// Returns null on success, or a human-readable error string.
   Future<String?> _testConnection() async {

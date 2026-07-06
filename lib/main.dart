@@ -17,6 +17,7 @@ import 'package:workmanager/workmanager.dart';
 import 'package:open_tv/home.dart';
 import 'package:open_tv/models/app_navigator.dart';
 import 'package:open_tv/models/custom_shortcut.dart';
+import 'package:open_tv/player/mpv_engine.dart'; // finding 100/101: DVR sweep
 import 'package:open_tv/player/overlay_player_widget.dart';
 import 'package:open_tv/models/device_detector.dart';
 import 'package:open_tv/models/filters.dart';
@@ -51,6 +52,11 @@ Future<void> main() async {
   AppLog.setSourceSecrets(await Sql.getSources());
   await DeviceMemory.init();
   final settings = await SettingsService.reload();
+
+  // finding 100/101: sweep orphaned per-engine DVR cache dirs left by a
+  // crash/power-cut mid-DVR. Safe at cold start — no engine in this process has
+  // created a live subdir yet. Unawaited, off the render path.
+  unawaited(MpvEngine.sweepOrphanedDvrDirs());
 
   // fix212: one-time boot reconcile of FTS triggers to the active search method.
   // The DB migration creates the triggers on every install, but they are only

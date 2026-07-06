@@ -14,6 +14,8 @@ import 'package:open_tv/memory.dart';
 import 'package:open_tv/models/channel.dart';
 import 'package:open_tv/models/playback_playlist.dart';
 import 'package:open_tv/error.dart';
+import 'package:open_tv/models/device_detector.dart'; // finding 107
+import 'package:open_tv/backend/utils.dart'; // finding 107
 import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/node.dart';
 import 'package:open_tv/models/node_type.dart';
@@ -359,6 +361,12 @@ class _ChannelTileState extends State<ChannelTile> {
     // tiles (favorite + category link), so the All view behaves like Live TV.
     // Mini-player and Remove-from-history remain livestream/history-only inside.
     if (widget.channel.mediaType != MediaType.group) {
+      // finding 107: TV/D-pad gate for the mini-player entry (controls are
+      // not focusable). Synchronous cache read (seeded at startup).
+      final cachedSettings = SettingsService.cached;
+      final isTvLike = (cachedSettings?.forceTVMode ?? false) ||
+          DeviceDetector.isTvCached == true ||
+          Utils.hasTouchScreenCached == false;
       await showModalBottomSheet<void>(
         context: context,
         builder: (ctx) {
@@ -431,7 +439,9 @@ class _ChannelTileState extends State<ChannelTile> {
                   },
                 ),
                 // fix309: mini-player only applies to live channels.
-                if (widget.channel.mediaType == MediaType.livestream)
+                // gated off on TV/D-pad — mini-player controls are not focusable
+                if (widget.channel.mediaType == MediaType.livestream &&
+                    !isTvLike)
                   ListTile(
                     leading: const Icon(Icons.picture_in_picture),
                     title: const Text('Watch in mini-player'),

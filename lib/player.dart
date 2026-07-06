@@ -1562,8 +1562,10 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
         if (_canSurf)
           _ovlButton(Icons.keyboard_arrow_down, 'Channel down', () => _surf(1)),
         _ovlButton(Icons.aspect_ratio_outlined, 'Aspect ratio', toggleZoom),
-        _ovlButton(
-            Icons.picture_in_picture, 'Mini-player', _minimizeToOverlay),
+        // finding 107: hide mini-player entry on TV/D-pad (controls not focusable)
+        if (!_tvMode)
+          _ovlButton(
+              Icons.picture_in_picture, 'Mini-player', _minimizeToOverlay),
       ],
     );
 
@@ -2222,8 +2224,10 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
         // audible copy. Reachable-from-a-tile single-cell playback is the
         // common case, but this gate can't distinguish it from a maximized
         // cell, so the button stays gated until that UX is designed (fix654).
+        // finding 107: also hide on TV/D-pad (mini-player controls not focusable)
         if (widget.channel.mediaType == MediaType.livestream &&
-            widget.settings.multiViewLayout == MultiViewLayout.none) ...[
+            widget.settings.multiViewLayout == MultiViewLayout.none &&
+            !_tvMode) ...[
           IconButton(
             onPressed: _minimizeToOverlay,
             icon: const Icon(

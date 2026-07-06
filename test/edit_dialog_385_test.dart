@@ -13,7 +13,7 @@
 //   - #11 URL field has a real URL-shape validator
 //        (was: required-only).
 //   - #16 A "Test connection" button is present, dispatches per
-//        source type (Xtream → fetchXtreamMaxConnections,
+//        source type (Xtream → checkXtreamAuth,
 //        M3U URL → HttpClient.headUrl, M3U file → File.existsSync).
 //   - #21 Title truncates the source name with ellipsis
 //        (was: unbounded, could overflow the dialog title on TV).
@@ -21,9 +21,9 @@
 // All checks below are grep-based on lib/edit_dialog.dart because
 // the gated logic lives inside _EditDialogState, which is not
 // directly constructable from a widget test without mounting the
-// full dialog (which transitively pulls in SQL via
-// fetchXtreamMaxConnections + the FormBuilderTextField keyboard
-// platform channels). The grep is the cheapest reliable signal.
+// full dialog (which transitively pulls in SQL via checkXtreamAuth
+// + the FormBuilderTextField keyboard platform channels). The grep
+// is the cheapest reliable signal.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'dart:io';
@@ -150,11 +150,14 @@ void main() {
       final hasButton = content.contains('Test connection');
       expect(hasButton, isTrue,
           reason: 'Test connection button must be in the form (fix385 #16).');
-      final handlesXtream = content.contains('fetchXtreamMaxConnections');
+      // finding 67: assert the ACTUAL probe path. The dead
+      // max_connections-only probe was removed; the Xtream probe now calls
+      // checkXtreamAuth (edit_dialog.dart _testConnection).
+      final handlesXtream = content.contains('checkXtreamAuth');
       final handlesM3uUrl = content.contains('headUrl');
       final handlesM3u = content.contains('File(path).existsSync()');
       expect(handlesXtream, isTrue,
-          reason: 'Xtream probe must call fetchXtreamMaxConnections (fix385 #16).');
+          reason: 'Xtream probe must call checkXtreamAuth (fix385 #16).');
       expect(handlesM3uUrl, isTrue,
           reason: 'M3U URL probe must use HttpClient.headUrl (fix385 #16).');
       expect(handlesM3u, isTrue,

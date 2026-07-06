@@ -38,6 +38,17 @@ void main() {
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           name TEXT, source_id INTEGER, enabled INTEGER
         )''');
+      // finding 55: wipeSource now explicitly deletes dependent rows (cascades
+      // are inert — PRAGMA foreign_keys is OFF), so the test schema must carry
+      // these tables like the real migration does.
+      await db.execute('''
+        CREATE TABLE movie_positions (
+          channel_id INTEGER, position INTEGER
+        )''');
+      await db.execute('''
+        CREATE TABLE channel_http_headers (
+          channel_id INTEGER
+        )''');
       // Source 7: live group (id 1, disabled), vod group (id 2), and a
       // NULL-name disabled group (id 3, the fix320 case). Source 9: untouched.
       await db.execute(

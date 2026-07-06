@@ -1159,6 +1159,28 @@ class MpvEngine implements PlayerEngine {
   /// Conservative size estimate: ~8 Mbps live ≈ 60 MiB per minute.
   static const int _dvrEstMBPerMin = 60;
 
+  // finding 100/101: orphan sweep — a crash/power-cut mid-DVR otherwise strands
+  // the disk cache (up to ~5.4 GB). Per-engine _cleanupDvrDir (fix363) only runs
+  // in this engine's dispose(), so a hard kill leaks the subdir forever.
+  /// Delete every stale per-engine DVR subdir under {tmp}/free4me_dvr. Any dir
+  /// present at app startup belongs to a dead engine (subdirs are named by
+  /// identityHashCode and only live while their engine is alive in THIS
+  /// process; there is no cross-process concurrency for this app), so at boot
+  /// they are all dead — do NOT try to distinguish live vs dead by name.
+  static Future<void> sweepOrphanedDvrDirs() async {
+    try {
+      final tmp = await getTemporaryDirectory();
+      final root = Directory('${tmp.path}/free4me_dvr');
+      if (!await root.exists()) return;
+      await for (final e in root.list(followLinks: false)) {
+        try {
+          await e.delete(recursive: true);
+        } catch (_) {}
+      }
+      AppLog.info('MpvEngine: swept orphaned DVR cache dirs');
+    } catch (_) {}
+  }
+
   /// Resolve the DVR window in MiB: the configured minutes, capped so the
   /// recording stops 5 minutes short of what free disk can hold. Returns 0
   /// (DVR disabled) when less than 5 minutes would fit or sizing fails.

@@ -26,6 +26,19 @@ class ConfirmExitScope extends StatefulWidget {
     this.window = const Duration(seconds: 2),
   });
 
+  // finding 70: a nested PopScope (e.g. the TV guide rail) that consumes a
+  // blocked Back within the same frame calls [notePopConsumed] so this scope's
+  // callback — which Flutter also fires for that one Back — skips arming the
+  // exit prompt. The post-frame callback clears the flag so a genuine root Back
+  // still arms normally on the next press.
+  static bool _popConsumedThisFrame = false;
+
+  static void notePopConsumed() {
+    _popConsumedThisFrame = true;
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _popConsumedThisFrame = false);
+  }
+
   @override
   State<ConfirmExitScope> createState() => _ConfirmExitScopeState();
 }
@@ -55,6 +68,9 @@ class _ConfirmExitScopeState extends State<ConfirmExitScope> {
       canPop: !blocking,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
+        // finding 70: a nested PopScope already handled this Back this frame —
+        // don't arm the exit prompt or show the hint.
+        if (ConfirmExitScope._popConsumedThisFrame) return;
         // We just blocked an exit-Back: arm the second press + show the hint,
         // then auto-disarm after the window so a later lone Back re-prompts.
         _timer?.cancel();
