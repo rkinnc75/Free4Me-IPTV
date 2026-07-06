@@ -6,6 +6,30 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '3.0.0': [
+    'Reliability: an M3U refresh that fails, times out, or returns an error '
+        'page no longer wipes your channel list — the existing catalog + '
+        'favorites are kept, and the refresh is only applied once a valid '
+        'playlist has been downloaded.',
+    'EPG: a stalled or partial guide download is no longer treated as a '
+        'complete refresh (your existing programme data is kept), the guide '
+        'index is now rebuilt once per refresh instead of once per source '
+        '(faster multi-source refreshes), and one failing source no longer '
+        'aborts the guide refresh for the rest.',
+    'EPG: fixed a case where the guide could re-download every hour even '
+        'though nothing had changed.',
+    'Security: exports and diagnostic bundles no longer include provider '
+        'credentials that were embedded in a playlist/EPG URL, and debug-log '
+        'credential masking now also covers URL-encoded and query-string '
+        'forms.',
+    'Settings: pressing Back during an EPG refresh, re-match, export, or '
+        'issue-report no longer aborts the operation or bounces you out of '
+        'Settings; "Optimise" / "Reset" no longer silently turn off Safe Mode '
+        'or reset your search method; and more preferences now survive a '
+        'backup/restore.',
+    'Plus a batch of smaller stability and correctness fixes from a full '
+        'code review.',
+  ],
   '2.2.54': [
     'Storage: exported files (Backup & Restore, and the Diagnostics QR/LAN '
         'export) are now gzip-compressed at maximum level, shrinking large '

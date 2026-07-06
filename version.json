@@ -1,6 +1,6 @@
 {
-  "latest": "2.2.54",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v2.2.54",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v2.2.54/Free4Me-IPTV-2.2.54-arm64.apk",
-  "releaseNotes": "\u2022 Storage: exported files (Backup & Restore, and the Diagnostics QR/LAN export) are now gzip-compressed at maximum level, shrinking large diagnostic bundles (database snapshots, raw source dumps) considerably and reducing the on-device disk headroom an export needs while it runs."
+  "latest": "3.0.0",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v3.0.0",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v3.0.0/Free4Me-IPTV-3.0.0-arm64.apk",
+  "releaseNotes": "\u2022 Reliability: an M3U refresh that fails, times out, or returns an error page no longer wipes your channel list \u2014 the existing catalog + favorites are kept, and the refresh is only applied once a valid playlist has been downloaded.\n\u2022 EPG: a stalled or partial guide download is no longer treated as a complete refresh (your existing programme data is kept), the guide index is now rebuilt once per refresh instead of once per source (faster multi-source refreshes), and one failing source no longer aborts the guide refresh for the rest.\n\u2022 EPG: fixed a case where the guide could re-download every hour even though nothing had changed.\n\u2022 Security: exports and diagnostic bundles no longer include provider credentials that were embedded in a playlist/EPG URL, and debug-log credential masking now also covers URL-encoded and query-string forms.\n\u2022 Settings: pressing Back during an EPG refresh, re-match, export, or issue-report no longer aborts the operation or bounces you out of Settings; \"Optimise\" / \"Reset\" no longer silently turn off Safe Mode or reset your search method; and more preferences now survive a backup/restore.\n\u2022 Plus a batch of smaller stability and correctness fixes from a full code review."
 }
