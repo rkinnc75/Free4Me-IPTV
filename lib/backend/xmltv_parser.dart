@@ -66,10 +66,15 @@ class XmltvParser {
       timeout: const Duration(seconds: 60),
     );
     if (response == null) {
+      // finding 49: log/throw the host only, never the credentialed $url — the
+      // thrown message is persisted verbatim into the epg_refresh_log error
+      // column, which AppLogger does NOT scrub.
+      final host = _hostOnly(url);
       AppLog.error(
-        'XMLTV: connection failed (timeout / DNS / refused) — $url',
+        'XMLTV: connection failed (timeout / DNS / refused) — host=$host',
       );
-      throw Exception('Failed to fetch EPG feed (connection failed): $url');
+      throw Exception(
+          'Failed to fetch EPG feed (connection failed): host=$host');
     }
     AppLog.info(
       'XMLTV: HTTP ${response.statusCode}, '
@@ -78,7 +83,7 @@ class XmltvParser {
     );
     if (response.statusCode != 200) {
       throw Exception(
-        'EPG feed returned HTTP ${response.statusCode}: $url',
+        'EPG feed returned HTTP ${response.statusCode}: host=${_hostOnly(url)}',
       );
     }
     onProgress?.call(
@@ -140,7 +145,10 @@ class XmltvParser {
     // XmlEventDecoder (xml ^6) emits List<XmlEvent> per chunk; expand to
     // get individual events.
     final eventStream = byteStream
-        .transform(utf8.decoder)
+        // finding 50: lenient decode — a stray non-UTF-8 byte (ISO-8859-1 /
+        // windows-1251 European feeds) yields U+FFFD instead of throwing and
+        // killing the entire refresh.
+        .transform(const Utf8Decoder(allowMalformed: true))
         .transform(XmlEventDecoder())
         .expand((list) => list);
 
@@ -188,7 +196,13 @@ class XmltvParser {
             final p = prog;
             prog = null;
             if (p != null && p.title != null) {
-              if (p.startUtc >= windowStartEpoch &&
+              // finding 51: interval-overlap (not start-only) so a programme
+              // airing right now — started before windowStart, ends after it —
+              // is kept. Mirrors deleteStalePrograms (keeps stop_utc >=
+              // windowStart); without this, Past-days=0 dropped every
+              // currently-airing programme → isStale() always true → hourly
+              // re-download loop.
+              if (p.stopUtc > windowStartEpoch &&
                   p.startUtc <= windowEndEpoch) {
                 batch.add(p.build());
                 if (batch.length >= batchSize) await flushBatch();
@@ -268,6 +282,15 @@ class XmltvParser {
       },
       cancelOnError: false,
     );
+    // findings 47/48: propagate backpressure + cancellation to the upstream
+    // HTTP subscription. Without this, the consumer pausing during each DB
+    // flushBatch never stops the socket read (whole body buffers in RAM → OOM
+    // on 2GB boxes), and a downstream parse error/cancel leaves the socket
+    // pumping into an abandoned controller. Assigned AFTER `sub = source.listen`
+    // so the closures capture the now-assigned `sub`.
+    controller.onPause = sub.pause;
+    controller.onResume = sub.resume;
+    controller.onCancel = () async => sub.cancel();
 
     return completer.future;
   }
@@ -279,6 +302,17 @@ class XmltvParser {
     return null;
   }
 
+  /// finding 49: bare host for error messages so a credentialed URL never
+  /// lands in a thrown/persisted string.
+  static String _hostOnly(String url) {
+    try {
+      final h = Uri.parse(url).host;
+      return h.isEmpty ? '<url>' : h;
+    } catch (_) {
+      return '<url>';
+    }
+  }
+
   /// Parses XMLTV timestamp `YYYYMMDDHHmmss +HHMM` → Unix epoch seconds (UTC).
   static int _parseXmltvTime(String s) {
     final trimmed = s.trim();
@@ -287,23 +321,37 @@ class XmltvParser {
     final dt = spaceIdx > 0 ? trimmed.substring(0, spaceIdx) : trimmed;
     final tz = spaceIdx > 0 ? trimmed.substring(spaceIdx + 1).trim() : '+0000';
 
-    if (dt.length < 14) return 0;
+    // finding 52: XMLTV allows right-truncated date-times; pad missing
+    // lower-order fields to their MINIMUM (month/day=01, time=00) rather than
+    // zeroing the whole timestamp (which silently dropped whole feeds whose
+    // programmes then all failed the window filter).
+    const tmpl = '00000101000000'; // YYYY MM DD HH mm ss minimums
+    var d = dt;
+    if (d.length < 14) {
+      if (d.length < 4) return 0; // no usable year → unparseable
+      d = d + tmpl.substring(d.length);
+    } else if (d.length > 14) {
+      d = d.substring(0, 14);
+    }
 
-    final year = int.tryParse(dt.substring(0, 4)) ?? 0;
-    final month = int.tryParse(dt.substring(4, 6)) ?? 1;
-    final day = int.tryParse(dt.substring(6, 8)) ?? 1;
-    final hour = int.tryParse(dt.substring(8, 10)) ?? 0;
-    final min = int.tryParse(dt.substring(10, 12)) ?? 0;
-    final sec = int.tryParse(dt.substring(12, 14)) ?? 0;
+    final year = int.tryParse(d.substring(0, 4)) ?? 0;
+    final month = int.tryParse(d.substring(4, 6)) ?? 1;
+    final day = int.tryParse(d.substring(6, 8)) ?? 1;
+    final hour = int.tryParse(d.substring(8, 10)) ?? 0;
+    final min = int.tryParse(d.substring(10, 12)) ?? 0;
+    final sec = int.tryParse(d.substring(12, 14)) ?? 0;
 
     final utcDt = DateTime.utc(year, month, day, hour, min, sec);
     int epochSecs = utcDt.millisecondsSinceEpoch ~/ 1000;
 
-    // Adjust for timezone offset (e.g. "+0500" means 5 hours ahead of UTC)
-    if (tz.length >= 5) {
-      final sign = tz[0] == '-' ? 1 : -1; // subtract east offset to get UTC
-      final tzH = int.tryParse(tz.substring(1, 3)) ?? 0;
-      final tzM = int.tryParse(tz.substring(3, 5)) ?? 0;
+    // Adjust for timezone offset (e.g. "+0500" means 5 hours ahead of UTC).
+    // finding 53: tolerate colon-form offsets like "+05:30" by stripping the
+    // colon before slicing HH/MM; a missing offset already defaulted to UTC.
+    final tzClean = tz.replaceAll(':', '');
+    if (tzClean.length >= 5) {
+      final sign = tzClean[0] == '-' ? 1 : -1; // subtract east offset for UTC
+      final tzH = int.tryParse(tzClean.substring(1, 3)) ?? 0;
+      final tzM = int.tryParse(tzClean.substring(3, 5)) ?? 0;
       epochSecs += sign * (tzH * 3600 + tzM * 60);
     }
 
