@@ -1,6 +1,6 @@
 {
-  "latest": "3.0.8",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v3.0.8",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v3.0.8/Free4Me-IPTV-3.0.8-arm64.apk",
-  "releaseNotes": "\u2022 New: optional DNS-over-HTTPS resolver (Settings \\u2192 DNS resolver). If your internet provider blocks your IPTV provider at the DNS level so logins or refreshes fail, pick Cloudflare, Google, NextDNS, or Quad9 to route around it. Off by default; falls back to system DNS automatically if a resolver is unreachable. Affects app data (login/guide/catch-up/updates), not video playback."
+  "latest": "3.0.9",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v3.0.9",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v3.0.9/Free4Me-IPTV-3.0.9-arm64.apk",
+  "releaseNotes": "\u2022 Android TV: optionally show your favorite channels as a row on the TV home screen (Settings \\u2192 Show favorites on TV home screen). Cards are ordered most-recently-watched first, you choose how many (1\\u201320), and tapping one opens that channel directly. Off by default; TV only."
 }
