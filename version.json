@@ -1,6 +1,6 @@
 {
-  "latest": "3.0.2",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v3.0.2",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v3.0.2/Free4Me-IPTV-3.0.2-arm64.apk",
-  "releaseNotes": "\u2022 Internal reliability pass (code-review Wave 3): faster and safer EPG matching on very large sources, more accurate channel-to-guide matching, fewer wrong Cast buttons, retry prompts instead of silent empty category screens, and update downloads are now integrity-checked."
+  "latest": "3.0.3",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v3.0.3",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v3.0.3/Free4Me-IPTV-3.0.3-arm64.apk",
+  "releaseNotes": "\u2022 Internal cleanup (code-review Wave 4): removed unused code and dependencies, hardened a few edge cases (invalid-URL rejection on submit, safer EPG gzip validation, remote transport keys), and made the What\\u2019s New dialog remember dismissal however you close it."
 }
