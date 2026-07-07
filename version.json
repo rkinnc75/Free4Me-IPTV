@@ -1,6 +1,6 @@
 {
-  "latest": "3.0.10",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v3.0.10",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v3.0.10/Free4Me-IPTV-3.0.10-arm64.apk",
-  "releaseNotes": "\u2022 Critical fix: restores all app network requests over HTTPS. A change in 3.0.8 broke secure connections, so update checks, provider login/refresh, EPG guide downloads, and playlist imports were failing silently on 3.0.8\u20133.0.9. They work again.\n\u2022 The DNS-over-HTTPS resolver added in 3.0.8 is temporarily disabled while it is reworked (it was the cause of the HTTPS breakage). Your other network features are unaffected."
+  "latest": "3.0.11",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v3.0.11",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v3.0.11/Free4Me-IPTV-3.0.11-arm64.apk",
+  "releaseNotes": "\u2022 Groundwork for scheduled recordings (DVR): the app can now store and schedule recordings with configurable start/end padding (default 1 min before and after, per-recording overridable \\u2014 e.g. 90 min after for a live event that runs long). Recording capture and the scheduling UI arrive in the next updates."
 }
