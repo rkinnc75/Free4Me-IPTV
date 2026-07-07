@@ -1,6 +1,6 @@
 {
-  "latest": "3.0.3",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v3.0.3",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v3.0.3/Free4Me-IPTV-3.0.3-arm64.apk",
-  "releaseNotes": "\u2022 Internal cleanup (code-review Wave 4): removed unused code and dependencies, hardened a few edge cases (invalid-URL rejection on submit, safer EPG gzip validation, remote transport keys), and made the What\\u2019s New dialog remember dismissal however you close it."
+  "latest": "3.0.4",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v3.0.4",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v3.0.4/Free4Me-IPTV-3.0.4-arm64.apk",
+  "releaseNotes": "\u2022 Fixed heavy buffering on the first stream played after app launch on phones: the screen now rotates to landscape before the stream opens, so the video decoder starts against the final surface instead of restarting mid-stream."
 }
