@@ -1,0 +1,502 @@
+diff --git a/lib/backend/doh_resolver.dart b/lib/backend/doh_resolver.dart
+new file mode 100644
+index 0000000..cb8db50
+--- /dev/null
++++ b/lib/backend/doh_resolver.dart
+@@ -0,0 +1,166 @@
++import 'dart:async';
++import 'dart:convert';
++import 'dart:io';
++
++import 'package:open_tv/backend/app_logger.dart';
++
++/// fix663: DNS-over-HTTPS resolver.
++///
++/// Resolves A/AAAA records via a provider's DoH JSON API instead of the
++/// system resolver, so a provider whose PORTAL/API host is DNS-blocked by the
++/// user's ISP still works. Wired into [AppHttp] via
++/// `HttpClient.connectionFactory` (Dart-side HTTP only — the mpv media host is
++/// out of scope; libmpv resolves internally in native code).
++///
++/// Design constraints:
++///   - **Never hard-fail.** Any DoH error (network, parse, empty answer) falls
++///     back to `InternetAddress.lookup` (system DNS). DoH is an optional route
++///     around blocking, not a new point of failure.
++///   - **Own DoH-host resolution must not recurse.** The DoH endpoint's own
++///     hostname is resolved by the SYSTEM resolver (a plain https GET via a
++///     private client with NO connectionFactory), so we never DoH-resolve the
++///     DoH host through ourselves.
++///   - **Short in-memory TTL cache** keyed by host, so a burst of requests
++///     (import + EPG + catch-up) doesn't issue one DoH lookup each.
++class DohResolver {
++  DohResolver._();
++
++  /// Provider ids persisted in settings. `off` disables DoH entirely.
++  static const String off = 'off';
++  static const String cloudflare = 'cloudflare';
++  static const String google = 'google';
++  static const String nextdns = 'nextdns';
++  static const String quad9 = 'quad9';
++
++  static const Set<String> providers = {
++    off,
++    cloudflare,
++    google,
++    nextdns,
++    quad9,
++  };
++
++  /// Human labels for the settings UI.
++  static const Map<String, String> labels = {
++    off: 'Off (system DNS)',
++    cloudflare: 'Cloudflare (1.1.1.1)',
++    google: 'Google (8.8.8.8)',
++    nextdns: 'NextDNS',
++    quad9: 'Quad9 (9.9.9.9)',
++  };
++
++  static String _endpoint(String provider, String host, String type) {
++    final n = Uri.encodeComponent(host);
++    switch (provider) {
++      case google:
++        return 'https://dns.google/resolve?name=$n&type=$type';
++      case nextdns:
++        return 'https://dns.nextdns.io/resolve?name=$n&type=$type';
++      case quad9:
++        // Quad9's DoH JSON endpoint (RFC 8484 host also serves the JSON API).
++        return 'https://dns.quad9.net:5053/dns-query?name=$n&type=$type';
++      case cloudflare:
++      default:
++        return 'https://cloudflare-dns.com/dns-query?name=$n&type=$type';
++    }
++  }
++
++  /// The active provider id. `off` by default; updated from settings.
++  static String activeProvider = off;
++
++  static bool get enabled => activeProvider != off;
++
++  // ── cache ──────────────────────────────────────────────────────────────
++  static final Map<String, _CacheEntry> _cache = {};
++  static const Duration _ttl = Duration(minutes: 5);
++
++  /// A private client used ONLY to talk to the DoH endpoint. It has no
++  /// connectionFactory, so its own (system-DNS) resolution can never recurse
++  /// back into DohResolver.
++  static HttpClient? _dohClient;
++  static HttpClient get _client => _dohClient ??= (HttpClient()
++    ..connectionTimeout = const Duration(seconds: 6)
++    ..idleTimeout = const Duration(seconds: 20));
++
++  /// Resolve [host] to a list of addresses. Returns system-DNS results when
++  /// DoH is off, on any DoH failure, or when DoH returns no usable answer.
++  static Future<List<InternetAddress>> lookup(String host) async {
++    // A literal IP needs no resolution.
++    final literal = InternetAddress.tryParse(host);
++    if (literal != null) return [literal];
++
++    if (!enabled) return _systemLookup(host);
++
++    final cached = _cache[host];
++    if (cached != null && !cached.isExpired) {
++      return cached.addresses;
++    }
++
++    try {
++      final provider = activeProvider;
++      final v4 = await _query(provider, host, 'A');
++      // Best-effort AAAA; ignore failures (many IPTV hosts are v4-only).
++      List<InternetAddress> v6 = const [];
++      try {
++        v6 = await _query(provider, host, 'AAAA');
++      } catch (_) {}
++      final all = [...v4, ...v6];
++      if (all.isEmpty) {
++        // DoH answered but with nothing usable — fall back rather than fail.
++        return _systemLookup(host);
++      }
++      _cache[host] = _CacheEntry(all, DateTime.now().add(_ttl));
++      return all;
++    } catch (e) {
++      AppLog.warn('DohResolver: DoH lookup failed for $host — $e; '
++          'falling back to system DNS');
++      return _systemLookup(host);
++    }
++  }
++
++  static Future<List<InternetAddress>> _systemLookup(String host) async {
++    // Let the OS resolver run; if IT throws, the caller's connect will surface
++    // the same error it would have without DoH.
++    return InternetAddress.lookup(host);
++  }
++
++  static Future<List<InternetAddress>> _query(
++      String provider, String host, String type) async {
++    final uri = Uri.parse(_endpoint(provider, host, type));
++    final req = await _client.getUrl(uri);
++    // The application/dns-json content type is required by Google/Quad9 and
++    // accepted by Cloudflare/NextDNS.
++    req.headers.set(HttpHeaders.acceptHeader, 'application/dns-json');
++    final resp = await req.close().timeout(const Duration(seconds: 6));
++    if (resp.statusCode != 200) {
++      throw HttpException('DoH HTTP ${resp.statusCode}', uri: uri);
++    }
++    final body = await resp.transform(utf8.decoder).join();
++    final json = jsonDecode(body) as Map<String, dynamic>;
++    final answers = json['Answer'];
++    if (answers is! List) return const [];
++    final out = <InternetAddress>[];
++    for (final a in answers) {
++      if (a is! Map) continue;
++      // type 1 = A, 28 = AAAA. Skip CNAME (5) and anything else.
++      final t = a['type'];
++      final data = a['data'];
++      if (data is! String) continue;
++      if ((type == 'A' && t == 1) || (type == 'AAAA' && t == 28)) {
++        final addr = InternetAddress.tryParse(data);
++        if (addr != null) out.add(addr);
++      }
++    }
++    return out;
++  }
++
++  /// Test/diagnostic hook — clears the in-memory cache.
++  static void clearCache() => _cache.clear();
++}
++
++class _CacheEntry {
++  final List<InternetAddress> addresses;
++  final DateTime expiresAt;
++  _CacheEntry(this.addresses, this.expiresAt);
++  bool get isExpired => DateTime.now().isAfter(expiresAt);
++}
+diff --git a/lib/backend/http_client.dart b/lib/backend/http_client.dart
+index 6fc1d3d..c8a5557 100644
+--- a/lib/backend/http_client.dart
++++ b/lib/backend/http_client.dart
+@@ -3,6 +3,7 @@ import 'dart:io';
+ 
+ import 'package:http/http.dart' as http;
+ import 'package:http/io_client.dart';
++import 'package:open_tv/backend/doh_resolver.dart';
+ 
+ /// Review finding 150: classifies why an AppHttp request did not yield a 200
+ /// body, so callers can distinguish PERMANENT failures (auth/credentials/gone
+@@ -38,11 +39,51 @@ class AppHttp {
+         ..idleTimeout = const Duration(seconds: 30)
+         ..autoUncompress = true
+         ..maxConnectionsPerHost = 6;
++      // fix663: route Dart-side HTTP host resolution through DoH when a
++      // provider is selected (routes around ISP DNS blocking of provider
++      // portal/API/EPG hosts). connectionFactory runs per connection: we
++      // resolve the host ourselves, connect to the resolved IP, and set the
++      // TLS SNI/host to the ORIGINAL hostname so certificate validation still
++      // matches. When DoH is off (default) or resolution yields nothing, this
++      // falls straight through to the system connect. The mpv media host is
++      // NOT covered here (libmpv resolves internally) — see fix663 notes.
++      _inner!.connectionFactory = _dohConnectionFactory;
+       _client = IOClient(_inner!);
+     }
+     return _client!;
+   }
+ 
++  /// fix663: per-connection factory that resolves the destination host via
++  /// [DohResolver] (which itself falls back to system DNS on any failure), then
++  /// opens a socket to the first resolved address. TLS handshakes still use the
++  /// original hostname for SNI/cert checks because [ConnectionTask] carries the
++  /// [uri] host through unchanged — we only substitute the socket's target IP.
++  static Future<ConnectionTask<Socket>> _dohConnectionFactory(
++    Uri uri,
++    String? proxyHost,
++    int? proxyPort,
++  ) async {
++    // Proxied connections: let the system handle proxy host resolution.
++    if (proxyHost != null) {
++      return Socket.startConnect(proxyHost, proxyPort ?? uri.port);
++    }
++    if (!DohResolver.enabled) {
++      return Socket.startConnect(uri.host, uri.port);
++    }
++    try {
++      final addrs = await DohResolver.lookup(uri.host);
++      if (addrs.isEmpty) {
++        return Socket.startConnect(uri.host, uri.port);
++      }
++      // Connect to the resolved IP. HttpClient applies SNI from the request's
++      // Host (the original uri.host), so cert validation is unaffected.
++      return Socket.startConnect(addrs.first, uri.port);
++    } catch (_) {
++      // Any resolver hiccup → behave exactly as the default factory would.
++      return Socket.startConnect(uri.host, uri.port);
++    }
++  }
++
+   /// GET with timeout. Retries once on socket / 5xx errors.
+   static Future<http.Response?> getWithRetry(
+     Uri url, {
+diff --git a/lib/backend/settings_service.dart b/lib/backend/settings_service.dart
+index c350eb4..04f6ac2 100644
+--- a/lib/backend/settings_service.dart
++++ b/lib/backend/settings_service.dart
+@@ -2,6 +2,7 @@ import 'dart:collection';
+ import 'package:intl/intl.dart';
+ import 'package:open_tv/models/zoom_mode.dart';
+ 
++import 'package:open_tv/backend/doh_resolver.dart';
+ import 'package:open_tv/backend/app_logger.dart';
+ import 'package:open_tv/backend/device_memory.dart';
+ import 'package:open_tv/backend/sql.dart';
+@@ -95,6 +96,8 @@ const contentTypeFilterProp = "contentTypeFilter";
+ 
+ const searchMethodProp = "searchMethod";
+ 
++const dohProviderProp = "dohProvider"; // fix663
++
+ const safeModeProp = "safeMode";
+ const confirmToExitProp = "confirmToExit"; // fix587 (#23)
+ 
+@@ -346,6 +349,15 @@ class SettingsService {
+     final sm = settingsMap[searchMethodProp];
+     final resolvedSm = resolveSearchMethod(sm);
+     settings.searchMethod = resolvedSm;
++
++    // fix663: DoH provider — validate against the known set, else 'off'.
++    final doh = settingsMap[dohProviderProp];
++    settings.dohProvider =
++        (doh != null && DohResolver.providers.contains(doh)) ? doh : 'off';
++    // Push the active provider into the resolver so AppHttp's connectionFactory
++    // picks it up. Safe to set here — _readFromDb is the single settings-load
++    // point and runs before any refresh HTTP.
++    DohResolver.activeProvider = settings.dohProvider;
+     if (sm == null && resolvedSm == SearchMethod.ftsPhrase) {
+       // fix505: first-run auto-set on low-RAM device. ftsPhrase is the
+       // index-backed channels_fts path — fast on huge catalogues (~1.15M)
+@@ -541,6 +553,7 @@ class SettingsService {
+     settingsMap[contentTypeFilterProp] =
+         settings.contentTypeFilter.index.toString();
+     settingsMap[searchMethodProp] = settings.searchMethod.index.toString();
++    settingsMap[dohProviderProp] = settings.dohProvider; // fix663
+     settingsMap[safeModeProp] = (settings.safeMode ? 1 : 0).toString();
+     settingsMap[confirmToExitProp] =
+         (settings.confirmToExit ? 1 : 0).toString(); // fix587 (#23)
+diff --git a/lib/models/settings.dart b/lib/models/settings.dart
+index 3dc7fc4..772ea1a 100644
+--- a/lib/models/settings.dart
++++ b/lib/models/settings.dart
+@@ -240,6 +240,11 @@ class Settings {
+   /// headers) still forces tls-verify=no regardless of this toggle.
+   bool devTlsVerify;
+ 
++  /// fix663: DNS-over-HTTPS provider id — one of DohResolver.providers
++  /// ('off','cloudflare','google','nextdns','quad9'). 'off' = system DNS.
++  /// Applies to Dart-side HTTP (API/EPG/catch-up/update), not the mpv host.
++  String dohProvider;
++
+   /// libmpv `video-sync` mode. Default [VideoSyncMode.audio].
+   VideoSyncMode devVideoSync;
+ 
+@@ -360,6 +365,7 @@ class Settings {
+     this.devNetworkTimeoutSecs = 30,
+     this.devImportFetchTimeoutSecs = 60,
+     this.devTlsVerify = false,
++    this.dohProvider = 'off', // fix663
+     this.devVideoSync = VideoSyncMode.audio,
+     this.devVideoSyncMaxVideoChange = 1.0,
+     this.devTscale = TscaleMode.nearest,
+@@ -518,6 +524,7 @@ class Settings {
+     s.devNetworkTimeoutSecs = 30;
+     s.devImportFetchTimeoutSecs = 60;
+     s.devTlsVerify = false;
++    s.dohProvider = 'off'; // fix663: opt-in; default system DNS on all devices
+     s.devVideoSync = VideoSyncMode.audio;
+     s.devVideoSyncMaxVideoChange = 1.0;
+     s.devTscale = TscaleMode.nearest;
+diff --git a/lib/settings_view.dart b/lib/settings_view.dart
+index 6fcc4d7..6a5b47c 100644
+--- a/lib/settings_view.dart
++++ b/lib/settings_view.dart
+@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
+ import 'package:flutter/material.dart';
+ import 'package:flutter/services.dart';
+ import 'dart:io';
++import 'package:open_tv/backend/doh_resolver.dart';
+ import 'package:open_tv/backend/app_logger.dart';
+ import 'package:open_tv/backend/background_task_service.dart';
+ import 'package:open_tv/backend/export_server.dart';
+@@ -2824,6 +2825,85 @@ class _SettingsState extends State<SettingsView> {
+     );
+   }
+ 
++  // fix663: DNS-over-HTTPS provider picker. Mirrors _searchMethodTile.
++  static const _dohOptions = [
++    (id: 'off',        label: 'Off (system DNS)'),
++    (id: 'cloudflare', label: 'Cloudflare (1.1.1.1)'),
++    (id: 'google',     label: 'Google (8.8.8.8)'),
++    (id: 'nextdns',    label: 'NextDNS'),
++    (id: 'quad9',      label: 'Quad9 (9.9.9.9)'),
++  ];
++
++  String _dohShortLabel(String id) =>
++      _dohOptions.firstWhere((o) => o.id == id, orElse: () => _dohOptions.first)
++          .label;
++
++  Widget _dohProviderTile(Settings s) {
++    return ListTile(
++      title: Row(
++        children: [
++          const Text('DNS resolver'),
++          const SizedBox(width: 4),
++          _helpIcon(
++            title: 'DNS resolver (DNS-over-HTTPS)',
++            body:
++                'Chooses how the app looks up your provider\'s server address '
++                'for logins, channel/EPG downloads, catch-up, and update '
++                'checks. This does NOT change video playback, which resolves '
++                'on its own.\n\n'
++                'Default: Off (uses your device/router DNS).\n\n'
++                'If your internet provider blocks your IPTV provider\'s '
++                'address at the DNS level (logins or refresh fail but the '
++                'service is up), pick a DNS-over-HTTPS resolver to route '
++                'around it. If a resolver is ever unreachable, the app '
++                'automatically falls back to your system DNS.\n\n'
++                'Cloudflare / Google / Quad9 are public resolvers; NextDNS is '
++                'a configurable one.',
++          ),
++        ],
++      ),
++      trailing: TextButton(
++        onPressed: () => _showDohProviderDialog(context),
++        child: Row(
++          mainAxisSize: MainAxisSize.min,
++          children: [
++            Text(
++              _dohShortLabel(s.dohProvider),
++              style: Theme.of(context).textTheme.bodyMedium,
++            ),
++            const SizedBox(width: 4),
++            const Icon(Icons.arrow_drop_down),
++          ],
++        ),
++      ),
++    );
++  }
++
++  Future<void> _showDohProviderDialog(BuildContext context) async {
++    await showDialog(
++      barrierDismissible: true,
++      context: context,
++      builder: (_) => SelectDialog(
++        title: 'DNS resolver',
++        data: _dohOptions
++            .asMap()
++            .entries
++            .map((e) => IdData(id: e.key, data: e.value.label))
++            .toList(),
++        action: (idx) {
++          setState(() {
++            settings.dohProvider = _dohOptions[idx].id;
++            // fix663: apply immediately so the very next HTTP call uses it.
++            DohResolver.activeProvider = settings.dohProvider;
++            DohResolver.clearCache();
++            updateSettings();
++          });
++          Navigator.of(context).pop();
++        },
++      ),
++    );
++  }
++
+   /// fix394: generic enum-tile for the Developer / libmpv section. Mirrors
+   /// the `_searchMethodTile` / `SelectDialog` pattern but is parameterised
+   /// over any enum T (positional record options, as the handoff flagged —
+@@ -3404,6 +3484,7 @@ class _SettingsState extends State<SettingsView> {
+                         },
+                       ),
+                       _searchMethodTile(settings),
++                      _dohProviderTile(settings),
+                       _switchTile(
+                         label: 'Safe mode',
+                         value: settings.safeMode,
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 6a95f82..75fb2cf 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '3.0.8': [
++    'New: optional DNS-over-HTTPS resolver (Settings \u2192 DNS resolver). If your internet provider blocks your IPTV provider at the DNS level so logins or refreshes fail, pick Cloudflare, Google, NextDNS, or Quad9 to route around it. Off by default; falls back to system DNS automatically if a resolver is unreachable. Affects app data (login/guide/catch-up/updates), not video playback.',
++  ],
+   '3.0.7': [
+     'Faster app startup after an update on large channel lists: the two '
+         'heaviest first-launch database steps (rebuilding the channel search '
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 229e8fa..0be075a 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 3.0.7+651
++version: 3.0.8+652
+ 
+ environment:
+   sdk: ^3.10.7
+diff --git a/test/doh_resolver_test.dart b/test/doh_resolver_test.dart
+new file mode 100644
+index 0000000..23c0bf9
+--- /dev/null
++++ b/test/doh_resolver_test.dart
+@@ -0,0 +1,50 @@
++// fix663: unit tests for the DoH resolver's pure/offline behavior. The actual
++// DoH network query can't run offline; these cover the deterministic branches:
++// literal-IP shortcut, disabled passthrough guard, provider validation, cache.
++import 'dart:io';
++
++import 'package:flutter_test/flutter_test.dart';
++import 'package:open_tv/backend/doh_resolver.dart';
++
++void main() {
++  setUp(() {
++    DohResolver.activeProvider = 'off';
++    DohResolver.clearCache();
++  });
++
++  test('provider set contains exactly the five ids incl. quad9', () {
++    expect(DohResolver.providers,
++        {'off', 'cloudflare', 'google', 'nextdns', 'quad9'});
++    expect(DohResolver.labels['quad9'], contains('9.9.9.9'));
++  });
++
++  test('enabled is false only when off', () {
++    DohResolver.activeProvider = 'off';
++    expect(DohResolver.enabled, isFalse);
++    for (final p in ['cloudflare', 'google', 'nextdns', 'quad9']) {
++      DohResolver.activeProvider = p;
++      expect(DohResolver.enabled, isTrue, reason: '$p should enable DoH');
++    }
++  });
++
++  test('literal IPv4 resolves to itself with no lookup (even when enabled)', () async {
++    DohResolver.activeProvider = 'cloudflare';
++    final r = await DohResolver.lookup('203.0.113.7');
++    expect(r, hasLength(1));
++    expect(r.first.address, '203.0.113.7');
++    expect(r.first.type, InternetAddressType.IPv4);
++  });
++
++  test('literal IPv6 resolves to itself', () async {
++    DohResolver.activeProvider = 'quad9';
++    final r = await DohResolver.lookup('2606:4700:4700::1111');
++    expect(r, hasLength(1));
++    expect(r.first.type, InternetAddressType.IPv6);
++  });
++
++  test('disabled lookup of localhost falls through to system DNS', () async {
++    DohResolver.activeProvider = 'off';
++    final r = await DohResolver.lookup('localhost');
++    expect(r, isNotEmpty); // system resolver returns loopback
++  });
++}

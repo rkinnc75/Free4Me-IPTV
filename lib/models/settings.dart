@@ -240,6 +240,11 @@ class Settings {
   /// headers) still forces tls-verify=no regardless of this toggle.
   bool devTlsVerify;
 
+  /// fix663: DNS-over-HTTPS provider id — one of DohResolver.providers
+  /// ('off','cloudflare','google','nextdns','quad9'). 'off' = system DNS.
+  /// Applies to Dart-side HTTP (API/EPG/catch-up/update), not the mpv host.
+  String dohProvider;
+
   /// libmpv `video-sync` mode. Default [VideoSyncMode.audio].
   VideoSyncMode devVideoSync;
 
@@ -360,6 +365,7 @@ class Settings {
     this.devNetworkTimeoutSecs = 30,
     this.devImportFetchTimeoutSecs = 60,
     this.devTlsVerify = false,
+    this.dohProvider = 'off', // fix663
     this.devVideoSync = VideoSyncMode.audio,
     this.devVideoSyncMaxVideoChange = 1.0,
     this.devTscale = TscaleMode.nearest,
@@ -518,6 +524,7 @@ class Settings {
     s.devNetworkTimeoutSecs = 30;
     s.devImportFetchTimeoutSecs = 60;
     s.devTlsVerify = false;
+    s.dohProvider = 'off'; // fix663: opt-in; default system DNS on all devices
     s.devVideoSync = VideoSyncMode.audio;
     s.devVideoSyncMaxVideoChange = 1.0;
     s.devTscale = TscaleMode.nearest;

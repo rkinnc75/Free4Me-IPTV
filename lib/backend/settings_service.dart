@@ -2,6 +2,7 @@ import 'dart:collection';
 import 'package:intl/intl.dart';
 import 'package:open_tv/models/zoom_mode.dart';
 
+import 'package:open_tv/backend/doh_resolver.dart';
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/device_memory.dart';
 import 'package:open_tv/backend/sql.dart';
@@ -94,6 +95,8 @@ const maxReconnectAttemptsProp = "maxReconnectAttempts";
 const contentTypeFilterProp = "contentTypeFilter";
 
 const searchMethodProp = "searchMethod";
+
+const dohProviderProp = "dohProvider"; // fix663
 
 const safeModeProp = "safeMode";
 const confirmToExitProp = "confirmToExit"; // fix587 (#23)
@@ -346,6 +349,15 @@ class SettingsService {
     final sm = settingsMap[searchMethodProp];
     final resolvedSm = resolveSearchMethod(sm);
     settings.searchMethod = resolvedSm;
+
+    // fix663: DoH provider — validate against the known set, else 'off'.
+    final doh = settingsMap[dohProviderProp];
+    settings.dohProvider =
+        (doh != null && DohResolver.providers.contains(doh)) ? doh : 'off';
+    // Push the active provider into the resolver so AppHttp's connectionFactory
+    // picks it up. Safe to set here — _readFromDb is the single settings-load
+    // point and runs before any refresh HTTP.
+    DohResolver.activeProvider = settings.dohProvider;
     if (sm == null && resolvedSm == SearchMethod.ftsPhrase) {
       // fix505: first-run auto-set on low-RAM device. ftsPhrase is the
       // index-backed channels_fts path — fast on huge catalogues (~1.15M)
@@ -541,6 +553,7 @@ class SettingsService {
     settingsMap[contentTypeFilterProp] =
         settings.contentTypeFilter.index.toString();
     settingsMap[searchMethodProp] = settings.searchMethod.index.toString();
+    settingsMap[dohProviderProp] = settings.dohProvider; // fix663
     settingsMap[safeModeProp] = (settings.safeMode ? 1 : 0).toString();
     settingsMap[confirmToExitProp] =
         (settings.confirmToExit ? 1 : 0).toString(); // fix587 (#23)

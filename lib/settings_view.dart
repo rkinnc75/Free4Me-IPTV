@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:io';
+import 'package:open_tv/backend/doh_resolver.dart';
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/background_task_service.dart';
 import 'package:open_tv/backend/export_server.dart';
@@ -2824,6 +2825,85 @@ class _SettingsState extends State<SettingsView> {
     );
   }
 
+  // fix663: DNS-over-HTTPS provider picker. Mirrors _searchMethodTile.
+  static const _dohOptions = [
+    (id: 'off',        label: 'Off (system DNS)'),
+    (id: 'cloudflare', label: 'Cloudflare (1.1.1.1)'),
+    (id: 'google',     label: 'Google (8.8.8.8)'),
+    (id: 'nextdns',    label: 'NextDNS'),
+    (id: 'quad9',      label: 'Quad9 (9.9.9.9)'),
+  ];
+
+  String _dohShortLabel(String id) =>
+      _dohOptions.firstWhere((o) => o.id == id, orElse: () => _dohOptions.first)
+          .label;
+
+  Widget _dohProviderTile(Settings s) {
+    return ListTile(
+      title: Row(
+        children: [
+          const Text('DNS resolver'),
+          const SizedBox(width: 4),
+          _helpIcon(
+            title: 'DNS resolver (DNS-over-HTTPS)',
+            body:
+                'Chooses how the app looks up your provider\'s server address '
+                'for logins, channel/EPG downloads, catch-up, and update '
+                'checks. This does NOT change video playback, which resolves '
+                'on its own.\n\n'
+                'Default: Off (uses your device/router DNS).\n\n'
+                'If your internet provider blocks your IPTV provider\'s '
+                'address at the DNS level (logins or refresh fail but the '
+                'service is up), pick a DNS-over-HTTPS resolver to route '
+                'around it. If a resolver is ever unreachable, the app '
+                'automatically falls back to your system DNS.\n\n'
+                'Cloudflare / Google / Quad9 are public resolvers; NextDNS is '
+                'a configurable one.',
+          ),
+        ],
+      ),
+      trailing: TextButton(
+        onPressed: () => _showDohProviderDialog(context),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _dohShortLabel(s.dohProvider),
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(width: 4),
+            const Icon(Icons.arrow_drop_down),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showDohProviderDialog(BuildContext context) async {
+    await showDialog(
+      barrierDismissible: true,
+      context: context,
+      builder: (_) => SelectDialog(
+        title: 'DNS resolver',
+        data: _dohOptions
+            .asMap()
+            .entries
+            .map((e) => IdData(id: e.key, data: e.value.label))
+            .toList(),
+        action: (idx) {
+          setState(() {
+            settings.dohProvider = _dohOptions[idx].id;
+            // fix663: apply immediately so the very next HTTP call uses it.
+            DohResolver.activeProvider = settings.dohProvider;
+            DohResolver.clearCache();
+            updateSettings();
+          });
+          Navigator.of(context).pop();
+        },
+      ),
+    );
+  }
+
   /// fix394: generic enum-tile for the Developer / libmpv section. Mirrors
   /// the `_searchMethodTile` / `SelectDialog` pattern but is parameterised
   /// over any enum T (positional record options, as the handoff flagged —
@@ -3404,6 +3484,7 @@ class _SettingsState extends State<SettingsView> {
                         },
                       ),
                       _searchMethodTile(settings),
+                      _dohProviderTile(settings),
                       _switchTile(
                         label: 'Safe mode',
                         value: settings.safeMode,

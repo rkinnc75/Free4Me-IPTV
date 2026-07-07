@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '3.0.8': [
+    'New: optional DNS-over-HTTPS resolver (Settings \u2192 DNS resolver). If your internet provider blocks your IPTV provider at the DNS level so logins or refreshes fail, pick Cloudflare, Google, NextDNS, or Quad9 to route around it. Off by default; falls back to system DNS automatically if a resolver is unreachable. Affects app data (login/guide/catch-up/updates), not video playback.',
+  ],
   '3.0.7': [
     'Faster app startup after an update on large channel lists: the two '
         'heaviest first-launch database steps (rebuilding the channel search '
