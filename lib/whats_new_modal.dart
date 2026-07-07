@@ -6,6 +6,15 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '3.0.10': [
+    'Critical fix: restores all app network requests over HTTPS. A change in '
+        '3.0.8 broke secure connections, so update checks, provider '
+        'login/refresh, EPG guide downloads, and playlist imports were failing '
+        'silently on 3.0.8–3.0.9. They work again.',
+    'The DNS-over-HTTPS resolver added in 3.0.8 is temporarily disabled while '
+        'it is reworked (it was the cause of the HTTPS breakage). Your other '
+        'network features are unaffected.',
+  ],
   '3.0.9': [
     'Android TV: optionally show your favorite channels as a row on the '
         'TV home screen (Settings \u2192 Show favorites on TV home '

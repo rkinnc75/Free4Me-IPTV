@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
-import 'package:open_tv/backend/doh_resolver.dart';
 
 /// Review finding 150: classifies why an AppHttp request did not yield a 200
 /// body, so callers can distinguish PERMANENT failures (auth/credentials/gone
@@ -39,49 +38,25 @@ class AppHttp {
         ..idleTimeout = const Duration(seconds: 30)
         ..autoUncompress = true
         ..maxConnectionsPerHost = 6;
-      // fix663: route Dart-side HTTP host resolution through DoH when a
-      // provider is selected (routes around ISP DNS blocking of provider
-      // portal/API/EPG hosts). connectionFactory runs per connection: we
-      // resolve the host ourselves, connect to the resolved IP, and set the
-      // TLS SNI/host to the ORIGINAL hostname so certificate validation still
-      // matches. When DoH is off (default) or resolution yields nothing, this
-      // falls straight through to the system connect. The mpv media host is
-      // NOT covered here (libmpv resolves internally) — see fix663 notes.
-      _inner!.connectionFactory = _dohConnectionFactory;
+      // fix666: DO NOT set an HttpClient.connectionFactory here. fix663 wired a
+      // DoH factory that returned a plain Socket.startConnect — but when a
+      // connectionFactory is set, the Dart SDK uses the returned socket AS-IS
+      // for direct (non-proxy) connections and NEVER upgrades it to TLS (see
+      // dart:_http _HttpClientConnection.connect: SecureSocket.startConnect is
+      // only used on the DEFAULT no-factory path, or via createProxyTunnel when
+      // going through a proxy). So every HTTPS request through AppHttp — update
+      // check, Xtream login/refresh, XMLTV EPG, M3U import, prewarm — sent
+      // plaintext to :443 and failed with an instant null on v3.0.8/v3.0.9.
+      // Leaving connectionFactory unset restores the SDK's default
+      // SecureSocket TLS path (the pre-fix663 behaviour). DoH is a no-op until
+      // it can be re-implemented without breaking TLS: SecureSocket.startConnect
+      // cannot separate the connect IP from the SNI/cert hostname, and the API
+      // that can (SecureSocket.secure(host:)) returns a Socket, not the
+      // ConnectionTask a factory must return — so DoH-over-HTTPS needs a
+      // different approach (e.g. HttpOverrides). See runbooks/fix666.md.
       _client = IOClient(_inner!);
     }
     return _client!;
-  }
-
-  /// fix663: per-connection factory that resolves the destination host via
-  /// [DohResolver] (which itself falls back to system DNS on any failure), then
-  /// opens a socket to the first resolved address. TLS handshakes still use the
-  /// original hostname for SNI/cert checks because [ConnectionTask] carries the
-  /// [uri] host through unchanged — we only substitute the socket's target IP.
-  static Future<ConnectionTask<Socket>> _dohConnectionFactory(
-    Uri uri,
-    String? proxyHost,
-    int? proxyPort,
-  ) async {
-    // Proxied connections: let the system handle proxy host resolution.
-    if (proxyHost != null) {
-      return Socket.startConnect(proxyHost, proxyPort ?? uri.port);
-    }
-    if (!DohResolver.enabled) {
-      return Socket.startConnect(uri.host, uri.port);
-    }
-    try {
-      final addrs = await DohResolver.lookup(uri.host);
-      if (addrs.isEmpty) {
-        return Socket.startConnect(uri.host, uri.port);
-      }
-      // Connect to the resolved IP. HttpClient applies SNI from the request's
-      // Host (the original uri.host), so cert validation is unaffected.
-      return Socket.startConnect(addrs.first, uri.port);
-    } catch (_) {
-      // Any resolver hiccup → behave exactly as the default factory would.
-      return Socket.startConnect(uri.host, uri.port);
-    }
   }
 
   /// GET with timeout. Retries once on socket / 5xx errors.

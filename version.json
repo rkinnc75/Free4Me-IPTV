@@ -1,6 +1,6 @@
 {
-  "latest": "3.0.9",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v3.0.9",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v3.0.9/Free4Me-IPTV-3.0.9-arm64.apk",
-  "releaseNotes": "\u2022 Android TV: optionally show your favorite channels as a row on the TV home screen (Settings \\u2192 Show favorites on TV home screen). Cards are ordered most-recently-watched first, you choose how many (1\\u201320), and tapping one opens that channel directly. Off by default; TV only."
+  "latest": "3.0.10",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v3.0.10",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v3.0.10/Free4Me-IPTV-3.0.10-arm64.apk",
+  "releaseNotes": "\u2022 Critical fix: restores all app network requests over HTTPS. A change in 3.0.8 broke secure connections, so update checks, provider login/refresh, EPG guide downloads, and playlist imports were failing silently on 3.0.8\u20133.0.9. They work again.\n\u2022 The DNS-over-HTTPS resolver added in 3.0.8 is temporarily disabled while it is reworked (it was the cause of the HTTPS breakage). Your other network features are unaffected."
 }
