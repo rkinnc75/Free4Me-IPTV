@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '3.0.5': [
+    'Phones no longer pre-warm streams by default — the pre-warm network probe only helps TV remote navigation, so on touch devices it was wasted on the wrong channel. (Toggle it any time under Playback \u2192 Pre-warm streams on focus.)',
+  ],
   '3.0.4': [
     'Fixed heavy buffering on the first stream played after app launch on phones: the screen now rotates to landscape before the stream opens, so the video decoder starts against the final surface instead of restarting mid-stream.',
   ],

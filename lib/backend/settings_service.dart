@@ -263,7 +263,20 @@ class SettingsService {
     if (heroLive != null) {
       settings.tvHeroLivePreview = int.parse(heroLive) == 1;
     }
-    if (prewarm != null) settings.preWarmOnFocus = int.parse(prewarm) == 1;
+    if (prewarm != null) {
+      settings.preWarmOnFocus = int.parse(prewarm) == 1;
+    } else {
+      // fix660: first run / unset — default OFF. The constructor default is
+      // true, but Settings.optimisedFor's device-aware `preWarmOnFocus = isTV`
+      // only runs from the Optimise button, never on first-run load, so phones
+      // silently inherited true and spent a redirect-HEAD on the autofocused
+      // index-0 tile (not the channel the user taps). Prewarm's HEAD helps TV
+      // D-pad dwell, not touch tap-to-open. The device isn't known this early
+      // (DeviceDetector.isTvCached seeds AFTER settings load in main.dart), so
+      // default OFF unconditionally; TVs restore it via Optimise. Existing
+      // users with a stored value are unaffected.
+      settings.preWarmOnFocus = false;
+    }
     if (bgProc != null) settings.backgroundProcessing = int.parse(bgProc) == 1;
     if (debugLog != null) settings.debugLogging = int.parse(debugLog) == 1;
     if (logUserPass != null) settings.logUserPass = int.parse(logUserPass) == 1;

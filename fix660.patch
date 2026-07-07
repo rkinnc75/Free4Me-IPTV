@@ -1,0 +1,53 @@
+diff --git a/lib/backend/settings_service.dart b/lib/backend/settings_service.dart
+index 5280e10..b8038dc 100644
+--- a/lib/backend/settings_service.dart
++++ b/lib/backend/settings_service.dart
+@@ -263,7 +263,20 @@ class SettingsService {
+     if (heroLive != null) {
+       settings.tvHeroLivePreview = int.parse(heroLive) == 1;
+     }
+-    if (prewarm != null) settings.preWarmOnFocus = int.parse(prewarm) == 1;
++    if (prewarm != null) {
++      settings.preWarmOnFocus = int.parse(prewarm) == 1;
++    } else {
++      // fix660: first run / unset — default OFF. The constructor default is
++      // true, but Settings.optimisedFor's device-aware `preWarmOnFocus = isTV`
++      // only runs from the Optimise button, never on first-run load, so phones
++      // silently inherited true and spent a redirect-HEAD on the autofocused
++      // index-0 tile (not the channel the user taps). Prewarm's HEAD helps TV
++      // D-pad dwell, not touch tap-to-open. The device isn't known this early
++      // (DeviceDetector.isTvCached seeds AFTER settings load in main.dart), so
++      // default OFF unconditionally; TVs restore it via Optimise. Existing
++      // users with a stored value are unaffected.
++      settings.preWarmOnFocus = false;
++    }
+     if (bgProc != null) settings.backgroundProcessing = int.parse(bgProc) == 1;
+     if (debugLog != null) settings.debugLogging = int.parse(debugLog) == 1;
+     if (logUserPass != null) settings.logUserPass = int.parse(logUserPass) == 1;
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 4126c1f..96e3b06 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '3.0.5': [
++    'Phones no longer pre-warm streams by default — the pre-warm network probe only helps TV remote navigation, so on touch devices it was wasted on the wrong channel. (Toggle it any time under Playback \u2192 Pre-warm streams on focus.)',
++  ],
+   '3.0.4': [
+     'Fixed heavy buffering on the first stream played after app launch on phones: the screen now rotates to landscape before the stream opens, so the video decoder starts against the final surface instead of restarting mid-stream.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 5a84890..5c33c43 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 3.0.4+648
++version: 3.0.5+649
+ 
+ environment:
+   sdk: ^3.10.7
