@@ -245,6 +245,14 @@ class Settings {
   /// Applies to Dart-side HTTP (API/EPG/catch-up/update), not the mpv host.
   String dohProvider;
 
+  /// fix665: publish favorites to the Android TV home-screen row. TV-only;
+  /// default off. When on, up to [tvHomeRowCount] favorites (most-recently-
+  /// watched first) appear as launcher cards that deep-link into playback.
+  bool tvHomeRowEnabled;
+
+  /// fix665: how many favorites to publish to the TV home row. Clamped 1-20.
+  int tvHomeRowCount;
+
   /// libmpv `video-sync` mode. Default [VideoSyncMode.audio].
   VideoSyncMode devVideoSync;
 
@@ -366,6 +374,8 @@ class Settings {
     this.devImportFetchTimeoutSecs = 60,
     this.devTlsVerify = false,
     this.dohProvider = 'off', // fix663
+    this.tvHomeRowEnabled = false, // fix665
+    this.tvHomeRowCount = 10, // fix665
     this.devVideoSync = VideoSyncMode.audio,
     this.devVideoSyncMaxVideoChange = 1.0,
     this.devTscale = TscaleMode.nearest,
@@ -525,6 +535,8 @@ class Settings {
     s.devImportFetchTimeoutSecs = 60;
     s.devTlsVerify = false;
     s.dohProvider = 'off'; // fix663: opt-in; default system DNS on all devices
+    s.tvHomeRowEnabled = false; // fix665: opt-in
+    s.tvHomeRowCount = 10; // fix665
     s.devVideoSync = VideoSyncMode.audio;
     s.devVideoSyncMaxVideoChange = 1.0;
     s.devTscale = TscaleMode.nearest;

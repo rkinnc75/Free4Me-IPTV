@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/home.dart';
 import 'package:open_tv/models/filters.dart';
@@ -12,6 +15,9 @@ import 'package:open_tv/models/view_type.dart';
 import 'package:open_tv/settings_view.dart';
 import 'package:open_tv/tv/tv_browse_view.dart';
 import 'package:open_tv/backend/voice_search.dart';
+import 'package:open_tv/backend/tv_home_publisher.dart';
+import 'package:open_tv/player.dart';
+import 'package:open_tv/player/overlay_player_controller.dart';
 import 'package:open_tv/tv/tv_categories_view.dart';
 import 'package:open_tv/tv/tv_guide_view.dart';
 import 'package:open_tv/tv/tv_search_view.dart';
@@ -135,6 +141,39 @@ class _TvShellState extends State<TvShell> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('Voice input is not available on this device')));
     };
+
+    // fix665: publish favorites to the TV home row (no-op off Android TV /
+    // when the setting is off) and route deep-link taps from launcher cards
+    // into playback.
+    TvHomePublisher.onPlayChannel = _playChannelById;
+    TvHomePublisher.bind();
+    unawaited(TvHomePublisher.refresh());
+  }
+
+  /// fix665: open a channel by id (deep link from the TV home-screen row).
+  Future<void> _playChannelById(int channelId) async {
+    try {
+      final ch = await Sql.getChannelById(channelId);
+      if (ch == null || ch.url == null || !mounted) return;
+      final settings =
+          SettingsService.cached ?? await SettingsService.getSettings();
+      final source = await Sql.getSourceById(ch.sourceId);
+      if (!mounted) return;
+      await OverlayPlayerController.instance.haltMain();
+      if (!mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => Player(
+            channel: ch,
+            settings: settings,
+            source: source,
+          ),
+        ),
+      );
+    } catch (e) {
+      AppLog.warn('TvShell: deep-link play failed for id=$channelId — $e');
+    }
   }
 
   @override
@@ -142,6 +181,7 @@ class _TvShellState extends State<TvShell> {
     // fix647: drop the routing callbacks if they are still ours.
     VoiceSearch.onResult = null;
     VoiceSearch.onUnavailable = null;
+    TvHomePublisher.onPlayChannel = null; // fix665
     super.dispose();
   }
 

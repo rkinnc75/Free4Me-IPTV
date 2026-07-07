@@ -14,6 +14,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:open_tv/backend/playback_analyzer.dart';
 import 'package:open_tv/backend/device_memory.dart';
 import 'package:open_tv/models/device_detector.dart';
+import 'package:open_tv/backend/tv_home_publisher.dart';
 import 'package:open_tv/models/dev_mpv_options.dart' show
     VideoSyncMode, TscaleMode, FrameDropMode,
     HwdecImageFormat, AudioSpdifMode;
@@ -3485,6 +3486,55 @@ class _SettingsState extends State<SettingsView> {
                       ),
                       _searchMethodTile(settings),
                       _dohProviderTile(settings),
+                      // fix665: Android TV home-screen favorites row (TV only).
+                      if (DeviceDetector.isTvCached == true) ...[
+                        _switchTile(
+                          label: 'Show favorites on TV home screen',
+                          value: settings.tvHomeRowEnabled,
+                          help: (
+                            title: 'TV home-screen favorites',
+                            body:
+                                'Adds a "Free4Me Favorites" row to your Android '
+                                'TV home screen with cards for your favorite '
+                                'channels, most-recently-watched first. Tapping '
+                                'a card opens that channel directly.\n\n'
+                                'Default: off. The first time you turn it on, '
+                                'the system asks permission to add the row to '
+                                'your home screen. Use the count below to '
+                                'choose how many favorites appear (1–20).',
+                          ),
+                          onChanged: (v) async {
+                            setState(() => settings.tvHomeRowEnabled = v);
+                            updateSettings();
+                            if (v) {
+                              await TvHomePublisher.refresh();
+                            } else {
+                              await TvHomePublisher.clear();
+                            }
+                          },
+                        ),
+                        if (settings.tvHomeRowEnabled)
+                          _bufferSlider(
+                            label: 'Favorites on home row',
+                            value: settings.tvHomeRowCount.toDouble(),
+                            min: 1,
+                            max: 20,
+                            divisions: 19,
+                            help: (
+                              title: 'Home-row favorite count',
+                              body:
+                                  'How many favorites to show on the TV home '
+                                  'row (1–20), ordered most-recently-watched '
+                                  'first.',
+                            ),
+                            onChanged: (v) {
+                              setState(() =>
+                                  settings.tvHomeRowCount = v.round().clamp(1, 20));
+                              updateSettings();
+                              unawaited(TvHomePublisher.refresh());
+                            },
+                          ),
+                      ],
                       _switchTile(
                         label: 'Safe mode',
                         value: settings.safeMode,

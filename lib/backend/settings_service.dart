@@ -98,6 +98,9 @@ const searchMethodProp = "searchMethod";
 
 const dohProviderProp = "dohProvider"; // fix663
 
+const tvHomeRowEnabledProp = "tvHomeRowEnabled"; // fix665
+const tvHomeRowCountProp = "tvHomeRowCount"; // fix665
+
 const safeModeProp = "safeMode";
 const confirmToExitProp = "confirmToExit"; // fix587 (#23)
 
@@ -358,6 +361,17 @@ class SettingsService {
     // picks it up. Safe to set here — _readFromDb is the single settings-load
     // point and runs before any refresh HTTP.
     DohResolver.activeProvider = settings.dohProvider;
+
+    // fix665: TV home-row settings.
+    final tvHomeEn = settingsMap[tvHomeRowEnabledProp];
+    if (tvHomeEn != null) {
+      settings.tvHomeRowEnabled = int.tryParse(tvHomeEn) == 1;
+    }
+    final tvHomeCount = settingsMap[tvHomeRowCountProp];
+    if (tvHomeCount != null) {
+      final n = int.tryParse(tvHomeCount) ?? 10;
+      settings.tvHomeRowCount = n.clamp(1, 20);
+    }
     if (sm == null && resolvedSm == SearchMethod.ftsPhrase) {
       // fix505: first-run auto-set on low-RAM device. ftsPhrase is the
       // index-backed channels_fts path — fast on huge catalogues (~1.15M)
@@ -554,6 +568,10 @@ class SettingsService {
         settings.contentTypeFilter.index.toString();
     settingsMap[searchMethodProp] = settings.searchMethod.index.toString();
     settingsMap[dohProviderProp] = settings.dohProvider; // fix663
+    settingsMap[tvHomeRowEnabledProp] =
+        (settings.tvHomeRowEnabled ? 1 : 0).toString(); // fix665
+    settingsMap[tvHomeRowCountProp] =
+        settings.tvHomeRowCount.toString(); // fix665
     settingsMap[safeModeProp] = (settings.safeMode ? 1 : 0).toString();
     settingsMap[confirmToExitProp] =
         (settings.confirmToExit ? 1 : 0).toString(); // fix587 (#23)

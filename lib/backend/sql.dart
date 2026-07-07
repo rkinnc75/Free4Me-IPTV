@@ -1405,6 +1405,24 @@ class Sql {
     return rowToChannel(rows.first);
   }
 
+  /// fix665: favorites for the Android TV home-screen row, ordered
+  /// most-recently-watched first (last_watched DESC), un-watched favorites
+  /// after (by name). Capped at [limit] (the tvHomeRowCount setting, 1-20).
+  /// Only real playable rows (url NOT NULL, not dividers).
+  static Future<List<Channel>> getFavoritesByLastWatched(int limit) async {
+    final db = await DbFactory.db;
+    final rows = await db.getAll(
+      'SELECT * FROM channels'
+      ' WHERE favorite = 1 AND url IS NOT NULL'
+      '   AND COALESCE(is_divider, 0) = 0'
+      ' ORDER BY (last_watched IS NULL), last_watched DESC,'
+      '          name COLLATE NOCASE ASC'
+      ' LIMIT ?',
+      [limit],
+    );
+    return rows.map(rowToChannel).toList();
+  }
+
   static String getKeywordsSql(int size) {
     return List.generate(size, (_) => "name LIKE ?").join(" AND ");
   }

@@ -37,8 +37,20 @@ class MainActivity : FlutterActivity() {
     private var voiceChannel: MethodChannel? = null
     private var voicePending = false
 
+    // ── fix665: Android TV home-screen favorites row ──────────────────────
+    // Dart pushes the ordered+capped favorites list here to publish, and
+    // clears the row when the feature is turned off. Inbound deep links
+    // (free4me://play/{id}) from the launcher cards are forwarded INTO Dart as
+    // a "playChannel" method call; a link that arrives before Dart binds the
+    // handler is stashed in pendingDeepLinkId and flushed on bind.
+    private var tvHomeChannel: MethodChannel? = null
+    private var pendingDeepLinkChannelId: Int? = null
+
     companion object {
         private const val VOICE_REQUEST_CODE = 64701
+        // fix665: deep-link scheme/host for TV home-row favorite cards.
+        private const val SCHEME = "free4me"
+        private const val HOST = "play"
     }
 
     private fun launchVoiceRecognition() {
@@ -107,6 +119,48 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }
+
+        // ── fix665: Android TV home-row MethodChannel ─────────────────────
+        tvHomeChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "me.free4me.iptv/tvhome",
+        ).also { ch ->
+            ch.setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "publish" -> {
+                        @Suppress("UNCHECKED_CAST")
+                        val favs = (call.argument<List<Map<String, Any?>>>("favorites"))
+                            ?: emptyList()
+                        try {
+                            TvHomeChannelPublisher.publishFavorites(
+                                applicationContext, favs,
+                            )
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("publish_failed", e.message, null)
+                        }
+                    }
+                    "clear" -> {
+                        try {
+                            TvHomeChannelPublisher.clear(applicationContext)
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("clear_failed", e.message, null)
+                        }
+                    }
+                    // Dart calls this once it has bound the handler, to pull any
+                    // deep link that launched the app before Dart was ready.
+                    "consumePendingDeepLink" -> {
+                        val id = pendingDeepLinkChannelId
+                        pendingDeepLinkChannelId = null
+                        result.success(id)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+        }
+        // A deep link may have launched us before the channel existed.
+        handleDeepLinkIntent(intent)
 
         // ── fix506: render-cap pref bridge ────────────────────────────────
         // Flutter's render-cap toggle writes the SharedPref that
@@ -252,6 +306,28 @@ class MainActivity : FlutterActivity() {
 
     // Enter PiP automatically when the user presses Home (phone) or Back
     // out to the launcher, as long as video is playing.
+    // fix665: singleTop launch activity — a deep link tapped while the app is
+    // already running arrives here rather than through onCreate.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleDeepLinkIntent(intent)
+    }
+
+    // fix665: parse free4me://play/{channelId}. If Dart's handler is bound,
+    // deliver immediately; otherwise stash for Dart to pull on bind.
+    private fun handleDeepLinkIntent(intent: Intent?) {
+        val data = intent?.data ?: return
+        if (data.scheme != SCHEME || data.host != HOST) return
+        val id = data.lastPathSegment?.toIntOrNull() ?: return
+        val ch = tvHomeChannel
+        if (ch != null) {
+            ch.invokeMethod("playChannel", id)
+        } else {
+            pendingDeepLinkChannelId = id
+        }
+    }
+
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         if (isVideoPlaying && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

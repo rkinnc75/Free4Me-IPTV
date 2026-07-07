@@ -26,6 +26,17 @@ void main() {
     expect(r.playerZoomMode, ZoomMode.crop);
   });
 
+  test('fix665: TV home-row settings survive backup round-trip', () {
+    final s = Settings.defaults()
+      ..tvHomeRowEnabled = true // default false
+      ..tvHomeRowCount = 15; // default 10
+
+    final r = SettingsIo.roundTripForTest(s);
+
+    expect(r.tvHomeRowEnabled, isTrue);
+    expect(r.tvHomeRowCount, 15);
+  });
+
   test('fix573: the other non-default values also survive (no aliasing)', () {
     final s = Settings.defaults()
       ..multiViewDecode = MultiViewDecode.hardwareCopy

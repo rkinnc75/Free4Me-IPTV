@@ -6,6 +6,13 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '3.0.9': [
+    'Android TV: optionally show your favorite channels as a row on the '
+        'TV home screen (Settings \u2192 Show favorites on TV home '
+        'screen). Cards are ordered most-recently-watched first, you '
+        'choose how many (1\u201320), and tapping one opens that '
+        'channel directly. Off by default; TV only.',
+  ],
   '3.0.8': [
     'New: optional DNS-over-HTTPS resolver (Settings \u2192 DNS resolver). If your internet provider blocks your IPTV provider at the DNS level so logins or refreshes fail, pick Cloudflare, Google, NextDNS, or Quad9 to route around it. Off by default; falls back to system DNS automatically if a resolver is unreachable. Affects app data (login/guide/catch-up/updates), not video playback.',
   ],

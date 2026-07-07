@@ -665,6 +665,8 @@ class SettingsIo {
         'cap1080pOnLowRam': s.cap1080pOnLowRam,
         'tvHeroLivePreview': s.tvHeroLivePreview,
         'preWarmOnFocus': s.preWarmOnFocus,
+        'tvHomeRowEnabled': s.tvHomeRowEnabled, // fix665
+        'tvHomeRowCount': s.tvHomeRowCount, // fix665
         'backgroundProcessing': s.backgroundProcessing, // fix318
         'liveCacheSecs': s.liveCacheSecs,
         'liveDemuxerMaxMB': s.liveDemuxerMaxMB,
@@ -747,6 +749,9 @@ class SettingsIo {
       cap1080pOnLowRam: m['cap1080pOnLowRam'] as bool? ?? true,
       tvHeroLivePreview: m['tvHeroLivePreview'] as bool? ?? false,
       preWarmOnFocus: m['preWarmOnFocus'] as bool? ?? true,
+      tvHomeRowEnabled: m['tvHomeRowEnabled'] as bool? ?? false, // fix665
+      tvHomeRowCount:
+          ((m['tvHomeRowCount'] as int?) ?? 10).clamp(1, 20), // fix665
       backgroundProcessing: m['backgroundProcessing'] as bool? ?? false,
       liveCacheSecs: m['liveCacheSecs'] as int? ?? 20,
       liveDemuxerMaxMB: m['liveDemuxerMaxMB'] as int? ?? 150,
