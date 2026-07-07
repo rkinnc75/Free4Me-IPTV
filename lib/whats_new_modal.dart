@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '3.0.4': [
+    'Fixed heavy buffering on the first stream played after app launch on phones: the screen now rotates to landscape before the stream opens, so the video decoder starts against the final surface instead of restarting mid-stream.',
+  ],
   '3.0.3': [
     'Internal cleanup (code-review Wave 4): removed unused code and dependencies, hardened a few edge cases (invalid-URL rejection on submit, safer EPG gzip validation, remote transport keys), and made the What\u2019s New dialog remember dismissal however you close it.',
   ],

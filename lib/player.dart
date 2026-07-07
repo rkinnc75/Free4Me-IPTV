@@ -801,6 +801,10 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   /// user-initiated channel open, not on every reconnect.
   bool _connProbeDone = false;
 
+  /// fix659: one-shot — landscape lock is applied BEFORE the first open() so
+  /// the decoder never initializes against the portrait/unsettled surface.
+  bool _preOpenFullscreenDone = false;
+
   Future<void> _startPlayback(
     Duration? startPosition, {
     ChannelHttpHeaders? headers,
@@ -820,6 +824,32 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
         if (!_connProbeDone) {
           _connProbeDone = true;
           unawaited(ConnTiming.probe(playbackUrl));
+        }
+        // fix659: rotate FIRST. On the very first play after app launch the
+        // phone is still settling portrait→landscape while open() runs, so
+        // mediacodec opened against a NULL/portrait surface and had to
+        // re-open once the landscape surface arrived — discarding the initial
+        // cache fill and thrashing 'Enter buffering' for the whole session
+        // (20 stalls on stream 1 vs 0 on streams 2/3 of the same URL in the
+        // 2026-07-06 sms938u log). Lock landscape and let one frame lay out
+        // BEFORE the first open() so the decoder binds the final surface
+        // once. One-shot per Player: reconnect iterations skip it (the
+        // orientation is already locked), and the post-open call at the
+        // success site remains as a harmless idempotent re-assert. Skipped in
+        // PiP (can't rotate) and for engines that manage their own
+        // fullscreen, mirroring the existing post-open condition.
+        if (!_preOpenFullscreenDone &&
+            !_inPipMode &&
+            !_engine.handlesOwnFullscreen) {
+          _preOpenFullscreenDone = true;
+          try {
+            await _enterSystemFullscreen();
+            // Give the relayout one frame to land so the video surface
+            // attaches at its final (landscape) size before open().
+            await WidgetsBinding.instance.endOfFrame;
+          } catch (e) {
+            AppLog.warn('Player: pre-open fullscreen failed (non-fatal) — $e');
+          }
         }
         final httpHeaders = headers != null
             ? {
