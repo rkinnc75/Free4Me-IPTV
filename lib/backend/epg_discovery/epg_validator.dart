@@ -1,3 +1,5 @@
+import 'dart:io' show gzip;
+
 import 'package:http/http.dart' as http;
 
 /// fix386: validates an HTTP response body as a real XMLTV document.
@@ -29,10 +31,24 @@ class EpgValidator {
         ctype.contains('octet-stream');
     if (!ctypeOk) return false;
 
-    if (isXmltvGzip(body)) return true;
+    // finding 167: a gzip magic header is not proof of XMLTV — a portal can
+    // gzip an HTML error page. Inflate the head and run the SAME structural
+    // checks as the plain path. If inflation fails or the head doesn't look
+    // like XMLTV, reject so the variant walk continues.
+    List<int> plain;
+    if (isXmltvGzip(body)) {
+      try {
+        plain = gzip.decode(body);
+      } catch (_) {
+        // Not real gzip (or corrupt) — reject so the variant walk continues.
+        return false;
+      }
+    } else {
+      plain = body;
+    }
 
     // Trim leading whitespace, take 8KB, check for `<?xml` + `<tv`.
-    final head = _trimLeadingWhitespace(body, 8192);
+    final head = _trimLeadingWhitespace(plain, 8192);
     if (head.isEmpty) return false;
     final asString = String.fromCharCodes(head);
     if (!asString.startsWith('<?xml')) return false;

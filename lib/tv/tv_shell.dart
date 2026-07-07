@@ -300,11 +300,11 @@ class _TvShellState extends State<TvShell> {
             'This cannot be undone.'),
         actions: [
           TextButton(
+            autofocus: true,
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('Cancel'),
           ),
           TextButton(
-            autofocus: true,
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Clear'),
           ),

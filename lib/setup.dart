@@ -248,6 +248,7 @@ class _SetupState extends State<Setup> {
   Future<bool> selectFile() async {
     final path = (await FilePicker.platform.pickFiles())?.files.single.path;
     if (path == null) return false;
+    if (!mounted) return false; // finding 164
     setState(() {
       _pickedM3uPath = path;
     });
@@ -294,6 +295,13 @@ class _SetupState extends State<Setup> {
       _recomputeFormValid();
       setState(() => step = Steps.form);
     } else if (step == Steps.form) {
+      // finding 163: run the FormBuilder field validators (incl. the URL
+      // format check in _buildUrlField) before proceeding, so a syntactically
+      // invalid URL is rejected on the submit press instead of only gating the
+      // button's enabled state.
+      if (!(_formKey.currentState?.validate() ?? false)) {
+        return;
+      }
       // Duplicate name check.
       final name = _nameController.text.trim();
       if (await Sql.sourceNameExists(name)) {

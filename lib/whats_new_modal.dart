@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '3.0.3': [
+    'Internal cleanup (code-review Wave 4): removed unused code and dependencies, hardened a few edge cases (invalid-URL rejection on submit, safer EPG gzip validation, remote transport keys), and made the What\u2019s New dialog remember dismissal however you close it.',
+  ],
   '3.0.2': [
     'Internal reliability pass (code-review Wave 3): faster and safer EPG '
         'matching on very large sources, more accurate channel-to-guide '
@@ -2649,33 +2652,49 @@ class WhatsNewModal extends StatelessWidget {
         ? ['This update includes general improvements and fixes.']
         : entries.expand((e) => e.value).toList();
 
-    return AlertDialog(
-      title: Text("What's new in $version"),
-      actions: [
-        TextButton(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const FullChangelogPage()),
-            );
-          },
-          child: const Text('Full changelog'),
-        ),
-        TextButton(
-          onPressed: () async {
-            await SettingsService.updateLastSeenVersion();
-            if (context.mounted) Navigator.pop(context, true);
-          },
-          autofocus: true,
-          child: const Text("Don't show again"),
-        ),
-      ],
-      content: Scrollbar(
-        thumbVisibility: true,
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.only(right: 8.0),
-            child: _bulletList(bullets),
+    // finding 177: record lastSeenVersion on ANY dismissal — Back button,
+    // barrier tap, or the button — not only the button. Guard so the record
+    // happens exactly once even when the button already awaited it.
+    var recorded = false;
+    Future<void> recordOnce() async {
+      if (recorded) return;
+      recorded = true;
+      await SettingsService.updateLastSeenVersion();
+    }
+
+    return PopScope(
+      canPop: true,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) recordOnce();
+      },
+      child: AlertDialog(
+        title: Text("What's new in $version"),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const FullChangelogPage()),
+              );
+            },
+            child: const Text('Full changelog'),
+          ),
+          TextButton(
+            onPressed: () async {
+              await recordOnce();
+              if (context.mounted) Navigator.pop(context, true);
+            },
+            autofocus: true,
+            child: const Text("Don't show again"),
+          ),
+        ],
+        content: Scrollbar(
+          thumbVisibility: true,
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: _bulletList(bullets),
+            ),
           ),
         ),
       ),

@@ -487,6 +487,7 @@ class _EditDialogState extends State<EditDialog> {
             final result = await showSourceColorPicker(context, current: _color);
             if (result == null) return;
             if (!result.chose) return;
+            if (!mounted) return; // finding 170
             setState(() => _color = result.color);
           },
           child: Padding(

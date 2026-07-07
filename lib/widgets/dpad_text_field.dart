@@ -21,7 +21,6 @@ import 'package:flutter/services.dart';
 /// the soft keyboard's own Enter key still dismisses the field.
 class DpadTextField extends StatelessWidget {
   final TextEditingController? controller;
-  final String? initialValue;
   final InputDecoration? decoration;
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onSubmitted;
@@ -48,7 +47,6 @@ class DpadTextField extends StatelessWidget {
   const DpadTextField({
     super.key,
     this.controller,
-    this.initialValue,
     this.decoration,
     this.onChanged,
     this.onSubmitted,

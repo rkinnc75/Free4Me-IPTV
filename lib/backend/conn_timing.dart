@@ -38,10 +38,17 @@ class ConnTiming {
         return;
       }
       sw.reset();
-      sock = await Socket.connect(addrs.first, port).timeout(limit);
+      // finding 166: use dart:io's native connect timeout — on expiry it
+      // cancels the pending connect and throws SocketException, leaving no
+      // leaked socket (Future.timeout would let the connect complete later
+      // with no reference to destroy).
+      sock = await Socket.connect(addrs.first, port, timeout: limit);
       tcp = sw.elapsedMilliseconds;
       if (isTls) {
         sw.reset();
+        // SecureSocket.secure has no native timeout arg; the wrapped socket is
+        // already captured in `sock`, so a Future.timeout expiry here still
+        // leaves it reachable for the finally-block destroy().
         sock = await SecureSocket.secure(sock, host: host).timeout(limit);
         tls = sw.elapsedMilliseconds;
       }

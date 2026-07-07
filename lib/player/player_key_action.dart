@@ -31,18 +31,26 @@ PlayerKeyAction playerKeyAction(
   required bool canSurf,
   required bool canSeek,
 }) {
+  // finding 174: dedicated remote transport keys reuse the existing actions —
+  // ⏮ CH+, ⏭ CH−, ⏪ seek−, ⏩ seek+ — so a remote with discrete media keys
+  // works without a separate handler (the player.dart switch already covers
+  // all five enum values).
   if (key == LogicalKeyboardKey.arrowUp ||
-      key == LogicalKeyboardKey.channelUp) {
+      key == LogicalKeyboardKey.channelUp ||
+      key == LogicalKeyboardKey.mediaTrackPrevious) {
     return canSurf ? PlayerKeyAction.channelUp : PlayerKeyAction.none;
   }
   if (key == LogicalKeyboardKey.arrowDown ||
-      key == LogicalKeyboardKey.channelDown) {
+      key == LogicalKeyboardKey.channelDown ||
+      key == LogicalKeyboardKey.mediaTrackNext) {
     return canSurf ? PlayerKeyAction.channelDown : PlayerKeyAction.none;
   }
-  if (key == LogicalKeyboardKey.arrowLeft) {
+  if (key == LogicalKeyboardKey.arrowLeft ||
+      key == LogicalKeyboardKey.mediaRewind) {
     return canSeek ? PlayerKeyAction.seekBack : PlayerKeyAction.none;
   }
-  if (key == LogicalKeyboardKey.arrowRight) {
+  if (key == LogicalKeyboardKey.arrowRight ||
+      key == LogicalKeyboardKey.mediaFastForward) {
     return canSeek ? PlayerKeyAction.seekForward : PlayerKeyAction.none;
   }
   if (key == LogicalKeyboardKey.select ||

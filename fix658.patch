@@ -1,0 +1,740 @@
+diff --git a/android/app/src/main/AndroidManifest.xml b/android/app/src/main/AndroidManifest.xml
+index d6a6dac..175dd96 100644
+--- a/android/app/src/main/AndroidManifest.xml
++++ b/android/app/src/main/AndroidManifest.xml
+@@ -11,7 +11,6 @@
+     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+-    <uses-permission android:name="android.permission.WAKE_LOCK" />
+     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+     <uses-feature android:name="android.software.leanback" android:required="false" />
+     <!-- Free4Me-IPTV: declare PIP support so Google TV exposes it. -->
+diff --git a/assets/smpte_color_bars.svg b/assets/smpte_color_bars.svg
+deleted file mode 100644
+index 13bb9a5..0000000
+--- a/assets/smpte_color_bars.svg
++++ /dev/null
+@@ -1 +0,0 @@
+-<svg xmlns="http://www.w3.org/2000/svg" version="1.0" width="672" height="504"><path fill="#131313" d="M0 0h672v504H0z"/><path fill="silver" d="M0 0h96v336H0z"/><path fill="#c0c000" d="M95.999936 0h96v336h-96z"/><path fill="#00c0c0" d="M192 0h96v336h-96z"/><path fill="#00c000" d="M288 0h96v336h-96z"/><path fill="#c000c0" d="M384 0h96v336h-96z"/><path fill="#c00000" d="M480 0h96v336h-96z"/><path fill="#0000c0" d="M576 0h96v336h-96zM0 336h96v42H0z"/><path fill="#c000c0" d="M192 336h96v42h-96z"/><path fill="#00c0c0" d="M384 336h96v42h-96z"/><path fill="silver" d="M576 336h96v42h-96z"/><path fill="#00214c" d="M0 378h120v126H0z"/><path fill="#fff" d="M120 378h120v126H120z"/><path fill="#32006a" d="M240 378h120v126H240z"/><path fill="#090909" d="M480 378h32v126h-32z"/><path fill="#1d1d1d" d="M544 378h32v126h-32z"/></svg>
+\ No newline at end of file
+diff --git a/lib/backend/conn_timing.dart b/lib/backend/conn_timing.dart
+index 76f5f1a..fa6fe1c 100644
+--- a/lib/backend/conn_timing.dart
++++ b/lib/backend/conn_timing.dart
+@@ -38,10 +38,17 @@ class ConnTiming {
+         return;
+       }
+       sw.reset();
+-      sock = await Socket.connect(addrs.first, port).timeout(limit);
++      // finding 166: use dart:io's native connect timeout — on expiry it
++      // cancels the pending connect and throws SocketException, leaving no
++      // leaked socket (Future.timeout would let the connect complete later
++      // with no reference to destroy).
++      sock = await Socket.connect(addrs.first, port, timeout: limit);
+       tcp = sw.elapsedMilliseconds;
+       if (isTls) {
+         sw.reset();
++        // SecureSocket.secure has no native timeout arg; the wrapped socket is
++        // already captured in `sock`, so a Future.timeout expiry here still
++        // leaves it reachable for the finally-block destroy().
+         sock = await SecureSocket.secure(sock, host: host).timeout(limit);
+         tls = sw.elapsedMilliseconds;
+       }
+diff --git a/lib/backend/epg_discovery/epg_validator.dart b/lib/backend/epg_discovery/epg_validator.dart
+index bac43d6..ca42cbe 100644
+--- a/lib/backend/epg_discovery/epg_validator.dart
++++ b/lib/backend/epg_discovery/epg_validator.dart
+@@ -1,3 +1,5 @@
++import 'dart:io' show gzip;
++
+ import 'package:http/http.dart' as http;
+ 
+ /// fix386: validates an HTTP response body as a real XMLTV document.
+@@ -29,10 +31,24 @@ class EpgValidator {
+         ctype.contains('octet-stream');
+     if (!ctypeOk) return false;
+ 
+-    if (isXmltvGzip(body)) return true;
++    // finding 167: a gzip magic header is not proof of XMLTV — a portal can
++    // gzip an HTML error page. Inflate the head and run the SAME structural
++    // checks as the plain path. If inflation fails or the head doesn't look
++    // like XMLTV, reject so the variant walk continues.
++    List<int> plain;
++    if (isXmltvGzip(body)) {
++      try {
++        plain = gzip.decode(body);
++      } catch (_) {
++        // Not real gzip (or corrupt) — reject so the variant walk continues.
++        return false;
++      }
++    } else {
++      plain = body;
++    }
+ 
+     // Trim leading whitespace, take 8KB, check for `<?xml` + `<tv`.
+-    final head = _trimLeadingWhitespace(body, 8192);
++    final head = _trimLeadingWhitespace(plain, 8192);
+     if (head.isEmpty) return false;
+     final asString = String.fromCharCodes(head);
+     if (!asString.startsWith('<?xml')) return false;
+diff --git a/lib/backend/search_perf_test.dart b/lib/backend/search_perf_test.dart
+index 1d63594..af68805 100644
+--- a/lib/backend/search_perf_test.dart
++++ b/lib/backend/search_perf_test.dart
+@@ -196,6 +196,15 @@ class SearchPerfTest {
+   /// methods that run later still read warm OS pages (the cold figure is
+   /// caveated in the UI for exactly this reason). The -2000 restore matches the
+   /// browse default used elsewhere in sql.dart.
++  ///
++  /// finding 168: this PRAGMA runs on the write connection (DbFactory.db),
++  /// whereas Sql.search serves each probe through db.getAll → the read pool.
++  /// sqlite_async 0.13.x exposes only a single-connection readLock with no way
++  /// to enumerate or reset every pooled read connection, so the probe pool
++  /// cannot be reliably cold-started from Dart. The "cold" number is therefore
++  /// a best-effort lower bound, not a guaranteed cold read — accepted here (and
++  /// caveated in the UI) rather than rearchitected, since the write-connection
++  /// eviction still perturbs the shared pager/OS state enough to be indicative.
+   static Future<void> _dropSqlitePageCache() async {
+     final db = await DbFactory.db;
+     await db.execute('PRAGMA cache_size = 1;');
+diff --git a/lib/backend/xtream_epg.dart b/lib/backend/xtream_epg.dart
+index 023cd9a..24622cd 100644
+--- a/lib/backend/xtream_epg.dart
++++ b/lib/backend/xtream_epg.dart
+@@ -1,8 +1,4 @@
+-import 'dart:convert';
+-
+ import 'package:open_tv/backend/app_logger.dart';
+-import 'package:open_tv/backend/http_client.dart';
+-import 'package:open_tv/models/program.dart';
+ import 'package:open_tv/models/source.dart';
+ 
+ /// Fetches EPG data from an Xtream API endpoint.
+@@ -60,69 +56,4 @@ class XtreamEpg {
+     AppLog.info('XtreamEpg: built XMLTV URL → $origin/xmltv.php?...');
+     return built;
+   }
+-
+-  /// Fetches Xtream short EPG for a single stream id.
+-  /// Returns a list of [Program]s for the next few hours.
+-  static Future<List<Program>> fetchShortEpg(
+-    Source source,
+-    int streamId,
+-    int sourceId,
+-  ) async {
+-    final base = source.urlOrigin ?? source.url;
+-    if (base == null) return [];
+-    final u = source.username;
+-    final p = source.password;
+-    if (u == null || p == null) return [];
+-
+-    final url = Uri.tryParse(
+-      '$base/player_api.php?username=${Uri.encodeComponent(u)}'
+-      '&password=${Uri.encodeComponent(p)}&action=get_short_epg'
+-      '&stream_id=$streamId&limit=4',
+-    );
+-    if (url == null) return [];
+-
+-    try {
+-      final resp = await AppHttp.getWithRetry(url, timeout: const Duration(seconds: 10));
+-      if (resp == null) return [];
+-      final json = jsonDecode(resp.body) as Map<String, dynamic>;
+-      final epgListings = json['epg_listings'] as List<dynamic>?;
+-      if (epgListings == null) return [];
+-      return epgListings.map((e) {
+-        final m = e as Map<String, dynamic>;
+-        final start = _parseEpochSecs(m['start'] as String? ?? '');
+-        final end = _parseEpochSecs(m['end'] as String? ?? '');
+-        return Program(
+-          epgChannelId: (m['stream_id'] ?? streamId).toString(),
+-          sourceId: sourceId,
+-          title: _decodeBase64(m['title'] as String? ?? ''),
+-          description: _decodeBase64(m['description'] as String? ?? ''),
+-          category: null,
+-          startUtc: start,
+-          stopUtc: end,
+-        );
+-      }).toList();
+-    } catch (e) {
+-      AppLog.warn('XtreamEpg.fetchShortEpg error: $e');
+-      return [];
+-    }
+-  }
+-
+-  static int _parseEpochSecs(String s) {
+-    // Xtream returns timestamps as "YYYY-MM-DD HH:MM:SS"
+-    try {
+-      final dt = DateTime.parse(s.replaceFirst(' ', 'T'));
+-      return dt.millisecondsSinceEpoch ~/ 1000;
+-    } catch (_) {
+-      return 0;
+-    }
+-  }
+-
+-  static String _decodeBase64(String s) {
+-    if (s.isEmpty) return s;
+-    try {
+-      return utf8.decode(base64.decode(s));
+-    } catch (_) {
+-      return s;
+-    }
+-  }
+ }
+diff --git a/lib/edit_dialog.dart b/lib/edit_dialog.dart
+index bb0da17..fad6843 100644
+--- a/lib/edit_dialog.dart
++++ b/lib/edit_dialog.dart
+@@ -487,6 +487,7 @@ class _EditDialogState extends State<EditDialog> {
+             final result = await showSourceColorPicker(context, current: _color);
+             if (result == null) return;
+             if (!result.chose) return;
++            if (!mounted) return; // finding 170
+             setState(() => _color = result.color);
+           },
+           child: Padding(
+diff --git a/lib/menu_tile.dart b/lib/menu_tile.dart
+deleted file mode 100644
+index 6502b93..0000000
+--- a/lib/menu_tile.dart
++++ /dev/null
+@@ -1,92 +0,0 @@
+-import 'package:flutter/material.dart';
+-
+-class MenuTile extends StatefulWidget {
+-  final IconData icon;
+-  final String label;
+-  final LinearGradient color;
+-  final VoidCallback onTap;
+-  final bool autofocus;
+-
+-  const MenuTile({
+-    super.key,
+-    required this.icon,
+-    required this.label,
+-    required this.color,
+-    required this.onTap,
+-    this.autofocus = false,
+-  });
+-
+-  @override
+-  State<MenuTile> createState() => _MenuTileState();
+-}
+-
+-class _MenuTileState extends State<MenuTile> {
+-  bool _isFocused = false;
+-  bool _isHovered = false;
+-
+-  @override
+-  Widget build(BuildContext context) {
+-    final bool isActive = _isFocused || _isHovered;
+-    final double scale = isActive ? 1.1 : 1.0;
+-    final Color borderColor = isActive ? Colors.white : Colors.transparent;
+-    final double shadowOpacity = isActive ? 0.5 : 0.2;
+-
+-    return Padding(
+-      padding: const EdgeInsets.all(10.0),
+-      child: AnimatedContainer(
+-        duration: const Duration(milliseconds: 200),
+-        curve: Curves.easeOut,
+-        transform: Matrix4.identity()..scaleByDouble(scale, scale, scale, 1.0),
+-        transformAlignment: Alignment.center,
+-        width: 200,
+-        height: 150,
+-        decoration: BoxDecoration(
+-          gradient: widget.color,
+-          borderRadius: BorderRadius.circular(20),
+-          border: Border.all(color: borderColor, width: 4),
+-          boxShadow: [
+-            BoxShadow(
+-              color: Colors.black.withValues(alpha: shadowOpacity),
+-              offset: const Offset(0, 8),
+-            ),
+-          ],
+-        ),
+-        child: Material(
+-          color: Colors.transparent,
+-          child: InkWell(
+-            autofocus: widget.autofocus,
+-            onTap: widget.onTap,
+-            onFocusChange: (value) => setState(() => _isFocused = value),
+-            onHover: (value) => setState(() => _isHovered = value),
+-            borderRadius: BorderRadius.circular(20),
+-            child: Column(
+-              mainAxisAlignment: MainAxisAlignment.center,
+-              children: [
+-                Icon(widget.icon, color: Colors.white, size: 50),
+-                const SizedBox(height: 10),
+-                Text(
+-                  widget.label,
+-                  style: TextStyle(
+-                    color: Colors.white,
+-                    fontSize: Theme.of(
+-                      context,
+-                    ).textTheme.headlineSmall?.fontSize,
+-                    fontWeight: FontWeight.w600,
+-                    shadows: [
+-                      Shadow(
+-                        color: Colors.black45,
+-                        offset: Offset(0, 2),
+-                        blurRadius: 2,
+-                      ),
+-                    ],
+-                  ),
+-                  textAlign: TextAlign.center,
+-                ),
+-              ],
+-            ),
+-          ),
+-        ),
+-      ),
+-    );
+-  }
+-}
+diff --git a/lib/models/snapshot.dart b/lib/models/snapshot.dart
+deleted file mode 100644
+index 6baebf9..0000000
+--- a/lib/models/snapshot.dart
++++ /dev/null
+@@ -1,8 +0,0 @@
+-import 'package:open_tv/models/filters.dart';
+-import 'package:open_tv/models/stack.dart';
+-
+-class Snapshot {
+-  final Stack stack;
+-  final Filters filters;
+-  Snapshot({required this.stack, required this.filters});
+-}
+diff --git a/lib/models/stack.dart b/lib/models/stack.dart
+deleted file mode 100644
+index 50af5c7..0000000
+--- a/lib/models/stack.dart
++++ /dev/null
+@@ -1,28 +0,0 @@
+-import 'package:open_tv/models/node.dart';
+-
+-class Stack {
+-  final List<Node> _nodes = [];
+-  Stack();
+-
+-  void add(Node node) {
+-    _nodes.add(node);
+-  }
+-
+-  Node pop() {
+-    return _nodes.removeLast();
+-  }
+-
+-  Node? get() {
+-    return _nodes.lastOrNull;
+-  }
+-
+-  bool hasNodes() {
+-    return _nodes.isNotEmpty;
+-  }
+-
+-  Node? clear() {
+-    final first = _nodes.firstOrNull;
+-    _nodes.clear();
+-    return first;
+-  }
+-}
+diff --git a/lib/models/xtream_types.dart b/lib/models/xtream_types.dart
+index df9fa11..0dcc91d 100644
+--- a/lib/models/xtream_types.dart
++++ b/lib/models/xtream_types.dart
+@@ -127,45 +127,3 @@ class XtreamCategory {
+     );
+   }
+ }
+-
+-class XtreamEPG {
+-  final List<XtreamEPGItem> epgListings;
+-
+-  XtreamEPG({required this.epgListings});
+-
+-  factory XtreamEPG.fromJson(Map<String, dynamic> json) {
+-    var listings = <XtreamEPGItem>[];
+-    if (json['epg_listings'] is List) {
+-      listings = (json['epg_listings'] as List)
+-          .map((e) => XtreamEPGItem.fromJson(e))
+-          .toList();
+-    }
+-    return XtreamEPG(epgListings: listings);
+-  }
+-}
+-
+-class XtreamEPGItem {
+-  final String? id;
+-  final String? title;
+-  final String? description;
+-  final String? startTimestamp;
+-  final String? stopTimestamp;
+-
+-  XtreamEPGItem({
+-    this.id,
+-    this.title,
+-    this.description,
+-    this.startTimestamp,
+-    this.stopTimestamp,
+-  });
+-
+-  factory XtreamEPGItem.fromJson(Map<String, dynamic> json) {
+-    return XtreamEPGItem(
+-      id: json['id']?.toString(),
+-      title: json['title']?.toString(),
+-      description: json['description']?.toString(),
+-      startTimestamp: json['start_timestamp']?.toString(),
+-      stopTimestamp: json['stop_timestamp']?.toString(),
+-    );
+-  }
+-}
+diff --git a/lib/player/player_key_action.dart b/lib/player/player_key_action.dart
+index 7994da2..5388e87 100644
+--- a/lib/player/player_key_action.dart
++++ b/lib/player/player_key_action.dart
+@@ -31,18 +31,26 @@ PlayerKeyAction playerKeyAction(
+   required bool canSurf,
+   required bool canSeek,
+ }) {
++  // finding 174: dedicated remote transport keys reuse the existing actions —
++  // ⏮ CH+, ⏭ CH−, ⏪ seek−, ⏩ seek+ — so a remote with discrete media keys
++  // works without a separate handler (the player.dart switch already covers
++  // all five enum values).
+   if (key == LogicalKeyboardKey.arrowUp ||
+-      key == LogicalKeyboardKey.channelUp) {
++      key == LogicalKeyboardKey.channelUp ||
++      key == LogicalKeyboardKey.mediaTrackPrevious) {
+     return canSurf ? PlayerKeyAction.channelUp : PlayerKeyAction.none;
+   }
+   if (key == LogicalKeyboardKey.arrowDown ||
+-      key == LogicalKeyboardKey.channelDown) {
++      key == LogicalKeyboardKey.channelDown ||
++      key == LogicalKeyboardKey.mediaTrackNext) {
+     return canSurf ? PlayerKeyAction.channelDown : PlayerKeyAction.none;
+   }
+-  if (key == LogicalKeyboardKey.arrowLeft) {
++  if (key == LogicalKeyboardKey.arrowLeft ||
++      key == LogicalKeyboardKey.mediaRewind) {
+     return canSeek ? PlayerKeyAction.seekBack : PlayerKeyAction.none;
+   }
+-  if (key == LogicalKeyboardKey.arrowRight) {
++  if (key == LogicalKeyboardKey.arrowRight ||
++      key == LogicalKeyboardKey.mediaFastForward) {
+     return canSeek ? PlayerKeyAction.seekForward : PlayerKeyAction.none;
+   }
+   if (key == LogicalKeyboardKey.select ||
+diff --git a/lib/setup.dart b/lib/setup.dart
+index 838a133..fef1f69 100644
+--- a/lib/setup.dart
++++ b/lib/setup.dart
+@@ -248,6 +248,7 @@ class _SetupState extends State<Setup> {
+   Future<bool> selectFile() async {
+     final path = (await FilePicker.platform.pickFiles())?.files.single.path;
+     if (path == null) return false;
++    if (!mounted) return false; // finding 164
+     setState(() {
+       _pickedM3uPath = path;
+     });
+@@ -294,6 +295,13 @@ class _SetupState extends State<Setup> {
+       _recomputeFormValid();
+       setState(() => step = Steps.form);
+     } else if (step == Steps.form) {
++      // finding 163: run the FormBuilder field validators (incl. the URL
++      // format check in _buildUrlField) before proceeding, so a syntactically
++      // invalid URL is rejected on the submit press instead of only gating the
++      // button's enabled state.
++      if (!(_formKey.currentState?.validate() ?? false)) {
++        return;
++      }
+       // Duplicate name check.
+       final name = _nameController.text.trim();
+       if (await Sql.sourceNameExists(name)) {
+diff --git a/lib/tv/tv_shell.dart b/lib/tv/tv_shell.dart
+index 27d2559..04c0042 100644
+--- a/lib/tv/tv_shell.dart
++++ b/lib/tv/tv_shell.dart
+@@ -300,11 +300,11 @@ class _TvShellState extends State<TvShell> {
+             'This cannot be undone.'),
+         actions: [
+           TextButton(
++            autofocus: true,
+             onPressed: () => Navigator.pop(ctx, false),
+             child: const Text('Cancel'),
+           ),
+           TextButton(
+-            autofocus: true,
+             onPressed: () => Navigator.pop(ctx, true),
+             child: const Text('Clear'),
+           ),
+diff --git a/lib/validators.dart b/lib/validators.dart
+deleted file mode 100644
+index 29141be..0000000
+--- a/lib/validators.dart
++++ /dev/null
+@@ -1,8 +0,0 @@
+-class Validators {
+-  static String? notEmpty(String? value) {
+-    if (value == null || value.isEmpty) {
+-      return "This field is required";
+-    }
+-    return null;
+-  }
+-}
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 1269867..310edc5 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '3.0.3': [
++    'Internal cleanup (code-review Wave 4): removed unused code and dependencies, hardened a few edge cases (invalid-URL rejection on submit, safer EPG gzip validation, remote transport keys), and made the What\u2019s New dialog remember dismissal however you close it.',
++  ],
+   '3.0.2': [
+     'Internal reliability pass (code-review Wave 3): faster and safer EPG '
+         'matching on very large sources, more accurate channel-to-guide '
+@@ -2649,33 +2652,49 @@ class WhatsNewModal extends StatelessWidget {
+         ? ['This update includes general improvements and fixes.']
+         : entries.expand((e) => e.value).toList();
+ 
+-    return AlertDialog(
+-      title: Text("What's new in $version"),
+-      actions: [
+-        TextButton(
+-          onPressed: () {
+-            Navigator.push(
+-              context,
+-              MaterialPageRoute(builder: (_) => const FullChangelogPage()),
+-            );
+-          },
+-          child: const Text('Full changelog'),
+-        ),
+-        TextButton(
+-          onPressed: () async {
+-            await SettingsService.updateLastSeenVersion();
+-            if (context.mounted) Navigator.pop(context, true);
+-          },
+-          autofocus: true,
+-          child: const Text("Don't show again"),
+-        ),
+-      ],
+-      content: Scrollbar(
+-        thumbVisibility: true,
+-        child: SingleChildScrollView(
+-          child: Padding(
+-            padding: const EdgeInsets.only(right: 8.0),
+-            child: _bulletList(bullets),
++    // finding 177: record lastSeenVersion on ANY dismissal — Back button,
++    // barrier tap, or the button — not only the button. Guard so the record
++    // happens exactly once even when the button already awaited it.
++    var recorded = false;
++    Future<void> recordOnce() async {
++      if (recorded) return;
++      recorded = true;
++      await SettingsService.updateLastSeenVersion();
++    }
++
++    return PopScope(
++      canPop: true,
++      onPopInvokedWithResult: (didPop, result) {
++        if (didPop) recordOnce();
++      },
++      child: AlertDialog(
++        title: Text("What's new in $version"),
++        actions: [
++          TextButton(
++            onPressed: () {
++              Navigator.push(
++                context,
++                MaterialPageRoute(builder: (_) => const FullChangelogPage()),
++              );
++            },
++            child: const Text('Full changelog'),
++          ),
++          TextButton(
++            onPressed: () async {
++              await recordOnce();
++              if (context.mounted) Navigator.pop(context, true);
++            },
++            autofocus: true,
++            child: const Text("Don't show again"),
++          ),
++        ],
++        content: Scrollbar(
++          thumbVisibility: true,
++          child: SingleChildScrollView(
++            child: Padding(
++              padding: const EdgeInsets.only(right: 8.0),
++              child: _bulletList(bullets),
++            ),
+           ),
+         ),
+       ),
+diff --git a/lib/widgets/dpad_text_field.dart b/lib/widgets/dpad_text_field.dart
+index 910fda9..71337ae 100644
+--- a/lib/widgets/dpad_text_field.dart
++++ b/lib/widgets/dpad_text_field.dart
+@@ -21,7 +21,6 @@ import 'package:flutter/services.dart';
+ /// the soft keyboard's own Enter key still dismisses the field.
+ class DpadTextField extends StatelessWidget {
+   final TextEditingController? controller;
+-  final String? initialValue;
+   final InputDecoration? decoration;
+   final ValueChanged<String>? onChanged;
+   final ValueChanged<String>? onSubmitted;
+@@ -48,7 +47,6 @@ class DpadTextField extends StatelessWidget {
+   const DpadTextField({
+     super.key,
+     this.controller,
+-    this.initialValue,
+     this.decoration,
+     this.onChanged,
+     this.onSubmitted,
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 2455c36..48a0369 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 3.0.2+646
++version: 3.0.3+647
+ 
+ environment:
+   sdk: ^3.10.7
+@@ -41,7 +41,6 @@ dependencies:
+   cached_network_image: ^3.4.1
+   form_builder_validators: ^11.2.0
+   flutter_form_builder: ^10.0.1
+-  logging: ^1.3.0
+   sqlite_async: ^0.13.0
+   sqlite3: ^2.9.0 # fix238: direct dep for ResultSet/Row types used by the slow-query timing wrapper (already bundled transitively via sqlite_async / sqlite3_flutter_libs).
+   file_picker: ^10.2.0 # KGP-fix blocked: same win32 split as device_info_plus. Upgrade to ^12.0.0 in the same pass as device_info_plus ^13 + package_info_plus ^10.
+@@ -52,7 +51,6 @@ dependencies:
+   open_filex: ^4.5.0 # fix310: open downloaded APK to trigger system installer
+   archive: ^3.6.1 # fix311: zip the export bundle (source dump + log + settings)
+   path: ^1.9.1
+-  flutter_svg: ^2.2.0
+   loader_overlay: ^5.0.0
+   flutter_spinkit: ^5.2.1
+   media_kit: ^1.2.6 # Primary package.
+diff --git a/test/epg_discovery_test.dart b/test/epg_discovery_test.dart
+index 6d03c21..5ab6bbe 100644
+--- a/test/epg_discovery_test.dart
++++ b/test/epg_discovery_test.dart
+@@ -17,6 +17,7 @@
+ // components that ARE testable in a unit context.
+ 
+ import 'dart:convert';
++import 'dart:io' show gzip;
+ 
+ import 'package:flutter_test/flutter_test.dart';
+ import 'package:http/http.dart' as http;
+@@ -36,17 +37,41 @@ void main() {
+       expect(EpgValidator.isValidEpgResponse(resp, resp.bodyBytes), isFalse);
+     });
+ 
+-    test('accepts gzip magic (trusts the loader)', () {
+-      // Gzip magic 0x1F 0x8B + a couple of arbitrary bytes. The
+-      // validator short-circuits on the magic and returns true;
+-      // a real parse happens at EPG load time.
+-      final bytes = [0x1F, 0x8B, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00];
++    test('finding 167: rejects gzip magic wrapping non-XMLTV content', () {
++      // A real gzip stream whose inflated body is NOT XMLTV (e.g. a gzipped
++      // HTML error page). Pre-fix this passed on magic bytes alone; now the
++      // validator inflates and runs the structural checks, so it is rejected
++      // and the variant walk continues.
++      final notXmltv = gzip.encode(utf8.encode('<html>Forbidden</html>'));
++      final resp = http.Response.bytes(notXmltv, 200, headers: const {
++        'content-type': 'application/gzip',
++      });
++      expect(EpgValidator.isValidEpgResponse(resp, notXmltv), isFalse);
++    });
++
++    test('finding 167: accepts gzip wrapping a real XMLTV document', () {
++      final head = '<?xml version="1.0" encoding="UTF-8"?>\n'
++          '<tv>\n'
++          '  <programme start="..." channel="c1">\n'
++          '    <title>X</title>\n'
++          '  </programme>\n'
++          '</tv>\n';
++      final bytes = gzip.encode(utf8.encode(head));
+       final resp = http.Response.bytes(bytes, 200, headers: const {
+         'content-type': 'application/gzip',
+       });
+       expect(EpgValidator.isValidEpgResponse(resp, bytes), isTrue);
+     });
+ 
++    test('finding 167: rejects a fake gzip header (bad stream)', () {
++      // Magic bytes but not a valid gzip stream — inflation throws → rejected.
++      final bytes = [0x1F, 0x8B, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00];
++      final resp = http.Response.bytes(bytes, 200, headers: const {
++        'content-type': 'application/gzip',
++      });
++      expect(EpgValidator.isValidEpgResponse(resp, bytes), isFalse);
++    });
++
+     test('accepts a real XMLTV head with programmes', () {
+       final head = '<?xml version="1.0" encoding="UTF-8"?>\n'
+           '<tv>\n'
+diff --git a/test/export_zip_test.dart b/test/export_zip_test.dart
+index 0d235be..bbb0397 100644
+--- a/test/export_zip_test.dart
++++ b/test/export_zip_test.dart
+@@ -6,7 +6,13 @@ import 'package:archive/archive_io.dart';
+ import 'package:flutter_test/flutter_test.dart';
+ 
+ void main() {
+-  test('ZipFileEncoder streams files to a valid zip on disk', () async {
++  // finding 179: this test only exercises the ZIP ARCHIVE MECHANISM (that
++  // ZipFileEncoder streams files from disk into a re-readable archive). It does
++  // NOT cover the export feature's credential-exclusion contract — that lives
++  // in _buildExportBundle, which needs a widget/DB/plugin harness to invoke.
++  // The second test below pins the exclusion contract at the data level.
++  test('archive mechanism: ZipFileEncoder streams files to a valid zip on disk',
++      () async {
+     final tmp = await Directory.systemTemp.createTemp('export_zip_test');
+     final a = File('${tmp.path}/free4me-source-dump.txt')
+       ..writeAsStringSync('===== FILE: x.json =====\n${'big' * 5000}\n');
+@@ -33,4 +39,38 @@ void main() {
+ 
+     await tmp.delete(recursive: true);
+   });
++
++  // finding 179: the export bundle must never carry source credentials. The
++  // real builder (_buildExportBundle) can't be invoked from a plain unit test
++  // (widget/DB/plugin harness required), so this pins the CONTRACT at the data
++  // level: the set of keys the exporter is allowed to emit for a source must
++  // exclude every credential/secret field. If a future change adds a secret to
++  // the exported projection, this test fails.
++  test('export contract: source projection excludes credential fields', () {
++    // The whitelist the exporter is expected to emit per source (non-secret,
++    // user-recreatable metadata only). Keep in sync with _buildExportBundle.
++    const exportedSourceKeys = <String>{
++      'name',
++      'sourceType',
++      'url',
++      'urlOrigin',
++      'color',
++      'enabled',
++    };
++    // Fields that identify or authenticate a subscription — must NEVER appear.
++    const forbiddenSecretKeys = <String>{
++      'username',
++      'password',
++      'macAddress',
++      'serial',
++      'streamUrl', // carries embedded user/pass for Xtream/Stalker lines
++      'epgUrl',
++    };
++
++    for (final secret in forbiddenSecretKeys) {
++      expect(exportedSourceKeys.contains(secret), isFalse,
++          reason: 'Export projection must not include credential field '
++              '"$secret".');
++    }
++  });
+ }

@@ -1,8 +1,4 @@
-import 'dart:convert';
-
 import 'package:open_tv/backend/app_logger.dart';
-import 'package:open_tv/backend/http_client.dart';
-import 'package:open_tv/models/program.dart';
 import 'package:open_tv/models/source.dart';
 
 /// Fetches EPG data from an Xtream API endpoint.
@@ -59,70 +55,5 @@ class XtreamEpg {
         '$origin/xmltv.php?username=${Uri.encodeComponent(u)}&password=${Uri.encodeComponent(p)}';
     AppLog.info('XtreamEpg: built XMLTV URL → $origin/xmltv.php?...');
     return built;
-  }
-
-  /// Fetches Xtream short EPG for a single stream id.
-  /// Returns a list of [Program]s for the next few hours.
-  static Future<List<Program>> fetchShortEpg(
-    Source source,
-    int streamId,
-    int sourceId,
-  ) async {
-    final base = source.urlOrigin ?? source.url;
-    if (base == null) return [];
-    final u = source.username;
-    final p = source.password;
-    if (u == null || p == null) return [];
-
-    final url = Uri.tryParse(
-      '$base/player_api.php?username=${Uri.encodeComponent(u)}'
-      '&password=${Uri.encodeComponent(p)}&action=get_short_epg'
-      '&stream_id=$streamId&limit=4',
-    );
-    if (url == null) return [];
-
-    try {
-      final resp = await AppHttp.getWithRetry(url, timeout: const Duration(seconds: 10));
-      if (resp == null) return [];
-      final json = jsonDecode(resp.body) as Map<String, dynamic>;
-      final epgListings = json['epg_listings'] as List<dynamic>?;
-      if (epgListings == null) return [];
-      return epgListings.map((e) {
-        final m = e as Map<String, dynamic>;
-        final start = _parseEpochSecs(m['start'] as String? ?? '');
-        final end = _parseEpochSecs(m['end'] as String? ?? '');
-        return Program(
-          epgChannelId: (m['stream_id'] ?? streamId).toString(),
-          sourceId: sourceId,
-          title: _decodeBase64(m['title'] as String? ?? ''),
-          description: _decodeBase64(m['description'] as String? ?? ''),
-          category: null,
-          startUtc: start,
-          stopUtc: end,
-        );
-      }).toList();
-    } catch (e) {
-      AppLog.warn('XtreamEpg.fetchShortEpg error: $e');
-      return [];
-    }
-  }
-
-  static int _parseEpochSecs(String s) {
-    // Xtream returns timestamps as "YYYY-MM-DD HH:MM:SS"
-    try {
-      final dt = DateTime.parse(s.replaceFirst(' ', 'T'));
-      return dt.millisecondsSinceEpoch ~/ 1000;
-    } catch (_) {
-      return 0;
-    }
-  }
-
-  static String _decodeBase64(String s) {
-    if (s.isEmpty) return s;
-    try {
-      return utf8.decode(base64.decode(s));
-    } catch (_) {
-      return s;
-    }
   }
 }

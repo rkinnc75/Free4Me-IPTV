@@ -196,6 +196,15 @@ class SearchPerfTest {
   /// methods that run later still read warm OS pages (the cold figure is
   /// caveated in the UI for exactly this reason). The -2000 restore matches the
   /// browse default used elsewhere in sql.dart.
+  ///
+  /// finding 168: this PRAGMA runs on the write connection (DbFactory.db),
+  /// whereas Sql.search serves each probe through db.getAll → the read pool.
+  /// sqlite_async 0.13.x exposes only a single-connection readLock with no way
+  /// to enumerate or reset every pooled read connection, so the probe pool
+  /// cannot be reliably cold-started from Dart. The "cold" number is therefore
+  /// a best-effort lower bound, not a guaranteed cold read — accepted here (and
+  /// caveated in the UI) rather than rearchitected, since the write-connection
+  /// eviction still perturbs the shared pager/OS state enough to be indicative.
   static Future<void> _dropSqlitePageCache() async {
     final db = await DbFactory.db;
     await db.execute('PRAGMA cache_size = 1;');

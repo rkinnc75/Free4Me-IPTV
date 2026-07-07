@@ -17,6 +17,7 @@
 // components that ARE testable in a unit context.
 
 import 'dart:convert';
+import 'dart:io' show gzip;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -36,15 +37,39 @@ void main() {
       expect(EpgValidator.isValidEpgResponse(resp, resp.bodyBytes), isFalse);
     });
 
-    test('accepts gzip magic (trusts the loader)', () {
-      // Gzip magic 0x1F 0x8B + a couple of arbitrary bytes. The
-      // validator short-circuits on the magic and returns true;
-      // a real parse happens at EPG load time.
-      final bytes = [0x1F, 0x8B, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00];
+    test('finding 167: rejects gzip magic wrapping non-XMLTV content', () {
+      // A real gzip stream whose inflated body is NOT XMLTV (e.g. a gzipped
+      // HTML error page). Pre-fix this passed on magic bytes alone; now the
+      // validator inflates and runs the structural checks, so it is rejected
+      // and the variant walk continues.
+      final notXmltv = gzip.encode(utf8.encode('<html>Forbidden</html>'));
+      final resp = http.Response.bytes(notXmltv, 200, headers: const {
+        'content-type': 'application/gzip',
+      });
+      expect(EpgValidator.isValidEpgResponse(resp, notXmltv), isFalse);
+    });
+
+    test('finding 167: accepts gzip wrapping a real XMLTV document', () {
+      final head = '<?xml version="1.0" encoding="UTF-8"?>\n'
+          '<tv>\n'
+          '  <programme start="..." channel="c1">\n'
+          '    <title>X</title>\n'
+          '  </programme>\n'
+          '</tv>\n';
+      final bytes = gzip.encode(utf8.encode(head));
       final resp = http.Response.bytes(bytes, 200, headers: const {
         'content-type': 'application/gzip',
       });
       expect(EpgValidator.isValidEpgResponse(resp, bytes), isTrue);
+    });
+
+    test('finding 167: rejects a fake gzip header (bad stream)', () {
+      // Magic bytes but not a valid gzip stream — inflation throws → rejected.
+      final bytes = [0x1F, 0x8B, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00];
+      final resp = http.Response.bytes(bytes, 200, headers: const {
+        'content-type': 'application/gzip',
+      });
+      expect(EpgValidator.isValidEpgResponse(resp, bytes), isFalse);
     });
 
     test('accepts a real XMLTV head with programmes', () {
