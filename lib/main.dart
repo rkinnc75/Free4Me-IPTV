@@ -126,6 +126,12 @@ Future<void> main() async {
     // no-op when all indexes are present.
     unawaited(Sql.ensureBrowseIndexesPresent());
   }
+  // finding 38: cold-start poll of the cross-isolate EPG-completion marker, so a
+  // background refresh that finished while the app was killed is picked up now
+  // (bumps the main-isolate epgVersion once; guide reloads on first build). The
+  // DB is already open here (Sql.hasSources above). Unawaited — off the render
+  // path. Also polled on resume in _RootPageState.didChangeAppLifecycleState.
+  unawaited(pollEpgCompletion());
   unawaited(EpgService.scheduleBackgroundRefresh());
   // fix600: the background EPG task is unreliable on TV boxes (Amlogic/onn kill
   // background work) so the forecast can lapse → empty guide grid + empty "On
@@ -169,6 +175,33 @@ Future<void> main() async {
 /// nothing to warm (no sources / fast device → brief or no splash).
 final ValueNotifier<bool> appWarmupDone = ValueNotifier<bool>(false);
 
+// finding 38: main-isolate memory of the last EPG-completion timestamp we have
+// already reflected into the guide. epg_last_completed_utc is written by the
+// background (Workmanager) isolate via Sql.setAppMeta when refreshSource finishes;
+// this static lives in the MAIN isolate only. 0 = nothing seen yet this process.
+int _lastSeenEpgCompletedUtc = 0;
+
+/// finding 38: bridge the per-isolate epgVersion gap. Reads the cross-isolate
+/// completion marker (app_meta 'epg_last_completed_utc'); if it advanced past
+/// what this isolate last saw, bumps the MAIN-isolate EpgService.epgVersion so
+/// TvGuideView reloads. Called on app resume and once at cold-start after the DB
+/// is open. Safe even if the premise is false: no marker or an unchanged marker
+/// is a no-op; a bad/parse-failing value is swallowed.
+Future<void> pollEpgCompletion() async {
+  try {
+    final raw = await Sql.getAppMeta('epg_last_completed_utc');
+    if (raw == null) return;
+    final ts = int.tryParse(raw.trim());
+    if (ts == null) return;
+    if (ts > _lastSeenEpgCompletedUtc) {
+      _lastSeenEpgCompletedUtc = ts;
+      EpgService.epgVersion.value++; // notify main-isolate guide listener
+    }
+  } catch (e) {
+    AppLog.warn('pollEpgCompletion: skipped — $e');
+  }
+}
+
 class _RootPage extends StatefulWidget {
   final bool skipSetup;
   final Settings settings;
@@ -208,6 +241,14 @@ class _RootPageState extends State<_RootPage> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused) {
       _capturePlaybackMetrics();
+    } else if (state == AppLifecycleState.resumed) {
+      // finding 38: the Workmanager background isolate bumps EpgService.epgVersion
+      // when a refresh finishes, but Dart statics are per-isolate so that bump
+      // never reaches this (main) isolate's TvGuideView listener. The background
+      // isolate persists a completion timestamp in app_meta; on resume we compare
+      // it to what we last saw and bump the MAIN-isolate epgVersion so the guide
+      // reloads. Best-effort; unawaited so it never blocks the resume.
+      unawaited(pollEpgCompletion());
     }
   }
 

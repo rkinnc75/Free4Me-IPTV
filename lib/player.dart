@@ -260,6 +260,32 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   bool _pipSupported = false;
   bool _inPipMode = false;
 
+  // finding 18: true when the most recent (re)open was forced to software
+  // decode (only happens while minimized to PiP). On PiP exit we restore
+  // hardware decode at runtime rather than leaving the stream on permanent
+  // software decode (black-with-audio on Tegra full-screen).
+  bool _lastOpenForcedSoftware = false;
+
+  // finding 20: set true when a livestream has exhausted its retries / given
+  // up (the retry loop hit maxReconnectAttempts, or the onDisconnect reconnect
+  // tail failed) and the player is now idle awaiting a network restore. The
+  // connectivity listener restarts playback directly (onDisconnect would be
+  // rejected by its own !_isReconnecting-and-guards path).
+  bool _awaitingNetwork = false;
+
+  // finding 21: open-generation guard. Each _startPlayback entry bumps the
+  // generation; any older retry loop aborts at its next await when it sees a
+  // stale generation, so a second open (errorStream during the retry loop,
+  // network-restore, cast-resume) can't stack a concurrent loop.
+  int _openGeneration = 0;
+  bool _startInFlight = false;
+
+  // finding 32: virtual seek base for coalesced hold-to-seek. Successive
+  // flushes during a burst add to the intended target rather than the engine's
+  // possibly-stale position, so held seeks land at the chip total. Reset when
+  // the skip chip clears.
+  Duration? _virtualSeekBase;
+
   @override
   void initState() {
     super.initState();
@@ -390,6 +416,13 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
               // never gave up and were on forced software decode; reset the
               // counter so the normal give-up/exit logic applies from scratch.
               _totalReconnectAttempts = 0;
+              // finding 18: if the last (re)open in PiP was forced to software
+              // decode, restore hardware decode at runtime (no reopen) so
+              // full-screen playback isn't stuck black-with-audio on Tegra.
+              if (_lastOpenForcedSoftware && _engine is MpvEngine) {
+                unawaited((_engine as MpvEngine).setHardwareDecode(true));
+                _lastOpenForcedSoftware = false;
+              }
               // Returned from PiP — re-enter fullscreen if not engine-managed.
               if (!_engine.handlesOwnFullscreen) _enterSystemFullscreen();
             }
@@ -414,6 +447,22 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
       await _engine.setVolume(1.0);
       AppLog.info('Player: adopt volume=1.0 set'
           ' eid=${identityHashCode(_engine)}');
+      // finding 19: the adopted (mini→full-screen promoted) engine was opened
+      // with previewMode settings — upgrade it to full-screen configuration at
+      // runtime (no reopen) so DVR eligibility, live demuxer buffer, and
+      // full-screen hwdec routing all apply. DVR only genuinely activates if
+      // the stream supports it; the eligibility gate is simply opened.
+      if (_engine is MpvEngine) {
+        await (_engine as MpvEngine).promoteToFullScreen(
+          dvrEligible: widget.channel.mediaType == MediaType.livestream,
+        );
+      }
+      // finding 29: the adopt path returns before the normal connectivity
+      // block, so it never got the network-restore listener; and _lastOpenAt
+      // was left null (only _startPlayback sets it), making the first error be
+      // misclassified as "instant" (sinceOpen treats null as 0). Seed both.
+      _lastOpenAt = DateTime.now();
+      _subscribeConnectivity();
       return;
     }
 
@@ -436,13 +485,47 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
       seconds != null ? Duration(seconds: seconds) : null,
       headers: headers,
     );
+    _subscribeConnectivity();
+  }
+
+  /// finding 29: the connectivity listener, extracted so BOTH the adopt path
+  /// and the normal open path wire it (the adopt branch used to return before
+  /// this ran). Added to [subscriptions] so dispose cancels it.
+  void _subscribeConnectivity() {
     subscriptions.add(
       Connectivity().onConnectivityChanged.listen((results) {
         final hasNet =
             results.isNotEmpty && !results.contains(ConnectivityResult.none);
-        if (hasNet && _isReconnecting) {
-          AppLog.info('Player: network restored; reconnecting...');
-          onDisconnect(reason: 'network restored');
+        // finding 20: restart directly on network restore after a give-up.
+        // The old code called onDisconnect(reason: 'network restored') under
+        // `hasNet && _isReconnecting`, but that is the exact complement of
+        // onDisconnect's own !_isReconnecting guard — it was a guaranteed
+        // no-op. Track an explicit idle-after-failure state (_awaitingNetwork)
+        // and restart _startPlayback with the open-generation guard (#21) so it
+        // can't stack on a sleeping loop. Livestream only.
+        if (hasNet &&
+            widget.channel.mediaType == MediaType.livestream &&
+            !exiting &&
+            !_isReconnecting &&
+            _awaitingNetwork) {
+          AppLog.info('Player: network restored; restarting playback...');
+          _awaitingNetwork = false;
+          _totalReconnectAttempts = 0;
+          _consecutiveOpenFailures = 0;
+          unawaited(() async {
+            // Re-fetch per-channel headers (getChannelHeaders can throw on a
+            // locked db during a concurrent refresh) — do not silently drop
+            // headers on restart.
+            ChannelHttpHeaders? h;
+            try {
+              final id = widget.channel.id;
+              h = id != null ? await Sql.getChannelHeaders(id) : null;
+            } catch (e) {
+              AppLog.warn('Player: network-restore header fetch failed — $e'
+                  ' channel="${widget.channel.name}"');
+            }
+            await _startPlayback(null, headers: h);
+          }());
         }
       }),
     );
@@ -534,6 +617,17 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
         '${_lastFailureWasInstant ? " (instant — possible connection limit)" : ""}'
         ' — "$err" channel="${widget.channel.name}"',
       );
+      // finding 15: VOD terminal-failure path. onDisconnect returns early for
+      // non-livestream anyway (it only reconnects live), so a VOD error would
+      // otherwise vanish silently. Surface a terminal message instead and do
+      // NOT set _isReconnecting.
+      if (widget.channel.mediaType != MediaType.livestream) {
+        if (mounted) {
+          setState(() =>
+              _bufferingState = 'Unable to play — ${Error.friendlyMessage(err)}');
+        }
+        return;
+      }
       // onDisconnect() is the single source of truth for incrementing
       // _totalReconnectAttempts — do not pre-increment here, which caused
       // the counter to jump by 2 per failure and exceed widget.settings.maxReconnectAttempts.
@@ -603,6 +697,28 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
           ' (grace=$_startupGrace base=${base}s)'
           ' channel="${widget.channel.name}"',
         );
+      } else {
+        // finding 15: VOD buffering watchdog. A stalled VOD open that emits
+        // buffering=true and never buffering=false would otherwise wedge on
+        // "Buffering..." forever (onDisconnect is live-only). Arm a longer
+        // watchdog whose callback surfaces a terminal message — never
+        // reconnects, never sets _isReconnecting.
+        final base = widget.settings.bufferingWatchdogSecs;
+        final watchdogSecs = base * 3;
+        _bufferingWatchdog?.cancel();
+        _bufferingWatchdog = Timer(
+          Duration(seconds: watchdogSecs),
+          () {
+            if (mounted && !exiting) {
+              setState(() =>
+                  _bufferingState = 'Unable to play — stream stalled');
+            }
+          },
+        );
+        AppLog.info(
+          'Player: VOD buffering watchdog armed ${watchdogSecs}s'
+          ' channel="${widget.channel.name}"',
+        );
       }
     } else {
       _bufferingWatchdog?.cancel();
@@ -618,10 +734,14 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
       // delivery order between the two streams (separate native callbacks,
       // Dart delivery order not guaranteed within the same native event cycle).
       if (_startupGrace) {
+        // finding 31: capture the open generation (finding 21) so a stale
+        // grace-expiry callback from a PREVIOUS open can't clear the NEXT
+        // open's grace early (it had no timer handle / cancellation before).
+        final graceGen = _openGeneration;
         Future.delayed(
           Duration(milliseconds: widget.settings.startupGraceMs),
           () {
-            if (mounted) {
+            if (mounted && graceGen == _openGeneration) {
               setState(() => _startupGrace = false);
               AppLog.info(
                 'Player: startup grace expired'
@@ -657,7 +777,9 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   }
 
   void onDisconnect({String reason = 'unknown'}) async {
-    if (!mounted || exiting || _isReconnecting) return;
+    // finding 23: while casting the local engine is paused; a buffering/error
+    // event from that pause must NOT trigger a reconnect.
+    if (!mounted || exiting || _isReconnecting || _isCasting) return;
     if (widget.channel.mediaType != MediaType.livestream) return;
 
     // Set synchronously before any await so that a second onDisconnect call
@@ -680,6 +802,8 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
       ' reconnecting=$_isReconnecting'
       ' openFailures=$_consecutiveOpenFailures'
       ' startupGrace=$_startupGrace'
+      // finding 21: surface the in-flight-open state for diagnostics.
+      ' startInFlight=$_startInFlight'
       ' reason="$reason" channel="${widget.channel.name}"',
     );
 
@@ -792,6 +916,11 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     } catch (e) {
       AppLog.warn('Player: reconnect tail failed — $e'
           ' channel="${widget.channel.name}"');
+      // finding 20: a failed reconnect tail leaves the player idle — arm the
+      // network-restore restart (livestream only).
+      if (widget.channel.mediaType == MediaType.livestream) {
+        _awaitingNetwork = true;
+      }
     } finally {
       _isReconnecting = false;
     }
@@ -809,12 +938,21 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     Duration? startPosition, {
     ChannelHttpHeaders? headers,
   }) async {
+    // finding 21: open-generation guard. Bumping the generation on every entry
+    // makes any prior retry loop (still sleeping in a backoff, or about to
+    // re-open after a hung open()) abort at its next await — so an errorStream
+    // event during the initial retry loop, a network-restore restart, or a
+    // cast-resume can't spawn a second concurrent open loop against the engine.
+    final myGen = ++_openGeneration;
+    _startInFlight = true;
     _startupGrace = false; // Reset on every attempt (including retries)
     _seekProbeLogged = false; // fix380: one log per open() for the startup probe
     _vfErrorLogged = false; // fix566: one vf-cap-error log per open()
     final timeout = Duration(seconds: widget.settings.openTimeoutSecs);
+    try {
     while (true) {
       if (!mounted || exiting) return;
+      if (myGen != _openGeneration) return; // finding 21: superseded
       _startupWatchdog?.cancel(); // fix94: clear before re-open
       try {
         final playbackUrl = _playbackUrl();
@@ -868,6 +1006,10 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
             // it recovers in PiP. No-op for the initial open (never in PiP).
             forceSoftwareDecode: _inPipMode,
           );
+          // finding 18: remember whether this open was forced to software so
+          // PiP-exit can restore hardware decode (otherwise the stream stays on
+          // software decode forever — black-with-audio on Tegra full-screen).
+          _lastOpenForcedSoftware = _inPipMode;
         }
 
         _startupGrace = true;
@@ -887,7 +1029,12 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
               ),
             );
 
+        // finding 21: a newer _startPlayback superseded us while open() was in
+        // flight (e.g. a hung open resolving after a fresh open started). Abort
+        // so we don't clobber the winning loop's state with this stale open.
+        if (myGen != _openGeneration) return;
         _consecutiveOpenFailures = 0;
+        _awaitingNetwork = false; // finding 20: healthy open clears idle state
         AppLog.info(
           'Player: open() succeeded — engine=libmpv url="$playbackUrl"',
         );
@@ -924,6 +1071,31 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
             'Player: startup watchdog armed ${startupSecs}s'
             ' channel="${widget.channel.name}"',
           );
+        } else {
+          // finding 15: VOD startup watchdog. If open() succeeds but no frame /
+          // buffering event ever arrives (a dead VOD URL that resolved on
+          // command acceptance), this is the only reliable catch — surface a
+          // terminal message rather than reconnecting.
+          final startupSecs = widget.settings.bufferingWatchdogSecs * 3;
+          _startupWatchdog?.cancel();
+          _startupWatchdog = Timer(
+            Duration(seconds: startupSecs),
+            () {
+              if (mounted && !exiting) {
+                AppLog.warn(
+                  'Player: VOD startup watchdog fired after ${startupSecs}s'
+                  ' — open succeeded but no frame'
+                  ' channel="${widget.channel.name}"',
+                );
+                setState(() =>
+                    _bufferingState = 'Unable to play — stream stalled');
+              }
+            },
+          );
+          AppLog.info(
+            'Player: VOD startup watchdog armed ${startupSecs}s'
+            ' channel="${widget.channel.name}"',
+          );
         }
         // Grace expires 500ms after buffering=false in _onBufferingChanged(),
         // not on a fixed timer anchored to open(). The seek probe fires
@@ -943,6 +1115,11 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
           ' — $e — channel="${widget.channel.name}"',
         );
         if (_consecutiveOpenFailures >= widget.settings.maxReconnectAttempts) {
+          // finding 20: retries exhausted — mark idle-awaiting-network so a
+          // later connectivity restore restarts playback (livestream only).
+          if (widget.channel.mediaType == MediaType.livestream) {
+            _awaitingNetwork = true;
+          }
           if (mounted) {
             setState(
               () => _bufferingState =
@@ -953,7 +1130,15 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
         }
         final backoff = (_consecutiveOpenFailures * 1).clamp(1, 5);
         await Future.delayed(Duration(seconds: backoff));
+        // finding 21: superseded during the backoff sleep — abort so the
+        // stale loop doesn't re-open on top of the winning loop.
+        if (myGen != _openGeneration) return;
       }
+    }
+    } finally {
+      // finding 21: only clear the in-flight flag if WE are still the current
+      // generation — a newer loop that superseded us owns the flag now.
+      if (myGen == _openGeneration) _startInFlight = false;
     }
   }
 
@@ -1010,7 +1195,11 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
 
     final url = _playbackUrl();
 
-    if (_castState == CastState.connected || _isCasting) {
+    // finding 17: the first guard is now `_isCasting` only (was
+    // `_castState == connected || _isCasting`). A connected-but-not-casting
+    // session must fall through to the startCast block below; the old OR made
+    // that state wrongly offer "Stop" and left startCast unreachable dead code.
+    if (_isCasting) {
       // Already casting — offer to stop
       final stop = await showDialog<bool>(
         context: context,
@@ -1039,16 +1228,23 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
           _isCasting = false;
           _castState = CastState.notConnected;
         });
-        // Resume locally from Cast-reported position.
-        // reapplyOptions() must precede open() since open() no longer
-        if (_engine case final MpvEngine mpv) {
-          await mpv.reapplyOptions(url: url);
+        // finding 22: resume locally through _startPlayback so per-channel
+        // HTTP headers / ignoreSsl / open timeout / watchdogs are all applied
+        // uniformly — the old bare reapplyOptions(url)+open dropped headers and
+        // had no timeout. getChannelHeaders is a bare db read (no internal
+        // catch) so wrap the whole resume in try/catch.
+        try {
+          final cid = widget.channel.id;
+          final resumeHeaders =
+              cid != null ? await Sql.getChannelHeaders(cid) : null;
+          await _startPlayback(resumePosition, headers: resumeHeaders);
+        } catch (e) {
+          AppLog.warn('Player: cast-stop resume failed — $e'
+              ' channel="${widget.channel.name}"');
+          if (mounted) {
+            setState(() => _bufferingState = 'Couldn\'t resume playback');
+          }
         }
-        await _engine.open(
-          url: url,
-          startPosition: resumePosition,
-          isLive: widget.channel.mediaType == MediaType.livestream, // fix339
-        );
       }
       return;
     }
@@ -1070,7 +1266,7 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
       return;
     }
 
-    // Connected — begin casting
+    // Connected but not casting — begin casting
     try {
       final ok = await CastController.startCast(
         url: url,
@@ -1078,6 +1274,15 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
         contentType: CastController.mimeTypeFor(url),
       );
       if (ok && mounted) {
+        // finding 23: stop the local engine before marking casting, so a
+        // maxConnections=1 provider frees the slot for the receiver and there
+        // is no double playback. PlayerEngine exposes only pause() (no stop()),
+        // so use pause() — the minimum safe form. The engine's error/buffering
+        // handlers are guarded by _isCasting below so pausing can't trigger a
+        // spurious reconnect.
+        try {
+          await _engine.pause();
+        } catch (_) {}
         setState(() => _isCasting = true);
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1175,10 +1380,18 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   /// (which owns the skip chip + coalescing); this only performs the seek.
   Future<void> _seekBy(Duration delta) async {
     if (!_canSeekTransport) return;
-    var target = _engine.position + delta;
+    // finding 32: accumulate from a virtual base across a burst so successive
+    // coalesced flushes don't each read the engine's possibly-stale position
+    // (which lags the prior seek on a slow box), making held seeks land short.
+    // The base seeds from the live position at the first flush of a burst and
+    // advances to each computed target; it resets to null when the skip chip
+    // clears (see _noteSkip), so the next independent burst re-seeds live.
+    final base = _virtualSeekBase ?? _engine.position;
+    var target = base + delta;
     if (target.isNegative) target = Duration.zero;
     final dur = _engine.duration;
     if (dur > Duration.zero && target > dur) target = dur;
+    _virtualSeekBase = target; // next flush accumulates from here
     await _engine.seek(target);
     AppLog.info(
         'Player: transport seek ${delta.inSeconds}s -> ${target.inSeconds}s');
@@ -1192,6 +1405,9 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     _skipIndicatorTimer?.cancel();
     setState(() => _skipIndicatorSecs += delta.inSeconds);
     _skipIndicatorTimer = Timer(_skipIndicatorHold, () {
+      // finding 32: burst ended — reset the virtual seek base so the next
+      // independent seek re-seeds from the live engine position.
+      _virtualSeekBase = null;
       if (mounted) setState(() => _skipIndicatorSecs = 0);
     });
   }
@@ -1250,10 +1466,17 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   /// correctly because the controls theme is keyed on dvrActive (fix367).
   List<Widget> _transportButtons() {
     if (widget.channel.mediaType != MediaType.livestream) {
-      return const [
-        MaterialSkipPreviousButton(),
-        MaterialPlayOrPauseButton(iconSize: 40.0),
-        MaterialSkipNextButton(),
+      // finding 33: the media_kit Skip buttons are inert — the engine opens a
+      // single Media with PlaylistMode.none, so there is no media_kit playlist
+      // to skip. Use the app's own _surf (prev/next in the launch playlist),
+      // gated on _canSurf; with no playlist only play/pause shows (no dead
+      // buttons). +1 = down the list = "next" (matches the live branch).
+      return [
+        if (_canSurf)
+          _dvrButton(Icons.skip_previous, 'Previous', () => _surf(-1)),
+        const MaterialPlayOrPauseButton(iconSize: 40.0),
+        if (_canSurf)
+          _dvrButton(Icons.skip_next, 'Next', () => _surf(1)),
       ];
     }
     final dvr = _engine.dvrActive;
@@ -1463,6 +1686,16 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     if (mounted && _navMode) _resetOverlayHideTimer();
   }
 
+  /// finding 34: the overlay Cast action opens a device picker / stop dialog.
+  /// Cancel the auto-hide timer while it's pending so _closeOverlay can't fire
+  /// mid-dialog and yank D-pad focus out from under the picker (mirrors the
+  /// subtitles/audio wrappers, which the plain Cast button did not).
+  Future<void> _onCastFromOverlay() async {
+    _overlayHideTimer?.cancel();
+    await _onCastTap();
+    if (mounted && _navMode) _resetOverlayHideTimer();
+  }
+
   /// fix650: position/duration progress row for the TV overlay. Display-only —
   /// seeking stays on the ◀/▶ keys and rewind/forward buttons; a focusable
   /// slider would need its own key handling and steal D-pad LEFT/RIGHT from
@@ -1547,8 +1780,10 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
         else
           const Spacer(),
         if (_castSupported)
-          _ovlButton(
-              _castIcon, _isCasting ? 'Stop casting' : 'Cast', _onCastTap),
+          // finding 34: route through the dialog-aware wrapper so the 8s
+          // auto-hide timer is cancelled while the cast dialog is open.
+          _ovlButton(_castIcon, _isCasting ? 'Stop casting' : 'Cast',
+              _onCastFromOverlay),
         if (_pipSupported)
           _ovlButton(Icons.picture_in_picture_alt, 'Picture-in-picture',
               () => PipController.enterPip()),
@@ -1593,7 +1828,10 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
           _ovlButton(Icons.keyboard_arrow_down, 'Channel down', () => _surf(1)),
         _ovlButton(Icons.aspect_ratio_outlined, 'Aspect ratio', toggleZoom),
         // finding 107: hide mini-player entry on TV/D-pad (controls not focusable)
-        if (!_tvMode)
+        // finding 35: also gate on livestream to match the touch-bar bottomBar
+        // gate — the mini-player (and its overlay engine) is a live-only path;
+        // offering it on VOD hands off a movie with no resume/handoff support.
+        if (!_tvMode && widget.channel.mediaType == MediaType.livestream)
           _ovlButton(
               Icons.picture_in_picture, 'Mini-player', _minimizeToOverlay),
       ],
@@ -1682,8 +1920,14 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
         // gate: TV+VOD used media_kit's bars, which can't host D-pad focus
         // (the reverted fix578 problem), so VOD now gets the same overlay —
         // with a position/duration row.
-        if (_tvMode &&
-            widget.settings.multiViewLayout == MultiViewLayout.none) {
+        // finding 26: DECISION — dropped the persisted multiViewLayout==none
+        // clause (mirrors fix653 for the stats panel). It read the persisted
+        // grid-size setting, not the current view, so merely having a 2x2
+        // layout configured routed every single-cell TV play to the
+        // (non-focusable) media_kit bars instead of the focusable overlay,
+        // leaving the D-pad dead. This Player IS a single full-screen cell, so
+        // the focusable overlay is always the right control surface here.
+        if (_tvMode) {
           _openOverlay();
         } else {
           _revealControls();
@@ -1714,6 +1958,19 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
 
   /// Sends the current channel to the floating overlay and pops this route.
   Future<void> _minimizeToOverlay() async {
+    // finding 27: the overlay opens its OWN connection to the same channel.
+    // On a maxConnections=1 provider the mini-player then double-reads the
+    // stream slot (this full-screen engine hasn't been released yet) and the
+    // mini tile fails to open / shows a frozen black tile. The correct fix is
+    // an engine handoff (detach/adopt, like _swap), but that needs an
+    // OverlayPlayerController.adoptFullScreenEngine entry point (a second
+    // file, out of scope here). MINIMUM safe fix in player.dart: pause the
+    // local engine BEFORE startOverlay so the provider slot is freed for the
+    // mini's open (a brief re-buffer on the mini is acceptable vs. a dead
+    // tile). PlayerEngine exposes only pause() (no stop()).
+    try {
+      await _engine.pause();
+    } catch (_) {}
     await OverlayPlayerController.instance.startOverlay(
       widget.channel,
       widget.settings,
@@ -2044,9 +2301,12 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     // (_buildTvOverlay) is the control surface there. No MaterialVideoControlsTheme
     // wrapper / dvr-keyed remount: that read-once workaround is only for
     // media_kit's bars. Phone/touch and VOD keep the media_kit path below.
-    if (_tvMode &&
-        widget.channel.mediaType == MediaType.livestream &&
-        widget.settings.multiViewLayout == MultiViewLayout.none) {
+    // finding 26: DECISION — dropped the persisted multiViewLayout==none clause
+    // (mirrors fix653/the _onPlayerKey gate). It read the persisted grid-size
+    // setting, so a configured 2x2 layout made every single-cell TV live play
+    // fall through to media_kit's own (non-focusable) bars instead of letting
+    // the custom focusable overlay own the control surface.
+    if (_tvMode && widget.channel.mediaType == MediaType.livestream) {
       return _engine.buildVideoView(context, suppressControls: true);
     }
     // libmpv path: use media_kit_video's full controls theme.

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate'; // finding 62: off-isolate jsonDecode
 
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/sql.dart';
@@ -65,14 +66,6 @@ Future<void> getXtream(
   source.urlOrigin = Uri.parse(source.url!).origin;
   AppLog.info('Xtream: fetching source="${source.name}" url="${source.url}"');
   onProgress?.call('Fetching data from provider…');
-  var results = await Future.wait([
-    getXtreamHttpData(getLiveStreams, source),
-    getXtreamHttpData(getLiveStreamCategories, source),
-    getXtreamHttpData(getVods, source),
-    getXtreamHttpData(getVodCategories, source),
-    getXtreamHttpData(getSeries, source),
-    getXtreamHttpData(getSeriesCategories, source),
-  ]);
   int failCount = 0;
   int liveCount = 0;
   int movieCount = 0;
@@ -85,28 +78,60 @@ Future<void> getXtream(
   // previously had them (transient provider failure) — their existing rows are
   // preserved rather than wiped.
   final keepMediaTypes = <int>{};
-  if (results[0] != null && results[1] != null) {
+  // finding 62 (MEMORY): the old code did a single six-way Future.wait and held
+  // all six decoded JSON trees (live+cats, vod+cats, series+cats) alive at once
+  // — on a 400k+ channel source that is the peak Dart heap and a low-memory OS
+  // kill risk on a 2 GB box. Fetch each content type in its own sequential pass
+  // and let each pass's decoded tree go out of scope (eligible for GC) before
+  // the next type is fetched. The two fetches WITHIN a type still run
+  // concurrently (streams + categories), matching the provider round-trips of
+  // the old code. processXtream buffers the channels into insert closures, so
+  // the raw decoded lists are no longer referenced once the pass returns.
+  //
+  // Each pass increments failCount on a null fetch or a decode/parse throw,
+  // exactly as the old results[..]!=null gate + try/catch did, and returns the
+  // parsed row count (0 on failure). fix321/fix322 semantics downstream are
+  // untouched: liveCount/movieCount/seriesCount and keepMediaTypes feed the same
+  // retry/preserve blocks below.
+  Future<int> fetchLive() async {
+    final res = await Future.wait([
+      getXtreamHttpData(getLiveStreams, source),
+      getXtreamHttpData(getLiveStreamCategories, source),
+    ]);
+    if (res[0] == null || res[1] == null) {
+      failCount++;
+      return 0;
+    }
     try {
-      final streams = processJsonList(results[0], XtreamStream.fromJson);
-      liveCount = streams.length;
-      onProgress?.call('Loading $liveCount live channels…');
+      final streams = processJsonList(res[0], XtreamStream.fromJson);
+      final count = streams.length;
+      onProgress?.call('Loading $count live channels…');
       processXtream(
         contentStatements,
         streams,
-        processJsonList(results[1], XtreamCategory.fromJson),
+        processJsonList(res[1], XtreamCategory.fromJson),
         source,
         MediaType.livestream,
       );
+      return count;
     } catch (e) {
       failCount++;
+      return 0;
     }
-  } else {
-    failCount++;
   }
-  if (results[2] != null && results[3] != null) {
+
+  Future<int> fetchMovies() async {
+    final res = await Future.wait([
+      getXtreamHttpData(getVods, source),
+      getXtreamHttpData(getVodCategories, source),
+    ]);
+    if (res[0] == null || res[1] == null) {
+      failCount++;
+      return 0;
+    }
     try {
-      final vodCats = processJsonList(results[3], XtreamCategory.fromJson);
-      var vods = processJsonList(results[2], XtreamStream.fromJson);
+      final vodCats = processJsonList(res[1], XtreamCategory.fromJson);
+      var vods = processJsonList(res[0], XtreamStream.fromJson);
       // fix301: some providers (e.g. trex) cap the unfiltered get_vod_streams
       // response far below their real catalog, while per-category fetches
       // return everything. When the bulk count looks truncated relative to the
@@ -121,8 +146,8 @@ Future<void> getXtream(
         vods = await _fetchVodPerCategory(source, vodCats, vods, onProgress,
             shouldCancel: shouldCancel);
       }
-      movieCount = vods.length;
-      onProgress?.call('Loading $movieCount movies…');
+      final count = vods.length;
+      onProgress?.call('Loading $count movies…');
       processXtream(
         contentStatements,
         vods,
@@ -130,31 +155,45 @@ Future<void> getXtream(
         source,
         MediaType.movie,
       );
+      return count;
     } catch (e) {
       failCount++;
+      return 0;
     }
-  } else {
-    failCount++;
   }
 
-  if (results[4] != null && results[5] != null) {
+  Future<int> fetchSeries() async {
+    final res = await Future.wait([
+      getXtreamHttpData(getSeries, source),
+      getXtreamHttpData(getSeriesCategories, source),
+    ]);
+    if (res[0] == null || res[1] == null) {
+      failCount++;
+      return 0;
+    }
     try {
-      final series = processJsonList(results[4], XtreamStream.fromJson);
-      seriesCount = series.length;
-      onProgress?.call('Loading $seriesCount series…');
+      final series = processJsonList(res[0], XtreamStream.fromJson);
+      final count = series.length;
+      onProgress?.call('Loading $count series…');
       processXtream(
         contentStatements,
         series,
-        processJsonList(results[5], XtreamCategory.fromJson),
+        processJsonList(res[1], XtreamCategory.fromJson),
         source,
         MediaType.serie,
       );
+      return count;
     } catch (e) {
       failCount++;
+      return 0;
     }
-  } else {
-    failCount++;
   }
+
+  // Sequential per-type passes: each type's decoded tree is released before the
+  // next type is fetched, bounding peak heap to one content type at a time.
+  liveCount = await fetchLive();
+  movieCount = await fetchMovies();
+  seriesCount = await fetchSeries();
 
   // fix321: for each content type that came back EMPTY but the source
   // previously had rows for it, retry that one fetch once (transient empties
@@ -473,7 +512,16 @@ Future<dynamic> getXtreamHttpData(
         AppLog.warn('Xtream: raw-dump failed action="$action" error=$e');
       }
     }
-    return jsonDecode(response.body);
+    // finding 62 (UI-BLOCK): a large provider catalog (400k+ channels) decodes
+    // to tens of MB of JSON; running jsonDecode synchronously on the UI/root
+    // isolate stalls the refresh progress dialog for seconds. Offload the decode
+    // to a worker isolate (same pattern the repo uses elsewhere). Isolate.run is
+    // preferred over flutter `compute` to avoid a Flutter dependency in this
+    // backend file. The return type stays `dynamic`, so every caller
+    // (fetchXtreamAccountInfo, checkXtreamAuth, getEpisodes, the fix321 retry
+    // Future.wait, _fetchVodPerCategory) is unaffected.
+    final bodyStr = response.body;
+    return await Isolate.run(() => jsonDecode(bodyStr));
   } catch (e) {
     AppLog.warn('Xtream: HTTP/JSON failed action="$action" error=$e');
     return null;

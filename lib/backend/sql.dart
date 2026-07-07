@@ -1418,6 +1418,14 @@ class Sql {
   /// Consumers snapshot this and rebuild when it moves.
   static int groupsGen = 0;
 
+  /// finding 77: per-channel favorite generation counter, mirroring groupsGen.
+  /// The TV guide's kept-alive Favorites rail (reloadGuide keep-your-place
+  /// optimization) only rebuilt when the enabled-SOURCE or group set changed,
+  /// so (un)starring a channel from another tab left the rail stale. Consumers
+  /// snapshot this and force a rebuild when it moves. favoriteChannel() (the
+  /// single chokepoint for per-channel favorite writes) bumps it.
+  static int channelsGen = 0;
+
   static Future<void> setGroupEnabled(int groupId, bool enabled) async {
     groupsGen++; // fix645
     final db = await DbFactory.db;
@@ -2146,6 +2154,7 @@ class Sql {
       WHERE id = ?
     ''', [favorite ? 1 : 0, channelId]);
     ChannelSearchCache.updateFavorite(channelId, favorite);
+    channelsGen++; // finding 77: signal the kept-alive guide Favorites rail
   }
 
   static Future<HashMap<String, String>> getSettings() async {
@@ -2506,6 +2515,32 @@ class Sql {
       ' epgManual=${preserve.where((p) => p.epgManualOverride != null).length}',
     );
     return preserve;
+  }
+
+  /// finding 93: backup-only variant. Excludes rows whose ONLY non-null
+  /// attribute is an auto-populated epg_channel_id or stream_validated — those
+  /// are re-derivable from the provider M3U (tvg-id) and re-validation, so they
+  /// do not belong in a user-authored backup and balloon the JSON to hundreds
+  /// of thousands of rows on multi-source catalogs. Keeps favorite /
+  /// last_watched / epg_manual_override (the user-authored data) plus
+  /// epg_channel_id ONLY when it accompanies user data. Do NOT reuse the shared
+  /// getChannelsPreserve here — that path (source refresh preserve/restore)
+  /// legitimately must keep stream_validated across a refresh.
+  static Future<List<ChannelPreserve>> getChannelsPreserveForBackup(
+      int sourceId) async {
+    var db = await DbFactory.db;
+    var results = await db.getAll('''
+      SELECT name, favorite, last_watched, epg_channel_id, epg_manual_override,
+             stream_validated
+      FROM channels
+      WHERE source_id = ?
+        AND (
+          favorite = 1
+          OR last_watched IS NOT NULL
+          OR epg_manual_override IS NOT NULL
+        )
+    ''', [sourceId]);
+    return results.map(rowToChannelPreserve).toList();
   }
 
   static ChannelPreserve rowToChannelPreserve(Row row) {
@@ -2927,6 +2962,27 @@ class Sql {
     final db = await DbFactory.db;
     await db.execute(
         'DELETE FROM app_meta WHERE key = ?', [_refreshLockKey]);
+  }
+
+  /// findings 38 & 43: generic cross-isolate key/value carrier in db.sqlite's
+  /// app_meta (table exists since migration 39 — no new table/migration).
+  /// Dart statics are per-isolate, so the WorkManager background isolate cannot
+  /// signal the main isolate directly; these helpers bridge the boundary. Used
+  /// for 'epg_last_completed_utc' (finding 38, guide-refresh signal) and
+  /// 'epg_refresh_in_progress' (finding 43, background/foreground mutual
+  /// exclusion marker).
+  static Future<void> setAppMeta(String key, String value) async {
+    final db = await DbFactory.db;
+    await db.execute(
+        'INSERT OR REPLACE INTO app_meta (key, value) VALUES (?, ?)',
+        [key, value]);
+  }
+
+  static Future<String?> getAppMeta(String key) async {
+    final db = await DbFactory.db;
+    final row = await db.getOptional(
+        'SELECT value FROM app_meta WHERE key = ?', [key]);
+    return row == null ? null : row['value'] as String?;
   }
 
   static Future<void> checkpointAndTruncateWal({

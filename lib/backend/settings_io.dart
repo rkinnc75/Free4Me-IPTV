@@ -202,7 +202,13 @@ class SettingsIo {
     for (final s in sources) {
       final base = _sourceToMap(s, includeCredentials);
       if (s.id != null) {
-        final preserve = await Sql.getChannelsPreserve(s.id!);
+        // finding 93: use the backup-scoped preserve query so mass
+        // auto-matched (epg_channel_id) / auto-validated (stream_validated)
+        // rows that carry no user-authored data (favorite/last_watched/
+        // epg_manual_override) don't balloon the backup JSON. Those are
+        // re-derived on the next refresh/EPG pass. The shared
+        // getChannelsPreserve stays untouched for the source-refresh path.
+        final preserve = await Sql.getChannelsPreserveForBackup(s.id!);
         if (preserve.isNotEmpty) {
           base['preserve'] = preserve
               .map((p) => {

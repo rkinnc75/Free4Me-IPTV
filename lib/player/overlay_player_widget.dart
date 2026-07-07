@@ -286,19 +286,36 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
         ' main="${mainCh?.name ?? 'none'}" hadMain=$hadMain',
       );
 
-      // fix116: detach (do NOT dispose) the outgoing full-screen engine so
-      // it can become the overlay. Returns null if not an MpvEngine.
-      final detachedMain = hadMain ? _ctrl.detachMain() : null;
+      // finding 110: refuse the swap when the top route is NOT the
+      // full-screen Player (e.g. a dialog is open above it). Blindly popping
+      // would dismiss the dialog and strand a zombie detached Player. Single
+      // file constraint: identity tracking of the Player route lives in the
+      // controller, so we use a non-mutating top-route probe here instead.
+      // This guard runs BEFORE any destructive detach (finding 109 reorder),
+      // so on abort nothing has been touched. On the normal path (Player on
+      // top) behavior is identical to before.
+      if (hadMain && !_topRouteIsPlayer()) {
+        AppLog.warn(
+          'OverlayWidget: _swap ABORT — top route is not the Player'
+          ' (dialog open?)',
+        );
+        return;
+      }
 
-      // fix116: detach (do NOT dispose) the overlay engine so it can become
-      // the full-screen player.
+      // finding 109: detach (do NOT dispose) the overlay engine FIRST — this
+      // is the side-effect-free read. Abort here BEFORE touching the main
+      // player so a missing overlay can never strand the live full-screen
+      // Player in the detachForSwap (exiting/_exitInvoked/_engineDisposed)
+      // state (which would leave a zombie full-screen player + dead Back).
       final overlay = _ctrl.detachOverlayEngine();
       if (overlay == null) {
         AppLog.warn('OverlayWidget: _swap ABORT — no overlay to detach');
-        // Release the detached main if we grabbed it, to avoid a leak.
-        await detachedMain?.dispose();
         return;
       }
+
+      // fix116: detach (do NOT dispose) the outgoing full-screen engine so
+      // it can become the overlay. Returns null if not an MpvEngine.
+      final detachedMain = hadMain ? _ctrl.detachMain() : null;
       AppLog.info(
         'OverlayWidget: _swap detached'
         ' overlay="${overlay.ch.name}" overlayEid=${identityHashCode(overlay.engine)}'
@@ -383,6 +400,28 @@ class _OverlayPlayerWidgetState extends State<OverlayPlayerWidget> {
     } finally {
       _swapInFlight = false;
     }
+  }
+
+  /// finding 110: non-mutating probe for whether the topmost route is the
+  /// full-screen [Player]. The Player is pushed as a nameless
+  /// [MaterialPageRoute] that is never the first (Home) route, so a top route
+  /// matching (name == null && MaterialPageRoute && !isFirst) is treated as
+  /// the Player. Returning true from the [NavigatorState.popUntil] predicate
+  /// on the FIRST route stops immediately and pops nothing — it is used here
+  /// purely to read the current top route without mutating the stack.
+  /// Heuristic (single-file fallback): a robust version would track the
+  /// Player's Route identity in OverlayPlayerController, but that would touch
+  /// a second file. When unsure this returns false, which only makes _swap
+  /// MORE conservative (refuse the swap) — never less safe.
+  bool _topRouteIsPlayer() {
+    var isPlayer = false;
+    _nav.popUntil((route) {
+      isPlayer = route.settings.name == null &&
+          route is MaterialPageRoute &&
+          route.isFirst == false;
+      return true;
+    });
+    return isPlayer;
   }
 
 

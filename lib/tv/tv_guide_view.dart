@@ -65,6 +65,10 @@ class TvGuideViewState extends State<TvGuideView> {
   // fix645: Sql.groupsGen snapshot from the last rail build — reloadGuide
   // rebuilds when categories were enabled/disabled/favorited since.
   int _groupsGenSeen = 0;
+  // finding 77: Sql.channelsGen snapshot — reloadGuide rebuilds when a channel's
+  // favorite flag changed from another tab (the kept-alive Favorites rail would
+  // otherwise stay stale until a manual re-select).
+  int _channelsGenSeen = 0;
   int? _selectedGroupId; // null = All
   List<Channel> _channels = [];
   Map<String, List<Program>> _progByKey = {};
@@ -183,6 +187,7 @@ class TvGuideViewState extends State<TvGuideView> {
     // while this init runs will differ from the snapshot and trigger another
     // rebuild on the next reloadGuide instead of being lost.
     _groupsGenSeen = Sql.groupsGen;
+    _channelsGenSeen = Sql.channelsGen; // finding 77
     // fix524 (safe-mode TV leak): the guide is built once at shell init and kept
     // alive in IndexedStack, so widget.settings can go stale if Safe Mode is
     // toggled afterward. Prefer the live SettingsService.cached value.
@@ -320,12 +325,39 @@ class TvGuideViewState extends State<TvGuideView> {
     for (final list in byKey.values) {
       list.sort((a, b) => a.startUtc.compareTo(b.startUtc));
     }
+    // finding 76: entering a category that resolves to zero VISIBLE channels
+    // strands D-pad focus (no channel tiles for the post-frame grab, and the
+    // categories rail unmounted on the swap). Compute against the SAME filter
+    // _visibleChannels applies — for Favorites (groupId == null) that is the
+    // favorite subset, so `scoped` can be non-empty while nothing renders.
+    final visibleEmpty = enterChannels &&
+        ((groupId == null)
+            ? scoped.where((c) => c.favorite).isEmpty
+            : scoped.isEmpty);
     setState(() {
       _channels = scoped;
       _progByKey = byKey;
       _loading = false;
-      if (enterChannels) _railMode = RailMode.channels;
+      // finding 76: only swap to channels mode when there is something to focus;
+      // an empty visible list would leave the swapped-in rail with no tile.
+      if (enterChannels && !visibleEmpty) _railMode = RailMode.channels;
     });
+    // finding 76: stayed in categories — surface a hint and return focus to the
+    // just-selected category tile (UP/DOWN still moves, OK re-tries). Skip the
+    // channels autofocus block below (it only applies when we actually swapped).
+    if (visibleEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          const SnackBar(content: Text('No channels in this category yet')),
+        );
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            (_railNodes[groupId] ?? _railNodes[null])?.requestFocus();
+          }
+        });
+      }
+      return;
+    }
     // fix599: the rail remount + first-channel autofocus is best-effort, but on
     // the swap the focused category tile unmounts and focus escapes UP to the
     // nav before autofocus claims the new tile (verified on-device v2.2.9). FORCE
@@ -760,6 +792,11 @@ class TvGuideViewState extends State<TvGuideView> {
                     // correct if the menu is reopened before it lands.
                     setState(() => ch.favorite = next);
                     await Sql.favoriteChannel(id, next);
+                    // finding 77: absorb this tab's own channelsGen bump so the
+                    // self-initiated toggle (already reflected by the reload
+                    // below) doesn't trigger a redundant full _init on the next
+                    // reloadGuide re-entry.
+                    _channelsGenSeen = Sql.channelsGen;
                     if (!mounted) return;
                     await _loadGuide(_selectedGroupId);
                     // fix601: in the Favorites view, un-favoriting drops the
@@ -1023,7 +1060,9 @@ class TvGuideViewState extends State<TvGuideView> {
     // the rail stale after category toggles.
     if (!_ready ||
         ids.join(',') != current.join(',') ||
-        _groupsGenSeen != Sql.groupsGen) {
+        _groupsGenSeen != Sql.groupsGen ||
+        _channelsGenSeen != Sql.channelsGen) {
+      // finding 77: rebuild when a channel's favorite changed from another tab.
       return _init(); // first load, sources changed, or categories changed
     }
     // Enabled sources unchanged → keep the user's place. fix610: but STILL

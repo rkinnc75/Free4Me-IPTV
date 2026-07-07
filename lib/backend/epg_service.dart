@@ -13,18 +13,14 @@ import 'package:open_tv/models/source.dart';
 import 'package:open_tv/models/source_type.dart';
 import 'package:workmanager/workmanager.dart';
 
-// Top-level function required by compute() — closures are not allowed.
-// Matches a single batch of channels against the full EPG map in an isolate.
-(Map<int, String>, MatchReport) _matchInIsolate(
-  (Map<String, String>, List<Channel>) args,
-) =>
-    EpgMatcher.matchWithReport(args.$1, args.$2);
+// finding 41: `_matchInIsolate` (the compute() entrypoint) was removed — the
+// matcher now builds the EPG index once and matches each batch synchronously
+// on the calling isolate (see matchChannels), so no per-batch isolate spawn
+// or channelMap deep-copy occurs.
 
-// How many channels to process per isolate invocation. `compute()` spawns a
-// fresh isolate AND deep-copies the channelMap across the boundary for every
-// call, so larger batches mean fewer spawns and fewer Map copies. At 2000,
-// a 90k-channel source produces ~45 batches — still plenty of progress
-// granularity for the UI.
+// How many channels to process per batch. Larger batches mean fewer progress
+// callbacks; 2000 keeps the UI progress granular. At 2000, a 90k-channel
+// source produces ~45 batches.
 const _matchBatchSize = 2000;
 
 /// Task name registered with WorkManager for background EPG refresh.
@@ -186,6 +182,25 @@ class EpgService {
         return;
       }
     }
+    // finding 43: cross-isolate mutual exclusion between the background
+    // periodic refresh and the foreground launch/manual refresh. An in-flight
+    // background refresh is invisible to the foreground path (getLatestEpgRefresh
+    // only advances AFTER a source completes), so both could download the same
+    // feeds concurrently → doubled bandwidth/memory + cross-isolate SQLITE_BUSY
+    // churn on epg.sqlite. Guard with an app_meta marker (db.sqlite, visible to
+    // both isolates) carrying a start epoch, with a TTL so a crashed refresh
+    // can't wedge the flag forever. This guards BOTH entry points because both
+    // reach refreshAllSources.
+    final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final busyRaw = await Sql.getAppMeta('epg_refresh_in_progress');
+    final busyEpoch = int.tryParse(busyRaw ?? '');
+    if (busyEpoch != null &&
+        (nowSec - busyEpoch) < _staleRefreshMinIntervalSec) {
+      AppLog.info('EPG: refresh already in progress — skipping');
+      if (background) await Sql.releaseRefreshLock();
+      return;
+    }
+    await Sql.setAppMeta('epg_refresh_in_progress', nowSec.toString());
     try {
     final eligible = (await Sql.getSources())
         .where((s) => s.enabled && resolveEpgUrl(s) != null)
@@ -216,15 +231,29 @@ class EpgService {
         }
       }));
     }
-    // finding 36: programmes_fts 'rebuild' is a GLOBAL FTS5 op whose cost is
-    // independent of which source parsed, so a multi-source refresh pays it
-    // ONCE here instead of once per source. Idempotent when nothing changed.
-    try {
-      await Sql.rebuildProgrammesFts();
-    } catch (e) {
-      AppLog.warn('EPG: post-refresh FTS rebuild failed — $e');
-    }
     } finally {
+      // finding 43: finally holds the post-loop work so a per-source catch (or
+      // any throw) can't skip it. Order: rebuild FTS → set completion marker →
+      // clear in-progress → release the background lock.
+      // finding 36: programmes_fts 'rebuild' is a GLOBAL FTS5 op whose cost is
+      // independent of which source parsed, so a multi-source refresh pays it
+      // ONCE here instead of once per source. Idempotent when nothing changed.
+      try {
+        await Sql.rebuildProgrammesFts();
+      } catch (e) {
+        AppLog.warn('EPG: post-refresh FTS rebuild failed — $e');
+      }
+      // finding 38: cross-isolate completion signal. Dart statics are
+      // per-isolate, so the Workmanager background isolate's epgVersion bump
+      // never reaches the main-isolate guide listener. Persist a completion
+      // timestamp in app_meta (db.sqlite); the main isolate polls it on
+      // resume/startup and bumps its own epgVersion so TvGuideView reloads.
+      await Sql.setAppMeta(
+        'epg_last_completed_utc',
+        (DateTime.now().millisecondsSinceEpoch ~/ 1000).toString(),
+      );
+      // finding 43: clear the in-progress marker.
+      await Sql.setAppMeta('epg_refresh_in_progress', '');
       if (background) await Sql.releaseRefreshLock();
     }
   }
@@ -362,6 +391,15 @@ class EpgService {
     var afterId = 0;
     var firstPage = true;
 
+    // finding 41: build the EPG inverted index ONCE up front instead of
+    // rebuilding byNormalizedName/byStrippedId/epgNorms/epgTokens/tokenIndex
+    // (and deep-copying the whole channelMap across an isolate boundary) for
+    // every 2000-channel batch. The old `compute(_matchInIsolate, ...)` per
+    // batch was O(batches × |EPG map|). Main-isolate fallback per spec: match
+    // work now runs on the UI isolate against the prebuilt index. Acceptable
+    // on a 2GB TV box with modal-refresh D-pad UX (no scroll-jank concern).
+    final epgIndex = EpgMatcher.buildIndex(channelMap);
+
     while (true) {
       var page = forceAll
           ? (await Sql.getChannelsForEpgMatchingPage(source.id!,
@@ -399,8 +437,9 @@ class EpgService {
         final end = min(i + _matchBatchSize, page.length);
         final batch = page.sublist(i, end);
 
+        // finding 41: match against the once-built index (was compute()).
         final (batchMatched, batchReport) =
-            await compute(_matchInIsolate, (channelMap, batch));
+            EpgMatcher.matchAgainst(epgIndex, batch);
 
         allMatched.addAll(batchMatched);
         for (final e in batchReport.counts.entries) {
@@ -475,6 +514,19 @@ class EpgService {
       onProgress: onProgress,
     );
     epgVersion.value++; // fix600: notify listeners (guide) to reflect new EPG
+    // finding 38: bridge the per-isolate epgVersion gap. The in-process bump
+    // above only reaches listeners in THIS isolate; a Workmanager background
+    // refresh (or a direct single-source refresh) must also leave a durable
+    // cross-isolate signal. Persist a completion timestamp in app_meta
+    // (db.sqlite) that the main isolate polls on resume/startup and, if it
+    // advanced, bumps its own epgVersion so TvGuideView reloads. Harmless in
+    // the foreground path (the ValueNotifier already fired). refreshAllSources
+    // also writes this once after its loop; a per-source write here keeps the
+    // signal correct for direct refreshSource callers (settings/setup).
+    await Sql.setAppMeta(
+      'epg_last_completed_utc',
+      (DateTime.now().millisecondsSinceEpoch ~/ 1000).toString(),
+    );
   }
 
   /// Determines the EPG URL to use for a source:

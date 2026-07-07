@@ -40,6 +40,52 @@ class MatchReport {
   }
 }
 
+/// finding 41: Prebuilt reverse-lookup structures for one XMLTV channel map.
+///
+/// Built ONCE per EPG map by [EpgMatcher.buildIndex] and reused across every
+/// channel batch via [EpgMatcher.matchAgainst]. Previously matchWithReport
+/// rebuilt all of these from scratch on every call — O(batches × |EPG map|)
+/// on a first-match over hundreds of thousands of channels.
+class EpgIndex {
+  /// The original channel map (epg-id → display-name), kept for the tier 1/2
+  /// `containsKey` existence checks.
+  final Map<String, String> channelMap;
+
+  /// norm → epg-id (also keyed by the normalized epg-id itself).
+  final Map<String, String> byNormalizedName;
+
+  /// stripped epg-id → original epg-id.
+  final Map<String, String> byStrippedId;
+
+  /// Parallel arrays for the fuzzy tiers.
+  final List<String> epgNorms;
+  final List<Set<String>> epgTokens;
+  final List<String> epgIds;
+
+  /// Precomputed lowercase epg-ids (tier 6 callsign matching).
+  final List<String> epgIdsLower;
+
+  /// Inverted token index: token → EPG indices whose token set contains it.
+  final Map<String, List<int>> tokenIndex;
+
+  /// Keys that map to >1 distinct epg-id — tiers 3/4 skip these.
+  final Set<String> ambiguousNorms;
+  final Set<String> ambiguousStripped;
+
+  const EpgIndex({
+    required this.channelMap,
+    required this.byNormalizedName,
+    required this.byStrippedId,
+    required this.epgNorms,
+    required this.epgTokens,
+    required this.epgIds,
+    required this.epgIdsLower,
+    required this.tokenIndex,
+    required this.ambiguousNorms,
+    required this.ambiguousStripped,
+  });
+}
+
 /// Tiered channel ↔ EPG ID matcher with fuzzy fallbacks.
 ///
 /// In order of preference:
@@ -60,11 +106,21 @@ class EpgMatcher {
   ) =>
       matchWithReport(channelMap, channels).$1;
 
+  /// finding 41: thin wrapper — builds the index then matches against it.
+  /// Kept so existing callers ([match] and any test) are unaffected.
+  ///
   /// Returns ([map of channel.id → epg_channel_id], [report]).
   static (Map<int, String>, MatchReport) matchWithReport(
     Map<String, String> channelMap,
     List<Channel> channels,
-  ) {
+  ) =>
+      matchAgainst(buildIndex(channelMap), channels);
+
+  /// finding 41: Build the reusable reverse-lookup structures ONCE for an
+  /// XMLTV channel map. Callers matching many channel batches against the
+  /// same EPG map should call this once and reuse the [EpgIndex] via
+  /// [matchAgainst], instead of paying the O(|EPG map|) build per batch.
+  static EpgIndex buildIndex(Map<String, String> channelMap) {
     // Build reverse lookups
     final byNormalizedName = <String, String>{}; // norm → epg-id
     final byStrippedId = <String, String>{};     // stripped epg-id → original epg-id
@@ -129,6 +185,39 @@ class EpgMatcher {
         (tokenIndex[t] ??= <int>[]).add(i);
       }
     }
+
+    return EpgIndex(
+      channelMap: channelMap,
+      byNormalizedName: byNormalizedName,
+      byStrippedId: byStrippedId,
+      epgNorms: epgNorms,
+      epgTokens: epgTokens,
+      epgIds: epgIds,
+      epgIdsLower: epgIdsLower,
+      tokenIndex: tokenIndex,
+      ambiguousNorms: ambiguousNorms,
+      ambiguousStripped: ambiguousStripped,
+    );
+  }
+
+  /// finding 41: Match a batch of [channels] against a prebuilt [idx].
+  /// Correctness is identical to the pre-split matchWithReport — same tiers,
+  /// same MatchReport aggregation.
+  ///
+  /// Returns ([map of channel.id → epg_channel_id], [report]).
+  static (Map<int, String>, MatchReport) matchAgainst(
+    EpgIndex idx,
+    List<Channel> channels,
+  ) {
+    final channelMap = idx.channelMap;
+    final byNormalizedName = idx.byNormalizedName;
+    final byStrippedId = idx.byStrippedId;
+    final epgTokens = idx.epgTokens;
+    final epgIds = idx.epgIds;
+    final epgIdsLower = idx.epgIdsLower;
+    final tokenIndex = idx.tokenIndex;
+    final ambiguousNorms = idx.ambiguousNorms;
+    final ambiguousStripped = idx.ambiguousStripped;
 
     final result = <int, String>{};
     final counts = <MatchTier, int>{};

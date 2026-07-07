@@ -29,7 +29,10 @@ class MpvEngine implements PlayerEngine {
   /// Full-screen players use 256 MB. Hardware decoding is also disabled in
   /// preview mode to avoid surface-binding contention when multiple cells
   /// share the same hardware decoder pool.
-  final bool previewMode;
+  // finding 19: made mutable (was final) so promoteToFullScreen() can upgrade
+  // an adopted mini-player engine to full-screen config without a reopen. The
+  // constructor still initializes it; only the promotion path mutates it.
+  bool previewMode;
 
   /// fix623: true for multi-view grid CELLS (not the mini-player PiP). Cells
   /// still set previewMode=true so they keep the multi-view decode handling
@@ -45,13 +48,20 @@ class MpvEngine implements PlayerEngine {
   /// fix357: when true (full-screen Player, live, no catch-up override) the
   /// live DVR-to-disk buffer may be enabled per settings. Mini-player and
   /// multi-view cells never set this.
-  final bool dvrEligible;
+  // finding 19: made mutable (was final) so promoteToFullScreen() can open the
+  // DVR-eligibility gate on an adopted engine.
+  bool dvrEligible;
 
   // fix357: DVR runtime state.
   Directory? _dvrDir;
   Timer? _dvrGuard;
   int _dvrLastDirBytes = 0;
   bool _dvrActive = false;
+
+  // finding 102: set from open()'s isLive param; suppresses forwarding of
+  // mpv's spurious completed=true (EOF-at-TS-boundary) on live streams so the
+  // documented "live must not emit completed" contract is actually honoured.
+  bool _isLive = false;
 
   /// fix396: periodic decode heartbeat (full-screen + debug logging only).
   /// The Shield black-screen log had "12 s of silence" — no position lines —
@@ -66,23 +76,12 @@ class MpvEngine implements PlayerEngine {
   // interface default (false), so the DVR transport bar never showed even
   // though the engine had DVR fully active (1.32.3 screenshot bug).
 
-  late final mk.Player _player = mk.Player(
-    configuration: mk.PlayerConfiguration(
-      // bufferSizeMB from settings; mini-player PiP uses half. fix623:
-      // multi-view cells use the full size like the main player.
-      bufferSize: (previewMode && !multiViewMode)
-          ? (settings.bufferSizeMB ~/ 2) * 1024 * 1024
-          : settings.bufferSizeMB * 1024 * 1024,
-      // fix396: surface libmpv's own decode/vo/demuxer messages. The
-      // full-screen engine goes verbose when debug logging is on (the
-      // black-screen investigation needs hwdec/vo/decoder init messages,
-      // which mpv emits at `v`); preview cells and non-debug stay at warn so
-      // multi-view sessions aren't flooded. Routed to AppLog via stream.log.
-      logLevel: (!previewMode && settings.debugLogging)
-          ? mk.MPVLogLevel.v
-          : mk.MPVLogLevel.warn,
-    ),
-  );
+  // finding 99: injectable seam. Production passes nothing and gets the real
+  // native Player built with the exact bufferSize/logLevel logic below; tests
+  // inject a fake exposing broadcast controllers so MpvEngine lifecycle
+  // (dispose, sub cleanup, post-dispose event guards) is testable without a
+  // native mpv. Assigned in the constructor body before any _player use.
+  final mk.Player _player;
   late final mkvideo.VideoController _controller =
       mkvideo.VideoController(_player);
   // fix130: stable key — one texture per player handle; fix126's per-adopt
@@ -145,7 +144,30 @@ class MpvEngine implements PlayerEngine {
     this.previewMode = false,
     this.multiViewMode = false,
     this.dvrEligible = false,
-  }) {
+    // finding 99: test-only injection seam. Omitted in production → the real
+    // native Player is built with the exact bufferSize/logLevel logic that was
+    // previously inline on the `late final _player` initializer.
+    @visibleForTesting mk.Player? player,
+  }) : _player = player ??
+            mk.Player(
+              configuration: mk.PlayerConfiguration(
+                // bufferSizeMB from settings; mini-player PiP uses half.
+                // fix623: multi-view cells use the full size like the main
+                // player.
+                bufferSize: (previewMode && !multiViewMode)
+                    ? (settings.bufferSizeMB ~/ 2) * 1024 * 1024
+                    : settings.bufferSizeMB * 1024 * 1024,
+                // fix396: surface libmpv's own decode/vo/demuxer messages. The
+                // full-screen engine goes verbose when debug logging is on (the
+                // black-screen investigation needs hwdec/vo/decoder init
+                // messages, which mpv emits at `v`); preview cells and
+                // non-debug stay at warn so multi-view sessions aren't flooded.
+                // Routed to AppLog via stream.log.
+                logLevel: (!previewMode && settings.debugLogging)
+                    ? mk.MPVLogLevel.v
+                    : mk.MPVLogLevel.warn,
+              ),
+            ) {
     _player.setPlaylistMode(mk.PlaylistMode.none);
 
     _subs.add(_player.stream.buffering.listen((v) {
@@ -170,7 +192,14 @@ class MpvEngine implements PlayerEngine {
         });
       }
     }));
-    _subs.add(_player.stream.completed.listen((v) => _completedCtrl.add(v)));
+    // finding 102: on a live stream, mpv can emit completed=true at a spurious
+    // EOF (e.g. a TS-segment boundary). The interface contract is that live
+    // streams must not surface completed, so drop true events while _isLive.
+    // VOD (isLive=false) forwarding is unchanged.
+    _subs.add(_player.stream.completed.listen((v) {
+      if (_isLive && v) return;
+      _completedCtrl.add(v);
+    }));
     _subs.add(_player.stream.playing.listen((playing) {
       // fix345: emit on EVERY transition to playing (not one-shot) — the
       // Player arms its startup watchdog after open(), so a one-shot signal
@@ -225,6 +254,74 @@ class MpvEngine implements PlayerEngine {
         ' eid=${identityHashCode(this)}');
   }
 
+  /// finding 18: the full-screen (non-preview) routed hwdec property value for
+  /// this device, mirroring the else-if chain in [_applyMpvOptions]. Returns
+  /// 'no' when the user disabled hw decode or the platform is unsupported.
+  /// Factored out so [setHardwareDecode] can restore the SAME mode that open()
+  /// would have used, without re-opening the stream.
+  Future<String> _routedFullscreenHwdec() async {
+    final s = settings;
+    if (s.hwDecode && Platform.isAndroid) {
+      final isTV = await DeviceDetector.isTV();
+      final isTegra = await DeviceDetector.isTegra();
+      final isLowRam = await DeviceDetector.isLowRamDevice();
+      return androidFullscreenHwdec(
+        isTegra: isTegra,
+        isLowRam: isLowRam,
+        isTV: isTV,
+        forceHardware: s.forceHwDecode, // fix505: advanced override
+      );
+    } else if (s.hwDecode && Platform.isIOS) {
+      return 'videotoolbox';
+    }
+    return 'no';
+  }
+
+  /// finding 18: switch hwdec at runtime WITHOUT re-opening the stream. Used
+  /// when returning from PiP after an in-PiP reconnect forced software decode
+  /// (fix414) left playback permanently on `hwdec=no` — which is a black frame
+  /// on Tegra full-screen. mpv accepts a runtime hwdec property change; on:true
+  /// restores the full-screen routed mode, on:false forces software.
+  Future<void> setHardwareDecode(bool on) async {
+    if (_disposed || _player.platform is! mk.NativePlayer) return;
+    final np = _player.platform as mk.NativePlayer;
+    final mode = on ? await _routedFullscreenHwdec() : 'no';
+    await np.setProperty('hwdec', mode);
+    AppLog.info('MpvEngine: setHardwareDecode($on) hwdec=$mode'
+        ' eid=${identityHashCode(this)} channel="${channel.name}"');
+  }
+
+  /// finding 19: upgrade an adopted (promoted mini-player) engine to
+  /// full-screen configuration WITHOUT re-opening the stream, so the seamless
+  /// handoff is preserved. Flips the internal previewMode/dvrEligible state so
+  /// subsequent reconnects also use full-screen routing, then applies the
+  /// runtime-settable full-screen live properties (buffer/demuxer cap + routed
+  /// hwdec). DVR only genuinely activates if the stream supports it, but the
+  /// eligibility gate is now open.
+  Future<void> promoteToFullScreen({required bool dvrEligible}) async {
+    // Flip internal state first so any later reapplyOptions/reconnect uses the
+    // full-screen branches.
+    previewMode = false;
+    this.dvrEligible = dvrEligible;
+    if (_disposed || _player.platform is! mk.NativePlayer) return;
+    final np = _player.platform as mk.NativePlayer;
+    final s = settings;
+    // Full-screen live demuxer cap (was the tiny mini-player value while in
+    // preview mode). Mirrors the live branch in [_applyMpvOptions].
+    await np.setProperty('demuxer-max-bytes', '${s.liveDemuxerMaxMB}MiB');
+    // NOTE: bufferSize is a construction-time PlayerConfiguration value and is
+    // not runtime-settable via a single property; the runtime demuxer cap above
+    // is what actually governs buffering depth for a live stream, so raising it
+    // to the full-screen live value is the effective buffer upgrade. Left the
+    // back-buffer untouched (DVR manages it when it activates).
+    // Route hwdec to the full-screen mode for this device.
+    final hwdec = await _routedFullscreenHwdec();
+    await np.setProperty('hwdec', hwdec);
+    AppLog.info('MpvEngine: promoteToFullScreen(dvrEligible=$dvrEligible)'
+        ' demuxerMaxMB=${s.liveDemuxerMaxMB} hwdec=$hwdec'
+        ' eid=${identityHashCode(this)} channel="${channel.name}"');
+  }
+
   @override
   Widget buildVideoView(BuildContext context, {bool suppressControls = false}) {
     return mkvideo.Video(
@@ -246,8 +343,9 @@ class MpvEngine implements PlayerEngine {
     required String url,
     Duration? startPosition,
     Map<String, String>? headers,
-    bool isLive = false, // fix339: unused — mpv's completed is EOF-based
+    bool isLive = false, // fix339 / finding 102: suppress completed on live
   }) async {
+    _isLive = isLive; // finding 102
     AppLog.info(
       'MpvEngine: open()'
       ' url="$url"'

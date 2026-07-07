@@ -229,6 +229,16 @@ class SettingsService {
     var mvStabilityBuffer = settingsMap[multiViewStabilityBufferSecsProp];
     var maxReconnect = settingsMap[maxReconnectAttemptsProp];
 
+    // finding 161 (step 2): this whole parse+assign region runs before runApp
+    // (main.dart awaits SettingsService.reload() then runs the app). A single
+    // FormatException (int.parse on a non-numeric legacy/corrupt value) or a
+    // fromJson throw anywhere below would propagate out of _readFromDb and
+    // brick startup — the app would never render. Wrap the region so one bad
+    // persisted field degrades to its constructor default (later fields keep
+    // their defaults too) instead of failing the whole boot. Safe even if the
+    // premise never manifests: on clean data the try body runs to completion
+    // exactly as before. The AppLog.error line makes the degradation visible.
+    try {
     if (view != null) {
       // finding 161: this runs before runApp, so a corrupt or forward-versioned
       // index must degrade to the default rather than RangeError-brick startup
@@ -436,6 +446,15 @@ class SettingsService {
       final available = settings.availableContentFilters();
       settings.contentTypeFilter =
           available.contains(parsed) ? parsed : ContentTypeFilter.all;
+    }
+    } catch (e) {
+      // finding 161 (step 2): a bad persisted field (FormatException /
+      // out-of-range index / fromJson throw) must not brick startup. Degrade
+      // to constructor defaults for any unparsed fields and keep booting.
+      AppLog.error(
+        'Settings: partial parse failure in _readFromDb; using defaults for'
+        ' unparsed fields: $e',
+      );
     }
 
     AppLog.info(

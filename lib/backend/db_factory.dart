@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/utils.dart';
 import 'package:open_tv/backend/timed_db.dart';
@@ -13,9 +14,15 @@ class DbFactory {
   // callers share ONE _createDB() — same idiom as EpgDbFactory (finding 57).
   static Future<SqliteDatabase>? _dbFuture;
 
-  static Future<SqliteDatabase> _createDB() async {
-    var db = SqliteDatabase(path: "${await Utils.appDir}/db.sqlite");
-    var migrations = SqliteMigrations()
+  // finding 54: extract the db.sqlite migration chain into a package-visible
+  // builder so a migration-parity test (test/migration_chain_test.dart) can run
+  // the SAME chain against temp DBs and assert fresh-install vs stepwise-upgrade
+  // produce identical sqlite_master, and that Sql._canonicalChannelIndexes DDL
+  // matches. Pure refactor: _createDB now calls buildMigrations() — same
+  // SqliteMigrations object, same order, no runtime behavior change.
+  @visibleForTesting
+  static SqliteMigrations buildMigrations() {
+    return SqliteMigrations()
       ..add(SqliteMigration(1, (tx) async {
         await tx.execute('''
         CREATE TABLE "sources" (
@@ -966,6 +973,23 @@ class DbFactory {
           'CREATE TABLE IF NOT EXISTS app_meta'
           ' (key TEXT PRIMARY KEY, value TEXT);',
         );
+        // finding 56: fix537 maintenance only reshapes indexes that migration
+        // 1/29/30/33 created with the OLD (cat_enabled) shape over EXISTING
+        // rows. On a fresh install the channels table is empty, so there is
+        // nothing to reshape — pre-mark the marker so
+        // runPendingIndexMaintenance() no-ops on first real launch instead of
+        // running a redundant drop/rebuild/VACUUM pass. Guarded on "channels
+        // empty" so upgraders (who DO have old-shape indexes over real rows)
+        // are unaffected — their marker is set/legacy-detected by
+        // runPendingIndexMaintenance as today. The literal marker string MUST
+        // match Sql.runPendingIndexMaintenance's `fix537_index_rebuild_done`.
+        final chRow = await tx.getOptional('SELECT 1 FROM channels LIMIT 1;');
+        if (chRow == null) {
+          await tx.execute(
+            "INSERT OR REPLACE INTO app_meta (key, value)"
+            " VALUES ('fix537_index_rebuild_done', '1');",
+          );
+        }
       }))
       ..add(SqliteMigration(40, (tx) async {
         // fix583 (#18): the groups unique index was (name, source_id), but
@@ -1026,6 +1050,12 @@ class DbFactory {
             '(media_type, source_id, name COLLATE NOCASE)'
             ' WHERE favorite = 1;');
       }));
+  }
+
+  static Future<SqliteDatabase> _createDB() async {
+    var db = SqliteDatabase(path: "${await Utils.appDir}/db.sqlite");
+    // finding 54: build via the @visibleForTesting extraction (same object).
+    final migrations = buildMigrations();
     // fix608 (#2): bound memory so any migration that rebuilds a browse index
     // over an ALREADY-POPULATED channels table — a user upgrading with a huge
     // catalog (e.g. 272k channels on a Shield, where it disk-spilled ~75s/index
@@ -1139,9 +1169,11 @@ class DbFactory {
 /// integrity at the application layer (Sql.deleteEpgForSource is called
 /// from Sql.deleteSource).
 class EpgDbFactory {
-  static Future<SqliteDatabase> _createDB() async {
-    final db = SqliteDatabase(path: '${await Utils.appDir}/epg.sqlite');
-    final migrations = SqliteMigrations()
+  // finding 54: extract the epg.sqlite migration chain so the migration-parity
+  // test can run it against temp DBs. Pure refactor — same object, same order.
+  @visibleForTesting
+  static SqliteMigrations buildMigrations() {
+    return SqliteMigrations()
       ..add(SqliteMigration(1, (tx) async {
         // Programme guide — identical schema to the programmes table in
         // db.sqlite migration v5. source_id is a logical FK; no FOREIGN KEY
@@ -1204,6 +1236,12 @@ class EpgDbFactory {
           SELECT id, title FROM programmes;
         ''');
       }));
+  }
+
+  static Future<SqliteDatabase> _createDB() async {
+    final db = SqliteDatabase(path: '${await Utils.appDir}/epg.sqlite');
+    // finding 54: build via the @visibleForTesting extraction (same object).
+    final migrations = buildMigrations();
     // finding 59: no down-migrations exist — installing an older APK over a
     // newer epg.sqlite makes migrate() throw MigrationError on every open. Log
     // a clear downgrade diagnostic and rethrow (never silently wipe user data).
@@ -1242,6 +1280,22 @@ class EpgDbFactory {
   }
 
   /// fix644: extracted fix593 self-heal — see the call site above.
+  ///
+  /// finding 61: a count mismatch is EXPECTED mid-refresh — EpgService inserts
+  /// programmes per batch and only rebuilds programmes_fts at refresh END, so an
+  /// app-open during a background (workmanager-isolate) refresh would otherwise
+  /// fire a spurious full trigram rebuild that fights the refresh's own rebuild.
+  /// Since Dart statics are per-isolate (the refresh runs in a separate
+  /// isolate), any coordination MUST be DB-backed. The chosen single-file guard
+  /// is a DEBOUNCE: only rebuild when the SAME mismatch has persisted across two
+  /// opens at least `_ftsMismatchDebounce` apart. A first-seen mismatch just
+  /// records the time and returns; a transient mid-refresh mismatch resolves
+  /// itself (refresh finishes, counts converge) before the debounce elapses, so
+  /// no spurious rebuild fires. A genuinely stale FTS (mismatch that survives
+  /// the window) still heals on the next open. Safe if the premise is false:
+  /// worst case a real stale FTS heals one open later than before.
+  static const Duration _ftsMismatchDebounce = Duration(seconds: 60);
+
   static Future<void> _selfHealProgrammesFts(SqliteDatabase db) async {
     try {
       final progCount = (await db.get('SELECT count(*) c FROM programmes'))['c']
@@ -1251,7 +1305,33 @@ class EpgDbFactory {
           (await db.get('SELECT count(*) c FROM programmes_fts'))['c'] as int? ??
               0;
       AppLog.info('EpgDb: programmes=$progCount programmes_fts=$ftsCount');
+      // finding 61: persist the last-seen mismatch time in a lazily-created
+      // app_meta table in epg.sqlite (no new migration — CREATE IF NOT EXISTS
+      // keeps this contained to this routine and out of the migration-parity
+      // surface). Statics can't be used: the refresh isolate wouldn't see them.
+      await db.execute('CREATE TABLE IF NOT EXISTS app_meta'
+          ' (key TEXT PRIMARY KEY, value TEXT);');
+      const mismatchKey = 'programmes_fts_mismatch_utc';
       if (progCount > 0 && ftsCount != progCount) {
+        final nowMs = DateTime.now().toUtc().millisecondsSinceEpoch;
+        final prevRow = await db.getOptional(
+            "SELECT value FROM app_meta WHERE key = '$mismatchKey';");
+        final prevMs = int.tryParse(prevRow?['value'] as String? ?? '');
+        if (prevMs == null ||
+            nowMs - prevMs < _ftsMismatchDebounce.inMilliseconds) {
+          // First sighting (or still within the debounce window): a refresh may
+          // be mid-flight. Record/keep the first-seen time and defer the
+          // rebuild to a later open when the mismatch has proven persistent.
+          if (prevRow == null) {
+            await db.execute(
+                "INSERT OR REPLACE INTO app_meta (key, value) VALUES"
+                " ('$mismatchKey', '$nowMs');");
+          }
+          AppLog.info('EpgDb: programmes_fts mismatch (fts=$ftsCount vs '
+              'programmes=$progCount) — deferring heal (debounce; a refresh may '
+              'be in progress)');
+          return;
+        }
         AppLog.warn('EpgDb: programmes_fts stale (fts=$ftsCount vs '
             'programmes=$progCount) — rebuilding (fix593)');
         await db
@@ -1261,6 +1341,9 @@ class EpgDbFactory {
                 0;
         AppLog.info('EpgDb: programmes_fts rebuilt — now $after rows');
       }
+      // Counts agree (or fts caught up) — clear any recorded mismatch so a
+      // future transient mismatch starts its own fresh debounce window.
+      await db.execute("DELETE FROM app_meta WHERE key = '$mismatchKey';");
     } catch (e) {
       AppLog.warn('EpgDb: programmes_fts self-heal check failed — $e');
     }

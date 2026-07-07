@@ -336,10 +336,14 @@ class _MultiViewCellState extends State<MultiViewCell> {
               ' falling back to full restart cell=${widget.cellIndex}');
         }
       }
-      // Full restart — _disposeEngine/_startEngine reset _eofRetryScheduled.
+      // finding 87
+      // Full restart. isRetry:true preserves the transient/slow/quick budgets
+      // so a stream that only ever EOFs still marches toward the error UI
+      // instead of resetting to a full budget on every EOF cycle.
       if (mounted && generation == _openGeneration && !_error) {
+        _transientRetries++; // an unrecoverable EOF cycle draws down the budget
         _disposeEngine();
-        _startEngine(ch);
+        _startEngine(ch, isRetry: true);
       }
     });
   }
@@ -522,6 +526,13 @@ class _MultiViewCellState extends State<MultiViewCell> {
     // Volume after options, before open(). First audio packet then plays
     // at the correct level with the correct mpv config in place.
     await engine.setVolume(widget.isFocused ? 1.0 : 0.0);
+    // finding 89
+    if (!mounted || generation != _openGeneration) {
+      unawaited(engine.dispose().catchError((Object e) {
+        AppLog.warn('MultiViewCell: dispose error after stale volume — $e');
+      }));
+      return;
+    }
 
     // Subscribe to engine streams. Subscriptions are stored in
     // [_engineSubs] so [_disposeEngine] can cancel them explicitly.
@@ -637,8 +648,18 @@ class _MultiViewCellState extends State<MultiViewCell> {
     }));
 
     _engineSubs.add(engine.bufferingStream.listen((buffering) {
-      // fix94: first buffering signal means the engine is alive.
-      if (_startupWatchdog != null) {
+      // finding 89: bufferingStream was not generation-guarded (errorStream
+      // and completedStream are); a stale gen-A start could clobber gen-B's
+      // freshly-armed _startupWatchdog / recovery budgets.
+      if (!mounted || generation != _openGeneration) return;
+      // finding 90
+      // fix94: the FIRST buffering event of ANY value used to disarm the
+      // startup watchdog, but subscriptions attach before open() so the
+      // buffering=true fired during open always arrived first and defeated
+      // the watchdog — a stream that opens but never decodes then hung as a
+      // permanent black cell. Only buffering==false (frames flowing) counts
+      // as startup success.
+      if (!buffering && _startupWatchdog != null) {
         _cancelStartupWatchdog();
       }
       // Reset ALL recovery budgets (transient, slow-recovery, quick-reopen)
