@@ -10,6 +10,7 @@ import 'package:open_tv/backend/channel_search_cache.dart';
 import 'package:open_tv/backend/device_memory.dart';
 import 'package:open_tv/backend/epg_service.dart';
 import 'package:open_tv/backend/settings_service.dart';
+import 'package:open_tv/backend/recording_scheduler.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/backend/update_checker.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -52,6 +53,10 @@ Future<void> main() async {
   AppLog.setSourceSecrets(await Sql.getSources());
   await DeviceMemory.init();
   final settings = await SettingsService.reload();
+
+  // fix667: initialise the DVR alarm scheduler (Android only; no-op else).
+  // After settings so a first-run box has its config; safe if it fails.
+  unawaited(RecordingScheduler.init());
 
   // finding 100/101: sweep orphaned per-engine DVR cache dirs left by a
   // crash/power-cut mid-DVR. Safe at cold start — no engine in this process has

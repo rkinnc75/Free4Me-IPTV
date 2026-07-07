@@ -10,6 +10,7 @@ import 'package:open_tv/backend/channel_search_cache.dart';
 import 'package:open_tv/backend/db_factory.dart';
 import 'package:open_tv/memory.dart';
 import 'package:open_tv/models/channel.dart';
+import 'package:open_tv/models/recording.dart';
 import 'package:open_tv/models/channel_http_headers.dart';
 import 'package:open_tv/models/channel_preserve.dart';
 import 'package:open_tv/models/filters.dart';
@@ -1421,6 +1422,92 @@ class Sql {
       [limit],
     );
     return rows.map(rowToChannel).toList();
+  }
+
+  // ── fix667: DVR recordings ────────────────────────────────────────────────
+
+  static Recording _rowToRecording(Row r) => Recording(
+        id: r.columnAt(0) as int?,
+        channelId: r.columnAt(1) as int?,
+        channelName: r.columnAt(2) as String,
+        url: r.columnAt(3) as String,
+        scheduledStartUtc: r.columnAt(4) as int,
+        durationMs: r.columnAt(5) as int,
+        padBeforeMin: r.columnAt(6) as int,
+        padAfterMin: r.columnAt(7) as int,
+        status: RecordingStatus.fromName(r.columnAt(8) as String?),
+        outputPath: r.columnAt(9) as String?,
+        error: r.columnAt(10) as String?,
+        createdUtc: r.columnAt(11) as int,
+      );
+
+  static const String _recordingCols =
+      'id, channel_id, channel_name, url, scheduled_start_utc, duration_ms, '
+      'pad_before_min, pad_after_min, status, output_path, error, created_utc';
+
+  /// Insert a recording; returns its new id.
+  static Future<int> insertRecording(Recording rec) async {
+    final db = await DbFactory.db;
+    await db.execute(
+      'INSERT INTO recordings '
+      '(channel_id, channel_name, url, scheduled_start_utc, duration_ms, '
+      ' pad_before_min, pad_after_min, status, output_path, error, created_utc) '
+      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        rec.channelId,
+        rec.channelName,
+        rec.url,
+        rec.scheduledStartUtc,
+        rec.durationMs,
+        rec.padBeforeMin,
+        rec.padAfterMin,
+        rec.status.name,
+        rec.outputPath,
+        rec.error,
+        rec.createdUtc,
+      ],
+    );
+    final row = await db.getAll('SELECT last_insert_rowid()');
+    return row.first.columnAt(0) as int;
+  }
+
+  static Future<List<Recording>> getRecordings() async {
+    final db = await DbFactory.db;
+    final rows = await db.getAll(
+      'SELECT $_recordingCols FROM recordings '
+      'ORDER BY scheduled_start_utc DESC',
+    );
+    return rows.map(_rowToRecording).toList();
+  }
+
+  static Future<Recording?> getRecordingById(int id) async {
+    final db = await DbFactory.db;
+    final rows = await db.getAll(
+      'SELECT $_recordingCols FROM recordings WHERE id = ? LIMIT 1',
+      [id],
+    );
+    if (rows.isEmpty) return null;
+    return _rowToRecording(rows.first);
+  }
+
+  static Future<void> updateRecordingStatus(
+    int id,
+    RecordingStatus status, {
+    String? outputPath,
+    String? error,
+  }) async {
+    final db = await DbFactory.db;
+    await db.execute(
+      'UPDATE recordings SET status = ?, '
+      'output_path = COALESCE(?, output_path), '
+      'error = COALESCE(?, error) WHERE id = ?',
+      [status.name, outputPath, error, id],
+    );
+  }
+
+  static Future<void> deleteRecording(int id) async {
+    final db = await DbFactory.db;
+    await db.execute('DELETE FROM recordings WHERE id = ?', [id]);
   }
 
   static String getKeywordsSql(int size) {

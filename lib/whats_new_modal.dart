@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '3.0.11': [
+    'Groundwork for scheduled recordings (DVR): the app can now store and schedule recordings with configurable start/end padding (default 1 min before and after, per-recording overridable \u2014 e.g. 90 min after for a live event that runs long). Recording capture and the scheduling UI arrive in the next updates.',
+  ],
   '3.0.10': [
     'Critical fix: restores all app network requests over HTTPS. A change in '
         '3.0.8 broke secure connections, so update checks, provider '

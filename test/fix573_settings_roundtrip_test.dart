@@ -26,6 +26,17 @@ void main() {
     expect(r.playerZoomMode, ZoomMode.crop);
   });
 
+  test('fix667: record pad settings survive backup round-trip', () {
+    final s = Settings.defaults()
+      ..recordPadBeforeMin = 5 // default 1
+      ..recordPadAfterMin = 90; // default 1
+
+    final r = SettingsIo.roundTripForTest(s);
+
+    expect(r.recordPadBeforeMin, 5);
+    expect(r.recordPadAfterMin, 90);
+  });
+
   test('fix665: TV home-row settings survive backup round-trip', () {
     final s = Settings.defaults()
       ..tvHomeRowEnabled = true // default false

@@ -3,6 +3,12 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Free4Me-IPTV: keep CPU awake during long playback on low-power TV boxes. -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- fix667: exact wall-clock alarms for scheduled recordings.
+         SCHEDULE_EXACT_ALARM (API 31-32) / USE_EXACT_ALARM (API 33+); boot
+         receiver re-registers alarms after a restart (rescheduleOnReboot). -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Free4Me-IPTV: detect mobile/Wi-Fi changes for reconnect. -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <!-- fix310: allow the in-app updater to launch the APK installer. -->

@@ -253,6 +253,14 @@ class Settings {
   /// fix665: how many favorites to publish to the TV home row. Clamped 1-20.
   int tvHomeRowCount;
 
+  /// fix667: DVR record pads (minutes). Default before/after = 1/1.
+  /// The before-pad starts recording early; the after-pad keeps it
+  /// running past the programme's listed end (for live events that run
+  /// long). Per-recording overrides are stored on the recording row.
+  /// Ranges: before 0-15, after 0-240.
+  int recordPadBeforeMin;
+  int recordPadAfterMin;
+
   /// libmpv `video-sync` mode. Default [VideoSyncMode.audio].
   VideoSyncMode devVideoSync;
 
@@ -376,6 +384,8 @@ class Settings {
     this.dohProvider = 'off', // fix663
     this.tvHomeRowEnabled = false, // fix665
     this.tvHomeRowCount = 10, // fix665
+    this.recordPadBeforeMin = 1, // fix667
+    this.recordPadAfterMin = 1, // fix667
     this.devVideoSync = VideoSyncMode.audio,
     this.devVideoSyncMaxVideoChange = 1.0,
     this.devTscale = TscaleMode.nearest,
@@ -537,6 +547,8 @@ class Settings {
     s.dohProvider = 'off'; // fix663: opt-in; default system DNS on all devices
     s.tvHomeRowEnabled = false; // fix665: opt-in
     s.tvHomeRowCount = 10; // fix665
+    s.recordPadBeforeMin = 1; // fix667
+    s.recordPadAfterMin = 1; // fix667
     s.devVideoSync = VideoSyncMode.audio;
     s.devVideoSyncMaxVideoChange = 1.0;
     s.devTscale = TscaleMode.nearest;

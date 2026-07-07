@@ -101,6 +101,9 @@ const dohProviderProp = "dohProvider"; // fix663
 const tvHomeRowEnabledProp = "tvHomeRowEnabled"; // fix665
 const tvHomeRowCountProp = "tvHomeRowCount"; // fix665
 
+const recordPadBeforeMinProp = "recordPadBeforeMin"; // fix667
+const recordPadAfterMinProp = "recordPadAfterMin"; // fix667
+
 const safeModeProp = "safeMode";
 const confirmToExitProp = "confirmToExit"; // fix587 (#23)
 
@@ -372,6 +375,14 @@ class SettingsService {
       final n = int.tryParse(tvHomeCount) ?? 10;
       settings.tvHomeRowCount = n.clamp(1, 20);
     }
+    final padB = settingsMap[recordPadBeforeMinProp];
+    if (padB != null) {
+      settings.recordPadBeforeMin = (int.tryParse(padB) ?? 1).clamp(0, 15);
+    }
+    final padA = settingsMap[recordPadAfterMinProp];
+    if (padA != null) {
+      settings.recordPadAfterMin = (int.tryParse(padA) ?? 1).clamp(0, 240);
+    }
     if (sm == null && resolvedSm == SearchMethod.ftsPhrase) {
       // fix505: first-run auto-set on low-RAM device. ftsPhrase is the
       // index-backed channels_fts path — fast on huge catalogues (~1.15M)
@@ -572,6 +583,10 @@ class SettingsService {
         (settings.tvHomeRowEnabled ? 1 : 0).toString(); // fix665
     settingsMap[tvHomeRowCountProp] =
         settings.tvHomeRowCount.toString(); // fix665
+    settingsMap[recordPadBeforeMinProp] =
+        settings.recordPadBeforeMin.toString(); // fix667
+    settingsMap[recordPadAfterMinProp] =
+        settings.recordPadAfterMin.toString(); // fix667
     settingsMap[safeModeProp] = (settings.safeMode ? 1 : 0).toString();
     settingsMap[confirmToExitProp] =
         (settings.confirmToExit ? 1 : 0).toString(); // fix587 (#23)

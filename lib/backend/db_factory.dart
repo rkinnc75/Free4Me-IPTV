@@ -1056,6 +1056,34 @@ class DbFactory {
             'CREATE INDEX IF NOT EXISTS idx_fav_browse ON channels'
             '(media_type, source_id, name COLLATE NOCASE)'
             ' WHERE favorite = 1;');
+      }))
+      // fix667: DVR recordings. A recording is a scheduled/active/finished
+      // capture of a channel's HTTP stream to a file. The row stores the
+      // RESOLVED window (scheduled_start_utc + duration_ms already include the
+      // pads) so changing the global pad defaults later never shifts an
+      // existing recording. pad_before_min/pad_after_min are kept for display
+      // and per-recording editing. status is a RecordingStatus.name string.
+      ..add(SqliteMigration(44, (tx) async {
+        await tx.execute('''
+          CREATE TABLE IF NOT EXISTS recordings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel_id INTEGER,
+            channel_name TEXT NOT NULL,
+            url TEXT NOT NULL,
+            scheduled_start_utc INTEGER NOT NULL,
+            duration_ms INTEGER NOT NULL,
+            pad_before_min INTEGER NOT NULL DEFAULT 0,
+            pad_after_min INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'scheduled',
+            output_path TEXT,
+            error TEXT,
+            created_utc INTEGER NOT NULL
+          );
+        ''');
+        // Fetch upcoming/active recordings by time cheaply.
+        await tx.execute(
+            'CREATE INDEX IF NOT EXISTS idx_recordings_start '
+            'ON recordings(scheduled_start_utc);');
       }));
   }
 
