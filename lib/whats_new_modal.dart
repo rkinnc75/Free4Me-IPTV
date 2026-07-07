@@ -6,6 +6,20 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '3.0.6': [
+    'Deeper playback reliability: a dead or stalled movie/VOD now shows a '
+        '"can\'t play" message instead of spinning forever, the player '
+        'auto-resumes when the network comes back after a drop, and casting '
+        'now stops the local stream (freeing a connection slot) and restores '
+        'your headers when you stop casting.',
+    'Live guide now refreshes on screen after a background EPG update without '
+        'needing a manual tab switch, and channel matching is faster on '
+        'multi-source setups.',
+    'Faster, lower-memory catalog refresh: large Xtream provider responses are '
+        'decoded off the main thread so the app stays responsive.',
+    'Various startup, migration, and multi-view stability hardening from the '
+        'code review.',
+  ],
   '3.0.5': [
     'Phones no longer pre-warm streams by default — the pre-warm network probe only helps TV remote navigation, so on touch devices it was wasted on the wrong channel. (Toggle it any time under Playback \u2192 Pre-warm streams on focus.)',
   ],
