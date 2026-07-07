@@ -117,7 +117,13 @@ Future<void> main() async {
     // rebuild cat_enabled-free browse indexes + VACUUM) HERE, off the cold-start
     // critical path (unawaited, after first frame), so it can never block
     // startup / black-screen the app on a large catalog. Gated to run once.
-    warmups.add(Sql.runPendingIndexMaintenance());
+    // finding 58: chain the deferred channels_fts backfill + ANALYZE (moved out
+    // of migrations 35/38, the two heaviest cold-start full-scans) AFTER the
+    // index maintenance so ANALYZE reflects the final index shapes. Both are
+    // off the critical path; runPendingIndexMaintenance swallows its own errors
+    // so the .then always runs.
+    warmups.add(Sql.runPendingIndexMaintenance()
+        .then((_) => Sql.runPendingFtsAndAnalyze()));
     // fix546: purge legacy divider rows once, also off the cold-start path.
     unawaited(Sql.runPendingDividerCleanup());
     // fix628: self-heal channels indexes lost to an interrupted/killed refresh

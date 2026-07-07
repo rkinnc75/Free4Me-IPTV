@@ -1,6 +1,6 @@
 {
-  "latest": "3.0.6",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v3.0.6",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v3.0.6/Free4Me-IPTV-3.0.6-arm64.apk",
-  "releaseNotes": "\u2022 Deeper playback reliability: a dead or stalled movie/VOD now shows a \"can't play\" message instead of spinning forever, the player auto-resumes when the network comes back after a drop, and casting now stops the local stream (freeing a connection slot) and restores your headers when you stop casting.\n\u2022 Live guide now refreshes on screen after a background EPG update without needing a manual tab switch, and channel matching is faster on multi-source setups.\n\u2022 Faster, lower-memory catalog refresh: large Xtream provider responses are decoded off the main thread so the app stays responsive.\n\u2022 Various startup, migration, and multi-view stability hardening from the code review."
+  "latest": "3.0.7",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v3.0.7",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v3.0.7/Free4Me-IPTV-3.0.7-arm64.apk",
+  "releaseNotes": "\u2022 Faster app startup after an update on large channel lists: the two heaviest first-launch database steps (rebuilding the channel search index and refreshing query statistics) now run in the background just after the app opens instead of blocking the loading screen \u2014 no more long freeze or \"not responding\" on big catalogs. Channel search fills in within a few seconds of launch."
 }

@@ -6,6 +6,14 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '3.0.7': [
+    'Faster app startup after an update on large channel lists: the two '
+        'heaviest first-launch database steps (rebuilding the channel search '
+        'index and refreshing query statistics) now run in the background just '
+        'after the app opens instead of blocking the loading screen — no more '
+        'long freeze or "not responding" on big catalogs. Channel search fills '
+        'in within a few seconds of launch.',
+  ],
   '3.0.6': [
     'Deeper playback reliability: a dead or stalled movie/VOD now shows a '
         '"can\'t play" message instead of spinning forever, the player '

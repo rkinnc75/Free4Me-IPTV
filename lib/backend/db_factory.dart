@@ -737,12 +737,17 @@ class DbFactory {
             prefix='2 3'
           );
         ''');
-        // One-time repopulate from the existing channels (paid once here, not
-        // per refresh).
-        await tx.execute('''
-          INSERT INTO channels_fts(rowid, name)
-          SELECT id, name FROM channels;
-        ''');
+        // finding 58: the one-time repopulate INSERT used to run HERE, inside
+        // the migration the app awaits before runApp(). On an upgrade over a
+        // populated catalog (~1.2M rows on a Shield-scale DB) that full-scan
+        // re-tokenize blocked first frame long enough to ANR. It is DEFERRED to
+        // Sql.runPendingFtsAndAnalyze() (called unawaited after first frame from
+        // main()), which repopulates channels_fts once when channels is
+        // non-empty and the fts index is empty. Migration 35 now creates the
+        // virtual table + triggers EMPTY only; on a fresh install the table was
+        // empty here anyway, and the first source refresh rebuilds fts (fix621)
+        // — so search is unaffected on fresh installs and briefly empty on
+        // upgrade until the deferred backfill (seconds after launch) completes.
         // Recreate the sync triggers BYTE-IDENTICAL to Sql.reconcileFtsTriggers
         // (channels_au is AFTER UPDATE OF name, per migration 11) so the
         // boot-time reconcile never treats them as drifted and rebuilds.
@@ -931,14 +936,16 @@ class DbFactory {
       // full-partition scan; an all-adult source's _safe slice is ~0 rows =
       // instant). One-time; wrapped in the fix523 memory pragmas.
       ..add(SqliteMigration(38, (tx) async {
-        try {
-          await tx.execute('PRAGMA temp_store = FILE;');
-          await tx.execute('PRAGMA cache_size = -32768;');
-        } catch (_) {}
-        await tx.execute('ANALYZE;');
-        try {
-          await tx.execute('PRAGMA cache_size = -2000;');
-        } catch (_) {}
+        // finding 58: `ANALYZE;` used to run HERE, inside the awaited migration
+        // chain, full-scanning the ~1.2M-row catalog before first frame (ANR
+        // risk on an upgrade over a populated Shield-scale DB). It is DEFERRED to
+        // Sql.runPendingFtsAndAnalyze() (unawaited, after first frame), which
+        // runs ANALYZE once over the populated catalog — same planner benefit
+        // (the *_safe partials get true row counts so Safe-Mode browse is
+        // index-served), off the cold-start critical path. Migration 38 is now a
+        // no-op kept for history so the version chain (head 43) is unchanged and
+        // fresh installs — where an empty-table ANALYZE was worthless anyway —
+        // skip the work entirely.
       }))
       // fix537: the enable/disable-source delay (10-72s on the onn 4K box,
       // confirmed on the field db.sqlite: 1.2M channels, ~1GB of indexes) was

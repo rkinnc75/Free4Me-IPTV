@@ -1746,6 +1746,90 @@ class Sql {
     }
   }
 
+  /// finding 58: the two largest full-scans that migrations 35 (fix519, the
+  /// channels_fts unicode61 rebuild) and 38 (fix530, `ANALYZE`) used to run
+  /// INSIDE the awaited migration chain — blocking runApp() before first frame
+  /// and risking an ANR on an upgrade over a populated Shield-scale catalog.
+  /// They now run here, unawaited, AFTER first frame (called from main()
+  /// chained after [runPendingIndexMaintenance] so ANALYZE reflects the final
+  /// fix537 index shapes). Each piece is independently, cheaply gated so it runs
+  /// at most once over a populated catalog and self-heals if it didn't.
+  static Future<void> runPendingFtsAndAnalyze() async {
+    const analyzeMarker = 'mig38_analyze_done';
+    try {
+      final db = await DbFactory.db;
+      // Both operations are only meaningful once the catalog has rows. On a
+      // fresh install channels is empty at first launch — there is nothing to
+      // backfill (the first source refresh rebuilds fts, fix621) and an
+      // empty-table ANALYZE is worthless — so skip WITHOUT marking, and both
+      // run on a later launch once a source is loaded.
+      final hasChannels =
+          await db.getOptional('SELECT 1 FROM channels LIMIT 1;') != null;
+      if (!hasChannels) return;
+
+      // (1) channels_fts backfill — condition-driven self-heal, no marker.
+      // Migration 35 recreates channels_fts EMPTY, so an upgrader's channel
+      // search is blank until this rebuild runs. This also self-heals a
+      // channels_fts wiped by an interrupted refresh (before this, only
+      // programmes_fts had a device-side rebuild path; channels_fts had none).
+      // The unicode61 `rebuild` is the fix519 safe fallback — far cheaper than
+      // the retired trigram. Guarded on "channels non-empty AND channels_fts
+      // empty" so it is a no-op on every normal launch.
+      //
+      // Emptiness MUST be probed via the `_docsize` shadow table (one row per
+      // INDEXED document): a bare `SELECT … FROM channels_fts` on an
+      // external-content fts5 reads the CONTENT table (channels), so it would
+      // report rows even when the index itself is empty. `_docsize` exists
+      // because migration 35 creates the table without `columnsize=0`.
+      final ftsEmpty = await db.getOptional(
+              'SELECT rowid FROM channels_fts_docsize LIMIT 1;') ==
+          null;
+      if (ftsEmpty) {
+        final sw = Stopwatch()..start();
+        try {
+          await db.execute('PRAGMA temp_store = FILE;');
+          await db.execute('PRAGMA cache_size = -32768;');
+        } catch (_) {}
+        await db.execute(
+            "INSERT INTO channels_fts(channels_fts) VALUES('rebuild');");
+        try {
+          await db.execute('PRAGMA cache_size = -2000;');
+        } catch (_) {}
+        AppLog.info('finding58: deferred channels_fts backfill complete'
+            ' (${sw.elapsedMilliseconds}ms).');
+      }
+
+      // (2) ANALYZE — marker-gated (there is no cheap "already analyzed"
+      // predicate). fix530 needs the *_safe partials' TRUE row counts so the
+      // planner prefers them for Safe-Mode browse. A device that upgraded
+      // through the OLD (inline-ANALYZE) mig38 has no marker yet, so it runs one
+      // extra ANALYZE here — harmless, once, off the critical path.
+      final analyzed = await db.getOptional(
+          "SELECT value FROM app_meta WHERE key = '$analyzeMarker'");
+      if (analyzed == null) {
+        final sw = Stopwatch()..start();
+        try {
+          await db.execute('PRAGMA temp_store = FILE;');
+          await db.execute('PRAGMA cache_size = -32768;');
+        } catch (_) {}
+        await db.execute('ANALYZE;');
+        try {
+          await db.execute('PRAGMA cache_size = -2000;');
+        } catch (_) {}
+        await db.execute("INSERT OR REPLACE INTO app_meta (key, value)"
+            " VALUES ('$analyzeMarker', '1');");
+        AppLog.info(
+            'finding58: deferred ANALYZE complete (${sw.elapsedMilliseconds}ms).');
+      }
+    } catch (e) {
+      // Leaves fts/stats as-is (browse still works; search may be briefly empty
+      // on a fresh upgrade). Retries next launch — neither piece is marked on
+      // failure.
+      AppLog.warn('finding58: deferred FTS/ANALYZE skipped'
+          ' (will retry next launch) — $e');
+    }
+  }
+
   // fix628: the shared 6-tier browse-order CASE. Structurally identical to
   // BrowseOrder.tier and the migration index expressions (no alias — index
   // exprs are unaliased); the planner matches structure, so this keeps every
