@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/view_type.dart';
 import 'package:open_tv/settings_view.dart';
+import 'package:open_tv/recordings_view.dart';
 
 
 const _fixedColors = [
@@ -9,6 +10,7 @@ const _fixedColors = [
   Color(0xFFF0B429), // Favorites  — amber
   Color(0xFF4CAF78), // History    — green
   Color(0xFFE8624A), // Settings   — red-orange
+  Color(0xFFEC407A), // Recordings — pink (fix669)
 ];
 
 const _fixedIcons = [
@@ -16,9 +18,10 @@ const _fixedIcons = [
   Icons.star,
   Icons.history,
   Icons.settings,
+  Icons.fiber_smart_record, // fix669
 ];
 
-const _fixedLabels = ['Categories', 'Favorites', 'History', 'Settings'];
+const _fixedLabels = ['Categories', 'Favorites', 'History', 'Settings', 'Recordings'];
 
 
 const _filterColors = {
@@ -105,6 +108,17 @@ class _BottomNavState extends State<BottomNav> {
         ),
         (route) => false,
       );
+      return;
+    }
+    // fix669: Recordings is its own screen (like Settings), not a Home filter.
+    if (viewIndex == ViewType.recordings.index) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const RecordingsView()),
+      ).then((_) {
+        // Return focus to the previous tab after closing Recordings.
+        if (mounted) setState(() => _selectedIndex = ViewType.all.index);
+      });
       return;
     }
     widget.updateViewMode(ViewType.values[viewIndex]);

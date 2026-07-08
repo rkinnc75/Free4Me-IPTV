@@ -1,4 +1,4 @@
-enum ViewType { all, categories, favorites, history, settings }
+enum ViewType { all, categories, favorites, history, settings, recordings }
 
 String viewTypeToString(ViewType vw) {
   switch (vw) {
@@ -10,6 +10,8 @@ String viewTypeToString(ViewType vw) {
       return "Favorites";
     case ViewType.history:
       return "History";
+    case ViewType.recordings:
+      return "Recordings";
     default:
       return "All";
   }

@@ -22,6 +22,10 @@ class TvTab {
   // the "held-OK on Movies/Series swallowed, tab fails to switch" regression).
   final bool longPress;
 
+  /// fix669: this tab mounts the Scheduled Recording list (RecordingsView),
+  /// not the Home browse body.
+  final bool isRecordings;
+
   const TvTab({
     required this.label,
     required this.color,
@@ -29,6 +33,7 @@ class TvTab {
     required this.viewType,
     this.isSearch = false,
     this.longPress = false,
+    this.isRecordings = false,
   });
 }
 

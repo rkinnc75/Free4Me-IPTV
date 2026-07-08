@@ -19,6 +19,7 @@ import 'package:open_tv/backend/tv_home_publisher.dart';
 import 'package:open_tv/player.dart';
 import 'package:open_tv/player/overlay_player_controller.dart';
 import 'package:open_tv/tv/tv_categories_view.dart';
+import 'package:open_tv/recordings_view.dart';
 import 'package:open_tv/tv/tv_guide_view.dart';
 import 'package:open_tv/tv/tv_search_view.dart';
 import 'package:open_tv/tv/tv_top_tab_bar.dart';
@@ -93,6 +94,14 @@ class _TvShellState extends State<TvShell> {
       mediaTypes: [MediaType.livestream, MediaType.movie, MediaType.serie],
       viewType: ViewType.all,
       isSearch: true,
+    ),
+    // fix669: Scheduled Recording list — its own screen, mounted like Search.
+    TvTab(
+      label: 'Recordings',
+      color: Color(0xFFEC407A),
+      mediaTypes: [MediaType.livestream, MediaType.movie, MediaType.serie],
+      viewType: ViewType.recordings,
+      isRecordings: true,
     ),
   ];
 
@@ -201,6 +210,7 @@ class _TvShellState extends State<TvShell> {
       case ViewType.favorites:
       case ViewType.all:
       case ViewType.settings:
+      case ViewType.recordings:
         return 0;
     }
   }
@@ -215,6 +225,11 @@ class _TvShellState extends State<TvShell> {
       _built[i] = TvSearchView(
         key: ValueKey<String>('tv-search-$_reloadGen'),
         settings: widget.settings,
+      );
+    } else if (t.isRecordings) {
+      // fix669: the Scheduled Recording list.
+      _built[i] = const RecordingsView(
+        key: ValueKey<String>('tv-recordings'),
       );
     } else if (i == 0) {
       _built[i] = TvGuideView(key: _guideKey, settings: widget.settings);
