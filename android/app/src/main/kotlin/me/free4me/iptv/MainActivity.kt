@@ -213,7 +213,39 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        // ── PiP EventChannel — streams mode changes to Flutter ────────────
+        // ── fix668: Scheduled Recording capture control ───────────────────
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "me.free4me.iptv/recording",
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "startCapture" -> {
+                    val id = call.argument<Int>("id")
+                    val url = call.argument<String>("url")
+                    val durationMs = (call.argument<Number>("durationMs"))?.toLong()
+                    val name = call.argument<String>("name") ?: "Recording"
+                    if (id == null || url == null || durationMs == null) {
+                        result.error("bad_args", "id/url/durationMs required", null)
+                    } else {
+                        RecordingCaptureService.start(
+                            applicationContext, id, url, durationMs, name,
+                        )
+                        result.success(true)
+                    }
+                }
+                "stopCapture" -> {
+                    val id = call.argument<Int>("id")
+                    if (id == null) {
+                        result.error("bad_args", "id required", null)
+                    } else {
+                        RecordingCaptureService.stop(applicationContext, id)
+                        result.success(true)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+
         EventChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             "me.free4me.iptv/pip_events",

@@ -1057,7 +1057,7 @@ class DbFactory {
             '(media_type, source_id, name COLLATE NOCASE)'
             ' WHERE favorite = 1;');
       }))
-      // fix667: DVR recordings. A recording is a scheduled/active/finished
+      // fix667: Scheduled Recordings (SR). A recording is a scheduled/active/finished
       // capture of a channel's HTTP stream to a file. The row stores the
       // RESOLVED window (scheduled_start_utc + duration_ms already include the
       // pads) so changing the global pad defaults later never shifts an

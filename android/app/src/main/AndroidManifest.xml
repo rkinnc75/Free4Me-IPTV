@@ -91,6 +91,16 @@
             android:foregroundServiceType="dataSync"
             android:stopWithTask="true"
             android:exported="false" />
+        <!-- fix668: Scheduled Recording capture (HTTP stream -> MediaStore).
+             Own foreground service so a multi-hour capture survives Doze; type
+             dataSync matches FOREGROUND_SERVICE_DATA_SYNC above. Not tied to the
+             app task (stopWithTask=false) so a scheduled recording keeps running
+             if the user swipes the app away. -->
+        <service
+            android:name=".RecordingCaptureService"
+            android:foregroundServiceType="dataSync"
+            android:stopWithTask="false"
+            android:exported="false" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

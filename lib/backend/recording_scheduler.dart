@@ -2,13 +2,14 @@ import 'dart:io';
 
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:open_tv/backend/app_logger.dart';
+import 'package:open_tv/backend/recording_capture.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/models/channel.dart';
 import 'package:open_tv/models/program.dart';
 import 'package:open_tv/models/recording.dart';
 
-/// fix667: schedules DVR recordings.
+/// fix667: schedules Scheduled Recordings (SR) — record-to-file, distinct from the app's live DVR (rewind-within-live-stream) feature.
 ///
 /// This phase establishes the schema, the padded-window computation, and the
 /// exact wall-clock alarm registration. The alarm CALLBACK is a stub that logs
@@ -158,15 +159,37 @@ class RecordingScheduler {
 /// real HTTP-stream capture is wired here in fix668.
 @pragma('vm:entry-point')
 Future<void> recordingAlarmCallback(int recordingId) async {
-  // Runs in its own isolate: no app state, so everything goes through the DB.
+  // fix668: runs in the alarm's background isolate at the padded start time.
+  // The alarm's wakelock only covers this short window, so we DON'T capture
+  // here — we look up the row and hand off to the native
+  // RecordingCaptureService (its own foreground service + wakelock survive the
+  // full duration and Doze). The native side writes done/failed back to the
+  // recordings row. No app state in this isolate, so everything goes via DB.
   try {
+    final rec = await Sql.getRecordingById(recordingId);
+    if (rec == null) {
+      AppLog.warn('recordingAlarmCallback: recording $recordingId not found');
+      return;
+    }
+    if (rec.status == RecordingStatus.cancelled) {
+      AppLog.info('recordingAlarmCallback: $recordingId was cancelled; skipping');
+      return;
+    }
     await Sql.updateRecordingStatus(recordingId, RecordingStatus.recording);
-    AppLog.info('recordingAlarmCallback: recording $recordingId fired '
-        '(capture stubbed — fix668)');
-    // fix668 will start the foreground-service capture here and flip the
-    // status to done/failed on completion. For now, leave it in `recording`
-    // so the UI (fix669) can show the fired state and a manual stop.
+    await RecordingCapture.start(
+      id: recordingId,
+      url: rec.url,
+      durationMs: rec.durationMs,
+      name: rec.channelName,
+    );
+    AppLog.info('recordingAlarmCallback: started capture $recordingId '
+        '("${rec.channelName}", durationMs=${rec.durationMs})');
   } catch (e) {
     AppLog.warn('recordingAlarmCallback: $recordingId failed — $e');
+    // Best-effort: mark failed so the UI doesn't show a stuck "recording".
+    try {
+      await Sql.updateRecordingStatus(recordingId, RecordingStatus.failed,
+          error: 'Failed to start capture: $e');
+    } catch (_) {}
   }
 }

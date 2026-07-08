@@ -1424,7 +1424,7 @@ class Sql {
     return rows.map(rowToChannel).toList();
   }
 
-  // ── fix667: DVR recordings ────────────────────────────────────────────────
+  // ── fix667: Scheduled Recordings (SR) ──────────────────────────────────────
 
   static Recording _rowToRecording(Row r) => Recording(
         id: r.columnAt(0) as int?,

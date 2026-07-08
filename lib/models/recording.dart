@@ -1,4 +1,4 @@
-/// fix667: a DVR recording — a scheduled, active, or finished capture of a
+/// fix667: a Scheduled Recording (SR) — a scheduled, active, or finished capture of a
 /// channel's HTTP stream to a file.
 ///
 /// The stored window ([scheduledStartUtc] + [durationMs]) is ALREADY padded:
