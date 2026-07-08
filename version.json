@@ -1,6 +1,6 @@
 {
-  "latest": "3.0.13",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v3.0.13",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v3.0.13/Free4Me-IPTV-3.0.13-arm64.apk",
-  "releaseNotes": "\u2022 Recordings now has its own place in the app, alongside Live, Movies, and Series. See scheduled, in-progress, and finished recordings; play a finished one, stop an in-progress one, or delete from the list. (Buttons to start a recording from the guide and a \\u201cRecord now\\u201d option come next.)"
+  "latest": "3.0.14",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v3.0.14",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v3.0.14/Free4Me-IPTV-3.0.14-arm64.apk",
+  "releaseNotes": "\u2022 You can now start Scheduled Recordings: tap a show in the TV guide and choose Record, or use \\u201cRecord now\\u201d from a live channel\\u2019s long-press menu or the player (pick 30/60/120 min or a custom length). Recordings won\\u2019t start if the device is very low on free space."
 }
