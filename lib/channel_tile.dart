@@ -17,6 +17,7 @@ import 'package:open_tv/error.dart';
 import 'package:open_tv/models/device_detector.dart'; // finding 107
 import 'package:open_tv/backend/utils.dart'; // finding 107
 import 'package:open_tv/models/media_type.dart';
+import 'package:open_tv/backend/recording_actions.dart';
 import 'package:open_tv/models/node.dart';
 import 'package:open_tv/models/node_type.dart';
 import 'package:open_tv/player.dart';
@@ -475,6 +476,18 @@ class _ChannelTileState extends State<ChannelTile> {
                     onTap: () async {
                       Navigator.pop(ctx);
                       await widget.onOpenMultiView!(widget.channel);
+                    },
+                  ),
+                // fix670: Record now (live channels only) — quick duration
+                // picker (30/60/120/custom), then a foreground capture.
+                if (widget.channel.mediaType == MediaType.livestream)
+                  ListTile(
+                    leading: const Icon(Icons.fiber_manual_record,
+                        color: Colors.redAccent),
+                    title: const Text('Record now'),
+                    onTap: () async {
+                      Navigator.pop(ctx);
+                      await RecordingActions.recordNow(context, widget.channel);
                     },
                   ),
                 if (widget.isHistory && widget.channel.id != null)

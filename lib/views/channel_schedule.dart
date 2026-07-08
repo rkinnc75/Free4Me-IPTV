@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:open_tv/backend/catchup_url.dart';
+import 'package:open_tv/backend/recording_actions.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/models/channel.dart';
@@ -327,6 +328,10 @@ class _ChannelScheduleViewState extends State<ChannelScheduleView> {
     );
   }
 
+  void _recordProgramme(Program p) {
+    RecordingActions.recordProgramme(context, widget.channel, p);
+  }
+
   void _showDetails(Program p) {
     final nowEpoch = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final source = _source;
@@ -382,6 +387,18 @@ class _ChannelScheduleViewState extends State<ChannelScheduleView> {
               onPressed: () {
                 Navigator.pop(context);
                 _playCatchup(p, catchupUrl);
+              },
+            ),
+          // fix670: Record — future or on-now programmes only (the inverse of
+          // catch-up, which is for past/on-now). Schedules with the pad
+          // defaults; a live-event over-run is covered by the after-pad.
+          if (p.stopUtc > nowEpoch)
+            TextButton.icon(
+              icon: const Icon(Icons.fiber_manual_record, color: Colors.redAccent),
+              label: const Text('Record'),
+              onPressed: () {
+                Navigator.pop(context);
+                _recordProgramme(p);
               },
             ),
           TextButton(

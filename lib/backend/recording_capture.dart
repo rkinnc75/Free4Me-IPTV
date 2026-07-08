@@ -45,4 +45,18 @@ class RecordingCapture {
       AppLog.warn('RecordingCapture: stopCapture($id) failed — $e');
     }
   }
+
+  /// fix670: free bytes on the recordings volume, or null if unavailable
+  /// (non-Android, or the query failed — callers treat null as "unknown,
+  /// allow").
+  static Future<int?> freeBytes() async {
+    if (!Platform.isAndroid) return null;
+    try {
+      final v = await _ch.invokeMethod<int>('getFreeBytes');
+      return v;
+    } catch (e) {
+      AppLog.warn('RecordingCapture: getFreeBytes failed — $e');
+      return null;
+    }
+  }
 }

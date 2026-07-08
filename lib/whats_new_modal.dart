@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '3.0.14': [
+    'You can now start Scheduled Recordings: tap a show in the TV guide and choose Record, or use \u201cRecord now\u201d from a live channel\u2019s long-press menu or the player (pick 30/60/120 min or a custom length). Recordings won\u2019t start if the device is very low on free space.',
+  ],
   '3.0.13': [
     'Recordings now has its own place in the app, alongside Live, Movies, and Series. See scheduled, in-progress, and finished recordings; play a finished one, stop an in-progress one, or delete from the list. (Buttons to start a recording from the guide and a \u201cRecord now\u201d option come next.)',
   ],

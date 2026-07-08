@@ -242,6 +242,18 @@ class MainActivity : FlutterActivity() {
                         result.success(true)
                     }
                 }
+                "getFreeBytes" -> {
+                    // fix670: free space on external storage (where MediaStore
+                    // recordings land). Falls back to internal filesDir.
+                    try {
+                        val dir = applicationContext.getExternalFilesDir(null)
+                            ?: applicationContext.filesDir
+                        val stat = android.os.StatFs(dir.absolutePath)
+                        result.success(stat.availableBytes)
+                    } catch (e: Exception) {
+                        result.error("statfs_failed", e.message, null)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }

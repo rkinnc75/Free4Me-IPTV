@@ -25,6 +25,14 @@ class RecordingScheduler {
 
   static bool _inited = false;
 
+  /// fix670: refuse to start a recording below this free-space floor (1 GB).
+  static const int minFreeBytes = 1024 * 1024 * 1024;
+
+  /// fix670: pure guard — true when [freeBytes] is known and below the floor.
+  /// null (unknown) → not low → allowed. Unit-testable.
+  static bool isLowSpace(int? freeBytes) =>
+      freeBytes != null && freeBytes < minFreeBytes;
+
   /// fix667: pure padded-window computation (unit-testable).
   /// Returns (startUtc, durationMs). The before-pad moves the start earlier;
   /// both pads extend the duration past the programme's listed end.
@@ -95,6 +103,17 @@ class RecordingScheduler {
     if (url == null || url.isEmpty) {
       AppLog.warn('RecordingScheduler: channel "${channel.name}" has no url');
       return null;
+    }
+    // fix670: refuse to start a recording when free space is below the floor
+    // (1 GB). A long capture can't be sized ahead of time, so this is a
+    // "don't even start on a nearly-full disk" guard, not a hard cap. null
+    // free-space (query failed / non-Android) is treated as "unknown → allow".
+    final free = await RecordingCapture.freeBytes();
+    if (isLowSpace(free)) {
+      AppLog.warn('RecordingScheduler: refusing — low space '
+          '(${(free ?? 0) ~/ (1024 * 1024)} MB free, floor '
+          '${minFreeBytes ~/ (1024 * 1024)} MB)');
+      throw const LowDiskSpaceException();
     }
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final rec = Recording(
@@ -192,4 +211,12 @@ Future<void> recordingAlarmCallback(int recordingId) async {
           error: 'Failed to start capture: $e');
     } catch (_) {}
   }
+}
+
+/// fix670: thrown by the scheduler when free space is below the 1 GB floor.
+class LowDiskSpaceException implements Exception {
+  const LowDiskSpaceException();
+  @override
+  String toString() => 'Not enough free space to start recording (need at least '
+      '1 GB free).';
 }

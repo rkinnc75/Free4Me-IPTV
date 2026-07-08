@@ -11,6 +11,7 @@ import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/utils.dart';
 import 'package:open_tv/models/device_detector.dart';
 import 'package:open_tv/widgets/player_channel_name_label.dart';
+import 'package:open_tv/backend/recording_actions.dart';
 import 'package:open_tv/widgets/player_epg_now_label.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/channel_tile.dart';
@@ -2450,6 +2451,20 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
             onPressed: _onCastTap,
             icon: Icon(_castIcon, color: Colors.white, size: 28),
             tooltip: _isCasting ? 'Stop casting' : 'Cast to TV',
+          ),
+        // fix670: Record now — live streams only. Quick duration picker then a
+        // background capture of the current channel.
+        if (widget.channel.mediaType == MediaType.livestream &&
+            widget.overrideUrl == null)
+          IconButton(
+            onPressed: () =>
+                RecordingActions.recordNow(context, widget.channel),
+            icon: const Icon(
+              Icons.fiber_manual_record,
+              color: Colors.redAccent,
+              size: 28,
+            ),
+            tooltip: 'Record now',
           ),
         // fix653: dropped the multiViewLayout == none clause — it read the
         // persisted grid-size setting, hiding PiP on every single-cell play
