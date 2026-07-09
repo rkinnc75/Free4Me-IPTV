@@ -1,0 +1,117 @@
+diff --git a/android/app/src/main/kotlin/me/free4me/iptv/RecordingCaptureService.kt b/android/app/src/main/kotlin/me/free4me/iptv/RecordingCaptureService.kt
+index de2e080..8d7d65f 100644
+--- a/android/app/src/main/kotlin/me/free4me/iptv/RecordingCaptureService.kt
++++ b/android/app/src/main/kotlin/me/free4me/iptv/RecordingCaptureService.kt
+@@ -101,6 +101,12 @@ class RecordingCaptureService : Service() {
+                 val name = intent.getStringExtra(EXTRA_NAME) ?: "Recording"
+                 if (id == -1 || durationMs <= 0L) return stopAndReturn(id)
+ 
++                // fix675 (DIAGNOSTIC): confirms the alarm callback actually
++                // reached the native service (visible via `adb logcat -s
++                // SRCapture`). If SR-CB breadcrumbs appear in the Flutter log but
++                // this line does not, the MethodChannel start() call from the
++                // alarm isolate never reached the platform side.
++                Log.i(TAG, "onStartCommand ACTION_START id=$id durationMs=$durationMs")
+                 startForeground(NOTI_ID_BASE + id, buildNotification(name))
+                 cancelFlags[id] = false
+                 val t = thread(start = true, name = "sr-capture-$id") {
+@@ -120,6 +126,8 @@ class RecordingCaptureService : Service() {
+     }
+ 
+     private fun runCapture(id: Int, url: String, durationMs: Long, name: String) {
++        // fix675 (DIAGNOSTIC): capture thread actually started.
++        Log.i(TAG, "runCapture START id=$id durationMs=$durationMs urlLen=${url.length}")
+         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+         val wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$TAG:wl:$id")
+         val wifiManager =
+diff --git a/lib/backend/recording_scheduler.dart b/lib/backend/recording_scheduler.dart
+index d8e80e3..4cdb30d 100644
+--- a/lib/backend/recording_scheduler.dart
++++ b/lib/backend/recording_scheduler.dart
+@@ -1,5 +1,6 @@
+ import 'dart:io';
+ 
++import 'package:flutter/foundation.dart' show debugPrint;
+ import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
+ import 'package:open_tv/backend/app_logger.dart';
+ import 'package:open_tv/backend/recording_capture.dart';
+@@ -184,26 +185,51 @@ Future<void> recordingAlarmCallback(int recordingId) async {
+   // RecordingCaptureService (its own foreground service + wakelock survive the
+   // full duration and Doze). The native side writes done/failed back to the
+   // recordings row. No app state in this isolate, so everything goes via DB.
++  //
++  // fix675 (DIAGNOSTIC): this callback runs in the alarm's BACKGROUND ISOLATE.
++  // AppLog is an in-memory singleton whose _enabled/_file are per-isolate, so in
++  // this isolate AppLog.info/warn silently no-op (fresh instance, logging never
++  // enabled, no file handle) — which is why the on-device report log showed the
++  // schedule line but NOTHING from this callback, whether it ran-and-threw or
++  // never ran at all. The debugPrint("SR-CB: ...") breadcrumbs below go to
++  // Android logcat (pure Dart, no plugin, always emitted), so `adb logcat -s
++  // flutter` on the onn shows exactly how far this callback gets and any thrown
++  // error+stack. The FIRST breadcrumb is emitted BEFORE any plugin/DB call, so
++  // if plugins aren't registered in this isolate (path_provider/MethodChannel
++  // MissingPluginException is the leading suspect) we still see the entry line
++  // and then the throw. Remove once the SR capture path is verified end-to-end.
++  debugPrint('SR-CB: entered recordingAlarmCallback id=$recordingId');
+   try {
+     final rec = await Sql.getRecordingById(recordingId);
++    debugPrint('SR-CB: got row id=$recordingId '
++        'rec=${rec == null ? "NULL" : "status=${rec.status.name} urlLen=${rec.url.length}"}');
+     if (rec == null) {
+       AppLog.warn('recordingAlarmCallback: recording $recordingId not found');
+       return;
+     }
+     if (rec.status == RecordingStatus.cancelled) {
++      debugPrint('SR-CB: id=$recordingId cancelled; skipping');
+       AppLog.info('recordingAlarmCallback: $recordingId was cancelled; skipping');
+       return;
+     }
+     await Sql.updateRecordingStatus(recordingId, RecordingStatus.recording);
++    debugPrint('SR-CB: id=$recordingId status->recording; '
++        'calling RecordingCapture.start');
+     await RecordingCapture.start(
+       id: recordingId,
+       url: rec.url,
+       durationMs: rec.durationMs,
+       name: rec.channelName,
+     );
++    debugPrint('SR-CB: id=$recordingId RecordingCapture.start returned OK');
+     AppLog.info('recordingAlarmCallback: started capture $recordingId '
+         '("${rec.channelName}", durationMs=${rec.durationMs})');
+-  } catch (e) {
++  } catch (e, st) {
++    // fix675: emit the full error + stack to logcat — this is the
++    // line that was invisible before (AppLog.warn no-ops in this
++    // isolate). A MissingPluginException here means the alarm isolate
++    // has no plugin registrant; any other throw points elsewhere.
++    debugPrint('SR-CB: id=$recordingId THREW $e\n$st');
+     AppLog.warn('recordingAlarmCallback: $recordingId failed — $e');
+     // Best-effort: mark failed so the UI doesn't show a stuck "recording".
+     try {
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 2f8c22e..9af8707 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '3.0.17': [
++    'Diagnostics only: adds extra logging around Scheduled Recording so a recording that doesn\u2019t start can be traced. No behavior change.',
++  ],
+   '3.0.16': [
+     'Fixes Scheduled Recording: recordings you scheduled never actually started because the alarm that triggers them failed to register. They now fire at the scheduled time and record as expected. If you had recordings stuck on \u201cScheduled,\u201d delete and re-create them after updating.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index b5b7852..15e6427 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 3.0.16+674
++version: 3.0.17+675
+ 
+ environment:
+   sdk: ^3.10.7

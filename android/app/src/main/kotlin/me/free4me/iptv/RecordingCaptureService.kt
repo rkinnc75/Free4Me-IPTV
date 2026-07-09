@@ -101,6 +101,12 @@ class RecordingCaptureService : Service() {
                 val name = intent.getStringExtra(EXTRA_NAME) ?: "Recording"
                 if (id == -1 || durationMs <= 0L) return stopAndReturn(id)
 
+                // fix675 (DIAGNOSTIC): confirms the alarm callback actually
+                // reached the native service (visible via `adb logcat -s
+                // SRCapture`). If SR-CB breadcrumbs appear in the Flutter log but
+                // this line does not, the MethodChannel start() call from the
+                // alarm isolate never reached the platform side.
+                Log.i(TAG, "onStartCommand ACTION_START id=$id durationMs=$durationMs")
                 startForeground(NOTI_ID_BASE + id, buildNotification(name))
                 cancelFlags[id] = false
                 val t = thread(start = true, name = "sr-capture-$id") {
@@ -120,6 +126,8 @@ class RecordingCaptureService : Service() {
     }
 
     private fun runCapture(id: Int, url: String, durationMs: Long, name: String) {
+        // fix675 (DIAGNOSTIC): capture thread actually started.
+        Log.i(TAG, "runCapture START id=$id durationMs=$durationMs urlLen=${url.length}")
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         val wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$TAG:wl:$id")
         val wifiManager =

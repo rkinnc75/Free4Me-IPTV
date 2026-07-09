@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/recording_capture.dart';
@@ -184,26 +185,51 @@ Future<void> recordingAlarmCallback(int recordingId) async {
   // RecordingCaptureService (its own foreground service + wakelock survive the
   // full duration and Doze). The native side writes done/failed back to the
   // recordings row. No app state in this isolate, so everything goes via DB.
+  //
+  // fix675 (DIAGNOSTIC): this callback runs in the alarm's BACKGROUND ISOLATE.
+  // AppLog is an in-memory singleton whose _enabled/_file are per-isolate, so in
+  // this isolate AppLog.info/warn silently no-op (fresh instance, logging never
+  // enabled, no file handle) — which is why the on-device report log showed the
+  // schedule line but NOTHING from this callback, whether it ran-and-threw or
+  // never ran at all. The debugPrint("SR-CB: ...") breadcrumbs below go to
+  // Android logcat (pure Dart, no plugin, always emitted), so `adb logcat -s
+  // flutter` on the onn shows exactly how far this callback gets and any thrown
+  // error+stack. The FIRST breadcrumb is emitted BEFORE any plugin/DB call, so
+  // if plugins aren't registered in this isolate (path_provider/MethodChannel
+  // MissingPluginException is the leading suspect) we still see the entry line
+  // and then the throw. Remove once the SR capture path is verified end-to-end.
+  debugPrint('SR-CB: entered recordingAlarmCallback id=$recordingId');
   try {
     final rec = await Sql.getRecordingById(recordingId);
+    debugPrint('SR-CB: got row id=$recordingId '
+        'rec=${rec == null ? "NULL" : "status=${rec.status.name} urlLen=${rec.url.length}"}');
     if (rec == null) {
       AppLog.warn('recordingAlarmCallback: recording $recordingId not found');
       return;
     }
     if (rec.status == RecordingStatus.cancelled) {
+      debugPrint('SR-CB: id=$recordingId cancelled; skipping');
       AppLog.info('recordingAlarmCallback: $recordingId was cancelled; skipping');
       return;
     }
     await Sql.updateRecordingStatus(recordingId, RecordingStatus.recording);
+    debugPrint('SR-CB: id=$recordingId status->recording; '
+        'calling RecordingCapture.start');
     await RecordingCapture.start(
       id: recordingId,
       url: rec.url,
       durationMs: rec.durationMs,
       name: rec.channelName,
     );
+    debugPrint('SR-CB: id=$recordingId RecordingCapture.start returned OK');
     AppLog.info('recordingAlarmCallback: started capture $recordingId '
         '("${rec.channelName}", durationMs=${rec.durationMs})');
-  } catch (e) {
+  } catch (e, st) {
+    // fix675: emit the full error + stack to logcat — this is the
+    // line that was invisible before (AppLog.warn no-ops in this
+    // isolate). A MissingPluginException here means the alarm isolate
+    // has no plugin registrant; any other throw points elsewhere.
+    debugPrint('SR-CB: id=$recordingId THREW $e\n$st');
     AppLog.warn('recordingAlarmCallback: $recordingId failed — $e');
     // Best-effort: mark failed so the UI doesn't show a stuck "recording".
     try {
