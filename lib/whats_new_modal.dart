@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '3.0.16': [
+    'Fixes Scheduled Recording: recordings you scheduled never actually started because the alarm that triggers them failed to register. They now fire at the scheduled time and record as expected. If you had recordings stuck on \u201cScheduled,\u201d delete and re-create them after updating.',
+  ],
   '3.0.15': [
     'New setting: convert recordings to MP4 (Settings \u2192 Scheduled Recording). When on, a finished recording is repackaged from .ts to .mp4 for wider compatibility \u2014 a fast, lossless change with no re-encoding; if it fails, the original is kept. Off by default. The recording start/end padding controls also now appear here.',
   ],
