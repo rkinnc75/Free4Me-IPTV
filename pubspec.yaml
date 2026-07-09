@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 3.0.19+677
+version: 3.0.20+678
 
 environment:
   sdk: ^3.10.7
@@ -63,6 +63,7 @@ dependencies:
   workmanager: ^0.9.0
   flutter_foreground_task: ^8.17.0 # fix318: keep long ops alive when backgrounded
   android_alarm_manager_plus: ^4.0.0 # fix667: exact wall-clock trigger for scheduled recordings
+  android_intent_plus: ^5.3.0 # fix678: start SR capture service from the alarm background isolate (Activity-less broadcast)
   intl: ^0.20.2
   xml: ^6.0.0
   audio_session: ^0.2.3

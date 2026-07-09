@@ -1,0 +1,195 @@
+diff --git a/android/app/src/main/AndroidManifest.xml b/android/app/src/main/AndroidManifest.xml
+index 45c7b65..4a59144 100644
+--- a/android/app/src/main/AndroidManifest.xml
++++ b/android/app/src/main/AndroidManifest.xml
+@@ -124,6 +124,16 @@
+                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+             </intent-filter>
+         </receiver>
++        <!-- fix678: receives the explicit SR_START broadcast from the alarm
++             background isolate and launches RecordingCaptureService. Private
++             (exported=false), explicit-component target only. -->
++        <receiver
++            android:name=".SrStartReceiver"
++            android:exported="false">
++            <intent-filter>
++                <action android:name="me.free4me.iptv.SR_START" />
++            </intent-filter>
++        </receiver>
+     </application>
+     <!-- Required to query activities that can process text, see:
+          https://developer.android.com/training/package-visibility and
+diff --git a/android/app/src/main/kotlin/me/free4me/iptv/SrStartReceiver.kt b/android/app/src/main/kotlin/me/free4me/iptv/SrStartReceiver.kt
+new file mode 100644
+index 0000000..cdc9006
+--- /dev/null
++++ b/android/app/src/main/kotlin/me/free4me/iptv/SrStartReceiver.kt
+@@ -0,0 +1,57 @@
++package me.free4me.iptv
++
++import android.content.BroadcastReceiver
++import android.content.Context
++import android.content.Intent
++import android.util.Log
++
++/**
++ * fix678: starts [RecordingCaptureService] from the alarm BACKGROUND ISOLATE.
++ *
++ * The scheduled-recording alarm callback runs in android_alarm_manager_plus's
++ * headless Flutter engine. That engine only has the plugins listed in
++ * GeneratedPluginRegistrant (pub packages) attached — it has NO MainActivity,
++ * so the `me.free4me.iptv/recording` MethodChannel (registered in
++ * MainActivity.configureFlutterEngine) does not exist there. Calling it threw
++ * `MissingPluginException(No implementation found for method startCapture ...)`
++ * and every scheduled recording failed at capture start (confirmed on device
++ * via the fix676 [SRDBG] trace).
++ *
++ * The fix: the Dart callback sends an EXPLICIT broadcast (via android_intent_plus,
++ * a pub plugin that IS attached to the background engine and uses
++ * applicationContext, so it works with no Activity) to this receiver, which then
++ * starts the foreground capture service. Explicit (component-targeted) +
++ * exported=false keeps it off the implicit-broadcast restrictions and private to
++ * the app. Starting a foreground service here is permitted: this runs in-process
++ * immediately after an exact `allowWhileIdle` alarm, within the alarm's
++ * foreground-service-start grace window.
++ */
++class SrStartReceiver : BroadcastReceiver() {
++    override fun onReceive(context: Context, intent: Intent) {
++        if (intent.action != ACTION) return
++        // The extras arrive via android_intent_plus's message codec, which may
++        // encode a Dart int as either Java Integer or Long depending on value
++        // and version. Read them type-agnostically so a codec change can't
++        // silently break the id/duration lookup.
++        val extras = intent.extras
++        val id = (extras?.get(EXTRA_ID) as? Number)?.toInt() ?: -1
++        val durationMs = (extras?.get(EXTRA_DURATION_MS) as? Number)?.toLong() ?: -1L
++        val url = extras?.get(EXTRA_URL) as? String
++        val name = (extras?.get(EXTRA_NAME) as? String) ?: "Recording"
++        if (id == -1 || url == null || durationMs <= 0L) {
++            Log.w(TAG, "SrStartReceiver: bad extras id=$id durationMs=$durationMs url=${url != null}")
++            return
++        }
++        Log.i(TAG, "SrStartReceiver: starting capture id=$id durationMs=$durationMs")
++        RecordingCaptureService.start(context.applicationContext, id, url, durationMs, name)
++    }
++
++    companion object {
++        private const val TAG = "SRCapture"
++        const val ACTION = "me.free4me.iptv.SR_START"
++        const val EXTRA_ID = "id"
++        const val EXTRA_URL = "url"
++        const val EXTRA_DURATION_MS = "durationMs"
++        const val EXTRA_NAME = "name"
++    }
++}
+diff --git a/lib/backend/recording_capture.dart b/lib/backend/recording_capture.dart
+index cd903ec..7fef5ed 100644
+--- a/lib/backend/recording_capture.dart
++++ b/lib/backend/recording_capture.dart
+@@ -1,5 +1,6 @@
+ import 'dart:io';
+ 
++import 'package:android_intent_plus/android_intent.dart';
+ import 'package:flutter/services.dart';
+ import 'package:open_tv/backend/app_logger.dart';
+ 
+@@ -7,15 +8,30 @@ import 'package:open_tv/backend/app_logger.dart';
+ ///
+ /// The service does the actual long-running HTTP-stream→MediaStore capture and
+ /// writes status/output_path back to the recordings row in the SQLite DB. Dart
+-/// only starts/stops it. Callable from the alarm isolate (the MethodChannel is
+-/// created lazily and the native side routes to the app process's service).
++/// only starts/stops it.
++///
++/// fix678: [start] is invoked from the alarm's BACKGROUND ISOLATE, whose headless
++/// Flutter engine only has GeneratedPluginRegistrant (pub) plugins attached — the
++/// `me.free4me.iptv/recording` MethodChannel is registered on MainActivity's
++/// engine and does NOT exist there, so invoking it threw MissingPluginException
++/// and every scheduled recording failed at capture start. So [start] no longer
++/// uses the MethodChannel: it sends an EXPLICIT broadcast to our SrStartReceiver
++/// via android_intent_plus (a pub plugin that IS attached to the background
++/// engine and uses applicationContext — no Activity needed). The receiver then
++/// starts RecordingCaptureService. [stop]/[freeBytes] still use the MethodChannel:
++/// they are only ever called from the main (UI) isolate, where it exists.
+ class RecordingCapture {
+   RecordingCapture._();
+ 
+   static const MethodChannel _ch = MethodChannel('me.free4me.iptv/recording');
+ 
++  static const String _srStartAction = 'me.free4me.iptv.SR_START';
++  static const String _pkg = 'me.free4me.iptv';
++  static const String _srStartComponent = 'me.free4me.iptv.SrStartReceiver';
++
+   /// Start capturing [url] for [durationMs] into a file named after [name],
+-  /// tagged with recording [id]. No-op off Android.
++  /// tagged with recording [id]. No-op off Android. Works from the alarm
++  /// background isolate (see class doc).
+   static Future<void> start({
+     required int id,
+     required String url,
+@@ -24,14 +40,23 @@ class RecordingCapture {
+   }) async {
+     if (!Platform.isAndroid) return;
+     try {
+-      await _ch.invokeMethod('startCapture', {
+-        'id': id,
+-        'url': url,
+-        'durationMs': durationMs,
+-        'name': name,
+-      });
++      // Explicit (package + component) broadcast so it stays private and is not
++      // subject to Android O+ implicit-broadcast restrictions. The extras become
++      // the Intent bundle SrStartReceiver reads.
++      final intent = AndroidIntent(
++        action: _srStartAction,
++        package: _pkg,
++        componentName: _srStartComponent,
++        arguments: <String, dynamic>{
++          'id': id,
++          'url': url,
++          'durationMs': durationMs,
++          'name': name,
++        },
++      );
++      await intent.sendBroadcast();
+     } catch (e) {
+-      AppLog.warn('RecordingCapture: startCapture($id) failed — $e');
++      AppLog.warn('RecordingCapture: startCapture($id) broadcast failed — $e');
+       rethrow;
+     }
+   }
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 558ed4d..c3ba335 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '3.0.20': [
++    'Fixes Scheduled Recording: recordings now actually start capturing at the scheduled time. The background timer could not reach the recorder; it now does. Re-create any recordings that previously failed.',
++  ],
+   '3.0.19': [
+     'Fixes Scheduled Recording: scheduled recordings now actually start and record. A bug gave every new recording an invalid internal id, so the timer fired but found no recording to run. Delete and re-create any recordings stuck on \u201cScheduled\u201d after updating.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 3ed3f32..6301884 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 3.0.19+677
++version: 3.0.20+678
+ 
+ environment:
+   sdk: ^3.10.7
+@@ -63,6 +63,7 @@ dependencies:
+   workmanager: ^0.9.0
+   flutter_foreground_task: ^8.17.0 # fix318: keep long ops alive when backgrounded
+   android_alarm_manager_plus: ^4.0.0 # fix667: exact wall-clock trigger for scheduled recordings
++  android_intent_plus: ^5.3.0 # fix678: start SR capture service from the alarm background isolate (Activity-less broadcast)
+   intl: ^0.20.2
+   xml: ^6.0.0
+   audio_session: ^0.2.3

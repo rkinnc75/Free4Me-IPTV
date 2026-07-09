@@ -124,6 +124,16 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+        <!-- fix678: receives the explicit SR_START broadcast from the alarm
+             background isolate and launches RecordingCaptureService. Private
+             (exported=false), explicit-component target only. -->
+        <receiver
+            android:name=".SrStartReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="me.free4me.iptv.SR_START" />
+            </intent-filter>
+        </receiver>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
