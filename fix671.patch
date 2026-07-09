@@ -1,0 +1,368 @@
+diff --git a/android/app/src/main/kotlin/me/free4me/iptv/RecordingCaptureService.kt b/android/app/src/main/kotlin/me/free4me/iptv/RecordingCaptureService.kt
+index a8a1b52..de2e080 100644
+--- a/android/app/src/main/kotlin/me/free4me/iptv/RecordingCaptureService.kt
++++ b/android/app/src/main/kotlin/me/free4me/iptv/RecordingCaptureService.kt
+@@ -9,6 +9,8 @@ import android.content.ContentValues
+ import android.content.Context
+ import android.content.Intent
+ import android.database.sqlite.SQLiteDatabase
++import android.media.MediaExtractor
++import android.media.MediaMuxer
+ import android.net.Uri
+ import android.net.wifi.WifiManager
+ import android.os.Build
+@@ -172,6 +174,20 @@ class RecordingCaptureService : Service() {
+                 // Almost nothing captured — treat as failure but keep the file.
+                 updateStatus(id, "failed", mediaUri.toString(),
+                     "Captured too little data (${total} bytes)")
++            } else if (isRemuxEnabled()) {
++                // fix671: repackage .ts -> .mp4 (lossless, stream-copy). On any
++                // failure keep the original .ts and still mark done.
++                updateStatus(id, "compressing", mediaUri.toString(), null)
++                val mp4 = runCatching { remuxToMp4(mediaUri!!, name) }.getOrNull()
++                if (mp4 != null) {
++                    runCatching {
++                        contentResolver.delete(mediaUri!!, null, null)
++                    }
++                    updateStatus(id, "done", mp4.toString(), null)
++                } else {
++                    Log.w(TAG, "remux $id failed; keeping .ts")
++                    updateStatus(id, "done", mediaUri.toString(), null)
++                }
+             } else {
+                 updateStatus(id, "done", mediaUri.toString(), null)
+             }
+@@ -219,6 +235,131 @@ class RecordingCaptureService : Service() {
+         }
+     }
+ 
++    // ── fix671: re-mux .ts -> .mp4 (lossless stream copy, MediaMuxer) ───────
++
++    /** Reads the remuxRecordings flag from the same Settings table Dart writes. */
++    private fun isRemuxEnabled(): Boolean {
++        val dbFile = File(applicationContext.filesDir, "db.sqlite")
++        if (!dbFile.exists()) return false
++        var db: SQLiteDatabase? = null
++        return try {
++            db = SQLiteDatabase.openDatabase(
++                dbFile.absolutePath, null,
++                SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS,
++            )
++            val c = db.rawQuery(
++                "SELECT value FROM Settings WHERE key = ?",
++                arrayOf("remuxRecordings"),
++            )
++            val on = c.use { if (it.moveToFirst()) it.getString(0) == "1" else false }
++            on
++        } catch (e: Exception) {
++            Log.w(TAG, "isRemuxEnabled read failed: ${e.message}")
++            false
++        } finally {
++            runCatching { db?.close() }
++        }
++    }
++
++    /**
++     * Repackage the captured .ts (at [srcUri]) into a new .mp4 MediaStore entry
++     * via MediaExtractor -> MediaMuxer (stream copy, no re-encode). Returns the
++     * mp4 Uri on success, or null if the streams can't be muxed (rare codec) or
++     * anything fails — caller keeps the .ts in that case.
++     */
++    private fun remuxToMp4(srcUri: Uri, name: String): Uri? {
++        val safe = name.replace(Regex("[^A-Za-z0-9 ._-]"), "_").take(80)
++        val fileName = "${safe}_${System.currentTimeMillis()}.mp4"
++        val values = ContentValues().apply {
++            put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
++            put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
++            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
++                put(MediaStore.MediaColumns.RELATIVE_PATH, "Movies/Free4Me")
++                put(MediaStore.MediaColumns.IS_PENDING, 1)
++            }
++        }
++        val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
++            MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
++        } else {
++            MediaStore.Video.Media.EXTERNAL_CONTENT_URI
++        }
++        val dstUri = contentResolver.insert(collection, values) ?: return null
++
++        var extractor: MediaExtractor? = null
++        var muxer: MediaMuxer? = null
++        var srcFd: android.os.ParcelFileDescriptor? = null
++        var dstFd: android.os.ParcelFileDescriptor? = null
++        try {
++            extractor = MediaExtractor()
++            srcFd = contentResolver.openFileDescriptor(srcUri, "r") ?: return abort(dstUri)
++            extractor.setDataSource(srcFd.fileDescriptor)
++
++            dstFd = contentResolver.openFileDescriptor(dstUri, "rw") ?: return abort(dstUri)
++            muxer = MediaMuxer(dstFd.fileDescriptor, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
++
++            // Map each source track to a muxer track.
++            val trackCount = extractor.trackCount
++            if (trackCount == 0) return abort(dstUri)
++            val indexMap = HashMap<Int, Int>()
++            var maxInputSize = 1 shl 20 // 1 MB default sample buffer
++            for (i in 0 until trackCount) {
++                val format = extractor.getTrackFormat(i)
++                val mime = format.getString(android.media.MediaFormat.KEY_MIME) ?: continue
++                if (!(mime.startsWith("video/") || mime.startsWith("audio/"))) continue
++                extractor.selectTrack(i)
++                if (format.containsKey(android.media.MediaFormat.KEY_MAX_INPUT_SIZE)) {
++                    val mis = format.getInteger(android.media.MediaFormat.KEY_MAX_INPUT_SIZE)
++                    if (mis > maxInputSize) maxInputSize = mis
++                }
++                indexMap[i] = muxer.addTrack(format)
++            }
++            if (indexMap.isEmpty()) return abort(dstUri)
++
++            muxer.start()
++            val buffer = java.nio.ByteBuffer.allocate(maxInputSize)
++            val info = android.media.MediaCodec.BufferInfo()
++            for ((srcTrack, dstTrack) in indexMap) {
++                extractor.unselectTrack(srcTrack)
++            }
++            // Re-select and copy per track so timestamps stay ordered per track.
++            for ((srcTrack, dstTrack) in indexMap) {
++                extractor.selectTrack(srcTrack)
++                extractor.seekTo(0, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
++                while (true) {
++                    info.offset = 0
++                    val sampleSize = extractor.readSampleData(buffer, 0)
++                    if (sampleSize < 0) break
++                    if (extractor.sampleTrackIndex != srcTrack) {
++                        extractor.advance(); continue
++                    }
++                    info.size = sampleSize
++                    info.presentationTimeUs = extractor.sampleTime
++                    info.flags = extractor.sampleFlags
++                    muxer.writeSampleData(dstTrack, buffer, info)
++                    extractor.advance()
++                }
++                extractor.unselectTrack(srcTrack)
++            }
++            muxer.stop()
++            finalizeMediaStore(dstUri)
++            return dstUri
++        } catch (e: Exception) {
++            Log.w(TAG, "remuxToMp4 failed: ${e.message}")
++            return abort(dstUri)
++        } finally {
++            runCatching { muxer?.release() }
++            runCatching { extractor?.release() }
++            runCatching { srcFd?.close() }
++            runCatching { dstFd?.close() }
++        }
++    }
++
++    /** Delete a half-written mp4 target and return null (keep the .ts). */
++    private fun abort(dstUri: Uri): Uri? {
++        runCatching { contentResolver.delete(dstUri, null, null) }
++        return null
++    }
++
+     // ── DB write-back (same file DbFactory opens) ──────────────────────────
+ 
+     private fun updateStatus(id: Int, status: String, outputPath: String?, error: String?) {
+diff --git a/lib/backend/settings_io.dart b/lib/backend/settings_io.dart
+index d4ab1d5..0dc5203 100644
+--- a/lib/backend/settings_io.dart
++++ b/lib/backend/settings_io.dart
+@@ -669,6 +669,7 @@ class SettingsIo {
+         'tvHomeRowCount': s.tvHomeRowCount, // fix665
+         'recordPadBeforeMin': s.recordPadBeforeMin, // fix667
+         'recordPadAfterMin': s.recordPadAfterMin, // fix667
++        'remuxRecordings': s.remuxRecordings, // fix671
+         'backgroundProcessing': s.backgroundProcessing, // fix318
+         'liveCacheSecs': s.liveCacheSecs,
+         'liveDemuxerMaxMB': s.liveDemuxerMaxMB,
+@@ -758,6 +759,7 @@ class SettingsIo {
+           ((m['recordPadBeforeMin'] as int?) ?? 1).clamp(0, 15), // fix667
+       recordPadAfterMin:
+           ((m['recordPadAfterMin'] as int?) ?? 1).clamp(0, 240), // fix667
++      remuxRecordings: m['remuxRecordings'] as bool? ?? false, // fix671
+       backgroundProcessing: m['backgroundProcessing'] as bool? ?? false,
+       liveCacheSecs: m['liveCacheSecs'] as int? ?? 20,
+       liveDemuxerMaxMB: m['liveDemuxerMaxMB'] as int? ?? 150,
+diff --git a/lib/backend/settings_service.dart b/lib/backend/settings_service.dart
+index 3a52561..4a482a6 100644
+--- a/lib/backend/settings_service.dart
++++ b/lib/backend/settings_service.dart
+@@ -104,6 +104,8 @@ const tvHomeRowCountProp = "tvHomeRowCount"; // fix665
+ const recordPadBeforeMinProp = "recordPadBeforeMin"; // fix667
+ const recordPadAfterMinProp = "recordPadAfterMin"; // fix667
+ 
++const remuxRecordingsProp = "remuxRecordings"; // fix671
++
+ const safeModeProp = "safeMode";
+ const confirmToExitProp = "confirmToExit"; // fix587 (#23)
+ 
+@@ -383,6 +385,10 @@ class SettingsService {
+     if (padA != null) {
+       settings.recordPadAfterMin = (int.tryParse(padA) ?? 1).clamp(0, 240);
+     }
++    final remux = settingsMap[remuxRecordingsProp];
++    if (remux != null) {
++      settings.remuxRecordings = int.tryParse(remux) == 1;
++    }
+     if (sm == null && resolvedSm == SearchMethod.ftsPhrase) {
+       // fix505: first-run auto-set on low-RAM device. ftsPhrase is the
+       // index-backed channels_fts path — fast on huge catalogues (~1.15M)
+@@ -587,6 +593,8 @@ class SettingsService {
+         settings.recordPadBeforeMin.toString(); // fix667
+     settingsMap[recordPadAfterMinProp] =
+         settings.recordPadAfterMin.toString(); // fix667
++    settingsMap[remuxRecordingsProp] =
++        (settings.remuxRecordings ? 1 : 0).toString(); // fix671
+     settingsMap[safeModeProp] = (settings.safeMode ? 1 : 0).toString();
+     settingsMap[confirmToExitProp] =
+         (settings.confirmToExit ? 1 : 0).toString(); // fix587 (#23)
+diff --git a/lib/models/settings.dart b/lib/models/settings.dart
+index 1ff5658..9904312 100644
+--- a/lib/models/settings.dart
++++ b/lib/models/settings.dart
+@@ -261,6 +261,12 @@ class Settings {
+   int recordPadBeforeMin;
+   int recordPadAfterMin;
+ 
++  /// fix671: after a Scheduled Recording finishes, re-mux the raw .ts to
++  /// .mp4 (lossless container repackage, native MediaMuxer — no re-encode).
++  /// Off by default; the raw .ts is kept as-is when off. On failure the
++  /// original .ts is always kept.
++  bool remuxRecordings;
++
+   /// libmpv `video-sync` mode. Default [VideoSyncMode.audio].
+   VideoSyncMode devVideoSync;
+ 
+@@ -386,6 +392,7 @@ class Settings {
+     this.tvHomeRowCount = 10, // fix665
+     this.recordPadBeforeMin = 1, // fix667
+     this.recordPadAfterMin = 1, // fix667
++    this.remuxRecordings = false, // fix671
+     this.devVideoSync = VideoSyncMode.audio,
+     this.devVideoSyncMaxVideoChange = 1.0,
+     this.devTscale = TscaleMode.nearest,
+@@ -549,6 +556,7 @@ class Settings {
+     s.tvHomeRowCount = 10; // fix665
+     s.recordPadBeforeMin = 1; // fix667
+     s.recordPadAfterMin = 1; // fix667
++    s.remuxRecordings = false; // fix671
+     s.devVideoSync = VideoSyncMode.audio;
+     s.devVideoSyncMaxVideoChange = 1.0;
+     s.devTscale = TscaleMode.nearest;
+diff --git a/lib/settings_view.dart b/lib/settings_view.dart
+index 3a95366..72b9d1e 100644
+--- a/lib/settings_view.dart
++++ b/lib/settings_view.dart
+@@ -3122,6 +3122,67 @@ class _SettingsState extends State<SettingsView> {
+                           updateSettings();
+                         },
+                       ),
++                      // ── fix671: Scheduled Recording ────────────────────────
++                      const Padding(
++                        padding: EdgeInsets.fromLTRB(16, 16, 16, 4),
++                        child: Text('Scheduled Recording',
++                            style: TextStyle(fontWeight: FontWeight.bold)),
++                      ),
++                      _bufferSlider(
++                        label: 'Start padding (min before)',
++                        value: settings.recordPadBeforeMin.toDouble(),
++                        min: 0,
++                        max: 15,
++                        divisions: 15,
++                        help: (
++                          title: 'Recording start padding',
++                          body:
++                              'Begin a scheduled recording this many minutes '
++                              'before the listed start time, in case the show '
++                              'starts early. Default: 1. Range 0–15.',
++                        ),
++                        onChanged: (v) {
++                          setState(() => settings.recordPadBeforeMin =
++                              v.round().clamp(0, 15));
++                          updateSettings();
++                        },
++                      ),
++                      _bufferSlider(
++                        label: 'End padding (min after)',
++                        value: settings.recordPadAfterMin.toDouble(),
++                        min: 0,
++                        max: 240,
++                        divisions: 48,
++                        help: (
++                          title: 'Recording end padding',
++                          body:
++                              'Keep recording this many minutes past the listed '
++                              'end time — useful for live events that run long '
++                              '(set it high, e.g. 90). Default: 1. Range 0–240.',
++                        ),
++                        onChanged: (v) {
++                          setState(() => settings.recordPadAfterMin =
++                              v.round().clamp(0, 240));
++                          updateSettings();
++                        },
++                      ),
++                      _switchTile(
++                        label: 'Convert recordings to MP4',
++                        value: settings.remuxRecordings,
++                        help: (
++                          title: 'Convert recordings to MP4',
++                          body:
++                              'After a recording finishes, repackage it from '
++                              '.ts to .mp4 for wider compatibility. This is a '
++                              'fast, lossless container change (no quality loss, '
++                              'no re-encoding). If conversion fails, the '
++                              'original recording is kept. Default: off.',
++                        ),
++                        onChanged: (v) {
++                          setState(() => settings.remuxRecordings = v);
++                          updateSettings();
++                        },
++                      ),
+                       // fix318: keep source refreshes running in the background.
+                       // fix349: extended to EPG refresh, re-match, and scans.
+                       _switchTile(
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 1ac2c06..3088283 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '3.0.15': [
++    'New setting: convert recordings to MP4 (Settings \u2192 Scheduled Recording). When on, a finished recording is repackaged from .ts to .mp4 for wider compatibility \u2014 a fast, lossless change with no re-encoding; if it fails, the original is kept. Off by default. The recording start/end padding controls also now appear here.',
++  ],
+   '3.0.14': [
+     'You can now start Scheduled Recordings: tap a show in the TV guide and choose Record, or use \u201cRecord now\u201d from a live channel\u2019s long-press menu or the player (pick 30/60/120 min or a custom length). Recordings won\u2019t start if the device is very low on free space.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index c3f9bc1..53651ba 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 3.0.14+670
++version: 3.0.15+671
+ 
+ environment:
+   sdk: ^3.10.7
+diff --git a/test/fix573_settings_roundtrip_test.dart b/test/fix573_settings_roundtrip_test.dart
+index 8558818..32ea6c8 100644
+--- a/test/fix573_settings_roundtrip_test.dart
++++ b/test/fix573_settings_roundtrip_test.dart
+@@ -26,6 +26,12 @@ void main() {
+     expect(r.playerZoomMode, ZoomMode.crop);
+   });
+ 
++  test('fix671: remuxRecordings survives backup round-trip', () {
++    final s = Settings.defaults()..remuxRecordings = true; // default false
++    final r = SettingsIo.roundTripForTest(s);
++    expect(r.remuxRecordings, isTrue);
++  });
++
+   test('fix667: record pad settings survive backup round-trip', () {
+     final s = Settings.defaults()
+       ..recordPadBeforeMin = 5 // default 1

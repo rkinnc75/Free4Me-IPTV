@@ -261,6 +261,12 @@ class Settings {
   int recordPadBeforeMin;
   int recordPadAfterMin;
 
+  /// fix671: after a Scheduled Recording finishes, re-mux the raw .ts to
+  /// .mp4 (lossless container repackage, native MediaMuxer — no re-encode).
+  /// Off by default; the raw .ts is kept as-is when off. On failure the
+  /// original .ts is always kept.
+  bool remuxRecordings;
+
   /// libmpv `video-sync` mode. Default [VideoSyncMode.audio].
   VideoSyncMode devVideoSync;
 
@@ -386,6 +392,7 @@ class Settings {
     this.tvHomeRowCount = 10, // fix665
     this.recordPadBeforeMin = 1, // fix667
     this.recordPadAfterMin = 1, // fix667
+    this.remuxRecordings = false, // fix671
     this.devVideoSync = VideoSyncMode.audio,
     this.devVideoSyncMaxVideoChange = 1.0,
     this.devTscale = TscaleMode.nearest,
@@ -549,6 +556,7 @@ class Settings {
     s.tvHomeRowCount = 10; // fix665
     s.recordPadBeforeMin = 1; // fix667
     s.recordPadAfterMin = 1; // fix667
+    s.remuxRecordings = false; // fix671
     s.devVideoSync = VideoSyncMode.audio;
     s.devVideoSyncMaxVideoChange = 1.0;
     s.devTscale = TscaleMode.nearest;

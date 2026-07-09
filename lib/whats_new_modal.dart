@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '3.0.15': [
+    'New setting: convert recordings to MP4 (Settings \u2192 Scheduled Recording). When on, a finished recording is repackaged from .ts to .mp4 for wider compatibility \u2014 a fast, lossless change with no re-encoding; if it fails, the original is kept. Off by default. The recording start/end padding controls also now appear here.',
+  ],
   '3.0.14': [
     'You can now start Scheduled Recordings: tap a show in the TV guide and choose Record, or use \u201cRecord now\u201d from a live channel\u2019s long-press menu or the player (pick 30/60/120 min or a custom length). Recordings won\u2019t start if the device is very low on free space.',
   ],

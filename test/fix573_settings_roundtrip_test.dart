@@ -26,6 +26,12 @@ void main() {
     expect(r.playerZoomMode, ZoomMode.crop);
   });
 
+  test('fix671: remuxRecordings survives backup round-trip', () {
+    final s = Settings.defaults()..remuxRecordings = true; // default false
+    final r = SettingsIo.roundTripForTest(s);
+    expect(r.remuxRecordings, isTrue);
+  });
+
   test('fix667: record pad settings survive backup round-trip', () {
     final s = Settings.defaults()
       ..recordPadBeforeMin = 5 // default 1

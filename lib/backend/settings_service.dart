@@ -104,6 +104,8 @@ const tvHomeRowCountProp = "tvHomeRowCount"; // fix665
 const recordPadBeforeMinProp = "recordPadBeforeMin"; // fix667
 const recordPadAfterMinProp = "recordPadAfterMin"; // fix667
 
+const remuxRecordingsProp = "remuxRecordings"; // fix671
+
 const safeModeProp = "safeMode";
 const confirmToExitProp = "confirmToExit"; // fix587 (#23)
 
@@ -383,6 +385,10 @@ class SettingsService {
     if (padA != null) {
       settings.recordPadAfterMin = (int.tryParse(padA) ?? 1).clamp(0, 240);
     }
+    final remux = settingsMap[remuxRecordingsProp];
+    if (remux != null) {
+      settings.remuxRecordings = int.tryParse(remux) == 1;
+    }
     if (sm == null && resolvedSm == SearchMethod.ftsPhrase) {
       // fix505: first-run auto-set on low-RAM device. ftsPhrase is the
       // index-backed channels_fts path — fast on huge catalogues (~1.15M)
@@ -587,6 +593,8 @@ class SettingsService {
         settings.recordPadBeforeMin.toString(); // fix667
     settingsMap[recordPadAfterMinProp] =
         settings.recordPadAfterMin.toString(); // fix667
+    settingsMap[remuxRecordingsProp] =
+        (settings.remuxRecordings ? 1 : 0).toString(); // fix671
     settingsMap[safeModeProp] = (settings.safeMode ? 1 : 0).toString();
     settingsMap[confirmToExitProp] =
         (settings.confirmToExit ? 1 : 0).toString(); // fix587 (#23)

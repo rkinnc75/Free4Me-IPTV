@@ -3122,6 +3122,67 @@ class _SettingsState extends State<SettingsView> {
                           updateSettings();
                         },
                       ),
+                      // ── fix671: Scheduled Recording ────────────────────────
+                      const Padding(
+                        padding: EdgeInsets.fromLTRB(16, 16, 16, 4),
+                        child: Text('Scheduled Recording',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                      ),
+                      _bufferSlider(
+                        label: 'Start padding (min before)',
+                        value: settings.recordPadBeforeMin.toDouble(),
+                        min: 0,
+                        max: 15,
+                        divisions: 15,
+                        help: (
+                          title: 'Recording start padding',
+                          body:
+                              'Begin a scheduled recording this many minutes '
+                              'before the listed start time, in case the show '
+                              'starts early. Default: 1. Range 0–15.',
+                        ),
+                        onChanged: (v) {
+                          setState(() => settings.recordPadBeforeMin =
+                              v.round().clamp(0, 15));
+                          updateSettings();
+                        },
+                      ),
+                      _bufferSlider(
+                        label: 'End padding (min after)',
+                        value: settings.recordPadAfterMin.toDouble(),
+                        min: 0,
+                        max: 240,
+                        divisions: 48,
+                        help: (
+                          title: 'Recording end padding',
+                          body:
+                              'Keep recording this many minutes past the listed '
+                              'end time — useful for live events that run long '
+                              '(set it high, e.g. 90). Default: 1. Range 0–240.',
+                        ),
+                        onChanged: (v) {
+                          setState(() => settings.recordPadAfterMin =
+                              v.round().clamp(0, 240));
+                          updateSettings();
+                        },
+                      ),
+                      _switchTile(
+                        label: 'Convert recordings to MP4',
+                        value: settings.remuxRecordings,
+                        help: (
+                          title: 'Convert recordings to MP4',
+                          body:
+                              'After a recording finishes, repackage it from '
+                              '.ts to .mp4 for wider compatibility. This is a '
+                              'fast, lossless container change (no quality loss, '
+                              'no re-encoding). If conversion fails, the '
+                              'original recording is kept. Default: off.',
+                        ),
+                        onChanged: (v) {
+                          setState(() => settings.remuxRecordings = v);
+                          updateSettings();
+                        },
+                      ),
                       // fix318: keep source refreshes running in the background.
                       // fix349: extended to EPG refresh, re-match, and scans.
                       _switchTile(

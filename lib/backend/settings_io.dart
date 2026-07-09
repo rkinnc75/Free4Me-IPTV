@@ -669,6 +669,7 @@ class SettingsIo {
         'tvHomeRowCount': s.tvHomeRowCount, // fix665
         'recordPadBeforeMin': s.recordPadBeforeMin, // fix667
         'recordPadAfterMin': s.recordPadAfterMin, // fix667
+        'remuxRecordings': s.remuxRecordings, // fix671
         'backgroundProcessing': s.backgroundProcessing, // fix318
         'liveCacheSecs': s.liveCacheSecs,
         'liveDemuxerMaxMB': s.liveDemuxerMaxMB,
@@ -758,6 +759,7 @@ class SettingsIo {
           ((m['recordPadBeforeMin'] as int?) ?? 1).clamp(0, 15), // fix667
       recordPadAfterMin:
           ((m['recordPadAfterMin'] as int?) ?? 1).clamp(0, 240), // fix667
+      remuxRecordings: m['remuxRecordings'] as bool? ?? false, // fix671
       backgroundProcessing: m['backgroundProcessing'] as bool? ?? false,
       liveCacheSecs: m['liveCacheSecs'] as int? ?? 20,
       liveDemuxerMaxMB: m['liveDemuxerMaxMB'] as int? ?? 150,
