@@ -1,0 +1,60 @@
+diff --git a/android/app/src/main/kotlin/me/free4me/iptv/MainActivity.kt b/android/app/src/main/kotlin/me/free4me/iptv/MainActivity.kt
+index 755a6d6..3ea6c09 100644
+--- a/android/app/src/main/kotlin/me/free4me/iptv/MainActivity.kt
++++ b/android/app/src/main/kotlin/me/free4me/iptv/MainActivity.kt
+@@ -219,20 +219,14 @@ class MainActivity : FlutterActivity() {
+             "me.free4me.iptv/recording",
+         ).setMethodCallHandler { call, result ->
+             when (call.method) {
+-                "startCapture" -> {
+-                    val id = call.argument<Int>("id")
+-                    val url = call.argument<String>("url")
+-                    val durationMs = (call.argument<Number>("durationMs"))?.toLong()
+-                    val name = call.argument<String>("name") ?: "Recording"
+-                    if (id == null || url == null || durationMs == null) {
+-                        result.error("bad_args", "id/url/durationMs required", null)
+-                    } else {
+-                        RecordingCaptureService.start(
+-                            applicationContext, id, url, durationMs, name,
+-                        )
+-                        result.success(true)
+-                    }
+-                }
++                // fix682: the "startCapture" MethodChannel case was removed. Since
++                // fix678, Dart starts capture via an explicit SR_START broadcast to
++                // SrStartReceiver (so it works from the alarm background isolate,
++                // where this Activity-scoped channel does not exist). This handler
++                // was dead code and still called the old RecordingCaptureService
++                // .start() signature (pre-fix681, no remux/debugLogging), which
++                // broke :app:compileReleaseKotlin. stopCapture/getFreeBytes remain
++                // (still invoked from the main isolate).
+                 "stopCapture" -> {
+                     val id = call.argument<Int>("id")
+                     if (id == null) {
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 7d66269..ea1e9dc 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '3.0.24': [
++    'Fixes Scheduled Recording status: finished recordings now correctly show as Done (and failures as Failed) instead of staying stuck on \u201cRecording.\u201d The saved video was always fine; only the on-screen status was wrong. Open Recordings to refresh.',
++  ],
+   '3.0.23': [
+     'Fixes Scheduled Recording status: finished recordings now correctly show as Done (and failures as Failed) instead of staying stuck on \u201cRecording.\u201d The saved video was fine; only the on-screen status was wrong. Open Recordings to refresh.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index f7b1f22..5848721 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 3.0.23+681
++version: 3.0.24+682
+ 
+ environment:
+   sdk: ^3.10.7

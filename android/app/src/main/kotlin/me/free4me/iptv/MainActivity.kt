@@ -219,20 +219,14 @@ class MainActivity : FlutterActivity() {
             "me.free4me.iptv/recording",
         ).setMethodCallHandler { call, result ->
             when (call.method) {
-                "startCapture" -> {
-                    val id = call.argument<Int>("id")
-                    val url = call.argument<String>("url")
-                    val durationMs = (call.argument<Number>("durationMs"))?.toLong()
-                    val name = call.argument<String>("name") ?: "Recording"
-                    if (id == null || url == null || durationMs == null) {
-                        result.error("bad_args", "id/url/durationMs required", null)
-                    } else {
-                        RecordingCaptureService.start(
-                            applicationContext, id, url, durationMs, name,
-                        )
-                        result.success(true)
-                    }
-                }
+                // fix682: the "startCapture" MethodChannel case was removed. Since
+                // fix678, Dart starts capture via an explicit SR_START broadcast to
+                // SrStartReceiver (so it works from the alarm background isolate,
+                // where this Activity-scoped channel does not exist). This handler
+                // was dead code and still called the old RecordingCaptureService
+                // .start() signature (pre-fix681, no remux/debugLogging), which
+                // broke :app:compileReleaseKotlin. stopCapture/getFreeBytes remain
+                // (still invoked from the main isolate).
                 "stopCapture" -> {
                     val id = call.argument<Int>("id")
                     if (id == null) {
