@@ -1448,27 +1448,42 @@ class Sql {
   /// Insert a recording; returns its new id.
   static Future<int> insertRecording(Recording rec) async {
     final db = await DbFactory.db;
-    await db.execute(
-      'INSERT INTO recordings '
-      '(channel_id, channel_name, url, scheduled_start_utc, duration_ms, '
-      ' pad_before_min, pad_after_min, status, output_path, error, created_utc) '
-      'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [
-        rec.channelId,
-        rec.channelName,
-        rec.url,
-        rec.scheduledStartUtc,
-        rec.durationMs,
-        rec.padBeforeMin,
-        rec.padAfterMin,
-        rec.status.name,
-        rec.outputPath,
-        rec.error,
-        rec.createdUtc,
-      ],
-    );
-    final row = await db.getAll('SELECT last_insert_rowid()');
-    return row.first.columnAt(0) as int;
+    // fix677: the INSERT and its last_insert_rowid() read MUST run on the SAME
+    // connection. sqlite_async pools connections, and last_insert_rowid() is
+    // per-connection — the previous code did db.execute(INSERT) then a SEPARATE
+    // db.getAll('SELECT last_insert_rowid()'), which could (and on the Samsung
+    // consistently did) resolve on a different pooled connection that never
+    // inserted, returning 0. That 0 was then used as the alarm id, so
+    // recordingAlarmCallback(0) looked up a non-existent row (getRecordingById(0)
+    // == null), logged "not found", and returned — every scheduled recording
+    // died before capture. Wrapping both statements in one writeTransaction
+    // pins them to a single connection (same idiom as insertSource /
+    // insertChannel above). Confirmed on device via the fix676 [SRDBG] trace:
+    // "SR-CB: got row id=0 rec=NULL".
+    int id = 0;
+    await db.writeTransaction((tx) async {
+      await tx.execute(
+        'INSERT INTO recordings '
+        '(channel_id, channel_name, url, scheduled_start_utc, duration_ms, '
+        ' pad_before_min, pad_after_min, status, output_path, error, created_utc) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [
+          rec.channelId,
+          rec.channelName,
+          rec.url,
+          rec.scheduledStartUtc,
+          rec.durationMs,
+          rec.padBeforeMin,
+          rec.padAfterMin,
+          rec.status.name,
+          rec.outputPath,
+          rec.error,
+          rec.createdUtc,
+        ],
+      );
+      id = (await tx.get('SELECT last_insert_rowid()')).columnAt(0) as int;
+    });
+    return id;
   }
 
   static Future<List<Recording>> getRecordings() async {
