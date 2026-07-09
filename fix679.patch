@@ -1,0 +1,116 @@
+diff --git a/lib/backend/recording_scheduler.dart b/lib/backend/recording_scheduler.dart
+index 1283e87..96cc6d6 100644
+--- a/lib/backend/recording_scheduler.dart
++++ b/lib/backend/recording_scheduler.dart
+@@ -172,6 +172,20 @@ class RecordingScheduler {
+     }
+     await Sql.updateRecordingStatus(recordingId, RecordingStatus.cancelled);
+   }
++
++  /// fix679: cancel ONLY the alarm, without touching the row's status. Used by
++  /// the delete path, where the row is about to be removed — calling [cancel]
++  /// there would write a "cancelled" status to a row that's immediately deleted,
++  /// and (worse) leaving the alarm registered orphans it (it re-fires on every
++  /// boot via rescheduleOnReboot). No-op off Android.
++  static Future<void> cancelAlarm(int recordingId) async {
++    if (!Platform.isAndroid) return;
++    try {
++      await AndroidAlarmManager.cancel(recordingId);
++    } catch (e) {
++      AppLog.warn('RecordingScheduler: cancelAlarm failed — $e');
++    }
++  }
+ }
+ 
+ /// fix667: alarm entry point — runs in a BACKGROUND isolate at the scheduled
+@@ -187,11 +201,30 @@ class RecordingScheduler {
+ // (getApplicationSupportDirectory == context.getFilesDir on Android) so it still
+ // writes even if path_provider itself is the thing failing. Best-effort: any I/O
+ // or plugin error here is swallowed so the diagnostic never changes behavior.
+-// Remove with the rest of the SR diagnostics once capture is verified end-to-end.
++//
++// fix679: now GATED by the user's debug-logging setting. The setting is read
++// once per isolate run and cached (the callback already reads the DB, so this is
++// isolate-safe); when debug logging is off, the file write is skipped so we don't
++// grow app_log.txt on normal installs. debugPrint (logcat only, adb) stays
++// unconditional and harmless. Remove the whole SR diagnostic set once the
++// feature has soaked.
++bool? _srDebugEnabled;
++
++Future<bool> _srDebugOn() async {
++  if (_srDebugEnabled != null) return _srDebugEnabled!;
++  try {
++    _srDebugEnabled = (await SettingsService.getSettings()).debugLogging;
++  } catch (_) {
++    _srDebugEnabled = false;
++  }
++  return _srDebugEnabled!;
++}
++
+ Future<void> _srDebug(String msg) async {
+   final line = '[${DateTime.now().toLocal().toString().substring(0, 19)}] '
+       '[SRDBG] $msg\n';
+   debugPrint(line.trimRight());
++  if (!await _srDebugOn()) return;
+   String? dir;
+   try {
+     dir = await Utils.appDir;
+@@ -240,6 +273,15 @@ Future<void> recordingAlarmCallback(int recordingId) async {
+         'rec=${rec == null ? "NULL" : "status=${rec.status.name} urlLen=${rec.url.length}"}');
+     if (rec == null) {
+       AppLog.warn('recordingAlarmCallback: recording $recordingId not found');
++      // fix679: this is an ORPHAN alarm — its recording row is gone (deleted, or
++      // an old id=0 from before fix677). Because alarms are scheduled with
++      // rescheduleOnReboot:true, an orphan would otherwise re-fire on every boot
++      // forever. Cancel it so it stops.
++      if (Platform.isAndroid) {
++        try {
++          await AndroidAlarmManager.cancel(recordingId);
++        } catch (_) {}
++      }
+       return;
+     }
+     if (rec.status == RecordingStatus.cancelled) {
+diff --git a/lib/recordings_view.dart b/lib/recordings_view.dart
+index b54b158..6358f0c 100644
+--- a/lib/recordings_view.dart
++++ b/lib/recordings_view.dart
+@@ -108,6 +108,11 @@ class _RecordingsViewState extends State<RecordingsView> {
+     if (r.status == RecordingStatus.recording && r.id != null) {
+       await RecordingCapture.stop(r.id!);
+     }
++    // fix679: cancel the alarm before removing the row, otherwise its
++    // rescheduleOnReboot registration is orphaned and re-fires on every boot
++    // (hitting a now-missing row). Alarm-only cancel: no status write on a row
++    // we're about to delete.
++    await RecordingScheduler.cancelAlarm(r.id!);
+     await Sql.deleteRecording(r.id!);
+     await _load();
+   }
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index c3ba335..32867e3 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '3.0.21': [
++    'Scheduled Recording cleanup: deleting a scheduled recording now also cancels its timer, and stale timers left by earlier builds stop themselves. Diagnostic logging is now tied to the Debug logging setting.',
++  ],
+   '3.0.20': [
+     'Fixes Scheduled Recording: recordings now actually start capturing at the scheduled time. The background timer could not reach the recorder; it now does. Re-create any recordings that previously failed.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 6301884..8dee6c4 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 3.0.20+678
++version: 3.0.21+679
+ 
+ environment:
+   sdk: ^3.10.7

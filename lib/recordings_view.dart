@@ -108,6 +108,11 @@ class _RecordingsViewState extends State<RecordingsView> {
     if (r.status == RecordingStatus.recording && r.id != null) {
       await RecordingCapture.stop(r.id!);
     }
+    // fix679: cancel the alarm before removing the row, otherwise its
+    // rescheduleOnReboot registration is orphaned and re-fires on every boot
+    // (hitting a now-missing row). Alarm-only cancel: no status write on a row
+    // we're about to delete.
+    await RecordingScheduler.cancelAlarm(r.id!);
     await Sql.deleteRecording(r.id!);
     await _load();
   }

@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '3.0.21': [
+    'Scheduled Recording cleanup: deleting a scheduled recording now also cancels its timer, and stale timers left by earlier builds stop themselves. Diagnostic logging is now tied to the Debug logging setting.',
+  ],
   '3.0.20': [
     'Fixes Scheduled Recording: recordings now actually start capturing at the scheduled time. The background timer could not reach the recorder; it now does. Re-create any recordings that previously failed.',
   ],

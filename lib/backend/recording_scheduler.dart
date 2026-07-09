@@ -172,6 +172,20 @@ class RecordingScheduler {
     }
     await Sql.updateRecordingStatus(recordingId, RecordingStatus.cancelled);
   }
+
+  /// fix679: cancel ONLY the alarm, without touching the row's status. Used by
+  /// the delete path, where the row is about to be removed — calling [cancel]
+  /// there would write a "cancelled" status to a row that's immediately deleted,
+  /// and (worse) leaving the alarm registered orphans it (it re-fires on every
+  /// boot via rescheduleOnReboot). No-op off Android.
+  static Future<void> cancelAlarm(int recordingId) async {
+    if (!Platform.isAndroid) return;
+    try {
+      await AndroidAlarmManager.cancel(recordingId);
+    } catch (e) {
+      AppLog.warn('RecordingScheduler: cancelAlarm failed — $e');
+    }
+  }
 }
 
 /// fix667: alarm entry point — runs in a BACKGROUND isolate at the scheduled
@@ -187,11 +201,30 @@ class RecordingScheduler {
 // (getApplicationSupportDirectory == context.getFilesDir on Android) so it still
 // writes even if path_provider itself is the thing failing. Best-effort: any I/O
 // or plugin error here is swallowed so the diagnostic never changes behavior.
-// Remove with the rest of the SR diagnostics once capture is verified end-to-end.
+//
+// fix679: now GATED by the user's debug-logging setting. The setting is read
+// once per isolate run and cached (the callback already reads the DB, so this is
+// isolate-safe); when debug logging is off, the file write is skipped so we don't
+// grow app_log.txt on normal installs. debugPrint (logcat only, adb) stays
+// unconditional and harmless. Remove the whole SR diagnostic set once the
+// feature has soaked.
+bool? _srDebugEnabled;
+
+Future<bool> _srDebugOn() async {
+  if (_srDebugEnabled != null) return _srDebugEnabled!;
+  try {
+    _srDebugEnabled = (await SettingsService.getSettings()).debugLogging;
+  } catch (_) {
+    _srDebugEnabled = false;
+  }
+  return _srDebugEnabled!;
+}
+
 Future<void> _srDebug(String msg) async {
   final line = '[${DateTime.now().toLocal().toString().substring(0, 19)}] '
       '[SRDBG] $msg\n';
   debugPrint(line.trimRight());
+  if (!await _srDebugOn()) return;
   String? dir;
   try {
     dir = await Utils.appDir;
@@ -240,6 +273,15 @@ Future<void> recordingAlarmCallback(int recordingId) async {
         'rec=${rec == null ? "NULL" : "status=${rec.status.name} urlLen=${rec.url.length}"}');
     if (rec == null) {
       AppLog.warn('recordingAlarmCallback: recording $recordingId not found');
+      // fix679: this is an ORPHAN alarm — its recording row is gone (deleted, or
+      // an old id=0 from before fix677). Because alarms are scheduled with
+      // rescheduleOnReboot:true, an orphan would otherwise re-fire on every boot
+      // forever. Cancel it so it stops.
+      if (Platform.isAndroid) {
+        try {
+          await AndroidAlarmManager.cancel(recordingId);
+        } catch (_) {}
+      }
       return;
     }
     if (rec.status == RecordingStatus.cancelled) {
