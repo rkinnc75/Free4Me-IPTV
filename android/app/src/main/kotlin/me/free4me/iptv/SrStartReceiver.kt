@@ -38,41 +38,21 @@ class SrStartReceiver : BroadcastReceiver() {
         val durationMs = (extras?.get(EXTRA_DURATION_MS) as? Number)?.toLong() ?: -1L
         val url = extras?.get(EXTRA_URL) as? String
         val name = (extras?.get(EXTRA_NAME) as? String) ?: "Recording"
+        val remux = (extras?.get(EXTRA_REMUX) as? Boolean) ?: false
+        val debugLogging = (extras?.get(EXTRA_DEBUG) as? Boolean) ?: false
         if (id == -1 || url == null || durationMs <= 0L) {
             Log.w(TAG, "SrStartReceiver: bad extras id=$id durationMs=$durationMs url=${url != null}")
             return
         }
         Log.i(TAG, "SrStartReceiver: starting capture id=$id durationMs=$durationMs")
-        srDebug(context, "SrStartReceiver: starting capture id=$id durationMs=$durationMs")
-        RecordingCaptureService.start(context.applicationContext, id, url, durationMs, name)
+        // fix681: gate on the passed flag — no DB read here either (single-writer).
+        if (debugLogging) srDebug(context, "SrStartReceiver: starting capture id=$id durationMs=$durationMs")
+        RecordingCaptureService.start(context.applicationContext, id, url, durationMs, name, remux, debugLogging)
     }
 
-    // fix680: gated plugin-free breadcrumb (mirrors the service's srDebug) so the
-    // very first native hop is traceable in app_log.txt on no-adb devices.
+    // fix681: gated plugin-free breadcrumb (append to app_log.txt). Gate is the
+    // caller's passed flag; no DB access.
     private fun srDebug(context: Context, msg: String) {
-        val enabled = try {
-            val dbFile = java.io.File(context.applicationContext.filesDir, "db.sqlite")
-            if (!dbFile.exists()) false
-            else {
-                var db: android.database.sqlite.SQLiteDatabase? = null
-                try {
-                    db = android.database.sqlite.SQLiteDatabase.openDatabase(
-                        dbFile.absolutePath, null,
-                        android.database.sqlite.SQLiteDatabase.OPEN_READONLY or
-                            android.database.sqlite.SQLiteDatabase.NO_LOCALIZED_COLLATORS,
-                    )
-                    db.rawQuery("SELECT value FROM Settings WHERE key = ?",
-                        arrayOf("debugLogging")).use {
-                        if (it.moveToFirst()) it.getString(0) == "1" else false
-                    }
-                } finally {
-                    runCatching { db?.close() }
-                }
-            }
-        } catch (_: Exception) {
-            false
-        }
-        if (!enabled) return
         try {
             val line = "[${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss",
                 java.util.Locale.US).format(java.util.Date())}] [SRDBG] $msg\n"
@@ -88,5 +68,7 @@ class SrStartReceiver : BroadcastReceiver() {
         const val EXTRA_URL = "url"
         const val EXTRA_DURATION_MS = "durationMs"
         const val EXTRA_NAME = "name"
+        const val EXTRA_REMUX = "remux"
+        const val EXTRA_DEBUG = "debugLogging"
     }
 }

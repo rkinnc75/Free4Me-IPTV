@@ -292,11 +292,16 @@ Future<void> recordingAlarmCallback(int recordingId) async {
     await Sql.updateRecordingStatus(recordingId, RecordingStatus.recording);
     await _srDebug('SR-CB: id=$recordingId status->recording; '
         'calling RecordingCapture.start');
+    // fix681: read the two capture settings HERE (Dart, single DB owner) and
+    // pass them into the broadcast, so the native service never opens the DB.
+    final settings = await SettingsService.getSettings();
     await RecordingCapture.start(
       id: recordingId,
       url: rec.url,
       durationMs: rec.durationMs,
       name: rec.channelName,
+      remux: settings.remuxRecordings,
+      debugLogging: settings.debugLogging,
     );
     await _srDebug('SR-CB: id=$recordingId RecordingCapture.start returned OK');
     AppLog.info('recordingAlarmCallback: started capture $recordingId '

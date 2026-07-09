@@ -8,7 +8,6 @@ import android.app.Service
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
-import android.database.sqlite.SQLiteDatabase
 import android.media.MediaExtractor
 import android.media.MediaMuxer
 import android.net.Uri
@@ -51,6 +50,8 @@ class RecordingCaptureService : Service() {
         const val EXTRA_URL = "url"
         const val EXTRA_DURATION_MS = "duration_ms"
         const val EXTRA_NAME = "channel_name"
+        const val EXTRA_REMUX = "remux"
+        const val EXTRA_DEBUG = "debug_logging"
         const val ACTION_START = "me.free4me.iptv.SR_START"
         const val ACTION_STOP = "me.free4me.iptv.SR_STOP"
 
@@ -58,13 +59,18 @@ class RecordingCaptureService : Service() {
         // copy loop cleanly.
         private val cancelFlags = ConcurrentHashMap<Int, Boolean>()
 
-        fun start(context: Context, id: Int, url: String, durationMs: Long, name: String) {
+        fun start(
+            context: Context, id: Int, url: String, durationMs: Long, name: String,
+            remux: Boolean, debugLogging: Boolean,
+        ) {
             val i = Intent(context, RecordingCaptureService::class.java).apply {
                 action = ACTION_START
                 putExtra(EXTRA_ID, id)
                 putExtra(EXTRA_URL, url)
                 putExtra(EXTRA_DURATION_MS, durationMs)
                 putExtra(EXTRA_NAME, name)
+                putExtra(EXTRA_REMUX, remux)
+                putExtra(EXTRA_DEBUG, debugLogging)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(i)
@@ -92,37 +98,13 @@ class RecordingCaptureService : Service() {
     // and cached. This mirrors the Dart-side [SRDBG] breadcrumbs; every stage
     // logs (not just the current failure point) so a future capture issue can be
     // traced end-to-end from one exported log. debugLogging off => no-op.
-    @Volatile private var srDebugEnabled: Boolean? = null
-
-    private fun srDebugOn(): Boolean {
-        srDebugEnabled?.let { return it }
-        val on = try {
-            val dbFile = File(applicationContext.filesDir, "db.sqlite")
-            if (!dbFile.exists()) false
-            else {
-                var db: SQLiteDatabase? = null
-                try {
-                    db = SQLiteDatabase.openDatabase(
-                        dbFile.absolutePath, null,
-                        SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS,
-                    )
-                    db.rawQuery(
-                        "SELECT value FROM Settings WHERE key = ?", arrayOf("debugLogging"),
-                    ).use { if (it.moveToFirst()) it.getString(0) == "1" else false }
-                } finally {
-                    runCatching { db?.close() }
-                }
-            }
-        } catch (_: Exception) {
-            false
-        }
-        srDebugEnabled = on
-        return on
-    }
+    // fix681: debug-logging flag is passed in from Dart per capture (extra), so
+    // the service never opens the DB. Set at ACTION_START before any srDebug.
+    @Volatile private var srDebugEnabled: Boolean = false
 
     private fun srDebug(msg: String) {
         Log.i(TAG, msg) // always to logcat (adb); harmless
-        if (!srDebugOn()) return
+        if (!srDebugEnabled) return
         try {
             val line = "[${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss",
                 java.util.Locale.US).format(java.util.Date())}] [SRDBG] $msg\n"
@@ -146,13 +128,15 @@ class RecordingCaptureService : Service() {
                 val url = intent.getStringExtra(EXTRA_URL) ?: return stopAndReturn(id)
                 val durationMs = intent.getLongExtra(EXTRA_DURATION_MS, 0L)
                 val name = intent.getStringExtra(EXTRA_NAME) ?: "Recording"
+                val remux = intent.getBooleanExtra(EXTRA_REMUX, false)
+                srDebugEnabled = intent.getBooleanExtra(EXTRA_DEBUG, false)
                 if (id == -1 || durationMs <= 0L) return stopAndReturn(id)
 
-                srDebug("onStartCommand ACTION_START id=$id durationMs=$durationMs")
+                srDebug("onStartCommand ACTION_START id=$id durationMs=$durationMs remux=$remux")
                 startForeground(NOTI_ID_BASE + id, buildNotification(name))
                 cancelFlags[id] = false
                 val t = thread(start = true, name = "sr-capture-$id") {
-                    runCapture(id, url, durationMs, name)
+                    runCapture(id, url, durationMs, name, remux)
                 }
                 active[id] = t
                 return START_REDELIVER_INTENT
@@ -167,7 +151,7 @@ class RecordingCaptureService : Service() {
         return START_NOT_STICKY
     }
 
-    private fun runCapture(id: Int, url: String, durationMs: Long, name: String) {
+    private fun runCapture(id: Int, url: String, durationMs: Long, name: String, remux: Boolean) {
         srDebug("runCapture START id=$id durationMs=$durationMs urlLen=${url.length}")
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         val wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$TAG:wl:$id")
@@ -245,7 +229,7 @@ class RecordingCaptureService : Service() {
                 srDebug("id=$id too little data (${total}); writing status=failed")
                 updateStatus(id, "failed", mediaUri.toString(),
                     "Captured too little data (${total} bytes)")
-            } else if (isRemuxEnabled()) {
+            } else if (remux) {
                 srDebug("id=$id remux ENABLED; writing status=compressing then remuxing")
                 updateStatus(id, "compressing", mediaUri.toString(), null)
                 val mp4 = runCatching { remuxToMp4(mediaUri!!, name) }
@@ -316,28 +300,6 @@ class RecordingCaptureService : Service() {
     // ── fix671: re-mux .ts -> .mp4 (lossless stream copy, MediaMuxer) ───────
 
     /** Reads the remuxRecordings flag from the same Settings table Dart writes. */
-    private fun isRemuxEnabled(): Boolean {
-        val dbFile = File(applicationContext.filesDir, "db.sqlite")
-        if (!dbFile.exists()) return false
-        var db: SQLiteDatabase? = null
-        return try {
-            db = SQLiteDatabase.openDatabase(
-                dbFile.absolutePath, null,
-                SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS,
-            )
-            val c = db.rawQuery(
-                "SELECT value FROM Settings WHERE key = ?",
-                arrayOf("remuxRecordings"),
-            )
-            val on = c.use { if (it.moveToFirst()) it.getString(0) == "1" else false }
-            on
-        } catch (e: Exception) {
-            Log.w(TAG, "isRemuxEnabled read failed: ${e.message}")
-            false
-        } finally {
-            runCatching { db?.close() }
-        }
-    }
 
     /**
      * Repackage the captured .ts (at [srcUri]) into a new .mp4 MediaStore entry
@@ -445,30 +407,27 @@ class RecordingCaptureService : Service() {
 
     // ── DB write-back (same file DbFactory opens) ──────────────────────────
 
+    // fix681: single-writer. The service NO LONGER opens db.sqlite (its framework
+    // SQLiteDatabase handle raced the app's sqlite_async WAL and matched 0 rows,
+    // so status never reached the UI's row). Instead it appends one JSON line per
+    // status change to sr_status.jsonl in the app files dir; Dart
+    // (RecordingStatusJournal.drain) is the sole DB writer and applies these on
+    // the next Recordings load / app resume. Append-only + isolate-agnostic.
     private fun updateStatus(id: Int, status: String, outputPath: String?, error: String?) {
-        val dbFile = File(applicationContext.filesDir, "db.sqlite")
-        if (!dbFile.exists()) {
-            Log.w(TAG, "db.sqlite missing; cannot write status for $id")
-            return
-        }
-        var db: SQLiteDatabase? = null
         try {
-            db = SQLiteDatabase.openDatabase(
-                dbFile.absolutePath, null,
-                SQLiteDatabase.OPEN_READWRITE or SQLiteDatabase.NO_LOCALIZED_COLLATORS,
-            )
-            val values = ContentValues().apply {
+            val obj = org.json.JSONObject().apply {
+                put("id", id)
                 put("status", status)
                 if (outputPath != null) put("output_path", outputPath)
                 if (error != null) put("error", error)
+                put("ts", System.currentTimeMillis())
             }
-            val rows = db.update("recordings", values, "id = ?", arrayOf(id.toString()))
-            srDebug("updateStatus id=$id status=$status rowsAffected=$rows")
+            File(applicationContext.filesDir, "sr_status.jsonl")
+                .appendText(obj.toString() + "\n")
+            srDebug("updateStatus id=$id status=$status journaled")
         } catch (e: Exception) {
-            srDebug("updateStatus id=$id status=$status THREW ${e.javaClass.simpleName}: ${e.message}")
-            Log.w(TAG, "updateStatus($id,$status) failed: ${e.message}")
-        } finally {
-            runCatching { db?.close() }
+            srDebug("updateStatus id=$id status=$status journal THREW ${e.javaClass.simpleName}: ${e.message}")
+            Log.w(TAG, "updateStatus($id,$status) journal failed: ${e.message}")
         }
     }
 

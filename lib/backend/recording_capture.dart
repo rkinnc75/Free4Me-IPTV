@@ -37,12 +37,16 @@ class RecordingCapture {
     required String url,
     required int durationMs,
     required String name,
+    bool remux = false,
+    bool debugLogging = false,
   }) async {
     if (!Platform.isAndroid) return;
     try {
       // Explicit (package + component) broadcast so it stays private and is not
       // subject to Android O+ implicit-broadcast restrictions. The extras become
-      // the Intent bundle SrStartReceiver reads.
+      // the Intent bundle SrStartReceiver reads. fix681: remux + debugLogging are
+      // passed as extras so the native service never opens the DB (single-writer;
+      // Dart owns all DB access).
       final intent = AndroidIntent(
         action: _srStartAction,
         package: _pkg,
@@ -52,6 +56,8 @@ class RecordingCapture {
           'url': url,
           'durationMs': durationMs,
           'name': name,
+          'remux': remux,
+          'debugLogging': debugLogging,
         },
       );
       await intent.sendBroadcast();

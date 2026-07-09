@@ -1,0 +1,513 @@
+diff --git a/android/app/src/main/kotlin/me/free4me/iptv/RecordingCaptureService.kt b/android/app/src/main/kotlin/me/free4me/iptv/RecordingCaptureService.kt
+index 028f983..a15e313 100644
+--- a/android/app/src/main/kotlin/me/free4me/iptv/RecordingCaptureService.kt
++++ b/android/app/src/main/kotlin/me/free4me/iptv/RecordingCaptureService.kt
+@@ -8,7 +8,6 @@ import android.app.Service
+ import android.content.ContentValues
+ import android.content.Context
+ import android.content.Intent
+-import android.database.sqlite.SQLiteDatabase
+ import android.media.MediaExtractor
+ import android.media.MediaMuxer
+ import android.net.Uri
+@@ -51,6 +50,8 @@ class RecordingCaptureService : Service() {
+         const val EXTRA_URL = "url"
+         const val EXTRA_DURATION_MS = "duration_ms"
+         const val EXTRA_NAME = "channel_name"
++        const val EXTRA_REMUX = "remux"
++        const val EXTRA_DEBUG = "debug_logging"
+         const val ACTION_START = "me.free4me.iptv.SR_START"
+         const val ACTION_STOP = "me.free4me.iptv.SR_STOP"
+ 
+@@ -58,13 +59,18 @@ class RecordingCaptureService : Service() {
+         // copy loop cleanly.
+         private val cancelFlags = ConcurrentHashMap<Int, Boolean>()
+ 
+-        fun start(context: Context, id: Int, url: String, durationMs: Long, name: String) {
++        fun start(
++            context: Context, id: Int, url: String, durationMs: Long, name: String,
++            remux: Boolean, debugLogging: Boolean,
++        ) {
+             val i = Intent(context, RecordingCaptureService::class.java).apply {
+                 action = ACTION_START
+                 putExtra(EXTRA_ID, id)
+                 putExtra(EXTRA_URL, url)
+                 putExtra(EXTRA_DURATION_MS, durationMs)
+                 putExtra(EXTRA_NAME, name)
++                putExtra(EXTRA_REMUX, remux)
++                putExtra(EXTRA_DEBUG, debugLogging)
+             }
+             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                 context.startForegroundService(i)
+@@ -92,37 +98,13 @@ class RecordingCaptureService : Service() {
+     // and cached. This mirrors the Dart-side [SRDBG] breadcrumbs; every stage
+     // logs (not just the current failure point) so a future capture issue can be
+     // traced end-to-end from one exported log. debugLogging off => no-op.
+-    @Volatile private var srDebugEnabled: Boolean? = null
+-
+-    private fun srDebugOn(): Boolean {
+-        srDebugEnabled?.let { return it }
+-        val on = try {
+-            val dbFile = File(applicationContext.filesDir, "db.sqlite")
+-            if (!dbFile.exists()) false
+-            else {
+-                var db: SQLiteDatabase? = null
+-                try {
+-                    db = SQLiteDatabase.openDatabase(
+-                        dbFile.absolutePath, null,
+-                        SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS,
+-                    )
+-                    db.rawQuery(
+-                        "SELECT value FROM Settings WHERE key = ?", arrayOf("debugLogging"),
+-                    ).use { if (it.moveToFirst()) it.getString(0) == "1" else false }
+-                } finally {
+-                    runCatching { db?.close() }
+-                }
+-            }
+-        } catch (_: Exception) {
+-            false
+-        }
+-        srDebugEnabled = on
+-        return on
+-    }
++    // fix681: debug-logging flag is passed in from Dart per capture (extra), so
++    // the service never opens the DB. Set at ACTION_START before any srDebug.
++    @Volatile private var srDebugEnabled: Boolean = false
+ 
+     private fun srDebug(msg: String) {
+         Log.i(TAG, msg) // always to logcat (adb); harmless
+-        if (!srDebugOn()) return
++        if (!srDebugEnabled) return
+         try {
+             val line = "[${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss",
+                 java.util.Locale.US).format(java.util.Date())}] [SRDBG] $msg\n"
+@@ -146,13 +128,15 @@ class RecordingCaptureService : Service() {
+                 val url = intent.getStringExtra(EXTRA_URL) ?: return stopAndReturn(id)
+                 val durationMs = intent.getLongExtra(EXTRA_DURATION_MS, 0L)
+                 val name = intent.getStringExtra(EXTRA_NAME) ?: "Recording"
++                val remux = intent.getBooleanExtra(EXTRA_REMUX, false)
++                srDebugEnabled = intent.getBooleanExtra(EXTRA_DEBUG, false)
+                 if (id == -1 || durationMs <= 0L) return stopAndReturn(id)
+ 
+-                srDebug("onStartCommand ACTION_START id=$id durationMs=$durationMs")
++                srDebug("onStartCommand ACTION_START id=$id durationMs=$durationMs remux=$remux")
+                 startForeground(NOTI_ID_BASE + id, buildNotification(name))
+                 cancelFlags[id] = false
+                 val t = thread(start = true, name = "sr-capture-$id") {
+-                    runCapture(id, url, durationMs, name)
++                    runCapture(id, url, durationMs, name, remux)
+                 }
+                 active[id] = t
+                 return START_REDELIVER_INTENT
+@@ -167,7 +151,7 @@ class RecordingCaptureService : Service() {
+         return START_NOT_STICKY
+     }
+ 
+-    private fun runCapture(id: Int, url: String, durationMs: Long, name: String) {
++    private fun runCapture(id: Int, url: String, durationMs: Long, name: String, remux: Boolean) {
+         srDebug("runCapture START id=$id durationMs=$durationMs urlLen=${url.length}")
+         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+         val wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$TAG:wl:$id")
+@@ -245,7 +229,7 @@ class RecordingCaptureService : Service() {
+                 srDebug("id=$id too little data (${total}); writing status=failed")
+                 updateStatus(id, "failed", mediaUri.toString(),
+                     "Captured too little data (${total} bytes)")
+-            } else if (isRemuxEnabled()) {
++            } else if (remux) {
+                 srDebug("id=$id remux ENABLED; writing status=compressing then remuxing")
+                 updateStatus(id, "compressing", mediaUri.toString(), null)
+                 val mp4 = runCatching { remuxToMp4(mediaUri!!, name) }
+@@ -316,28 +300,6 @@ class RecordingCaptureService : Service() {
+     // ── fix671: re-mux .ts -> .mp4 (lossless stream copy, MediaMuxer) ───────
+ 
+     /** Reads the remuxRecordings flag from the same Settings table Dart writes. */
+-    private fun isRemuxEnabled(): Boolean {
+-        val dbFile = File(applicationContext.filesDir, "db.sqlite")
+-        if (!dbFile.exists()) return false
+-        var db: SQLiteDatabase? = null
+-        return try {
+-            db = SQLiteDatabase.openDatabase(
+-                dbFile.absolutePath, null,
+-                SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS,
+-            )
+-            val c = db.rawQuery(
+-                "SELECT value FROM Settings WHERE key = ?",
+-                arrayOf("remuxRecordings"),
+-            )
+-            val on = c.use { if (it.moveToFirst()) it.getString(0) == "1" else false }
+-            on
+-        } catch (e: Exception) {
+-            Log.w(TAG, "isRemuxEnabled read failed: ${e.message}")
+-            false
+-        } finally {
+-            runCatching { db?.close() }
+-        }
+-    }
+ 
+     /**
+      * Repackage the captured .ts (at [srcUri]) into a new .mp4 MediaStore entry
+@@ -445,30 +407,27 @@ class RecordingCaptureService : Service() {
+ 
+     // ── DB write-back (same file DbFactory opens) ──────────────────────────
+ 
++    // fix681: single-writer. The service NO LONGER opens db.sqlite (its framework
++    // SQLiteDatabase handle raced the app's sqlite_async WAL and matched 0 rows,
++    // so status never reached the UI's row). Instead it appends one JSON line per
++    // status change to sr_status.jsonl in the app files dir; Dart
++    // (RecordingStatusJournal.drain) is the sole DB writer and applies these on
++    // the next Recordings load / app resume. Append-only + isolate-agnostic.
+     private fun updateStatus(id: Int, status: String, outputPath: String?, error: String?) {
+-        val dbFile = File(applicationContext.filesDir, "db.sqlite")
+-        if (!dbFile.exists()) {
+-            Log.w(TAG, "db.sqlite missing; cannot write status for $id")
+-            return
+-        }
+-        var db: SQLiteDatabase? = null
+         try {
+-            db = SQLiteDatabase.openDatabase(
+-                dbFile.absolutePath, null,
+-                SQLiteDatabase.OPEN_READWRITE or SQLiteDatabase.NO_LOCALIZED_COLLATORS,
+-            )
+-            val values = ContentValues().apply {
++            val obj = org.json.JSONObject().apply {
++                put("id", id)
+                 put("status", status)
+                 if (outputPath != null) put("output_path", outputPath)
+                 if (error != null) put("error", error)
++                put("ts", System.currentTimeMillis())
+             }
+-            val rows = db.update("recordings", values, "id = ?", arrayOf(id.toString()))
+-            srDebug("updateStatus id=$id status=$status rowsAffected=$rows")
++            File(applicationContext.filesDir, "sr_status.jsonl")
++                .appendText(obj.toString() + "\n")
++            srDebug("updateStatus id=$id status=$status journaled")
+         } catch (e: Exception) {
+-            srDebug("updateStatus id=$id status=$status THREW ${e.javaClass.simpleName}: ${e.message}")
+-            Log.w(TAG, "updateStatus($id,$status) failed: ${e.message}")
+-        } finally {
+-            runCatching { db?.close() }
++            srDebug("updateStatus id=$id status=$status journal THREW ${e.javaClass.simpleName}: ${e.message}")
++            Log.w(TAG, "updateStatus($id,$status) journal failed: ${e.message}")
+         }
+     }
+ 
+diff --git a/android/app/src/main/kotlin/me/free4me/iptv/SrStartReceiver.kt b/android/app/src/main/kotlin/me/free4me/iptv/SrStartReceiver.kt
+index b3de402..9f2fbda 100644
+--- a/android/app/src/main/kotlin/me/free4me/iptv/SrStartReceiver.kt
++++ b/android/app/src/main/kotlin/me/free4me/iptv/SrStartReceiver.kt
+@@ -38,41 +38,21 @@ class SrStartReceiver : BroadcastReceiver() {
+         val durationMs = (extras?.get(EXTRA_DURATION_MS) as? Number)?.toLong() ?: -1L
+         val url = extras?.get(EXTRA_URL) as? String
+         val name = (extras?.get(EXTRA_NAME) as? String) ?: "Recording"
++        val remux = (extras?.get(EXTRA_REMUX) as? Boolean) ?: false
++        val debugLogging = (extras?.get(EXTRA_DEBUG) as? Boolean) ?: false
+         if (id == -1 || url == null || durationMs <= 0L) {
+             Log.w(TAG, "SrStartReceiver: bad extras id=$id durationMs=$durationMs url=${url != null}")
+             return
+         }
+         Log.i(TAG, "SrStartReceiver: starting capture id=$id durationMs=$durationMs")
+-        srDebug(context, "SrStartReceiver: starting capture id=$id durationMs=$durationMs")
+-        RecordingCaptureService.start(context.applicationContext, id, url, durationMs, name)
++        // fix681: gate on the passed flag — no DB read here either (single-writer).
++        if (debugLogging) srDebug(context, "SrStartReceiver: starting capture id=$id durationMs=$durationMs")
++        RecordingCaptureService.start(context.applicationContext, id, url, durationMs, name, remux, debugLogging)
+     }
+ 
+-    // fix680: gated plugin-free breadcrumb (mirrors the service's srDebug) so the
+-    // very first native hop is traceable in app_log.txt on no-adb devices.
++    // fix681: gated plugin-free breadcrumb (append to app_log.txt). Gate is the
++    // caller's passed flag; no DB access.
+     private fun srDebug(context: Context, msg: String) {
+-        val enabled = try {
+-            val dbFile = java.io.File(context.applicationContext.filesDir, "db.sqlite")
+-            if (!dbFile.exists()) false
+-            else {
+-                var db: android.database.sqlite.SQLiteDatabase? = null
+-                try {
+-                    db = android.database.sqlite.SQLiteDatabase.openDatabase(
+-                        dbFile.absolutePath, null,
+-                        android.database.sqlite.SQLiteDatabase.OPEN_READONLY or
+-                            android.database.sqlite.SQLiteDatabase.NO_LOCALIZED_COLLATORS,
+-                    )
+-                    db.rawQuery("SELECT value FROM Settings WHERE key = ?",
+-                        arrayOf("debugLogging")).use {
+-                        if (it.moveToFirst()) it.getString(0) == "1" else false
+-                    }
+-                } finally {
+-                    runCatching { db?.close() }
+-                }
+-            }
+-        } catch (_: Exception) {
+-            false
+-        }
+-        if (!enabled) return
+         try {
+             val line = "[${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss",
+                 java.util.Locale.US).format(java.util.Date())}] [SRDBG] $msg\n"
+@@ -88,5 +68,7 @@ class SrStartReceiver : BroadcastReceiver() {
+         const val EXTRA_URL = "url"
+         const val EXTRA_DURATION_MS = "durationMs"
+         const val EXTRA_NAME = "name"
++        const val EXTRA_REMUX = "remux"
++        const val EXTRA_DEBUG = "debugLogging"
+     }
+ }
+diff --git a/lib/backend/recording_capture.dart b/lib/backend/recording_capture.dart
+index 7fef5ed..ce0fecb 100644
+--- a/lib/backend/recording_capture.dart
++++ b/lib/backend/recording_capture.dart
+@@ -37,12 +37,16 @@ class RecordingCapture {
+     required String url,
+     required int durationMs,
+     required String name,
++    bool remux = false,
++    bool debugLogging = false,
+   }) async {
+     if (!Platform.isAndroid) return;
+     try {
+       // Explicit (package + component) broadcast so it stays private and is not
+       // subject to Android O+ implicit-broadcast restrictions. The extras become
+-      // the Intent bundle SrStartReceiver reads.
++      // the Intent bundle SrStartReceiver reads. fix681: remux + debugLogging are
++      // passed as extras so the native service never opens the DB (single-writer;
++      // Dart owns all DB access).
+       final intent = AndroidIntent(
+         action: _srStartAction,
+         package: _pkg,
+@@ -52,6 +56,8 @@ class RecordingCapture {
+           'url': url,
+           'durationMs': durationMs,
+           'name': name,
++          'remux': remux,
++          'debugLogging': debugLogging,
+         },
+       );
+       await intent.sendBroadcast();
+diff --git a/lib/backend/recording_scheduler.dart b/lib/backend/recording_scheduler.dart
+index 96cc6d6..19484e3 100644
+--- a/lib/backend/recording_scheduler.dart
++++ b/lib/backend/recording_scheduler.dart
+@@ -292,11 +292,16 @@ Future<void> recordingAlarmCallback(int recordingId) async {
+     await Sql.updateRecordingStatus(recordingId, RecordingStatus.recording);
+     await _srDebug('SR-CB: id=$recordingId status->recording; '
+         'calling RecordingCapture.start');
++    // fix681: read the two capture settings HERE (Dart, single DB owner) and
++    // pass them into the broadcast, so the native service never opens the DB.
++    final settings = await SettingsService.getSettings();
+     await RecordingCapture.start(
+       id: recordingId,
+       url: rec.url,
+       durationMs: rec.durationMs,
+       name: rec.channelName,
++      remux: settings.remuxRecordings,
++      debugLogging: settings.debugLogging,
+     );
+     await _srDebug('SR-CB: id=$recordingId RecordingCapture.start returned OK');
+     AppLog.info('recordingAlarmCallback: started capture $recordingId '
+diff --git a/lib/backend/recording_status_journal.dart b/lib/backend/recording_status_journal.dart
+new file mode 100644
+index 0000000..59ee74f
+--- /dev/null
++++ b/lib/backend/recording_status_journal.dart
+@@ -0,0 +1,96 @@
++import 'dart:convert';
++import 'dart:io';
++
++import 'package:open_tv/backend/app_logger.dart';
++import 'package:open_tv/backend/sql.dart';
++import 'package:open_tv/backend/utils.dart';
++import 'package:open_tv/models/recording.dart';
++
++/// fix681: single-writer bridge for Scheduled Recording status.
++///
++/// The native capture service (RecordingCaptureService) runs in a foreground
++/// service that outlives the UI isolate and used to write the `recordings` row
++/// directly via Android's framework SQLiteDatabase. But the app's DB is
++/// sqlite_async in WAL mode; the framework handle opened the same file on a
++/// separate connection and its updates matched 0 rows (WAL visibility), so
++/// status never reached the row the UI reads — recordings stayed stuck on
++/// "recording" even after a clean capture (observed: updateStatus
++/// rowsAffected=0 for every recording).
++///
++/// Fix: native no longer touches the DB. It appends one JSON line per status
++/// change to `sr_status.jsonl` in the app files dir. Dart — the SINGLE writer —
++/// drains that journal here, applying each event through Sql.updateRecordingStatus
++/// (sqlite_async), then truncates the file. Append-only file I/O is isolate- and
++/// crash-agnostic; no live Dart engine is needed while capture runs.
++///
++/// Each line: {"id":Int,"status":String,"output_path":String?,"error":String?}
++class RecordingStatusJournal {
++  RecordingStatusJournal._();
++
++  static const String fileName = 'sr_status.jsonl';
++
++  static Future<File> _file() async => File('${await Utils.appDir}/$fileName');
++
++  /// Apply any pending native status events to the DB, then clear the journal.
++  /// Safe to call repeatedly; a no-op when the file is missing or empty.
++  static Future<void> drain() async {
++    File f;
++    try {
++      f = await _file();
++      if (!await f.exists()) return;
++    } catch (_) {
++      return;
++    }
++
++    String contents;
++    try {
++      contents = await f.readAsString();
++    } catch (e) {
++      AppLog.warn('RecordingStatusJournal: read failed — $e');
++      return;
++    }
++    if (contents.trim().isEmpty) {
++      await _truncate(f);
++      return;
++    }
++
++    for (final raw in const LineSplitter().convert(contents)) {
++      final line = raw.trim();
++      if (line.isEmpty) continue;
++      try {
++        final m = jsonDecode(line) as Map<String, dynamic>;
++        final id = (m['id'] as num?)?.toInt();
++        final statusStr = m['status'] as String?;
++        if (id == null || statusStr == null) continue;
++        final status = _parseStatus(statusStr);
++        if (status == null) continue;
++        await Sql.updateRecordingStatus(
++          id,
++          status,
++          outputPath: m['output_path'] as String?,
++          error: m['error'] as String?,
++        );
++      } catch (e) {
++        // Skip a malformed line but keep applying the rest.
++        AppLog.warn('RecordingStatusJournal: bad line skipped — $e');
++      }
++    }
++
++    await _truncate(f);
++  }
++
++  static Future<void> _truncate(File f) async {
++    try {
++      await f.writeAsString('', flush: true);
++    } catch (e) {
++      AppLog.warn('RecordingStatusJournal: truncate failed — $e');
++    }
++  }
++
++  static RecordingStatus? _parseStatus(String s) {
++    for (final v in RecordingStatus.values) {
++      if (v.name == s) return v;
++    }
++    return null;
++  }
++}
+diff --git a/lib/recordings_view.dart b/lib/recordings_view.dart
+index 6358f0c..4ae34bf 100644
+--- a/lib/recordings_view.dart
++++ b/lib/recordings_view.dart
+@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
+ import 'package:intl/intl.dart';
+ import 'package:open_tv/backend/recording_capture.dart';
+ import 'package:open_tv/backend/recording_scheduler.dart';
++import 'package:open_tv/backend/recording_status_journal.dart';
+ import 'package:open_tv/backend/sql.dart';
+ import 'package:open_tv/models/channel.dart';
+ import 'package:open_tv/models/media_type.dart';
+@@ -34,6 +35,9 @@ class _RecordingsViewState extends State<RecordingsView> {
+ 
+   Future<void> _load() async {
+     setState(() => _loading = true);
++    // fix681: apply any status events the native capture service wrote to its
++    // journal (single-writer: only Dart touches the DB) before reading rows.
++    await RecordingStatusJournal.drain();
+     final recs = await Sql.getRecordings();
+     if (!mounted) return;
+     setState(() {
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index aeb8dbc..7d66269 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '3.0.23': [
++    'Fixes Scheduled Recording status: finished recordings now correctly show as Done (and failures as Failed) instead of staying stuck on \u201cRecording.\u201d The saved video was fine; only the on-screen status was wrong. Open Recordings to refresh.',
++  ],
+   '3.0.22': [
+     'Diagnostics only: full step-by-step Scheduled Recording capture trace (including MP4 conversion) written to the in-app log when Debug logging is on. No behavior change.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 64c28c9..f7b1f22 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 3.0.22+680
++version: 3.0.23+681
+ 
+ environment:
+   sdk: ^3.10.7
+diff --git a/test/recording_status_journal_test.dart b/test/recording_status_journal_test.dart
+new file mode 100644
+index 0000000..92ef2df
+--- /dev/null
++++ b/test/recording_status_journal_test.dart
+@@ -0,0 +1,50 @@
++// fix681: guards the sr_status.jsonl line format the native service writes and
++// the Dart drainer reads. The drainer itself needs Utils.appDir (path_provider)
++// + the DB, neither available in the sandbox, so this test pins the CONTRACT:
++// each journal line is a JSON object with id/status (+ optional output_path,
++// error), and parses to a valid RecordingStatus. If the native writer or the
++// Dart parser drift, this catches it.
++import 'dart:convert';
++
++import 'package:flutter_test/flutter_test.dart';
++import 'package:open_tv/models/recording.dart';
++
++RecordingStatus? parseStatus(String s) {
++  for (final v in RecordingStatus.values) {
++    if (v.name == s) return v;
++  }
++  return null;
++}
++
++void main() {
++  test('native journal line shape parses to a valid RecordingStatus', () {
++    // Exactly what RecordingCaptureService.updateStatus writes (org.json).
++    final lines = <String>[
++      '{"id":10,"status":"recording","ts":1}',
++      '{"id":10,"status":"done","output_path":"content://x/1","ts":2}',
++      '{"id":11,"status":"failed","error":"timeout","ts":3}',
++    ];
++    final applied = <int, RecordingStatus>{};
++    for (final line in lines) {
++      final m = jsonDecode(line) as Map<String, dynamic>;
++      final id = (m['id'] as num).toInt();
++      final status = parseStatus(m['status'] as String);
++      expect(status, isNotNull, reason: 'status "${m['status']}" must be a known enum');
++      applied[id] = status!;
++    }
++    // Last-write-wins per id, as the drainer applies sequentially.
++    expect(applied[10], RecordingStatus.done);
++    expect(applied[11], RecordingStatus.failed);
++  });
++
++  test('unknown status string is rejected (not silently mapped)', () {
++    expect(parseStatus('bogus'), isNull);
++    expect(parseStatus('compressing'), RecordingStatus.compressing);
++  });
++
++  test('every RecordingStatus round-trips via its name', () {
++    for (final v in RecordingStatus.values) {
++      expect(parseStatus(v.name), v);
++    }
++  });
++}

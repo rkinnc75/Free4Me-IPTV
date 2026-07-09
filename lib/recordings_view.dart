@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:open_tv/backend/recording_capture.dart';
 import 'package:open_tv/backend/recording_scheduler.dart';
+import 'package:open_tv/backend/recording_status_journal.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/models/channel.dart';
 import 'package:open_tv/models/media_type.dart';
@@ -34,6 +35,9 @@ class _RecordingsViewState extends State<RecordingsView> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
+    // fix681: apply any status events the native capture service wrote to its
+    // journal (single-writer: only Dart touches the DB) before reading rows.
+    await RecordingStatusJournal.drain();
     final recs = await Sql.getRecordings();
     if (!mounted) return;
     setState(() {
