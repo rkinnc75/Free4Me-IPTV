@@ -43,7 +43,42 @@ class SrStartReceiver : BroadcastReceiver() {
             return
         }
         Log.i(TAG, "SrStartReceiver: starting capture id=$id durationMs=$durationMs")
+        srDebug(context, "SrStartReceiver: starting capture id=$id durationMs=$durationMs")
         RecordingCaptureService.start(context.applicationContext, id, url, durationMs, name)
+    }
+
+    // fix680: gated plugin-free breadcrumb (mirrors the service's srDebug) so the
+    // very first native hop is traceable in app_log.txt on no-adb devices.
+    private fun srDebug(context: Context, msg: String) {
+        val enabled = try {
+            val dbFile = java.io.File(context.applicationContext.filesDir, "db.sqlite")
+            if (!dbFile.exists()) false
+            else {
+                var db: android.database.sqlite.SQLiteDatabase? = null
+                try {
+                    db = android.database.sqlite.SQLiteDatabase.openDatabase(
+                        dbFile.absolutePath, null,
+                        android.database.sqlite.SQLiteDatabase.OPEN_READONLY or
+                            android.database.sqlite.SQLiteDatabase.NO_LOCALIZED_COLLATORS,
+                    )
+                    db.rawQuery("SELECT value FROM Settings WHERE key = ?",
+                        arrayOf("debugLogging")).use {
+                        if (it.moveToFirst()) it.getString(0) == "1" else false
+                    }
+                } finally {
+                    runCatching { db?.close() }
+                }
+            }
+        } catch (_: Exception) {
+            false
+        }
+        if (!enabled) return
+        try {
+            val line = "[${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss",
+                java.util.Locale.US).format(java.util.Date())}] [SRDBG] $msg\n"
+            java.io.File(context.applicationContext.filesDir, "app_log.txt").appendText(line)
+        } catch (_: Exception) {
+        }
     }
 
     companion object {
