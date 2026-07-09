@@ -6,6 +6,7 @@ import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/recording_capture.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
+import 'package:open_tv/backend/utils.dart';
 import 'package:open_tv/models/channel.dart';
 import 'package:open_tv/models/program.dart';
 import 'package:open_tv/models/recording.dart';
@@ -177,6 +178,40 @@ class RecordingScheduler {
 /// time. STUB for this phase: it only marks the recording as started, so the
 /// scheduling path is verifiable end-to-end without the capture engine. The
 /// real HTTP-stream capture is wired here in fix668.
+// fix676 (DIAGNOSTIC): plugin-free breadcrumb writer for the alarm BACKGROUND
+// isolate. fix675 used debugPrint, which only reaches logcat — invisible in the
+// Samsung in-app report (that reporter transmits app_log.txt only). This appends
+// straight to app_log.txt with dart:io, using NO plugin, so a no-adb device still
+// captures the trace. It tries Utils.appDir first (correct path when plugins work
+// in this isolate) and falls back to the fixed Android app-files path
+// (getApplicationSupportDirectory == context.getFilesDir on Android) so it still
+// writes even if path_provider itself is the thing failing. Best-effort: any I/O
+// or plugin error here is swallowed so the diagnostic never changes behavior.
+// Remove with the rest of the SR diagnostics once capture is verified end-to-end.
+Future<void> _srDebug(String msg) async {
+  final line = '[${DateTime.now().toLocal().toString().substring(0, 19)}] '
+      '[SRDBG] $msg\n';
+  debugPrint(line.trimRight());
+  String? dir;
+  try {
+    dir = await Utils.appDir;
+  } catch (_) {
+    // path_provider unavailable in this isolate — fall back to the fixed path.
+    dir = '/data/data/me.free4me.iptv/files';
+  }
+  try {
+    File('$dir/app_log.txt')
+        .writeAsStringSync(line, mode: FileMode.append, flush: true);
+  } catch (_) {
+    // Last resort: try the hardcoded path directly if Utils.appDir returned a
+    // path we somehow can't write.
+    try {
+      File('/data/data/me.free4me.iptv/files/app_log.txt')
+          .writeAsStringSync(line, mode: FileMode.append, flush: true);
+    } catch (_) {}
+  }
+}
+
 @pragma('vm:entry-point')
 Future<void> recordingAlarmCallback(int recordingId) async {
   // fix668: runs in the alarm's background isolate at the padded start time.
@@ -198,22 +233,22 @@ Future<void> recordingAlarmCallback(int recordingId) async {
   // if plugins aren't registered in this isolate (path_provider/MethodChannel
   // MissingPluginException is the leading suspect) we still see the entry line
   // and then the throw. Remove once the SR capture path is verified end-to-end.
-  debugPrint('SR-CB: entered recordingAlarmCallback id=$recordingId');
+  await _srDebug('SR-CB: entered recordingAlarmCallback id=$recordingId');
   try {
     final rec = await Sql.getRecordingById(recordingId);
-    debugPrint('SR-CB: got row id=$recordingId '
+    await _srDebug('SR-CB: got row id=$recordingId '
         'rec=${rec == null ? "NULL" : "status=${rec.status.name} urlLen=${rec.url.length}"}');
     if (rec == null) {
       AppLog.warn('recordingAlarmCallback: recording $recordingId not found');
       return;
     }
     if (rec.status == RecordingStatus.cancelled) {
-      debugPrint('SR-CB: id=$recordingId cancelled; skipping');
+      await _srDebug('SR-CB: id=$recordingId cancelled; skipping');
       AppLog.info('recordingAlarmCallback: $recordingId was cancelled; skipping');
       return;
     }
     await Sql.updateRecordingStatus(recordingId, RecordingStatus.recording);
-    debugPrint('SR-CB: id=$recordingId status->recording; '
+    await _srDebug('SR-CB: id=$recordingId status->recording; '
         'calling RecordingCapture.start');
     await RecordingCapture.start(
       id: recordingId,
@@ -221,7 +256,7 @@ Future<void> recordingAlarmCallback(int recordingId) async {
       durationMs: rec.durationMs,
       name: rec.channelName,
     );
-    debugPrint('SR-CB: id=$recordingId RecordingCapture.start returned OK');
+    await _srDebug('SR-CB: id=$recordingId RecordingCapture.start returned OK');
     AppLog.info('recordingAlarmCallback: started capture $recordingId '
         '("${rec.channelName}", durationMs=${rec.durationMs})');
   } catch (e, st) {
@@ -229,7 +264,7 @@ Future<void> recordingAlarmCallback(int recordingId) async {
     // line that was invisible before (AppLog.warn no-ops in this
     // isolate). A MissingPluginException here means the alarm isolate
     // has no plugin registrant; any other throw points elsewhere.
-    debugPrint('SR-CB: id=$recordingId THREW $e\n$st');
+    await _srDebug('SR-CB: id=$recordingId THREW $e\n$st');
     AppLog.warn('recordingAlarmCallback: $recordingId failed — $e');
     // Best-effort: mark failed so the UI doesn't show a stuck "recording".
     try {

@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '3.0.18': [
+    'Diagnostics only: Scheduled Recording trace now writes to the in-app log so a recording that doesn\u2019t start can be diagnosed without a PC. No behavior change.',
+  ],
   '3.0.17': [
     'Diagnostics only: adds extra logging around Scheduled Recording so a recording that doesn\u2019t start can be traced. No behavior change.',
   ],
