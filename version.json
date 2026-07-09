@@ -1,6 +1,6 @@
 {
-  "latest": "3.0.20",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v3.0.20",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v3.0.20/Free4Me-IPTV-3.0.20-arm64.apk",
-  "releaseNotes": "\u2022 Fixes Scheduled Recording: recordings now actually start capturing at the scheduled time. The background timer could not reach the recorder; it now does. Re-create any recordings that previously failed."
+  "latest": "3.0.21",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v3.0.21",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v3.0.21/Free4Me-IPTV-3.0.21-arm64.apk",
+  "releaseNotes": "\u2022 Scheduled Recording cleanup: deleting a scheduled recording now also cancels its timer, and stale timers left by earlier builds stop themselves. Diagnostic logging is now tied to the Debug logging setting."
 }
