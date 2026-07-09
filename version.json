@@ -1,6 +1,6 @@
 {
-  "latest": "3.0.14",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v3.0.14",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v3.0.14/Free4Me-IPTV-3.0.14-arm64.apk",
-  "releaseNotes": "\u2022 You can now start Scheduled Recordings: tap a show in the TV guide and choose Record, or use \\u201cRecord now\\u201d from a live channel\\u2019s long-press menu or the player (pick 30/60/120 min or a custom length). Recordings won\\u2019t start if the device is very low on free space."
+  "latest": "3.0.15",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v3.0.15",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v3.0.15/Free4Me-IPTV-3.0.15-arm64.apk",
+  "releaseNotes": "\u2022 New setting: convert recordings to MP4 (Settings \\u2192 Scheduled Recording). When on, a finished recording is repackaged from .ts to .mp4 for wider compatibility \\u2014 a fast, lossless change with no re-encoding; if it fails, the original is kept. Off by default. The recording start/end padding controls also now appear here."
 }
