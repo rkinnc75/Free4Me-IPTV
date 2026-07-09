@@ -1,6 +1,6 @@
 {
-  "latest": "3.0.19",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v3.0.19",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v3.0.19/Free4Me-IPTV-3.0.19-arm64.apk",
-  "releaseNotes": "\u2022 Fixes Scheduled Recording: scheduled recordings now actually start and record. A bug gave every new recording an invalid internal id, so the timer fired but found no recording to run. Delete and re-create any recordings stuck on \\u201cScheduled\\u201d after updating."
+  "latest": "3.0.20",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v3.0.20",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v3.0.20/Free4Me-IPTV-3.0.20-arm64.apk",
+  "releaseNotes": "\u2022 Fixes Scheduled Recording: recordings now actually start capturing at the scheduled time. The background timer could not reach the recorder; it now does. Re-create any recordings that previously failed."
 }
