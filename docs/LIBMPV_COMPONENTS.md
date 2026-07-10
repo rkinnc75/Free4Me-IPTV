@@ -1,5 +1,5 @@
 # Custom libmpv — full enabled-component reference
-_FFmpeg 6.0; flavor: --enable-decoders/demuxers/parsers/protocols/filters/bsfs, --disable-gpl --disable-nonfree. Names match `ffmpeg -filters/-decoders/...`. See [CUSTOM_LIBMPV.md](./CUSTOM_LIBMPV.md) for the overview._
+_FFmpeg 6.0; flavor: --enable-decoders/demuxers/parsers/protocols/filters/bsfs + muxer allowlist (mp4/mov/matroska/mpegts/adts/mp3/flac/wav), --disable-gpl --disable-nonfree. Names match `ffmpeg -filters/-decoders/...`. See [CUSTOM_LIBMPV.md](./CUSTOM_LIBMPV.md) for the overview._
 
 ## FILTERS (435)
 
@@ -130,4 +130,11 @@ async,cache,concat,concatf,crypto,data,fd,ffrtmphttp,file,ftp,gopher,gophers,hls
 s,icecast,ipfs_gateway,ipns_gateway,md5,mmsh,mmst,pipe,prompeg,rtmp,rtmps,rtmpt,rtmpts,rtp,srtp,subf
 ile,tcp,tee,tls,udp,udplite,unix
 
+## Muxers (9, added v4.0.0)
 
+`mp4`, `mov`, `matroska`, `mpegts`, `adts`, `mp3`, `flac`, `wav`, `latm`.
+
+Enabled for recording container conversion (stream-copy `.ts` → MP4, MKV fallback),
+TS timestamp repair (`mpegts`), and audio-only extraction. libavformat container
+writers — no GPL/non-free dependency; LGPLv3 unchanged. Mux symbols exported in the
+built `.so`.

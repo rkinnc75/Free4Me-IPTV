@@ -27,7 +27,7 @@ A feature-rich IPTV player for Android and Android TV, forked from
 - Categories, Favorites, History, All views; infinite scroll with stale-result guarding
 
 ### Player
-- Dual-engine **libmpv** (media_kit) + **ExoPlayer** (video_player); auto-select per stream or force globally / per-channel
+- Dual-engine **libmpv** (media_kit, **custom LGPL-max build** with all non-GPL filters/codecs + MP4/MKV muxers) + **ExoPlayer** (video_player); auto-select per stream or force globally / per-channel
 - Hardware decoding (`mediacodec` phones / `mediacodec-copy` TV); Chromecast / Google Cast
 - **Dual-stream Picture-in-Picture** — two channels at once (one full-screen with audio, one muted/draggable; one-tap swap)
 - App-managed fullscreen + native Android PiP; pre-warm on focus to cut switch latency
@@ -36,6 +36,12 @@ A feature-rich IPTV player for Android and Android TV, forked from
 ### Multi-view
 - 1×2 and 2×2 layouts, **live-TV only**; independent engine + reconnect per cell
 - Channel picker scroll-loads the full catalog; optional restore-last-channels on entry
+
+### Scheduled Recording (SR)
+- Record live channels on a schedule or on-demand; exact wall-clock start via a background alarm that survives Doze and reboot
+- Foreground-service capture to `Movies/Free4Me`; status (scheduled → recording → done/failed) tracked in-app
+- Optional **MP4 conversion** (lossless stream-copy remux; MKV fallback for streams MP4 can't hold) powered by the custom muxer-enabled libmpv engine
+- 1 GB low-space floor; deleting a scheduled recording cancels its timer
 
 ### EPG (Electronic Programme Guide)
 - Streaming XMLTV parser (plain + gzip, sniffed from magic bytes); tiered fuzzy channel matching
@@ -72,7 +78,7 @@ and sideload it onto your Android device or Android TV.
 ## Building from source
 
 ```bash
-# Prerequisites: Flutter 3.27+, Android SDK
+# Prerequisites: Flutter 3.44+, Android SDK
 git clone https://github.com/rkinnc75/Free4Me-IPTV.git
 cd Free4Me-IPTV
 flutter pub get
