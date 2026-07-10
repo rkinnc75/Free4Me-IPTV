@@ -1,6 +1,6 @@
 {
-  "latest": "4.0.6",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.0.6",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.0.6/Free4Me-IPTV-4.0.6-arm64.apk",
-  "releaseNotes": "\u2022 Converted recordings now play in standard video players (not just VLC): the audio track from live TV is repackaged into a fully compatible form. No quality loss."
+  "latest": "4.0.7",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.0.7",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.0.7/Free4Me-IPTV-4.0.7-arm64.apk",
+  "releaseNotes": "\u2022 Converted recordings now show the correct length and let you seek/scrub. (Live-TV timestamps were making players report a huge bogus duration.)"
 }
