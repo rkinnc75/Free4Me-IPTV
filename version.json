@@ -1,6 +1,6 @@
 {
-  "latest": "3.0.25",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v3.0.25",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v3.0.25/Free4Me-IPTV-3.0.25-arm64.apk",
-  "releaseNotes": "\u2022 Diagnostics only: logs the MP4-conversion setting value used when a recording starts, to track down why conversion may not run. No behavior change."
+  "latest": "4.0.0",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.0.0",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.0.0/Free4Me-IPTV-4.0.0-arm64.apk",
+  "releaseNotes": "\u2022 New media engine: the bundled libmpv now includes MP4/MKV muxers, the foundation for reliable recording conversion. Playback is unchanged. This is a major-version update (4.0.0) reflecting the engine change."
 }
