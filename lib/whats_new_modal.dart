@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.0.2': [
+    'Fixes recording conversion so it actually runs: scheduled recordings now convert from .ts to .mp4/.mkv as intended (a previous check skipped every file). No quality loss; the original is kept if conversion fails.',
+  ],
   '4.0.1': [
     'Recording conversion now works: scheduled recordings saved as .ts are repackaged into a standard .mp4 (or .mkv) file when the conversion option is on — no re-encode, no quality loss. If conversion ever fails the original .ts is kept, so a recording is never lost.',
   ],

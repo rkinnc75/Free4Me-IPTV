@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.0.2+686] - 2026-07-10
+
+**Recording conversion now actually runs:** the fix685 re-mux was silently skipped for every recording; this makes `.ts` → `.mp4`/`.mkv` conversion fire as intended.
+
+### Fixed
+- **fix686 — Re-mux skip guard used the wrong path shape** — fix685 wired the FFI re-mux but `_processOne` gated on `outputPath.endsWith('.ts')`. Captured recordings are MediaStore entries whose `output_path` is a `content://` URI, which never ends in `.ts` (only the display name does), so the guard skipped **every** recording — confirmed on v4.0.1 (`remux: id=17 skip … path=content://media/external_primary/video/media/1000062227`), leaving the file a `.ts`. Removed the suffix test: `RecordingStatusJournal.drain()` already calls `process()` only for ids the native service flagged `"remux":true` on a fresh capture, so `status==done` + non-null path is the correct, sufficient guard. Container choice remains codec-probed (not extension-based), so nothing downstream assumed `.ts`.
+
+### Technical
+- **fix686**: one-guard fix in `lib/backend/recording_remux.dart` (`_processOne`); version → 4.0.2+686. Verified with a standalone `dart analyze` → "No issues found!".
+
 ## [v4.0.1+685] - 2026-07-10
 
 **Scheduled Recording re-mux (works at last):** captured `.ts` recordings are now repackaged into a real `.mp4` (or `.mkv`) container when the re-mux option is on — no re-encode, no quality loss.

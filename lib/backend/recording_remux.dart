@@ -70,9 +70,15 @@ class RecordingRemux {
     final rec = await Sql.getRecordingById(id);
     if (rec == null) return;
     final src = rec.outputPath;
-    if (rec.status != RecordingStatus.done ||
-        src == null ||
-        !src.toLowerCase().endsWith('.ts')) {
+    // NB (fix686): do NOT gate on a ".ts" suffix. The captured file is a
+    // MediaStore entry whose output_path is a content:// URI — the URI never
+    // ends in ".ts" (only the display name does), so a suffix test skips EVERY
+    // recording (observed on v4.0.1: "remux: id=17 skip ... path=content://…").
+    // drain() only calls process() for ids the native service flagged
+    // "remux":true on a fresh capture, so status==done + a non-null path is the
+    // correct and sufficient guard; container choice is codec-probed, not
+    // extension-based.
+    if (rec.status != RecordingStatus.done || src == null) {
       _d('id=$id skip (status=${rec.status.name} path=$src)');
       return;
     }

@@ -1,0 +1,71 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index c30bcb1..7bd1cff 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,6 +1,16 @@
+ # Changelog
+ 
+ All notable changes to Free4Me-IPTV are documented here.
++## [v4.0.2+686] - 2026-07-10
++
++**Recording conversion now actually runs:** the fix685 re-mux was silently skipped for every recording; this makes `.ts` → `.mp4`/`.mkv` conversion fire as intended.
++
++### Fixed
++- **fix686 — Re-mux skip guard used the wrong path shape** — fix685 wired the FFI re-mux but `_processOne` gated on `outputPath.endsWith('.ts')`. Captured recordings are MediaStore entries whose `output_path` is a `content://` URI, which never ends in `.ts` (only the display name does), so the guard skipped **every** recording — confirmed on v4.0.1 (`remux: id=17 skip … path=content://media/external_primary/video/media/1000062227`), leaving the file a `.ts`. Removed the suffix test: `RecordingStatusJournal.drain()` already calls `process()` only for ids the native service flagged `"remux":true` on a fresh capture, so `status==done` + non-null path is the correct, sufficient guard. Container choice remains codec-probed (not extension-based), so nothing downstream assumed `.ts`.
++
++### Technical
++- **fix686**: one-guard fix in `lib/backend/recording_remux.dart` (`_processOne`); version → 4.0.2+686. Verified with a standalone `dart analyze` → "No issues found!".
++
+ ## [v4.0.1+685] - 2026-07-10
+ 
+ **Scheduled Recording re-mux (works at last):** captured `.ts` recordings are now repackaged into a real `.mp4` (or `.mkv`) container when the re-mux option is on — no re-encode, no quality loss.
+diff --git a/lib/backend/recording_remux.dart b/lib/backend/recording_remux.dart
+index 885f215..7a0221f 100644
+--- a/lib/backend/recording_remux.dart
++++ b/lib/backend/recording_remux.dart
+@@ -70,9 +70,15 @@ class RecordingRemux {
+     final rec = await Sql.getRecordingById(id);
+     if (rec == null) return;
+     final src = rec.outputPath;
+-    if (rec.status != RecordingStatus.done ||
+-        src == null ||
+-        !src.toLowerCase().endsWith('.ts')) {
++    // NB (fix686): do NOT gate on a ".ts" suffix. The captured file is a
++    // MediaStore entry whose output_path is a content:// URI — the URI never
++    // ends in ".ts" (only the display name does), so a suffix test skips EVERY
++    // recording (observed on v4.0.1: "remux: id=17 skip ... path=content://…").
++    // drain() only calls process() for ids the native service flagged
++    // "remux":true on a fresh capture, so status==done + a non-null path is the
++    // correct and sufficient guard; container choice is codec-probed, not
++    // extension-based.
++    if (rec.status != RecordingStatus.done || src == null) {
+       _d('id=$id skip (status=${rec.status.name} path=$src)');
+       return;
+     }
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 27ff1a2..8873ade 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '4.0.2': [
++    'Fixes recording conversion so it actually runs: scheduled recordings now convert from .ts to .mp4/.mkv as intended (a previous check skipped every file). No quality loss; the original is kept if conversion fails.',
++  ],
+   '4.0.1': [
+     'Recording conversion now works: scheduled recordings saved as .ts are repackaged into a standard .mp4 (or .mkv) file when the conversion option is on — no re-encode, no quality loss. If conversion ever fails the original .ts is kept, so a recording is never lost.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index c9ea883..6f530b4 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 4.0.1+685
++version: 4.0.2+686
+ 
+ environment:
+   sdk: ^3.10.7
