@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.0.6+690] - 2026-07-10
+
+**Converted recordings play everywhere:** the re-mux now writes a standards-compliant AAC track, so recordings play in the default Android video player, not only VLC.
+
+### Fixed
+- **fix690 — Apply `aac_adtstoasc` when muxing AAC into MP4** — recordings converted fine (fix685–689) and played in VLC, but the stock Android "Video Player" reported *audio codec not supported* (video was fine). Cause: live-TV AAC is ADTS-framed, and our pinned ffmpeg **n6.0** mp4 muxer does not synthesize a valid AudioSpecificConfig (`esds`) from ADTS on its own — it needs the `aac_adtstoasc` bitstream filter (the device `.so` even carries the *"use the audio bitstream filter 'aac_adtstoasc'"* message). Tolerant players (VLC) decode the malformed track; strict ones reject it. Now, for AAC→MP4, the filter is initialised before `write_header` (so the corrected `par_out`/extradata reaches the output stream) and audio packets are run through it. Verified end-to-end against libavformat: filtered output decodes cleanly with a valid `esds`. MKV path and video are unchanged; `[SRDBG]` diagnostics retained.
+
+### Technical
+- **fix690**: `recording_remux.dart` — new BSF typedefs (`av_bsf_get_by_name/alloc/init/send_packet/receive_packet/free`, all exported from the vnext `libmpv.so`) + `AVBSFContext` offsets (par_in@24, par_out@32, time_base_in@40, n6.0); send/receive loop with EAGAIN/EOF handling; version → 4.0.6+690. Verified with Dart 3.12.2 + repo `analysis_options` → "No issues found!".
+
 ## [v4.0.5+689] - 2026-07-10
 
 **Recording conversion completes:** the last re-mux bug is fixed — `.ts` recordings now become playable `.mp4`/`.mkv` files.

@@ -271,6 +271,29 @@ typedef _AvioClosepDart = int Function(Pointer<Pointer<Void>>);
 typedef _AvVersionNative = Uint32 Function();
 typedef _AvVersionDart = int Function();
 
+// fix690: aac_adtstoasc bitstream filter — AAC from MPEG-TS is ADTS-framed and
+// our n6.0 mp4 muxer needs the filter to emit a valid AudioSpecificConfig
+// (esds). Without it strict players (Android's default) reject the audio while
+// tolerant ones (VLC) play it.
+typedef _AvBsfGetByNameNative = Pointer<Void> Function(Pointer<Utf8>);
+typedef _AvBsfGetByNameDart = Pointer<Void> Function(Pointer<Utf8>);
+
+typedef _AvBsfAllocNative = Int32 Function(
+    Pointer<Void>, Pointer<Pointer<Void>>);
+typedef _AvBsfAllocDart = int Function(Pointer<Void>, Pointer<Pointer<Void>>);
+
+typedef _AvBsfInitNative = Int32 Function(Pointer<Void>);
+typedef _AvBsfInitDart = int Function(Pointer<Void>);
+
+typedef _AvBsfSendNative = Int32 Function(Pointer<Void>, Pointer<Void>);
+typedef _AvBsfSendDart = int Function(Pointer<Void>, Pointer<Void>);
+
+typedef _AvBsfReceiveNative = Int32 Function(Pointer<Void>, Pointer<Void>);
+typedef _AvBsfReceiveDart = int Function(Pointer<Void>, Pointer<Void>);
+
+typedef _AvBsfFreeNative = Void Function(Pointer<Pointer<Void>>);
+typedef _AvBsfFreeDart = void Function(Pointer<Pointer<Void>>);
+
 class _RemuxNative {
   // --- struct offsets (bytes), n6.0 / LP64 ---
   static const int _fmtNbStreams = 44;
@@ -284,6 +307,12 @@ class _RemuxNative {
   static const int _parCodecTag = 8;
   static const int _pktStreamIndex = 36;
 
+  // AVBSFContext offsets (n6.0 / LP64) — fix690 aac_adtstoasc.
+  static const int _bsfParIn = 24;
+  static const int _bsfParOut = 32;
+  static const int _bsfTimeBaseInNum = 40;
+  static const int _bsfTimeBaseInDen = 44;
+
   // AVMediaType
   static const int _typeVideo = 0;
   static const int _typeAudio = 1;
@@ -295,6 +324,10 @@ class _RemuxNative {
   static const int _idMp3 = 86017;
 
   static const int _avioFlagWrite = 2;
+
+  // fix690: AVERROR(EAGAIN)=-11 and AVERROR_EOF for the BSF receive loop.
+  static const int _eagain = -11;
+  static const int _averrorEof = -541478725;
 
   /// Stream-copy [inFd] → [outFd] into container [ext]. Returns '' on success,
   /// else a short `step rc=AVERROR` diagnostic (fix687) so the caller can log
@@ -353,11 +386,27 @@ class _RemuxNative {
         .lookupFunction<_AvDictFreeNative, _AvDictFreeDart>('av_dict_free');
     final avioClosep = lib.lookupFunction<_AvioClosepNative,
         _AvioClosepDart>('avio_closep');
+    final bsfGetByName = lib.lookupFunction<_AvBsfGetByNameNative,
+        _AvBsfGetByNameDart>('av_bsf_get_by_name');
+    final bsfAlloc = lib
+        .lookupFunction<_AvBsfAllocNative, _AvBsfAllocDart>('av_bsf_alloc');
+    final bsfInit = lib
+        .lookupFunction<_AvBsfInitNative, _AvBsfInitDart>('av_bsf_init');
+    final bsfSend = lib.lookupFunction<_AvBsfSendNative, _AvBsfSendDart>(
+        'av_bsf_send_packet');
+    final bsfReceive = lib.lookupFunction<_AvBsfReceiveNative,
+        _AvBsfReceiveDart>('av_bsf_receive_packet');
+    final bsfFree = lib
+        .lookupFunction<_AvBsfFreeNative, _AvBsfFreeDart>('av_bsf_free');
 
     final arena = Arena();
     Pointer<Void> ictx = nullptr;
     Pointer<Void> octx = nullptr;
     Pointer<Pointer<Void>> pkt = nullptr;
+    // fix690: aac_adtstoasc filter state (MP4 + AAC only).
+    final pBsf = arena<Pointer<Void>>();
+    pBsf.value = nullptr;
+    var aacIdx = -1;
     var pbOpened = false;
     try {
       // Input: the ffmpeg "fd:" protocol takes the fd as an option, not in the
@@ -408,8 +457,35 @@ class _RemuxNative {
         final ost = newStream(octx, nullptr);
         if (ost == nullptr) return 'new_stream null (i=$i)';
         final opar = _ptrAt(ost, _streamCodecpar);
-        final rcCopy = copyParams(opar, ipar);
-        if (rcCopy < 0) return 'copy_params rc=$rcCopy (i=$i)';
+
+        // fix690: for AAC audio into MP4, run the packets through
+        // aac_adtstoasc so the muxer gets a proper AudioSpecificConfig. The
+        // filter fills par_out with the corrected params (incl. extradata),
+        // which must go to the output stream BEFORE write_header.
+        if (ext == 'mp4' && codecType == _typeAudio && codecId == _idAac) {
+          final filt = bsfGetByName('aac_adtstoasc'.toNativeUtf8(allocator: arena));
+          if (filt != nullptr && bsfAlloc(filt, pBsf) >= 0) {
+            final bsf = pBsf.value;
+            final rcPar = copyParams(_ptrAt(bsf, _bsfParIn), ipar);
+            if (rcPar < 0) return 'bsf par_in copy rc=$rcPar';
+            (bsf.cast<Uint8>() + _bsfTimeBaseInNum).cast<Int32>().value =
+                _i32(ist, _streamTimeBaseNum);
+            (bsf.cast<Uint8>() + _bsfTimeBaseInDen).cast<Int32>().value =
+                _i32(ist, _streamTimeBaseDen);
+            final rcInit = bsfInit(bsf);
+            if (rcInit < 0) return 'bsf_init rc=$rcInit';
+            final rcOut = copyParams(opar, _ptrAt(bsf, _bsfParOut));
+            if (rcOut < 0) return 'bsf par_out copy rc=$rcOut';
+            aacIdx = i;
+          } else {
+            // Filter unavailable — fall back to a plain copy (MKV-safe path).
+            final rcCopy = copyParams(opar, ipar);
+            if (rcCopy < 0) return 'copy_params rc=$rcCopy (i=$i)';
+          }
+        } else {
+          final rcCopy = copyParams(opar, ipar);
+          if (rcCopy < 0) return 'copy_params rc=$rcCopy (i=$i)';
+        }
         // Let the muxer assign the tag for the target container.
         (opar.cast<Uint32>() + (_parCodecTag ~/ 4)).value = 0;
         mapped++;
@@ -463,6 +539,31 @@ class _RemuxNative {
         srcTb.ref.den = _i32(ist, _streamTimeBaseDen);
         dstTb.ref.num = _i32(ost, _streamTimeBaseNum);
         dstTb.ref.den = _i32(ost, _streamTimeBaseDen);
+
+        // fix690: AAC audio → filter through aac_adtstoasc. send consumes the
+        // packet; receive yields 0+ filtered packets (each unref'd after write).
+        if (pBsf.value != nullptr && idx == aacIdx) {
+          final rcSend = bsfSend(pBsf.value, packet);
+          if (rcSend < 0) {
+            packetUnref(packet);
+            return 'bsf_send rc=$rcSend';
+          }
+          while (true) {
+            final rcRecv = bsfReceive(pBsf.value, packet);
+            if (rcRecv == _eagain || rcRecv == _averrorEof) break;
+            if (rcRecv < 0) return 'bsf_receive rc=$rcRecv';
+            rescaleTs(packet, srcTb.ref, dstTb.ref);
+            final w = interleavedWrite(octx, packet);
+            if (w < 0) {
+              packetUnref(packet);
+              return 'write_frame rc=$w (aac, after $frames)';
+            }
+            packetUnref(packet);
+            frames++;
+          }
+          continue; // send already consumed the packet
+        }
+
         rescaleTs(packet, srcTb.ref, dstTb.ref);
         final rcWrite = interleavedWrite(octx, packet);
         if (rcWrite < 0) {
@@ -480,6 +581,7 @@ class _RemuxNative {
     } catch (e) {
       return 'exception: $e';
     } finally {
+      if (pBsf.value != nullptr) bsfFree(pBsf);
       if (pkt != nullptr && pkt.value != nullptr) packetFree(pkt);
       if (pbOpened && octx != nullptr) {
         final pbSlot =
