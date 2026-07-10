@@ -99,9 +99,13 @@ class RecordingRemux {
       _RemuxTarget? target;
       try {
         target = await _createOutput(rec.channelName, ext);
-        if (target == null) continue;
-        final ok = await _copyInIsolate(inFd, target.fd, ext);
-        if (ok) {
+        if (target == null) {
+          _d('id=$id $ext createOutput returned null (channel/MediaStore)');
+          continue;
+        }
+        // fix687: streamCopy returns '' on success, else "step rc=<AVERROR>".
+        final err = await _copyInIsolate(inFd, target.fd, ext);
+        if (err.isEmpty) {
           await _finalize(target.uri);
           await _deleteTs(src);
           await Sql.updateRecordingStatus(id, RecordingStatus.done,
@@ -109,7 +113,7 @@ class RecordingRemux {
           _d('id=$id remuxed -> $ext ${target.uri}; .ts deleted');
           return;
         }
-        _d('id=$id $ext copy failed; discarding target');
+        _d('id=$id $ext copy failed [$err]; discarding target');
         await _discard(target.uri);
       } finally {
         await _closeFd(inFd);
@@ -153,11 +157,11 @@ class RecordingRemux {
 
   // ── background isolate: pure FFI stream-copy ───────────────────────────────
 
-  static Future<bool> _copyInIsolate(int inFd, int outFd, String ext) async {
+  static Future<String> _copyInIsolate(int inFd, int outFd, String ext) async {
     try {
       return await Isolate.run(() => _RemuxNative.streamCopy(inFd, outFd, ext));
     } catch (e) {
-      return false;
+      return 'isolate-threw: $e';
     }
   }
 }
@@ -270,21 +274,22 @@ class _RemuxNative {
 
   static const int _avioFlagWrite = 2;
 
-  /// Stream-copy [inFd] → [outFd] into container [ext] ("mp4"|"mkv").
-  /// Returns true only if the trailer was written successfully. Pure FFI; runs
-  /// in a background isolate.
-  static bool streamCopy(int inFd, int outFd, String ext) {
+  /// Stream-copy [inFd] → [outFd] into container [ext]. Returns '' on success,
+  /// else a short `step rc=AVERROR` diagnostic (fix687) so the caller can log
+  /// exactly which libavformat call failed. Runs in a background isolate.
+  static String streamCopy(int inFd, int outFd, String ext) {
     final DynamicLibrary lib;
     try {
       lib = DynamicLibrary.open('libmpv.so');
-    } catch (_) {
-      return false;
+    } catch (e) {
+      return 'dlopen-threw: $e';
     }
 
     final avVersion = lib
         .lookupFunction<_AvVersionNative, _AvVersionDart>('avformat_version');
-    if ((avVersion() >> 16) != RecordingRemux._expectedAvformatMajor) {
-      return false; // ABI drift — offsets no longer trusted; keep the .ts.
+    final ver = avVersion();
+    if ((ver >> 16) != RecordingRemux._expectedAvformatMajor) {
+      return 'abi-mismatch avformat_version=$ver'; // offsets not trusted.
     }
 
     final openInput = lib.lookupFunction<_AvOpenInputNative, _AvOpenInputDart>(
@@ -332,13 +337,15 @@ class _RemuxNative {
       // Input: open "fd:<inFd>" and probe.
       final inUrl = 'fd:$inFd'.toNativeUtf8(allocator: arena);
       final pIctx = arena<Pointer<Void>>();
-      if (openInput(pIctx, inUrl, nullptr, nullptr) < 0) return false;
+      final rcOpen = openInput(pIctx, inUrl, nullptr, nullptr);
+      if (rcOpen < 0) return 'open_input(fd:$inFd) rc=$rcOpen';
       ictx = pIctx.value;
-      if (findInfo(ictx, nullptr) < 0) return false;
+      final rcInfo = findInfo(ictx, nullptr);
+      if (rcInfo < 0) return 'find_stream_info rc=$rcInfo';
 
       final nStreams =
           (ictx.cast<Uint8>() + _fmtNbStreams).cast<Uint32>().value;
-      if (nStreams == 0) return false;
+      if (nStreams == 0) return 'no-streams';
       // streams field holds AVStream** — read the pointer VALUE, then index it.
       final streamsArr =
           (ictx.cast<Uint8>() + _fmtStreams).cast<Pointer<Pointer<Void>>>().value;
@@ -348,9 +355,10 @@ class _RemuxNative {
       final muxerName = ext == 'mkv' ? 'matroska' : 'mp4';
       final fmtName = muxerName.toNativeUtf8(allocator: arena);
       final pOctx = arena<Pointer<Void>>();
-      if (allocOut(pOctx, nullptr, fmtName, nullptr) < 0) return false;
+      final rcAlloc = allocOut(pOctx, nullptr, fmtName, nullptr);
+      if (rcAlloc < 0) return 'alloc_output($muxerName) rc=$rcAlloc';
       octx = pOctx.value;
-      if (octx == nullptr) return false;
+      if (octx == nullptr) return 'alloc_output($muxerName) null-ctx';
 
       // Map every audio/video stream, copying codec params (stream-copy).
       var mapped = 0;
@@ -366,34 +374,38 @@ class _RemuxNative {
         if (!_mp4Ok(codecId)) mp4Compatible = false;
 
         final ost = newStream(octx, nullptr);
-        if (ost == nullptr) return false;
+        if (ost == nullptr) return 'new_stream null (i=$i)';
         final opar = _ptrAt(ost, _streamCodecpar);
-        if (copyParams(opar, ipar) < 0) return false;
+        final rcCopy = copyParams(opar, ipar);
+        if (rcCopy < 0) return 'copy_params rc=$rcCopy (i=$i)';
         // Let the muxer assign the tag for the target container.
         (opar.cast<Uint32>() + (_parCodecTag ~/ 4)).value = 0;
         mapped++;
       }
-      if (mapped == 0) return false;
+      if (mapped == 0) return 'no-av-streams-mapped (nStreams=$nStreams)';
       // MP4 container but a stream it can't hold → let caller fall back to MKV.
-      if (ext == 'mp4' && !mp4Compatible) return false;
+      if (ext == 'mp4' && !mp4Compatible) return 'mp4-incompatible-codec';
 
       // Open the output AVIO on "fd:<outFd>".
       final outUrl = 'fd:$outFd'.toNativeUtf8(allocator: arena);
       final pbSlot = (octx.cast<Uint8>() + _fmtPb).cast<Pointer<Void>>();
-      if (avioOpen(pbSlot, outUrl, _avioFlagWrite) < 0) return false;
+      final rcAvio = avioOpen(pbSlot, outUrl, _avioFlagWrite);
+      if (rcAvio < 0) return 'avio_open(fd:$outFd) rc=$rcAvio';
       pbOpened = true;
 
-      if (writeHeader(octx, nullptr) < 0) return false;
+      final rcHdr = writeHeader(octx, nullptr);
+      if (rcHdr < 0) return 'write_header($muxerName) rc=$rcHdr';
 
       pkt = arena<Pointer<Void>>();
       pkt.value = packetAlloc();
-      if (pkt.value == nullptr) return false;
+      if (pkt.value == nullptr) return 'packet_alloc null';
       final packet = pkt.value;
 
       final istreamsArr = streamsArr;
       final ostreamsArr =
           (octx.cast<Uint8>() + _fmtStreams).cast<Pointer<Pointer<Void>>>().value;
 
+      var frames = 0;
       while (readFrame(ictx, packet) >= 0) {
         final si = (packet.cast<Uint8>() + _pktStreamIndex).cast<Int32>();
         final idx = si.value;
@@ -412,16 +424,21 @@ class _RemuxNative {
         final outNum = _i32(ost, _streamTimeBaseNum);
         final outDen = _i32(ost, _streamTimeBaseDen);
         rescaleTs(packet, inNum, inDen, outNum, outDen);
-        if (interleavedWrite(octx, packet) < 0) {
+        final rcWrite = interleavedWrite(octx, packet);
+        if (rcWrite < 0) {
           packetUnref(packet);
-          return false;
+          return 'write_frame rc=$rcWrite (after $frames frames)';
         }
         packetUnref(packet);
+        frames++;
       }
+      if (frames == 0) return 'no-frames-read';
 
-      return writeTrailer(octx) >= 0;
-    } catch (_) {
-      return false;
+      final rcTrailer = writeTrailer(octx);
+      if (rcTrailer < 0) return 'write_trailer rc=$rcTrailer';
+      return ''; // success
+    } catch (e) {
+      return 'exception: $e';
     } finally {
       if (pkt != nullptr && pkt.value != nullptr) packetFree(pkt);
       if (pbOpened && octx != nullptr) {

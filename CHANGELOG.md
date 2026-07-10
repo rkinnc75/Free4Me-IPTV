@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.0.3+687] - 2026-07-10
+
+**Recording-conversion diagnostics:** the re-mux still failed on-device (v4.0.2: both MP4 and MKV failed with no visibility). This adds per-step instrumentation so the next attempt reports exactly which libavformat call failed.
+
+### Changed
+- **fix687 — Instrument the FFI re-mux** — `_RemuxNative.streamCopy` now returns a short `step rc=<AVERROR>` diagnostic instead of a bare bool, surfaced through the background isolate and logged via the existing gated `[SRDBG]` channel (e.g. `open_input rc=…`, `write_header(mp4) rc=…`, `avio_open rc=…`, `exception: …`). No change to the re-mux logic — pure visibility to locate the v4.0.2 failure. `_processOne` also logs a null `createOutput`.
+
+### Technical
+- **fix687**: `lib/backend/recording_remux.dart` — `streamCopy`→`String`, `_copyInIsolate`→`String`, failure tags at every avformat call site; version → 4.0.3+687. Verified with standalone `dart analyze` → "No issues found!".
+
 ## [v4.0.2+686] - 2026-07-10
 
 **Recording conversion now actually runs:** the fix685 re-mux was silently skipped for every recording; this makes `.ts` → `.mp4`/`.mkv` conversion fire as intended.
