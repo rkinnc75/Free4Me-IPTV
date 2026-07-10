@@ -1,6 +1,6 @@
 {
-  "latest": "3.0.24",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v3.0.24",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v3.0.24/Free4Me-IPTV-3.0.24-arm64.apk",
-  "releaseNotes": "\u2022 Fixes Scheduled Recording status: finished recordings now correctly show as Done (and failures as Failed) instead of staying stuck on \\u201cRecording.\\u201d The saved video was always fine; only the on-screen status was wrong. Open Recordings to refresh."
+  "latest": "3.0.25",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v3.0.25",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v3.0.25/Free4Me-IPTV-3.0.25-arm64.apk",
+  "releaseNotes": "\u2022 Diagnostics only: logs the MP4-conversion setting value used when a recording starts, to track down why conversion may not run. No behavior change."
 }
