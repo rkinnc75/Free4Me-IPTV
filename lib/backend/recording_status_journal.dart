@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:open_tv/backend/app_logger.dart';
+import 'package:open_tv/backend/recording_remux.dart';
+import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/backend/utils.dart';
 import 'package:open_tv/models/recording.dart';
@@ -54,6 +56,11 @@ class RecordingStatusJournal {
       return;
     }
 
+    // fix685: ids whose capture requested remux (native wrote "remux":true on a
+    // done .ts). Collected here and handed to the Dart FFI remuxer AFTER the DB
+    // is up to date, so a done .ts is visible in the row before remux replaces it.
+    final remuxIds = <int>[];
+
     for (final raw in const LineSplitter().convert(contents)) {
       final line = raw.trim();
       if (line.isEmpty) continue;
@@ -70,6 +77,9 @@ class RecordingStatusJournal {
           outputPath: m['output_path'] as String?,
           error: m['error'] as String?,
         );
+        if (status == RecordingStatus.done && m['remux'] == true) {
+          remuxIds.add(id);
+        }
       } catch (e) {
         // Skip a malformed line but keep applying the rest.
         AppLog.warn('RecordingStatusJournal: bad line skipped — $e');
@@ -77,6 +87,17 @@ class RecordingStatusJournal {
     }
 
     await _truncate(f);
+
+    // fix685: run any pending re-muxes (stream-copy .ts -> mp4/mkv via FFI).
+    // Best-effort: RecordingRemux is fully fail-open (a failure keeps the .ts).
+    if (remuxIds.isNotEmpty) {
+      try {
+        final debug = SettingsService.cached?.debugLogging ?? false;
+        await RecordingRemux.process(remuxIds, debugLogging: debug);
+      } catch (e) {
+        AppLog.warn('RecordingStatusJournal: remux pass failed — $e');
+      }
+    }
   }
 
   static Future<void> _truncate(File f) async {

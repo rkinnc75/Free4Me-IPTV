@@ -8,8 +8,7 @@ import android.app.Service
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
-import android.media.MediaExtractor
-import android.media.MediaMuxer
+
 import android.net.Uri
 import android.net.wifi.WifiManager
 import android.os.Build
@@ -229,26 +228,16 @@ class RecordingCaptureService : Service() {
                 srDebug("id=$id too little data (${total}); writing status=failed")
                 updateStatus(id, "failed", mediaUri.toString(),
                     "Captured too little data (${total} bytes)")
-            } else if (remux) {
-                srDebug("id=$id remux ENABLED; writing status=compressing then remuxing")
-                updateStatus(id, "compressing", mediaUri.toString(), null)
-                val mp4 = runCatching { remuxToMp4(mediaUri!!, name) }
-                    .onFailure { srDebug("id=$id remux threw: ${it.message}") }
-                    .getOrNull()
-                if (mp4 != null) {
-                    srDebug("id=$id remux OK -> $mp4; deleting .ts; status=done")
-                    runCatching {
-                        contentResolver.delete(mediaUri!!, null, null)
-                    }
-                    updateStatus(id, "done", mp4.toString(), null)
-                } else {
-                    srDebug("id=$id remux FAILED; keeping .ts; status=done")
-                    Log.w(TAG, "remux $id failed; keeping .ts")
-                    updateStatus(id, "done", mediaUri.toString(), null)
-                }
             } else {
-                srDebug("id=$id remux disabled; writing status=done")
-                updateStatus(id, "done", mediaUri.toString(), null)
+                // fix685: the native MediaExtractor/MediaMuxer remux (fix671) was a
+                // dead end — Android's extractor cannot parse these live-TV .ts
+                // streams ("Failed to instantiate extractor"). Container work now
+                // happens in Dart via FFI over the libmpv-exported libavformat
+                // (RecordingRemux), triggered from RecordingStatusJournal.drain.
+                // The service always finishes on the .ts and records whether remux
+                // was requested; Dart picks it up on the next Recordings load.
+                srDebug("id=$id capture done; status=done (remux=$remux, deferred to Dart)")
+                updateStatus(id, "done", mediaUri.toString(), null, remux = remux)
             }
             srDebug("id=$id runCapture COMPLETE")
         } catch (e: Exception) {
@@ -297,114 +286,6 @@ class RecordingCaptureService : Service() {
         }
     }
 
-    // ── fix671: re-mux .ts -> .mp4 (lossless stream copy, MediaMuxer) ───────
-
-    /** Reads the remuxRecordings flag from the same Settings table Dart writes. */
-
-    /**
-     * Repackage the captured .ts (at [srcUri]) into a new .mp4 MediaStore entry
-     * via MediaExtractor -> MediaMuxer (stream copy, no re-encode). Returns the
-     * mp4 Uri on success, or null if the streams can't be muxed (rare codec) or
-     * anything fails — caller keeps the .ts in that case.
-     */
-    private fun remuxToMp4(srcUri: Uri, name: String): Uri? {
-        srDebug("remux: START src=$srcUri")
-        val safe = name.replace(Regex("[^A-Za-z0-9 ._-]"), "_").take(80)
-        val fileName = "${safe}_${System.currentTimeMillis()}.mp4"
-        val values = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-            put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                put(MediaStore.MediaColumns.RELATIVE_PATH, "Movies/Free4Me")
-                put(MediaStore.MediaColumns.IS_PENDING, 1)
-            }
-        }
-        val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-        } else {
-            MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-        }
-        val dstUri = contentResolver.insert(collection, values) ?: return null
-
-        var extractor: MediaExtractor? = null
-        var muxer: MediaMuxer? = null
-        var srcFd: android.os.ParcelFileDescriptor? = null
-        var dstFd: android.os.ParcelFileDescriptor? = null
-        try {
-            extractor = MediaExtractor()
-            srcFd = contentResolver.openFileDescriptor(srcUri, "r") ?: return abort(dstUri)
-            extractor.setDataSource(srcFd.fileDescriptor)
-
-            dstFd = contentResolver.openFileDescriptor(dstUri, "rw") ?: return abort(dstUri)
-            muxer = MediaMuxer(dstFd.fileDescriptor, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
-
-            // Map each source track to a muxer track.
-            val trackCount = extractor.trackCount
-            srDebug("remux: trackCount=$trackCount")
-            if (trackCount == 0) return abort(dstUri)
-            val indexMap = HashMap<Int, Int>()
-            var maxInputSize = 1 shl 20 // 1 MB default sample buffer
-            for (i in 0 until trackCount) {
-                val format = extractor.getTrackFormat(i)
-                val mime = format.getString(android.media.MediaFormat.KEY_MIME) ?: continue
-                if (!(mime.startsWith("video/") || mime.startsWith("audio/"))) continue
-                extractor.selectTrack(i)
-                if (format.containsKey(android.media.MediaFormat.KEY_MAX_INPUT_SIZE)) {
-                    val mis = format.getInteger(android.media.MediaFormat.KEY_MAX_INPUT_SIZE)
-                    if (mis > maxInputSize) maxInputSize = mis
-                }
-                indexMap[i] = muxer.addTrack(format)
-            }
-            if (indexMap.isEmpty()) return abort(dstUri)
-
-            srDebug("remux: mapped ${indexMap.size} tracks, maxInputSize=$maxInputSize; muxer.start")
-            muxer.start()
-            val buffer = java.nio.ByteBuffer.allocate(maxInputSize)
-            val info = android.media.MediaCodec.BufferInfo()
-            for ((srcTrack, dstTrack) in indexMap) {
-                extractor.unselectTrack(srcTrack)
-            }
-            // Re-select and copy per track so timestamps stay ordered per track.
-            for ((srcTrack, dstTrack) in indexMap) {
-                extractor.selectTrack(srcTrack)
-                extractor.seekTo(0, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
-                while (true) {
-                    info.offset = 0
-                    val sampleSize = extractor.readSampleData(buffer, 0)
-                    if (sampleSize < 0) break
-                    if (extractor.sampleTrackIndex != srcTrack) {
-                        extractor.advance(); continue
-                    }
-                    info.size = sampleSize
-                    info.presentationTimeUs = extractor.sampleTime
-                    info.flags = extractor.sampleFlags
-                    muxer.writeSampleData(dstTrack, buffer, info)
-                    extractor.advance()
-                }
-                extractor.unselectTrack(srcTrack)
-            }
-            muxer.stop()
-            srDebug("remux: muxer.stop OK -> $dstUri")
-            finalizeMediaStore(dstUri)
-            return dstUri
-        } catch (e: Exception) {
-            srDebug("remux: THREW ${e.javaClass.simpleName}: ${e.message}")
-            Log.w(TAG, "remuxToMp4 failed: ${e.message}")
-            return abort(dstUri)
-        } finally {
-            runCatching { muxer?.release() }
-            runCatching { extractor?.release() }
-            runCatching { srcFd?.close() }
-            runCatching { dstFd?.close() }
-        }
-    }
-
-    /** Delete a half-written mp4 target and return null (keep the .ts). */
-    private fun abort(dstUri: Uri): Uri? {
-        runCatching { contentResolver.delete(dstUri, null, null) }
-        return null
-    }
-
     // ── DB write-back (same file DbFactory opens) ──────────────────────────
 
     // fix681: single-writer. The service NO LONGER opens db.sqlite (its framework
@@ -413,13 +294,17 @@ class RecordingCaptureService : Service() {
     // status change to sr_status.jsonl in the app files dir; Dart
     // (RecordingStatusJournal.drain) is the sole DB writer and applies these on
     // the next Recordings load / app resume. Append-only + isolate-agnostic.
-    private fun updateStatus(id: Int, status: String, outputPath: String?, error: String?) {
+    private fun updateStatus(
+        id: Int, status: String, outputPath: String?, error: String?,
+        remux: Boolean = false,
+    ) {
         try {
             val obj = org.json.JSONObject().apply {
                 put("id", id)
                 put("status", status)
                 if (outputPath != null) put("output_path", outputPath)
                 if (error != null) put("error", error)
+                if (remux) put("remux", true) // fix685: Dart remuxes this .ts on next load
                 put("ts", System.currentTimeMillis())
             }
             File(applicationContext.filesDir, "sr_status.jsonl")

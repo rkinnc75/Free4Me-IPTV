@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.0.1': [
+    'Recording conversion now works: scheduled recordings saved as .ts are repackaged into a standard .mp4 (or .mkv) file when the conversion option is on — no re-encode, no quality loss. If conversion ever fails the original .ts is kept, so a recording is never lost.',
+  ],
   '4.0.0': [
     'New media engine: the bundled libmpv now includes MP4/MKV muxers, the foundation for reliable recording conversion. Playback is unchanged. This is a major-version update (4.0.0) reflecting the engine change.',
   ],

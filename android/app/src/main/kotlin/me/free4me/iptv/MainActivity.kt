@@ -248,6 +248,93 @@ class MainActivity : FlutterActivity() {
                         result.error("statfs_failed", e.message, null)
                     }
                 }
+                // ── fix685: MediaStore fds for the Dart FFI remux ─────────────
+                // The .ts capture and its .mp4/.mkv output live in MediaStore
+                // (content:// Uris). Dart's libavformat remux (RecordingRemux)
+                // opens them via the ffmpeg "fd:" protocol, so these methods do
+                // the ContentResolver work and hand back detached, dup'd file
+                // descriptors as plain ints. Dart closes each fd via remuxCloseFd.
+                "remuxOpenRead" -> {
+                    val uri = call.argument<String>("uri")
+                    if (uri == null) { result.error("bad_args", "uri required", null); return@setMethodCallHandler }
+                    try {
+                        val pfd = contentResolver.openFileDescriptor(
+                            android.net.Uri.parse(uri), "r")
+                        if (pfd == null) result.success(null)
+                        else result.success(pfd.detachFd())
+                    } catch (e: Exception) {
+                        result.error("open_read_failed", e.message, null)
+                    }
+                }
+                "remuxCreateOutput" -> {
+                    val name = call.argument<String>("name") ?: "recording"
+                    val ext = call.argument<String>("ext") ?: "mp4"
+                    try {
+                        val mime = if (ext == "mkv") "video/x-matroska" else "video/mp4"
+                        val safe = name.replace(Regex("[^A-Za-z0-9 ._-]"), "_").take(80)
+                        val fileName = "${safe}_${System.currentTimeMillis()}.$ext"
+                        val values = android.content.ContentValues().apply {
+                            put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                            put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mime)
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, "Movies/Free4Me")
+                                put(android.provider.MediaStore.MediaColumns.IS_PENDING, 1)
+                            }
+                        }
+                        val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            android.provider.MediaStore.Video.Media.getContentUri(
+                                android.provider.MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                        } else {
+                            android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                        }
+                        val dstUri = contentResolver.insert(collection, values)
+                        if (dstUri == null) { result.success(null); return@setMethodCallHandler }
+                        val pfd = contentResolver.openFileDescriptor(dstUri, "rw")
+                        if (pfd == null) {
+                            runCatching { contentResolver.delete(dstUri, null, null) }
+                            result.success(null)
+                        } else {
+                            result.success(mapOf("uri" to dstUri.toString(), "fd" to pfd.detachFd()))
+                        }
+                    } catch (e: Exception) {
+                        result.error("create_output_failed", e.message, null)
+                    }
+                }
+                "remuxFinalize" -> {
+                    val uri = call.argument<String>("uri")
+                    if (uri == null) { result.error("bad_args", "uri required", null); return@setMethodCallHandler }
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            val values = android.content.ContentValues().apply {
+                                put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
+                            }
+                            contentResolver.update(android.net.Uri.parse(uri), values, null, null)
+                        }
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("finalize_failed", e.message, null)
+                    }
+                }
+                "remuxDiscard", "remuxDeleteTs" -> {
+                    val uri = call.argument<String>("uri")
+                    if (uri == null) { result.error("bad_args", "uri required", null); return@setMethodCallHandler }
+                    try {
+                        contentResolver.delete(android.net.Uri.parse(uri), null, null)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("delete_failed", e.message, null)
+                    }
+                }
+                "remuxCloseFd" -> {
+                    val fd = call.argument<Int>("fd")
+                    if (fd == null) { result.error("bad_args", "fd required", null); return@setMethodCallHandler }
+                    try {
+                        android.os.ParcelFileDescriptor.adoptFd(fd).close()
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.success(false)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }

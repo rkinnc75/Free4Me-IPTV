@@ -1,6 +1,21 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.0.1+685] - 2026-07-10
+
+**Scheduled Recording re-mux (works at last):** captured `.ts` recordings are now repackaged into a real `.mp4` (or `.mkv`) container when the re-mux option is on — no re-encode, no quality loss.
+
+### Fixed
+- **fix685 — App-side FFI re-mux of scheduled recordings** — The fix671 native MediaExtractor/MediaMuxer re-mux was a dead end: Android's extractor cannot parse these live-TV `.ts` streams (`Failed to instantiate extractor`), so re-mux always failed and the recording stayed a `.ts`. Re-mux now runs in Dart via FFI over the FFmpeg (libavformat n6.0) symbols exported by the v4.0.0 custom `libmpv.so` (muxer allowlist added in the vnext libmpv build). After a capture finishes, the native service records that re-mux was requested; on the next Recordings load, Dart stream-copies the `.ts` into MP4 (h264/hevc + aac/mp3) or falls back to MKV, then deletes the `.ts`. Fully fail-open — any failure keeps the original `.ts`, so a recording is never lost. The heavy copy runs in a background isolate; MediaStore access and DB writes stay on the UI isolate (single-writer invariant from fix681 preserved).
+
+### Technical
+- **fix685**: app-side re-mux over exported libavformat, no NDK / no JNI shim baked into libmpv
+  - New `lib/backend/recording_remux.dart` — Dart FFI bindings to 22 libavformat/avio functions in `libmpv.so`; stream-copy demux→mux via the ffmpeg `fd:` protocol. Struct offsets pinned to n6.0 (LP64), guarded at runtime by `avformat_version()` major == 60 (ABI drift → abort, keep `.ts`).
+  - `RecordingCaptureService.kt` — removed the dead `remuxToMp4`/`abort` (MediaExtractor/MediaMuxer) path and imports; capture now always finishes on the `.ts` and journals `"remux": true` when requested.
+  - `MainActivity.kt` — added `remuxOpenRead` / `remuxCreateOutput` / `remuxFinalize` / `remuxDiscard` / `remuxDeleteTs` / `remuxCloseFd` on the `me.free4me.iptv/recording` channel, handing MediaStore fds to Dart.
+  - `recording_status_journal.dart` — `drain()` collects re-mux-flagged `done` ids and invokes `RecordingRemux.process` after the DB is current.
+  - `pubspec.yaml` — added `ffi: ^2.1.0`; version → 4.0.1+685.
+
 ## [v1.25.7+256] - 2026-06-04
 
 **Per-source channel order toggle:** preserve provider order vs sort alphabetically.
