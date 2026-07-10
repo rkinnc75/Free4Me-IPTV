@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.0.5+689] - 2026-07-10
+
+**Recording conversion completes:** the last re-mux bug is fixed — `.ts` recordings now become playable `.mp4`/`.mkv` files.
+
+### Fixed
+- **fix689 — Pass AVRational to `av_packet_rescale_ts` by value** — fix688 got the re-mux to the packet loop, where fix687's diagnostics then showed `write_frame rc=-22 (after 0 frames)` for every recording. `av_packet_rescale_ts(pkt, AVRational src, AVRational dst)` takes its two time-base rationals **by value**, but the FFI typedef decomposed each `{num,den}` into separate int32 args — the wrong arm64 ABI, which corrupted every packet's pts/dts to `AV_NOPTS_VALUE` and made the first `av_interleaved_write_frame` fail with EINVAL. Verified against libavformat directly: the decomposed call yields `pts=INT64_MIN`, while a by-value `AVRational` rescales correctly, and the full remux of a real H.264+AAC `.ts` then produces a valid MP4. Added an `AVRational` FFI struct and pass both rationals by value.
+
+### Technical
+- **fix689**: `recording_remux.dart` — `final class AVRational extends Struct`, `av_packet_rescale_ts` typedef → by-value structs, call site populates reusable src/dst rationals; version → 4.0.5+689. fix687 `[SRDBG]` diagnostics retained. Verified with Dart 3.12.2 + repo `analysis_options` → "No issues found!".
+
 ## [v4.0.4+688] - 2026-07-10
 
 **Recording conversion works:** the fix687 diagnostics pinpointed the failure — `.ts` recordings now convert to `.mp4`/`.mkv` as intended.

@@ -233,10 +233,21 @@ typedef _AvPacketFreeDart = void Function(Pointer<Pointer<Void>>);
 typedef _AvPacketUnrefNative = Void Function(Pointer<Void>);
 typedef _AvPacketUnrefDart = void Function(Pointer<Void>);
 
+// fix689: av_packet_rescale_ts takes two AVRational structs BY VALUE. Passing
+// them as decomposed int32 args is the wrong ABI (arm64 packs {num,den} into
+// one register) and corrupts pts/dts to AV_NOPTS_VALUE, so the first
+// av_interleaved_write_frame fails with EINVAL. Bind the struct by value.
+final class AVRational extends Struct {
+  @Int32()
+  external int num;
+  @Int32()
+  external int den;
+}
+
 typedef _AvPacketRescaleTsNative = Void Function(
-    Pointer<Void>, Int32, Int32, Int32, Int32);
+    Pointer<Void>, AVRational, AVRational);
 typedef _AvPacketRescaleTsDart = void Function(
-    Pointer<Void>, int, int, int, int);
+    Pointer<Void>, AVRational, AVRational);
 
 // fix688: fd must be passed to the ffmpeg "fd:" protocol as an AVDictionary
 // option ("fd"=N), not embedded in the URL (n6.x rejects "fd:N" with EINVAL).
@@ -430,6 +441,10 @@ class _RemuxNative {
       final ostreamsArr =
           (octx.cast<Uint8>() + _fmtStreams).cast<Pointer<Pointer<Void>>>().value;
 
+      // fix689: reusable AVRational structs passed BY VALUE to rescale_ts.
+      final srcTb = arena<AVRational>();
+      final dstTb = arena<AVRational>();
+
       var frames = 0;
       while (readFrame(ictx, packet) >= 0) {
         final si = (packet.cast<Uint8>() + _pktStreamIndex).cast<Int32>();
@@ -444,11 +459,11 @@ class _RemuxNative {
           packetUnref(packet);
           continue;
         }
-        final inNum = _i32(ist, _streamTimeBaseNum);
-        final inDen = _i32(ist, _streamTimeBaseDen);
-        final outNum = _i32(ost, _streamTimeBaseNum);
-        final outDen = _i32(ost, _streamTimeBaseDen);
-        rescaleTs(packet, inNum, inDen, outNum, outDen);
+        srcTb.ref.num = _i32(ist, _streamTimeBaseNum);
+        srcTb.ref.den = _i32(ist, _streamTimeBaseDen);
+        dstTb.ref.num = _i32(ost, _streamTimeBaseNum);
+        dstTb.ref.den = _i32(ost, _streamTimeBaseDen);
+        rescaleTs(packet, srcTb.ref, dstTb.ref);
         final rcWrite = interleavedWrite(octx, packet);
         if (rcWrite < 0) {
           packetUnref(packet);
