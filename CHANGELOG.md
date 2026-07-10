@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.0.4+688] - 2026-07-10
+
+**Recording conversion works:** the fix687 diagnostics pinpointed the failure — `.ts` recordings now convert to `.mp4`/`.mkv` as intended.
+
+### Fixed
+- **fix688 — Pass the fd to ffmpeg's `fd:` protocol as an option, not in the URL** — fix687's instrumentation showed every re-mux failing at `open_input(fd:N) rc=-22` (`AVERROR(EINVAL)`) for both MP4 and MKV. Verified against libavformat directly: ffmpeg n6.x's `fd:` protocol rejects a URL-embedded descriptor (`fd:N`) and requires the fd via the `fd` **AVDictionary option** with a bare `fd:` URL (stderr: *"Doesn't support pass file descriptor via URL, please set it via -fd"*). Input now uses `avformat_open_input("fd:", opts{fd})`; output moves from `avio_open` to `avio_open2("fd:", …, opts{fd})`. Both confirmed working (open succeeds; `avio_open2` returns 0). fix687's gated `[SRDBG]` diagnostics are retained.
+
+### Technical
+- **fix688**: `recording_remux.dart` — new typedefs `avio_open2`/`av_dict_set_int`/`av_dict_free` (all exported from the vnext `libmpv.so`), `_AvOpenInput` dict arg corrected to `AVDictionary**`, `avio_open` removed; version → 4.0.4+688. Verified with the project's Dart 3.12.2 + repo `analysis_options` → "No issues found!".
+
 ## [v4.0.3+687] - 2026-07-10
 
 **Recording-conversion diagnostics:** the re-mux still failed on-device (v4.0.2: both MP4 and MKV failed with no visibility). This adds per-step instrumentation so the next attempt reports exactly which libavformat call failed.

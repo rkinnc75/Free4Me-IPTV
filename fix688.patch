@@ -1,0 +1,150 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 99cc922..21e0d3c 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,6 +1,16 @@
+ # Changelog
+ 
+ All notable changes to Free4Me-IPTV are documented here.
++## [v4.0.4+688] - 2026-07-10
++
++**Recording conversion works:** the fix687 diagnostics pinpointed the failure — `.ts` recordings now convert to `.mp4`/`.mkv` as intended.
++
++### Fixed
++- **fix688 — Pass the fd to ffmpeg's `fd:` protocol as an option, not in the URL** — fix687's instrumentation showed every re-mux failing at `open_input(fd:N) rc=-22` (`AVERROR(EINVAL)`) for both MP4 and MKV. Verified against libavformat directly: ffmpeg n6.x's `fd:` protocol rejects a URL-embedded descriptor (`fd:N`) and requires the fd via the `fd` **AVDictionary option** with a bare `fd:` URL (stderr: *"Doesn't support pass file descriptor via URL, please set it via -fd"*). Input now uses `avformat_open_input("fd:", opts{fd})`; output moves from `avio_open` to `avio_open2("fd:", …, opts{fd})`. Both confirmed working (open succeeds; `avio_open2` returns 0). fix687's gated `[SRDBG]` diagnostics are retained.
++
++### Technical
++- **fix688**: `recording_remux.dart` — new typedefs `avio_open2`/`av_dict_set_int`/`av_dict_free` (all exported from the vnext `libmpv.so`), `_AvOpenInput` dict arg corrected to `AVDictionary**`, `avio_open` removed; version → 4.0.4+688. Verified with the project's Dart 3.12.2 + repo `analysis_options` → "No issues found!".
++
+ ## [v4.0.3+687] - 2026-07-10
+ 
+ **Recording-conversion diagnostics:** the re-mux still failed on-device (v4.0.2: both MP4 and MKV failed with no visibility). This adds per-step instrumentation so the next attempt reports exactly which libavformat call failed.
+diff --git a/lib/backend/recording_remux.dart b/lib/backend/recording_remux.dart
+index efd51ae..7cccd8f 100644
+--- a/lib/backend/recording_remux.dart
++++ b/lib/backend/recording_remux.dart
+@@ -182,10 +182,10 @@ class _RemuxTarget {
+ //   AVPacket:        stream_index @36 (i32)
+ // Guarded at runtime by avformat_version() major == 60 (else abort → keep .ts).
+ 
+-typedef _AvOpenInputNative = Int32 Function(
+-    Pointer<Pointer<Void>>, Pointer<Utf8>, Pointer<Void>, Pointer<Void>);
+-typedef _AvOpenInputDart = int Function(
+-    Pointer<Pointer<Void>>, Pointer<Utf8>, Pointer<Void>, Pointer<Void>);
++typedef _AvOpenInputNative = Int32 Function(Pointer<Pointer<Void>>,
++    Pointer<Utf8>, Pointer<Void>, Pointer<Pointer<Void>>);
++typedef _AvOpenInputDart = int Function(Pointer<Pointer<Void>>, Pointer<Utf8>,
++    Pointer<Void>, Pointer<Pointer<Void>>);
+ 
+ typedef _AvFindStreamInfoNative = Int32 Function(
+     Pointer<Void>, Pointer<Void>);
+@@ -238,10 +238,21 @@ typedef _AvPacketRescaleTsNative = Void Function(
+ typedef _AvPacketRescaleTsDart = void Function(
+     Pointer<Void>, int, int, int, int);
+ 
+-typedef _AvioOpenNative = Int32 Function(
+-    Pointer<Pointer<Void>>, Pointer<Utf8>, Int32);
+-typedef _AvioOpenDart = int Function(
+-    Pointer<Pointer<Void>>, Pointer<Utf8>, int);
++// fix688: fd must be passed to the ffmpeg "fd:" protocol as an AVDictionary
++// option ("fd"=N), not embedded in the URL (n6.x rejects "fd:N" with EINVAL).
++// avio_open2 takes the options dict; avio_open does not, so output moves to it.
++typedef _AvioOpen2Native = Int32 Function(Pointer<Pointer<Void>>,
++    Pointer<Utf8>, Int32, Pointer<Void>, Pointer<Pointer<Void>>);
++typedef _AvioOpen2Dart = int Function(Pointer<Pointer<Void>>, Pointer<Utf8>,
++    int, Pointer<Void>, Pointer<Pointer<Void>>);
++
++typedef _AvDictSetIntNative = Int32 Function(
++    Pointer<Pointer<Void>>, Pointer<Utf8>, Int64, Int32);
++typedef _AvDictSetIntDart = int Function(
++    Pointer<Pointer<Void>>, Pointer<Utf8>, int, int);
++
++typedef _AvDictFreeNative = Void Function(Pointer<Pointer<Void>>);
++typedef _AvDictFreeDart = void Function(Pointer<Pointer<Void>>);
+ 
+ typedef _AvioClosepNative = Int32 Function(Pointer<Pointer<Void>>);
+ typedef _AvioClosepDart = int Function(Pointer<Pointer<Void>>);
+@@ -323,8 +334,12 @@ class _RemuxNative {
+         _AvPacketUnrefDart>('av_packet_unref');
+     final rescaleTs = lib.lookupFunction<_AvPacketRescaleTsNative,
+         _AvPacketRescaleTsDart>('av_packet_rescale_ts');
+-    final avioOpen = lib
+-        .lookupFunction<_AvioOpenNative, _AvioOpenDart>('avio_open');
++    final avioOpen2 = lib
++        .lookupFunction<_AvioOpen2Native, _AvioOpen2Dart>('avio_open2');
++    final dictSetInt = lib.lookupFunction<_AvDictSetIntNative,
++        _AvDictSetIntDart>('av_dict_set_int');
++    final dictFree = lib
++        .lookupFunction<_AvDictFreeNative, _AvDictFreeDart>('av_dict_free');
+     final avioClosep = lib.lookupFunction<_AvioClosepNative,
+         _AvioClosepDart>('avio_closep');
+ 
+@@ -334,11 +349,17 @@ class _RemuxNative {
+     Pointer<Pointer<Void>> pkt = nullptr;
+     var pbOpened = false;
+     try {
+-      // Input: open "fd:<inFd>" and probe.
+-      final inUrl = 'fd:$inFd'.toNativeUtf8(allocator: arena);
++      // Input: the ffmpeg "fd:" protocol takes the fd as an option, not in the
++      // URL (n6.x rejects "fd:N" with EINVAL: "please set it via -fd {num}").
++      final inUrl = 'fd:'.toNativeUtf8(allocator: arena);
++      final pInOpts = arena<Pointer<Void>>();
++      pInOpts.value = nullptr;
++      final fdKey = 'fd'.toNativeUtf8(allocator: arena);
++      dictSetInt(pInOpts, fdKey, inFd, 0);
+       final pIctx = arena<Pointer<Void>>();
+-      final rcOpen = openInput(pIctx, inUrl, nullptr, nullptr);
+-      if (rcOpen < 0) return 'open_input(fd:$inFd) rc=$rcOpen';
++      final rcOpen = openInput(pIctx, inUrl, nullptr, pInOpts);
++      dictFree(pInOpts);
++      if (rcOpen < 0) return 'open_input(fd=$inFd) rc=$rcOpen';
+       ictx = pIctx.value;
+       final rcInfo = findInfo(ictx, nullptr);
+       if (rcInfo < 0) return 'find_stream_info rc=$rcInfo';
+@@ -386,11 +407,15 @@ class _RemuxNative {
+       // MP4 container but a stream it can't hold → let caller fall back to MKV.
+       if (ext == 'mp4' && !mp4Compatible) return 'mp4-incompatible-codec';
+ 
+-      // Open the output AVIO on "fd:<outFd>".
+-      final outUrl = 'fd:$outFd'.toNativeUtf8(allocator: arena);
++      // Output AVIO: same fd-as-option rule; avio_open2 accepts the dict.
++      final outUrl = 'fd:'.toNativeUtf8(allocator: arena);
+       final pbSlot = (octx.cast<Uint8>() + _fmtPb).cast<Pointer<Void>>();
+-      final rcAvio = avioOpen(pbSlot, outUrl, _avioFlagWrite);
+-      if (rcAvio < 0) return 'avio_open(fd:$outFd) rc=$rcAvio';
++      final pOutOpts = arena<Pointer<Void>>();
++      pOutOpts.value = nullptr;
++      dictSetInt(pOutOpts, fdKey, outFd, 0);
++      final rcAvio = avioOpen2(pbSlot, outUrl, _avioFlagWrite, nullptr, pOutOpts);
++      dictFree(pOutOpts);
++      if (rcAvio < 0) return 'avio_open2(fd=$outFd) rc=$rcAvio';
+       pbOpened = true;
+ 
+       final rcHdr = writeHeader(octx, nullptr);
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 5c2a5ac..a4c9032 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '4.0.4': [
++    'Recording conversion now works: scheduled recordings convert from .ts to a standard .mp4 (or .mkv) with no quality loss. (The converter was opening the recording the wrong way and failing every time.)',
++  ],
+   '4.0.3': [
+     'Diagnostics only: when recording conversion fails, the log now records exactly which step failed, to pin down why. No behavior change.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 28295c5..31cb432 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 4.0.3+687
++version: 4.0.4+688
+ 
+ environment:
+   sdk: ^3.10.7

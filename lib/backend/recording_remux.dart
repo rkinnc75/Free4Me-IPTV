@@ -182,10 +182,10 @@ class _RemuxTarget {
 //   AVPacket:        stream_index @36 (i32)
 // Guarded at runtime by avformat_version() major == 60 (else abort → keep .ts).
 
-typedef _AvOpenInputNative = Int32 Function(
-    Pointer<Pointer<Void>>, Pointer<Utf8>, Pointer<Void>, Pointer<Void>);
-typedef _AvOpenInputDart = int Function(
-    Pointer<Pointer<Void>>, Pointer<Utf8>, Pointer<Void>, Pointer<Void>);
+typedef _AvOpenInputNative = Int32 Function(Pointer<Pointer<Void>>,
+    Pointer<Utf8>, Pointer<Void>, Pointer<Pointer<Void>>);
+typedef _AvOpenInputDart = int Function(Pointer<Pointer<Void>>, Pointer<Utf8>,
+    Pointer<Void>, Pointer<Pointer<Void>>);
 
 typedef _AvFindStreamInfoNative = Int32 Function(
     Pointer<Void>, Pointer<Void>);
@@ -238,10 +238,21 @@ typedef _AvPacketRescaleTsNative = Void Function(
 typedef _AvPacketRescaleTsDart = void Function(
     Pointer<Void>, int, int, int, int);
 
-typedef _AvioOpenNative = Int32 Function(
-    Pointer<Pointer<Void>>, Pointer<Utf8>, Int32);
-typedef _AvioOpenDart = int Function(
-    Pointer<Pointer<Void>>, Pointer<Utf8>, int);
+// fix688: fd must be passed to the ffmpeg "fd:" protocol as an AVDictionary
+// option ("fd"=N), not embedded in the URL (n6.x rejects "fd:N" with EINVAL).
+// avio_open2 takes the options dict; avio_open does not, so output moves to it.
+typedef _AvioOpen2Native = Int32 Function(Pointer<Pointer<Void>>,
+    Pointer<Utf8>, Int32, Pointer<Void>, Pointer<Pointer<Void>>);
+typedef _AvioOpen2Dart = int Function(Pointer<Pointer<Void>>, Pointer<Utf8>,
+    int, Pointer<Void>, Pointer<Pointer<Void>>);
+
+typedef _AvDictSetIntNative = Int32 Function(
+    Pointer<Pointer<Void>>, Pointer<Utf8>, Int64, Int32);
+typedef _AvDictSetIntDart = int Function(
+    Pointer<Pointer<Void>>, Pointer<Utf8>, int, int);
+
+typedef _AvDictFreeNative = Void Function(Pointer<Pointer<Void>>);
+typedef _AvDictFreeDart = void Function(Pointer<Pointer<Void>>);
 
 typedef _AvioClosepNative = Int32 Function(Pointer<Pointer<Void>>);
 typedef _AvioClosepDart = int Function(Pointer<Pointer<Void>>);
@@ -323,8 +334,12 @@ class _RemuxNative {
         _AvPacketUnrefDart>('av_packet_unref');
     final rescaleTs = lib.lookupFunction<_AvPacketRescaleTsNative,
         _AvPacketRescaleTsDart>('av_packet_rescale_ts');
-    final avioOpen = lib
-        .lookupFunction<_AvioOpenNative, _AvioOpenDart>('avio_open');
+    final avioOpen2 = lib
+        .lookupFunction<_AvioOpen2Native, _AvioOpen2Dart>('avio_open2');
+    final dictSetInt = lib.lookupFunction<_AvDictSetIntNative,
+        _AvDictSetIntDart>('av_dict_set_int');
+    final dictFree = lib
+        .lookupFunction<_AvDictFreeNative, _AvDictFreeDart>('av_dict_free');
     final avioClosep = lib.lookupFunction<_AvioClosepNative,
         _AvioClosepDart>('avio_closep');
 
@@ -334,11 +349,17 @@ class _RemuxNative {
     Pointer<Pointer<Void>> pkt = nullptr;
     var pbOpened = false;
     try {
-      // Input: open "fd:<inFd>" and probe.
-      final inUrl = 'fd:$inFd'.toNativeUtf8(allocator: arena);
+      // Input: the ffmpeg "fd:" protocol takes the fd as an option, not in the
+      // URL (n6.x rejects "fd:N" with EINVAL: "please set it via -fd {num}").
+      final inUrl = 'fd:'.toNativeUtf8(allocator: arena);
+      final pInOpts = arena<Pointer<Void>>();
+      pInOpts.value = nullptr;
+      final fdKey = 'fd'.toNativeUtf8(allocator: arena);
+      dictSetInt(pInOpts, fdKey, inFd, 0);
       final pIctx = arena<Pointer<Void>>();
-      final rcOpen = openInput(pIctx, inUrl, nullptr, nullptr);
-      if (rcOpen < 0) return 'open_input(fd:$inFd) rc=$rcOpen';
+      final rcOpen = openInput(pIctx, inUrl, nullptr, pInOpts);
+      dictFree(pInOpts);
+      if (rcOpen < 0) return 'open_input(fd=$inFd) rc=$rcOpen';
       ictx = pIctx.value;
       final rcInfo = findInfo(ictx, nullptr);
       if (rcInfo < 0) return 'find_stream_info rc=$rcInfo';
@@ -386,11 +407,15 @@ class _RemuxNative {
       // MP4 container but a stream it can't hold → let caller fall back to MKV.
       if (ext == 'mp4' && !mp4Compatible) return 'mp4-incompatible-codec';
 
-      // Open the output AVIO on "fd:<outFd>".
-      final outUrl = 'fd:$outFd'.toNativeUtf8(allocator: arena);
+      // Output AVIO: same fd-as-option rule; avio_open2 accepts the dict.
+      final outUrl = 'fd:'.toNativeUtf8(allocator: arena);
       final pbSlot = (octx.cast<Uint8>() + _fmtPb).cast<Pointer<Void>>();
-      final rcAvio = avioOpen(pbSlot, outUrl, _avioFlagWrite);
-      if (rcAvio < 0) return 'avio_open(fd:$outFd) rc=$rcAvio';
+      final pOutOpts = arena<Pointer<Void>>();
+      pOutOpts.value = nullptr;
+      dictSetInt(pOutOpts, fdKey, outFd, 0);
+      final rcAvio = avioOpen2(pbSlot, outUrl, _avioFlagWrite, nullptr, pOutOpts);
+      dictFree(pOutOpts);
+      if (rcAvio < 0) return 'avio_open2(fd=$outFd) rc=$rcAvio';
       pbOpened = true;
 
       final rcHdr = writeHeader(octx, nullptr);
