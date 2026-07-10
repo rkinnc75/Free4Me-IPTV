@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.0.7+691] - 2026-07-10
+
+**Correct duration + working seek bar** on converted recordings.
+
+### Fixed
+- **fix691 — Zero-base recording timestamps** — after fix690 gave clean audio, the converted MP4 reported a huge bogus duration (e.g. 8:46:42 for a 1-minute clip) and the seek bar was unusable. Live MPEG-TS packets carry the broadcast-clock PTS/DTS (a large value), which was copied straight into the MP4, leaving an ~8-hour start offset. The remux now captures the first packet's DTS (or PTS) as a single global reference and subtracts it from every packet's timestamps before muxing, so the recording starts at ~0. One offset is used for all streams to preserve A/V sync; `AV_NOPTS_VALUE` packets are left untouched. Verified against libavformat on a large-offset TS: start_time went from ~30000s to ~0 with duration intact and audio still clean.
+
+### Technical
+- **fix691**: `recording_remux.dart` — global `startTs` offset applied to `pkt->pts`@8 / `pkt->dts`@16 (shallow, already-verified offsets; no deep AVFormatContext field); version → 4.0.7+691. Verified with Dart 3.12.2 + repo `analysis_options` → "No issues found!".
+
 ## [v4.0.6+690] - 2026-07-10
 
 **Converted recordings play everywhere:** the re-mux now writes a standards-compliant AAC track, so recordings play in the default Android video player, not only VLC.

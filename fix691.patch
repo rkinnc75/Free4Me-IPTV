@@ -1,0 +1,97 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 4c074eb..6a39201 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,6 +1,16 @@
+ # Changelog
+ 
+ All notable changes to Free4Me-IPTV are documented here.
++## [v4.0.7+691] - 2026-07-10
++
++**Correct duration + working seek bar** on converted recordings.
++
++### Fixed
++- **fix691 — Zero-base recording timestamps** — after fix690 gave clean audio, the converted MP4 reported a huge bogus duration (e.g. 8:46:42 for a 1-minute clip) and the seek bar was unusable. Live MPEG-TS packets carry the broadcast-clock PTS/DTS (a large value), which was copied straight into the MP4, leaving an ~8-hour start offset. The remux now captures the first packet's DTS (or PTS) as a single global reference and subtracts it from every packet's timestamps before muxing, so the recording starts at ~0. One offset is used for all streams to preserve A/V sync; `AV_NOPTS_VALUE` packets are left untouched. Verified against libavformat on a large-offset TS: start_time went from ~30000s to ~0 with duration intact and audio still clean.
++
++### Technical
++- **fix691**: `recording_remux.dart` — global `startTs` offset applied to `pkt->pts`@8 / `pkt->dts`@16 (shallow, already-verified offsets; no deep AVFormatContext field); version → 4.0.7+691. Verified with Dart 3.12.2 + repo `analysis_options` → "No issues found!".
++
+ ## [v4.0.6+690] - 2026-07-10
+ 
+ **Converted recordings play everywhere:** the re-mux now writes a standards-compliant AAC track, so recordings play in the default Android video player, not only VLC.
+diff --git a/lib/backend/recording_remux.dart b/lib/backend/recording_remux.dart
+index 1e51b22..405ce7a 100644
+--- a/lib/backend/recording_remux.dart
++++ b/lib/backend/recording_remux.dart
+@@ -306,6 +306,11 @@ class _RemuxNative {
+   static const int _parCodecId = 4;
+   static const int _parCodecTag = 8;
+   static const int _pktStreamIndex = 36;
++  // fix691: AVPacket pts/dts (Int64) offsets, and AV_NOPTS_VALUE, for
++  // zero-basing timestamps (live TS starts at the broadcast clock, not 0).
++  static const int _pktPts = 8;
++  static const int _pktDts = 16;
++  static const int _avNoPts = -9223372036854775808; // INT64_MIN
+ 
+   // AVBSFContext offsets (n6.0 / LP64) — fix690 aac_adtstoasc.
+   static const int _bsfParIn = 24;
+@@ -521,6 +526,12 @@ class _RemuxNative {
+       final srcTb = arena<AVRational>();
+       final dstTb = arena<AVRational>();
+ 
++      // fix691: single global offset (first valid dts, else pts) subtracted
++      // from every packet so the recording starts at ~0 instead of the live
++      // broadcast-clock value — otherwise players show a huge duration and the
++      // seek bar is unusable. One offset for all streams preserves A/V sync.
++      var startTs = _avNoPts;
++
+       var frames = 0;
+       while (readFrame(ictx, packet) >= 0) {
+         final si = (packet.cast<Uint8>() + _pktStreamIndex).cast<Int32>();
+@@ -535,6 +546,19 @@ class _RemuxNative {
+           packetUnref(packet);
+           continue;
+         }
++        final ptsPtr = (packet.cast<Uint8>() + _pktPts).cast<Int64>();
++        final dtsPtr = (packet.cast<Uint8>() + _pktDts).cast<Int64>();
++        if (startTs == _avNoPts) {
++          if (dtsPtr.value != _avNoPts) {
++            startTs = dtsPtr.value;
++          } else if (ptsPtr.value != _avNoPts) {
++            startTs = ptsPtr.value;
++          }
++        }
++        if (startTs != _avNoPts) {
++          if (ptsPtr.value != _avNoPts) ptsPtr.value -= startTs;
++          if (dtsPtr.value != _avNoPts) dtsPtr.value -= startTs;
++        }
+         srcTb.ref.num = _i32(ist, _streamTimeBaseNum);
+         srcTb.ref.den = _i32(ist, _streamTimeBaseDen);
+         dstTb.ref.num = _i32(ost, _streamTimeBaseNum);
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index 7141ddd..c99690c 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '4.0.7': [
++    'Converted recordings now show the correct length and let you seek/scrub. (Live-TV timestamps were making players report a huge bogus duration.)',
++  ],
+   '4.0.6': [
+     'Converted recordings now play in standard video players (not just VLC): the audio track from live TV is repackaged into a fully compatible form. No quality loss.',
+   ],
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 6779b3d..0f65861 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 4.0.6+690
++version: 4.0.7+691
+ 
+ environment:
+   sdk: ^3.10.7

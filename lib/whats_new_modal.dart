@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.0.7': [
+    'Converted recordings now show the correct length and let you seek/scrub. (Live-TV timestamps were making players report a huge bogus duration.)',
+  ],
   '4.0.6': [
     'Converted recordings now play in standard video players (not just VLC): the audio track from live TV is repackaged into a fully compatible form. No quality loss.',
   ],

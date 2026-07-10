@@ -306,6 +306,11 @@ class _RemuxNative {
   static const int _parCodecId = 4;
   static const int _parCodecTag = 8;
   static const int _pktStreamIndex = 36;
+  // fix691: AVPacket pts/dts (Int64) offsets, and AV_NOPTS_VALUE, for
+  // zero-basing timestamps (live TS starts at the broadcast clock, not 0).
+  static const int _pktPts = 8;
+  static const int _pktDts = 16;
+  static const int _avNoPts = -9223372036854775808; // INT64_MIN
 
   // AVBSFContext offsets (n6.0 / LP64) — fix690 aac_adtstoasc.
   static const int _bsfParIn = 24;
@@ -521,6 +526,12 @@ class _RemuxNative {
       final srcTb = arena<AVRational>();
       final dstTb = arena<AVRational>();
 
+      // fix691: single global offset (first valid dts, else pts) subtracted
+      // from every packet so the recording starts at ~0 instead of the live
+      // broadcast-clock value — otherwise players show a huge duration and the
+      // seek bar is unusable. One offset for all streams preserves A/V sync.
+      var startTs = _avNoPts;
+
       var frames = 0;
       while (readFrame(ictx, packet) >= 0) {
         final si = (packet.cast<Uint8>() + _pktStreamIndex).cast<Int32>();
@@ -534,6 +545,19 @@ class _RemuxNative {
         if (ist == nullptr || ost == nullptr) {
           packetUnref(packet);
           continue;
+        }
+        final ptsPtr = (packet.cast<Uint8>() + _pktPts).cast<Int64>();
+        final dtsPtr = (packet.cast<Uint8>() + _pktDts).cast<Int64>();
+        if (startTs == _avNoPts) {
+          if (dtsPtr.value != _avNoPts) {
+            startTs = dtsPtr.value;
+          } else if (ptsPtr.value != _avNoPts) {
+            startTs = ptsPtr.value;
+          }
+        }
+        if (startTs != _avNoPts) {
+          if (ptsPtr.value != _avNoPts) ptsPtr.value -= startTs;
+          if (dtsPtr.value != _avNoPts) dtsPtr.value -= startTs;
         }
         srcTb.ref.num = _i32(ist, _streamTimeBaseNum);
         srcTb.ref.den = _i32(ist, _streamTimeBaseDen);
