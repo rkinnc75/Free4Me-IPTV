@@ -295,6 +295,13 @@ Future<void> recordingAlarmCallback(int recordingId) async {
     // fix681: read the two capture settings HERE (Dart, single DB owner) and
     // pass them into the broadcast, so the native service never opens the DB.
     final settings = await SettingsService.getSettings();
+    // fix683 (DIAGNOSTIC): log what Dart actually read, to locate why native
+    // received remux=false with the MP4 toggle ON. If this shows remux=false,
+    // the setting isn't persisted/read as expected (settings storage bug); if it
+    // shows remux=true but native still logs remux=false, the bool is lost across
+    // the android_intent_plus broadcast extras (codec/type bug, cf. fix678 ints).
+    await _srDebug('SR-CB: id=$recordingId settings read '
+        'remux=${settings.remuxRecordings} debugLogging=${settings.debugLogging}');
     await RecordingCapture.start(
       id: recordingId,
       url: rec.url,

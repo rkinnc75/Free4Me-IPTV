@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '3.0.25': [
+    'Diagnostics only: logs the MP4-conversion setting value used when a recording starts, to track down why conversion may not run. No behavior change.',
+  ],
   '3.0.24': [
     'Fixes Scheduled Recording status: finished recordings now correctly show as Done (and failures as Failed) instead of staying stuck on \u201cRecording.\u201d The saved video was always fine; only the on-screen status was wrong. Open Recordings to refresh.',
   ],
