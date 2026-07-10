@@ -1,6 +1,6 @@
 {
-  "latest": "4.0.5",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.0.5",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.0.5/Free4Me-IPTV-4.0.5-arm64.apk",
-  "releaseNotes": "\u2022 Recording conversion now completes: scheduled recordings convert from .ts to a standard .mp4 (or .mkv) with no quality loss. (A timestamp-handling bug was corrupting every conversion at the first frame.)"
+  "latest": "4.0.6",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.0.6",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.0.6/Free4Me-IPTV-4.0.6-arm64.apk",
+  "releaseNotes": "\u2022 Converted recordings now play in standard video players (not just VLC): the audio track from live TV is repackaged into a fully compatible form. No quality loss."
 }
