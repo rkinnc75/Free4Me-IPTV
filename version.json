@@ -1,6 +1,6 @@
 {
-  "latest": "4.0.3",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.0.3",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.0.3/Free4Me-IPTV-4.0.3-arm64.apk",
-  "releaseNotes": "\u2022 Diagnostics only: when recording conversion fails, the log now records exactly which step failed, to pin down why. No behavior change."
+  "latest": "4.0.4",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.0.4",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.0.4/Free4Me-IPTV-4.0.4-arm64.apk",
+  "releaseNotes": "\u2022 Recording conversion now works: scheduled recordings convert from .ts to a standard .mp4 (or .mkv) with no quality loss. (The converter was opening the recording the wrong way and failing every time.)"
 }
