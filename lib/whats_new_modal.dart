@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.5': [
+    'Recordings now tell you when they finish: a scheduled recording that '
+        'completes (or fails) shows a notification — even if the app is closed. '
+        'And deleting a recording that is still in progress can now remove its '
+        'file too, instead of leaving a leftover clip in your gallery.',
+  ],
   '4.1.4': [
     'Source refresh finishes sooner: the search indexes the app rebuilds after '
         'a refresh now finish in the background instead of holding up the '

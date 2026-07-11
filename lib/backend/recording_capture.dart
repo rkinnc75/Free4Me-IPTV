@@ -68,10 +68,21 @@ class RecordingCapture {
   }
 
   /// Stop an in-progress capture (manual stop from the recordings UI).
-  static Future<void> stop(int id) async {
+  ///
+  /// fix697: [deleteFile] asks the native service to REMOVE the partial capture
+  /// file when the copy stops, instead of finalizing it — used by the "Delete +
+  /// remove file" choice on a still-recording row. A LIVE capture deletes the
+  /// file itself after its output stream closes (no cross-isolate open-fd race,
+  /// which is why Dart does not delete it here). [uri] is the row's output URI;
+  /// the native ACTION_STOP handler uses it to delete the file directly when NO
+  /// live capture thread exists — i.e. the capture already finished but the row
+  /// is a stale "recording" (journal not yet drained), or the process was killed
+  /// and restarted. Without it those cases would orphan the file.
+  static Future<void> stop(int id, {bool deleteFile = false, String? uri}) async {
     if (!Platform.isAndroid) return;
     try {
-      await _ch.invokeMethod('stopCapture', {'id': id});
+      await _ch.invokeMethod(
+          'stopCapture', {'id': id, 'deleteFile': deleteFile, 'uri': uri});
     } catch (e) {
       AppLog.warn('RecordingCapture: stopCapture($id) failed — $e');
     }

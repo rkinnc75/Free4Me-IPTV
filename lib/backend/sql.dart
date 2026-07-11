@@ -1582,11 +1582,18 @@ class Sql {
     String? error,
   }) async {
     final db = await DbFactory.db;
+    // fix697: an empty-string outputPath is an explicit CLEAR (write NULL) — used
+    // when a failure deletes the file that was persisted at status=recording, so
+    // the failed row does not keep pointing at a deleted URI. A null outputPath
+    // still means "preserve" (COALESCE) — the default for status-only updates.
+    final clearPath = outputPath == '';
     await db.execute(
       'UPDATE recordings SET status = ?, '
-      'output_path = COALESCE(?, output_path), '
+      'output_path = ${clearPath ? 'NULL' : 'COALESCE(?, output_path)'}, '
       'error = COALESCE(?, error) WHERE id = ?',
-      [status.name, outputPath, error, id],
+      clearPath
+          ? [status.name, error, id]
+          : [status.name, outputPath, error, id],
     );
   }
 

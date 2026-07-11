@@ -26,6 +26,15 @@ import 'package:open_tv/models/recording.dart';
 /// crash-agnostic; no live Dart engine is needed while capture runs.
 ///
 /// Each line: {"id":Int,"status":String,"output_path":String?,"error":String?}
+
+/// fix697: a terminal recording transition surfaced by [RecordingStatusJournal.drain]
+/// (done or failed), used to show an in-app completion SnackBar.
+class RecordingCompletion {
+  const RecordingCompletion(this.id, this.status);
+  final int id;
+  final RecordingStatus status;
+}
+
 class RecordingStatusJournal {
   RecordingStatusJournal._();
 
@@ -35,13 +44,17 @@ class RecordingStatusJournal {
 
   /// Apply any pending native status events to the DB, then clear the journal.
   /// Safe to call repeatedly; a no-op when the file is missing or empty.
-  static Future<void> drain() async {
+  ///
+  /// fix697: returns the terminal (done/failed) transitions applied in THIS pass
+  /// so a foregrounded Recordings screen can show an in-app SnackBar twin of the
+  /// native completion notification (item 2). Last status per id wins.
+  static Future<List<RecordingCompletion>> drain() async {
     File f;
     try {
       f = await _file();
-      if (!await f.exists()) return;
+      if (!await f.exists()) return const [];
     } catch (_) {
-      return;
+      return const [];
     }
 
     String contents;
@@ -49,17 +62,19 @@ class RecordingStatusJournal {
       contents = await f.readAsString();
     } catch (e) {
       AppLog.warn('RecordingStatusJournal: read failed — $e');
-      return;
+      return const [];
     }
     if (contents.trim().isEmpty) {
       await _truncate(f);
-      return;
+      return const [];
     }
 
     // fix685: ids whose capture requested remux (native wrote "remux":true on a
     // done .ts). Collected here and handed to the Dart FFI remuxer AFTER the DB
     // is up to date, so a done .ts is visible in the row before remux replaces it.
     final remuxIds = <int>[];
+    // fix697: terminal transitions surfaced this pass (last status per id wins).
+    final completions = <int, RecordingStatus>{};
 
     for (final raw in const LineSplitter().convert(contents)) {
       final line = raw.trim();
@@ -80,6 +95,9 @@ class RecordingStatusJournal {
         if (status == RecordingStatus.done && m['remux'] == true) {
           remuxIds.add(id);
         }
+        if (status == RecordingStatus.done || status == RecordingStatus.failed) {
+          completions[id] = status;
+        }
       } catch (e) {
         // Skip a malformed line but keep applying the rest.
         AppLog.warn('RecordingStatusJournal: bad line skipped — $e');
@@ -98,6 +116,10 @@ class RecordingStatusJournal {
         AppLog.warn('RecordingStatusJournal: remux pass failed — $e');
       }
     }
+
+    return completions.entries
+        .map((e) => RecordingCompletion(e.key, e.value))
+        .toList();
   }
 
   static Future<void> _truncate(File f) async {

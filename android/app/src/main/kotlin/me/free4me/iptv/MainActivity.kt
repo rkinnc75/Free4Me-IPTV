@@ -48,9 +48,31 @@ class MainActivity : FlutterActivity() {
 
     companion object {
         private const val VOICE_REQUEST_CODE = 64701
+        // fix697: runtime POST_NOTIFICATIONS request code (API 33+).
+        private const val NOTI_PERM_REQUEST_CODE = 64702
         // fix665: deep-link scheme/host for TV home-row favorite cards.
         private const val SCHEME = "free4me"
         private const val HOST = "play"
+    }
+
+    // fix697: request POST_NOTIFICATIONS once on API 33+ so the one-shot
+    // recording-complete/failed notification (RecordingCaptureService.postCompletion)
+    // can be shown. The ongoing foreground-service notification is exempt, but an
+    // independent mgr.notify() is silently dropped without this runtime grant.
+    // Non-blocking: a denial only suppresses the completion heads-up; capture and
+    // the ongoing notification still work. Called from the single onCreate below.
+    private fun maybeRequestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            runCatching {
+                requestPermissions(
+                    arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                    NOTI_PERM_REQUEST_CODE,
+                )
+            }
+        }
     }
 
     private fun launchVoiceRecognition() {
@@ -232,7 +254,13 @@ class MainActivity : FlutterActivity() {
                     if (id == null) {
                         result.error("bad_args", "id required", null)
                     } else {
-                        RecordingCaptureService.stop(applicationContext, id)
+                        // fix697: deleteFile=true means the user chose "Delete +
+                        // remove file" on a still-recording row — the service
+                        // removes the partial itself when the copy stream closes,
+                        // or (no live capture) deletes the passed URI directly.
+                        val deleteFile = call.argument<Boolean>("deleteFile") ?: false
+                        val uri = call.argument<String>("uri")
+                        RecordingCaptureService.stop(applicationContext, id, deleteFile, uri)
                         result.success(true)
                     }
                 }
@@ -422,6 +450,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        maybeRequestNotificationPermission() // fix697
         if (renderScale > 1.0) {
             // Buffer is sized in PHYSICAL pixels (widthPixels is unaffected by
             // the density override above), so /renderScale yields 1080p on 4K.

@@ -30,6 +30,11 @@ class RecordingsView extends StatefulWidget {
 class _RecordingsViewState extends State<RecordingsView> {
   List<Recording> _recordings = [];
   bool _loading = true;
+  bool _firstLoad = true; // fix697: suppress completion snacks on the opening drain
+  // fix697: ids the user just stopped via the Stop button — their capture still
+  // finalizes to 'done' (row kept), so skip the "Recording complete" snack for
+  // them (mirrors the native postCompletion user-stop suppression).
+  final Set<int> _userEndedIds = <int>{};
 
   @override
   void initState() {
@@ -41,13 +46,57 @@ class _RecordingsViewState extends State<RecordingsView> {
     setState(() => _loading = true);
     // fix681: apply any status events the native capture service wrote to its
     // journal (single-writer: only Dart touches the DB) before reading rows.
-    await RecordingStatusJournal.drain();
+    // fix697: drain reports the terminal (done/failed) transitions it applied.
+    final completions = await RecordingStatusJournal.drain();
     final recs = await Sql.getRecordings();
     if (!mounted) return;
+    final wasFirst = _firstLoad;
+    _firstLoad = false;
     setState(() {
       _recordings = recs;
       _loading = false;
     });
+    // fix697: item 2 — in-app twin of the native completion notification. Only
+    // for transitions observed while the screen is already open (not the opening
+    // drain of a stale journal, which the native notification already covered).
+    if (!wasFirst && completions.isNotEmpty) _showCompletionSnacks(completions);
+  }
+
+  // fix697: SnackBar for recordings that finished/failed while this screen was
+  // open. Only for rows STILL present — a recording the user just stopped/deleted
+  // is dropped from the list, so we don't surface a spurious "complete" toast for
+  // it (the native completion notification is likewise suppressed on user stop).
+  void _showCompletionSnacks(List<RecordingCompletion> events) {
+    Recording? rowOf(int id) {
+      for (final r in _recordings) {
+        if (r.id == id) return r;
+      }
+      return null;
+    }
+
+    final live = <(RecordingCompletion, String)>[];
+    for (final e in events) {
+      if (_userEndedIds.remove(e.id)) continue; // fix697: user stopped it → silent
+      final row = rowOf(e.id);
+      if (row == null) continue; // user-deleted → don't announce
+      live.add((e, row.channelName));
+    }
+    if (live.isEmpty) return;
+
+    final failed =
+        live.where((p) => p.$1.status == RecordingStatus.failed).length;
+    final String msg;
+    if (live.length == 1) {
+      final (e, name) = live.first;
+      msg = e.status == RecordingStatus.failed
+          ? 'Recording failed: $name'
+          : 'Recording complete: $name';
+    } else {
+      msg = failed > 0
+          ? '${live.length} recordings finished ($failed failed)'
+          : '${live.length} recordings complete';
+    }
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   Future<void> _play(Recording r) async {
@@ -80,6 +129,7 @@ class _RecordingsViewState extends State<RecordingsView> {
 
   Future<void> _stop(Recording r) async {
     if (r.id == null) return;
+    _userEndedIds.add(r.id!); // fix697: don't announce a user-stopped recording
     await RecordingCapture.stop(r.id!);
     await _load();
   }
@@ -128,12 +178,21 @@ class _RecordingsViewState extends State<RecordingsView> {
     );
     if (choice == null || choice == 'cancel') return;
 
-    // If it's still running, stop the capture first.
     if (r.status == RecordingStatus.recording) {
-      await RecordingCapture.stop(r.id!);
-    }
-    // fix693: optionally remove the saved file (MediaStore content:// URI).
-    if (choice == 'remove' && hasFile) {
+      // fix697: stop the live capture; if the user chose "remove file" the native
+      // service deletes the partial itself once its output stream closes (no
+      // cross-isolate open-fd race), so we must NOT also delete it here. Since
+      // fix697 the row carries its content:// URI while recording, so hasFile is
+      // true and the remove option is offered for a running recording too.
+      // Passing the URI lets the native side delete it directly if this row is a
+      // STALE "recording" (capture already finished, journal not yet drained) or
+      // the capture process was killed — cases where no live thread would honor
+      // the delete flag and the finalized file would otherwise be orphaned.
+      await RecordingCapture.stop(r.id!,
+          deleteFile: choice == 'remove', uri: r.outputPath);
+    } else if (choice == 'remove' && hasFile) {
+      // fix693: remove the finalized MediaStore file (content:// URI) for a
+      // not-recording row.
       try {
         await _recCh.invokeMethod('remuxDeleteTs', {'uri': r.outputPath});
       } catch (e) {

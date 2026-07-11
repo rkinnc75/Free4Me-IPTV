@@ -1,6 +1,17 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.5+697] - 2026-07-11
+
+**Recordings: completion alert + safe delete of an in-progress recording.**
+
+### Added / Changed
+- **fix697 — Recording completion notification (SR backlog item 2)** — when a scheduled recording finishes (or fails), the app now posts a system notification ("Recording complete" / "Recording failed"). It is native and works even when the app is backgrounded or closed — the case a scheduled recording actually finishes in. A matching in-app message also shows if the Recordings screen is open. User-initiated stops don't notify (you're already there).
+- **fix697 — Deleting an in-progress recording no longer strands a file (SR backlog item 1)** — a still-recording row now carries its file location, so "Delete + remove file" is offered while recording, and choosing it cleanly removes the partial clip instead of leaving an orphaned file in your gallery.
+
+### Technical
+- **fix697**: `RecordingCaptureService.kt` — new `free4me_recording_done` notification channel + `postCompletion()` (id `48000+id`, survives `stopForeground`), fired on natural done/failed and suppressed on user cancel; `deleteOnCancel` + `EXTRA_DELETE_FILE` so the service deletes its own partial after the output stream closes (no open-fd race); output URI now persisted at `status=recording`. `MainActivity.kt` — one-time `POST_NOTIFICATIONS` request (API 33+); `stopCapture` passes `deleteFile`. Dart — `RecordingCapture.stop(deleteFile:)`, `_delete` routes a running-row remove through the native stop, `RecordingStatusJournal.drain()` returns terminal completions for the in-app SnackBar. Version → 4.1.5+697.
+
 ## [v4.1.1+693] - 2026-07-10
 
 **Recordings list UX:** blinking record indicator, keep-or-remove-file delete, and a details view.
