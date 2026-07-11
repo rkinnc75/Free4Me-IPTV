@@ -8,5 +8,12 @@
     "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.0/Free4Me-IPTV-4.1.0-arm64.apk",
     "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.0/Free4Me-IPTV-4.1.0-x64.apk",
     "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.0/Free4Me-IPTV-4.1.0-universal.apk"
-  }
+  },
+  "apkSha256s": {
+    "arm": "1cb579002155f978fb59b6ab9d1e589725dc93d2eb40e31fe807c336030ce515",
+    "arm64": "843603428f7a1685ba9da7d5fd5c47a6e3a6d379e509c57e706a84e88191bba9",
+    "x64": "891f65e69adab82beb439de5e86787cff18ed3459f690e7827155fff8e3970be",
+    "universal": "d5f49970f01df654a81ec3296f4dba43c5a52be2f222dd5458510dc1765a72f1"
+  },
+  "apkSha256": "d5f49970f01df654a81ec3296f4dba43c5a52be2f222dd5458510dc1765a72f1"
 }
