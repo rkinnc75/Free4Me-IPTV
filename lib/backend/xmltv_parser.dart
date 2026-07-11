@@ -2,8 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/http_client.dart';
+import 'package:open_tv/backend/utils.dart';
 import 'package:open_tv/models/program.dart';
 import 'package:xml/xml_events.dart';
 
@@ -42,7 +44,23 @@ class XmltvParseResult {
   final Map<String, String> channelMap;
   final bool truncated;
   final int inserted;
-  const XmltvParseResult(this.channelMap, this.truncated, this.inserted);
+  // fix695: when true, the feed was unchanged (HTTP 304 or an identical body
+  // hash) — nothing was parsed/inserted and the caller should skip matching.
+  final bool notModified;
+  // fix695: HTTP validators + body hash to persist for the next conditional
+  // request. On a notModified result the hash is the prior one (unchanged).
+  final String? etag;
+  final String? lastModified;
+  final String? bodyHash;
+  const XmltvParseResult(
+    this.channelMap,
+    this.truncated,
+    this.inserted, {
+    this.notModified = false,
+    this.etag,
+    this.lastModified,
+    this.bodyHash,
+  });
 }
 
 /// Streams and event-parses an XMLTV file.
@@ -66,12 +84,30 @@ class XmltvParser {
     required Future<void> Function(List<Program>) onBatch,
     void Function(XmltvProgress)? onProgress,
     int batchSize = defaultBatchSize,
+    // fix695: HTTP validators from the previous refresh (conditional GET).
+    String? priorEtag,
+    String? priorLastModified,
+    // fix695: SHA-256 of the previous body — if the new body hashes the same,
+    // skip parse+insert entirely (the feed is byte-identical).
+    String? priorHash,
+    // fix695: only keep programmes for xmltv channel-ids we actually carry
+    // (the channels already matched to an epg_channel_id on this source). Null
+    // or empty ⇒ no filter (first-ever EPG for the source, before any match).
+    Set<String>? boundEpgIds,
   }) async {
     onProgress?.call(const XmltvProgress(statusMessage: 'Connecting…'));
     AppLog.info('XMLTV: GET $url');
 
     final uri = Uri.parse(url);
-    final request = await AppHttp.buildGetRequest(uri);
+    // fix695: conditional GET — If-None-Match / If-Modified-Since so a
+    // provider that supports validators can answer 304 and we skip the whole
+    // download. (Many Xtream xmltv.php endpoints are dynamic and won't; the
+    // body-hash below is the provider-independent fallback.)
+    final request = await AppHttp.buildGetRequest(uri, headers: {
+      if (priorEtag != null && priorEtag.isNotEmpty) 'If-None-Match': priorEtag,
+      if (priorLastModified != null && priorLastModified.isNotEmpty)
+        'If-Modified-Since': priorLastModified,
+    });
     final response = await AppHttp.sendStreaming(
       request,
       timeout: const Duration(seconds: 60),
@@ -92,48 +128,86 @@ class XmltvParser {
       'content-length=${response.contentLength ?? "?"}, '
       'encoding=${response.headers['content-encoding'] ?? "none"}',
     );
+    // fix695: 304 Not Modified — provider confirmed the feed is unchanged.
+    // Nothing to download or parse; keep the existing programmes as-is.
+    if (response.statusCode == 304) {
+      AppLog.info('XMLTV: 304 Not Modified — skipping parse (feed unchanged)');
+      // Drain the (empty) body so the socket is released.
+      try {
+        await response.stream.drain<void>();
+      } catch (_) {}
+      return XmltvParseResult(const {}, false, 0,
+          notModified: true, etag: priorEtag, lastModified: priorLastModified,
+          bodyHash: priorHash);
+    }
     if (response.statusCode != 200) {
       throw Exception(
         'EPG feed returned HTTP ${response.statusCode}: host=${_hostOnly(url)}',
       );
     }
+    final newEtag = response.headers['etag'];
+    final newLastModified = response.headers['last-modified'];
     onProgress?.call(
-      const XmltvProgress(statusMessage: 'Downloading & parsing…'),
+      const XmltvProgress(statusMessage: 'Downloading…'),
     );
 
-    // Detect gzip by sniffing magic bytes (0x1f 0x8b) on the first chunk
-    // rather than trusting Content-Encoding. Dart's IOClient with
-    // autoUncompress=true (our AppHttp default) already strips gzip from
-    // the body but *leaves the Content-Encoding header on the response* —
-    // so trusting the header double-decodes and throws "FormatException:
-    // Filter error, bad data" on the already-plain XML stream.
-    //
-    // Apply a per-chunk body timeout matching the M3U parser (m3u.dart:234).
-    // The connection-establishment timeout on AppHttp.sendStreaming only
-    // covers receiving the response headers — once the body stream opens,
-    // there is no watchdog. A CDN that stalls mid-body would otherwise
-    //
-    // `onTimeout` closes the stream (rather than erroring) so the `await
-    // for` loop exits cleanly and control falls through to flushBatch().
-    // `downloadAndParseEpg` returns a partial channelMap; the match step
-    // runs on whatever arrived before the stall — partial data is better
-    // than a permanent hang requiring force-close.
-    // finding 46: track a body-stall so the caller can avoid deleting stale
-    // programmes / marking the source cleanly-fresh on a partial feed.
+    // fix695: stream the body to a temp file while hashing it (SHA-256), so we
+    // can (a) skip parse+insert when the body is byte-identical to last time
+    // and (b) persist the hash for the next conditional request. Buffering to
+    // disk (not RAM) keeps the memory-bounded streaming property on 2GB boxes.
+    // The 60s per-chunk stall watchdog (findings 46/47/48) is preserved.
     bool truncated = false;
-    Stream<List<int>> byteStream = await _maybeUngzip(
-      response.stream.timeout(
-        const Duration(seconds: 60),
-        onTimeout: (sink) {
-          AppLog.warn(
-            'XMLTV: body stream stalled — no data for 60 s, marking truncated'
-            ' (partial result kept, source will NOT be marked fresh)',
-          );
-          truncated = true;
-          sink.close();
-        },
-      ),
+    final tmpPath = await Utils.getTempPath('epg_src_$sourceId.xml');
+    final tmpFile = File(tmpPath);
+    final sink = tmpFile.openWrite();
+    // crypto's DigestSink is not exported; capture the single emitted Digest
+    // via a tiny ChunkedConversionSink (same idiom as update_checker.dart).
+    Digest? digest;
+    final hashInput = sha256.startChunkedConversion(
+      ChunkedConversionSink<Digest>.withCallback((digests) {
+        if (digests.isNotEmpty) digest = digests.last;
+      }),
     );
+    try {
+      await for (final chunk in response.stream.timeout(
+        const Duration(seconds: 60),
+        onTimeout: (s) {
+          AppLog.warn('XMLTV: body stream stalled — no data for 60 s, marking'
+              ' truncated (partial download kept, source NOT marked fresh)');
+          truncated = true;
+          s.close();
+        },
+      )) {
+        sink.add(chunk);
+        hashInput.add(chunk);
+      }
+    } finally {
+      await sink.close();
+      hashInput.close();
+    }
+    final bodyHash = digest?.toString();
+
+    // fix695: identical body → skip the expensive parse/insert/checkpoint.
+    // Never skip on a truncated download (a stalled partial would hash
+    // differently anyway, but guard explicitly).
+    if (!truncated && bodyHash != null && bodyHash == priorHash) {
+      AppLog.info('XMLTV: body unchanged (hash match) — skipping parse/insert');
+      try {
+        await tmpFile.delete();
+      } catch (_) {}
+      return XmltvParseResult(const {}, false, 0,
+          notModified: true, etag: newEtag, lastModified: newLastModified,
+          bodyHash: bodyHash);
+    }
+
+    onProgress?.call(
+      const XmltvProgress(statusMessage: 'Parsing…'),
+    );
+    // Detect gzip by sniffing magic bytes (0x1f 0x8b) on the first chunk
+    // rather than trusting Content-Encoding (autoUncompress already strips it
+    // but leaves the header, which would double-decode). The temp file holds
+    // whatever the socket delivered; sniff it the same way.
+    Stream<List<int>> byteStream = await _maybeUngzip(tmpFile.openRead());
 
     final channelMap = <String, String>{}; // epg-id → display-name
     final batch = <Program>[];
@@ -178,18 +252,39 @@ class XmltvParser {
             final stopRaw = _attr(event, 'stop');
             final channelId = _attr(event, 'channel');
             if (startRaw != null && stopRaw != null && channelId != null) {
-              prog = _ProgramBuilder(
-                epgChannelId: channelId,
-                sourceId: sourceId,
-                startUtc: _parseXmltvTime(startRaw),
-                stopUtc: _parseXmltvTime(stopRaw),
-              );
+              // fix695: decide keep/skip HERE, from the already-parsed times +
+              // channel id, BEFORE allocating the builder or accumulating any
+              // title/desc/category text. Two filters, both applied up front:
+              //  - window: interval-overlap (finding 51) so a currently-airing
+              //    programme (started before windowStart, ends after) is kept.
+              //  - bound: only channels we carry (matched to an epg id). Null/
+              //    empty boundEpgIds ⇒ no filter (first EPG, before any match).
+              final st = _parseXmltvTime(startRaw);
+              final sp = _parseXmltvTime(stopRaw);
+              final inWindow =
+                  sp > windowStartEpoch && st <= windowEndEpoch;
+              final bound = boundEpgIds == null ||
+                  boundEpgIds.isEmpty ||
+                  boundEpgIds.contains(channelId);
+              if (inWindow && bound) {
+                prog = _ProgramBuilder(
+                  epgChannelId: channelId,
+                  sourceId: sourceId,
+                  startUtc: st,
+                  stopUtc: sp,
+                );
+              } else {
+                skipped++; // prog stays null → text below is a no-op, no build
+              }
             }
         }
       } else if (event is XmlTextEvent) {
-        textBuf.write(event.value);
+        // fix695: only accumulate text we will actually use — inside a
+        // <channel> (for display-name) or inside a KEPT <programme>. Skips the
+        // (often large) <desc> string work for filtered-out programmes.
+        if (prog != null || currentChannelId != null) textBuf.write(event.value);
       } else if (event is XmlCDATAEvent) {
-        textBuf.write(event.value);
+        if (prog != null || currentChannelId != null) textBuf.write(event.value);
       } else if (event is XmlEndElementEvent) {
         final text = textBuf.toString().trim();
         switch (event.name) {
@@ -210,20 +305,12 @@ class XmltvParser {
           case 'programme':
             final p = prog;
             prog = null;
+            // fix695: window + bound filtering already happened at <programme>
+            // start (prog is only non-null for kept programmes), so here we
+            // just require a title and emit.
             if (p != null && p.title != null) {
-              // finding 51: interval-overlap (not start-only) so a programme
-              // airing right now — started before windowStart, ends after it —
-              // is kept. Mirrors deleteStalePrograms (keeps stop_utc >=
-              // windowStart); without this, Past-days=0 dropped every
-              // currently-airing programme → isStale() always true → hourly
-              // re-download loop.
-              if (p.stopUtc > windowStartEpoch &&
-                  p.startUtc <= windowEndEpoch) {
-                batch.add(p.build());
-                if (batch.length >= batchSize) await flushBatch();
-              } else {
-                skipped++;
-              }
+              batch.add(p.build());
+              if (batch.length >= batchSize) await flushBatch();
             }
         }
         textBuf.clear();
@@ -239,12 +326,18 @@ class XmltvParser {
       done: true,
     ));
 
+    // fix695: drop the buffered body now that parsing is complete.
+    try {
+      await tmpFile.delete();
+    } catch (_) {}
+
     AppLog.info(
       'XMLTV: parse done — ${channelMap.length} channels, '
-      '$inserted programs inserted, $skipped outside window'
+      '$inserted programs inserted, $skipped skipped (out-of-window or unbound)'
       '${truncated ? " (TRUNCATED — body stalled)" : ""}',
     );
-    return XmltvParseResult(channelMap, truncated, inserted);
+    return XmltvParseResult(channelMap, truncated, inserted,
+        etag: newEtag, lastModified: newLastModified, bodyHash: bodyHash);
   }
 
   /// Peeks at the first chunk of [source] and, if it starts with the gzip

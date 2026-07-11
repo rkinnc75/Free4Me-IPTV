@@ -1,3 +1,4 @@
+import 'dart:convert' show jsonDecode, jsonEncode;
 import 'dart:math' show min;
 
 import 'package:flutter/foundation.dart';
@@ -281,6 +282,21 @@ class EpgService {
 
     int inserted = 0;
     AppLog.info('EPG: downloading "${source.name}" — $url');
+    // fix695: load the previous HTTP validators + body hash (conditional GET /
+    // hash-skip) and the set of xmltv channel-ids we currently carry (parse
+    // filter). The validator blob lives in app_meta (db.sqlite) keyed by source.
+    final valKey = 'epg_val_${source.id}';
+    String? priorEtag, priorLastModified, priorHash;
+    try {
+      final raw = await Sql.getAppMeta(valKey);
+      if (raw != null) {
+        final m = jsonDecode(raw) as Map<String, dynamic>;
+        priorEtag = m['etag'] as String?;
+        priorLastModified = m['lastModified'] as String?;
+        priorHash = m['hash'] as String?;
+      }
+    } catch (_) {/* corrupt blob → treat as no validators */}
+    final boundEpgIds = await Sql.getBoundEpgIds(source.id!);
     try {
       // unique index on (source_id, epg_channel_id, start_utc) turns the
       // batch insert into an upsert so a mid-stream failure leaves the
@@ -290,12 +306,39 @@ class EpgService {
         sourceId: source.id!,
         windowStartEpoch: windowStart,
         windowEndEpoch: windowEnd,
+        priorEtag: priorEtag,
+        priorLastModified: priorLastModified,
+        priorHash: priorHash,
+        boundEpgIds: boundEpgIds,
         onBatch: (batch) async {
           await Sql.insertProgramsBatch(batch);
           inserted += batch.length;
         },
         onProgress: onProgress,
       );
+
+      // fix695: persist the new validators for the next conditional request
+      // (do this whether or not the body changed — a 304/hash-skip can still
+      // carry a refreshed etag/last-modified).
+      await Sql.setAppMeta(
+          valKey,
+          jsonEncode({
+            'etag': result.etag,
+            'lastModified': result.lastModified,
+            'hash': result.bodyHash,
+          }));
+
+      // fix695: feed unchanged (304 or identical body) — nothing was inserted;
+      // keep existing programmes + matches, mark the source cleanly refreshed
+      // (so the launch-refresh debounce, finding 37, counts it), and skip the
+      // delete/FTS-rebuild/checkpoint/match tail entirely. Returning null makes
+      // the caller skip matchChannels (existing assignments stand).
+      if (result.notModified) {
+        AppLog.info('EPG: "${source.name}" unchanged — skipped parse/insert'
+            ' (saved the write+checkpoint+match tail)');
+        await Sql.upsertEpgRefreshLog(source.id!, 0, null);
+        return null;
+      }
       final channelMap = result.channelMap;
 
       // Force a WAL checkpoint before returning to the caller. Without

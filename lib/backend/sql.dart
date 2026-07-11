@@ -3222,6 +3222,21 @@ class Sql {
     return row == null ? null : row['value'] as String?;
   }
 
+  /// fix695: the distinct set of EPG channel-ids this source's channels are
+  /// currently matched to. Used to filter the XMLTV parse to only programmes
+  /// for channels we actually carry (the bulk of a feed is for channels we
+  /// don't). Empty on a source that has never been EPG-matched — the caller
+  /// then passes no filter so the first EPG refresh ingests everything.
+  static Future<Set<String>> getBoundEpgIds(int sourceId) async {
+    final db = await DbFactory.db;
+    final rows = await db.getAll(
+      'SELECT DISTINCT epg_channel_id FROM channels '
+      'WHERE source_id = ? AND epg_channel_id IS NOT NULL',
+      [sourceId],
+    );
+    return rows.map((r) => r['epg_channel_id'] as String).toSet();
+  }
+
   static Future<void> checkpointAndTruncateWal({
     bool epg = true,
     bool db = true,
