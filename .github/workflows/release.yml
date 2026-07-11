@@ -1,5 +1,5 @@
 # Free4Me-IPTV release pipeline. Toolchain pinned to match BUILD-ENV.md
-# (Flutter 3.44.0, Java 21 Temurin, Android SDK 36, NDK 28.2.13676358).
+# (Flutter 3.44.5, Java 21 Temurin, Android SDK 36, NDK 28.2.13676358).
 # `scripts/build_and_release.sh` remains supported for hands-on Mac
 # releases; this workflow is the unattended equivalent.
 #
@@ -79,7 +79,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.44.0'
+          flutter-version: '3.44.5' # fix692: pinned; keep in sync with analyze.yml + BUILD-ENV.md
           channel: stable
           cache: true
 
@@ -170,13 +170,20 @@ jobs:
             exit 1
           fi
           TAG="v${VERSION}"
-          APK_NAME="Free4Me-IPTV-${VERSION}-arm64.apk"
+          # fix692: four release artifacts — three per-ABI slims + one
+          # universal (all ABIs). The universal is the first-install default
+          # and the target of the LEGACY version.json `apkUrl` field, so
+          # pre-4.1.0 in-app updaters (which only know `apkUrl`) always get
+          # an APK that installs on their device regardless of ABI.
           {
             echo "version=$VERSION"
             echo "tag=$TAG"
-            echo "apk_name=$APK_NAME"
+            echo "apk_name=Free4Me-IPTV-${VERSION}-universal.apk"
+            echo "apk_arm=Free4Me-IPTV-${VERSION}-arm.apk"
+            echo "apk_arm64=Free4Me-IPTV-${VERSION}-arm64.apk"
+            echo "apk_x64=Free4Me-IPTV-${VERSION}-x64.apk"
           } >> "$GITHUB_OUTPUT"
-          echo "Resolved: version=$VERSION  tag=$TAG  apk=$APK_NAME"
+          echo "Resolved: version=$VERSION  tag=$TAG"
 
       - name: Verify tag matches pubspec.yaml
         if: github.event_name == 'push'
@@ -211,7 +218,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.44.0'
+          flutter-version: '3.44.5' # fix692: pinned; keep in sync with analyze.yml + BUILD-ENV.md
           channel: stable
           cache: true
 
@@ -288,28 +295,54 @@ jobs:
           # headroom for both Gradle and the Kotlin daemon while still
           # leaving room for the OS + the runner agent.
           GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx5G -XX:MaxMetaspaceSize=1G'
-        # fix504: build a UNIVERSAL arm+arm64 APK. fix420 made it arm64-only,
-        # but 32-bit-only Android TV boxes (e.g. Walmart onn 4K, many Amlogic
-        # boxes: ro.zygote=zygote32, no arm64 ABI) then crashed at launch with
-        # "Could not find 'libflutter.so' [armeabi-v7a]". Universal restores them.
-        run: flutter build apk --release --target-platform android-arm,android-arm64
-
-      - name: Stage APK with release naming
-        id: apk
+        # fix692: per-ABI splits (arm / arm64 / x64-for-emulators) + one
+        # universal APK carrying all three ABIs.
+        # fix504 history: fix420's arm64-only APK crashed 32-bit-only TV boxes
+        # (Walmart onn 4K etc., ro.zygote=zygote32) with "Could not find
+        # 'libflutter.so' [armeabi-v7a]" — which is why the universal APK
+        # remains the first-install default and the legacy `apkUrl` target.
+        # x86_64 re-added for emulator users; the custom libmpv jars include
+        # x86_64 (verified in rkinnc75/media-kit @ 00500da build.gradle).
+        # Both invocations share one Gradle daemon/cache so the second build
+        # only re-links; versionCode is identical across all four APKs (no
+        # per-ABI offsets — sideload distribution, not Play).
         run: |
           set -euo pipefail
-          src='build/app/outputs/flutter-apk/app-release.apk'
-          dst="${{ steps.ver.outputs.apk_name }}"
-          if [[ ! -s "$src" ]]; then
-            echo "::error::APK missing at $src"
-            ls -la build/app/outputs/flutter-apk/ || true
-            exit 1
-          fi
-          cp "$src" "$dst"
-          ls -lh "$dst"
+          flutter build apk --release --split-per-abi \
+            --target-platform android-arm,android-arm64,android-x64
+          flutter build apk --release \
+            --target-platform android-arm,android-arm64,android-x64
+
+      - name: Stage APKs with release naming
+        id: apk
+        # fix692: stage all four artifacts and compute a SHA-256 for each —
+        # the post-upload version.json sync publishes the hashes so the in-app
+        # updater can verify whichever APK it downloads (review finding 151).
+        run: |
+          set -euo pipefail
+          out='build/app/outputs/flutter-apk'
+          declare -A MAP=(
+            [app-armeabi-v7a-release.apk]="${{ steps.ver.outputs.apk_arm }}"
+            [app-arm64-v8a-release.apk]="${{ steps.ver.outputs.apk_arm64 }}"
+            [app-x86_64-release.apk]="${{ steps.ver.outputs.apk_x64 }}"
+            [app-release.apk]="${{ steps.ver.outputs.apk_name }}"
+          )
+          for src in "${!MAP[@]}"; do
+            if [[ ! -s "$out/$src" ]]; then
+              echo "::error::APK missing at $out/$src"
+              ls -la "$out/" || true
+              exit 1
+            fi
+            cp "$out/$src" "${MAP[$src]}"
+          done
+          ls -lh Free4Me-IPTV-*.apk
           {
-            echo "path=$dst"
-            echo "size_bytes=$(stat -c%s "$dst")"
+            echo "path=${{ steps.ver.outputs.apk_name }}"
+            echo "size_bytes=$(stat -c%s "${{ steps.ver.outputs.apk_name }}")"
+            echo "sha_arm=$(sha256sum "${{ steps.ver.outputs.apk_arm }}" | cut -d' ' -f1)"
+            echo "sha_arm64=$(sha256sum "${{ steps.ver.outputs.apk_arm64 }}" | cut -d' ' -f1)"
+            echo "sha_x64=$(sha256sum "${{ steps.ver.outputs.apk_x64 }}" | cut -d' ' -f1)"
+            echo "sha_universal=$(sha256sum "${{ steps.ver.outputs.apk_name }}" | cut -d' ' -f1)"
           } >> "$GITHUB_OUTPUT"
 
       - name: Compose release notes from version.json
@@ -322,7 +355,17 @@ jobs:
           version = data.get("latest", "")
           notes = data.get("releaseNotes", "")
           print(f"## Free4Me-IPTV v{version}\n")
-          print("Install by sideloading the APK on your Android TV device.\n")
+          print("Install by sideloading an APK on your Android device.\n")
+          # fix692: four artifacts — help first-time installers pick.
+          print("### Which APK?\n")
+          print("| APK | For |")
+          print("| :-- | :-- |")
+          print(f"| `Free4Me-IPTV-{version}-universal.apk` | **Not sure? Pick this one.** Works on every device (largest download). |")
+          print(f"| `Free4Me-IPTV-{version}-arm64.apk` | Most Android TV boxes, sticks and phones (64-bit ARM). |")
+          print(f"| `Free4Me-IPTV-{version}-arm.apk` | Older 32-bit boxes (some Amlogic/onn units). |")
+          print(f"| `Free4Me-IPTV-{version}-x64.apk` | Android emulators on PC/Mac (x86_64). |")
+          print("")
+          print("The in-app updater automatically downloads the smallest APK for your device.\n")
           print("### Changes\n")
           print(notes)
           print("")
@@ -343,15 +386,21 @@ jobs:
         run: |
           set -euo pipefail
           TAG='${{ steps.ver.outputs.tag }}'
-          APK='${{ steps.apk.outputs.path }}'
+          # fix692: publish all four APKs (arm / arm64 / x64 / universal).
+          APKS=(
+            '${{ steps.ver.outputs.apk_arm }}'
+            '${{ steps.ver.outputs.apk_arm64 }}'
+            '${{ steps.ver.outputs.apk_x64 }}'
+            '${{ steps.ver.outputs.apk_name }}'
+          )
 
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG already exists; uploading APK (clobber)..."
-            gh release upload "$TAG" "$APK" --clobber
+            echo "Release $TAG already exists; uploading APKs (clobber)..."
+            gh release upload "$TAG" "${APKS[@]}" --clobber
             gh release edit "$TAG" --notes-file /tmp/notes.md
           else
             echo "Creating release $TAG..."
-            gh release create "$TAG" "$APK" \
+            gh release create "$TAG" "${APKS[@]}" \
               --title "$TAG" \
               --notes-file /tmp/notes.md
           fi
@@ -372,24 +421,38 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_TAG: ${{ steps.ver.outputs.tag }}
           APK_NAME: ${{ steps.ver.outputs.apk_name }}
+          # fix692: per-ABI names + SHA-256s. The names feed the live-check
+          # below; the shas feed update_version_json.py so the in-app updater
+          # can verify whichever APK it selects (review finding 151).
+          APK_ARM: ${{ steps.ver.outputs.apk_arm }}
+          APK_ARM64: ${{ steps.ver.outputs.apk_arm64 }}
+          APK_X64: ${{ steps.ver.outputs.apk_x64 }}
+          APK_SHA256_ARM: ${{ steps.apk.outputs.sha_arm }}
+          APK_SHA256_ARM64: ${{ steps.apk.outputs.sha_arm64 }}
+          APK_SHA256_X64: ${{ steps.apk.outputs.sha_x64 }}
+          APK_SHA256_UNIVERSAL: ${{ steps.apk.outputs.sha_universal }}
         run: |
           set -euo pipefail
-          # 1. Confirm the APK asset is actually downloadable before advertising.
-          ASSET_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GH_TAG}/${APK_NAME}"
-          echo "Verifying APK is live: $ASSET_URL"
-          # fix: GitHub release-asset propagation can lag behind the upload;
-          # give it longer (12 × 10s ≈ 2 min) before declaring failure.
-          for i in $(seq 1 12); do
-            CODE="$(curl -s -o /dev/null -w '%{http_code}' -L "$ASSET_URL" || echo 000)"
-            echo "  attempt $i: HTTP $CODE"
-            if [ "$CODE" = "200" ]; then APK_OK=1; break; fi
-            sleep 10
+          # 1. Confirm EVERY APK asset is downloadable before advertising —
+          #    the updater may fetch any of the four depending on device ABI.
+          for NAME in "$APK_ARM" "$APK_ARM64" "$APK_X64" "$APK_NAME"; do
+            ASSET_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GH_TAG}/${NAME}"
+            echo "Verifying APK is live: $ASSET_URL"
+            # GitHub release-asset propagation can lag behind the upload;
+            # give it up to 12 × 10s ≈ 2 min per asset before failing.
+            APK_OK=0
+            for i in $(seq 1 12); do
+              CODE="$(curl -s -o /dev/null -w '%{http_code}' -L "$ASSET_URL" || echo 000)"
+              echo "  attempt $i: HTTP $CODE"
+              if [ "$CODE" = "200" ]; then APK_OK=1; break; fi
+              sleep 10
+            done
+            if [ "${APK_OK}" != "1" ]; then
+              echo "::error::${NAME} not downloadable after upload — NOT advertising version.json."
+              exit 1
+            fi
           done
-          if [ "${APK_OK:-0}" != "1" ]; then
-            echo "::error::APK asset not downloadable after upload — NOT advertising version.json."
-            exit 1
-          fi
-          echo "APK confirmed live."
+          echo "All APKs confirmed live."
 
           # 2. Now commit version.json to main and move the tag onto that commit.
           git config user.name "github-actions[bot]"
@@ -449,9 +512,14 @@ jobs:
           echo "Size: ${{ steps.apk.outputs.size_bytes }} bytes"
           echo "No GitHub release was created."
 
-      - name: Upload APK as workflow artifact
+      - name: Upload APKs as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.ver.outputs.apk_name }}
-          path: ${{ steps.apk.outputs.path }}
+          # fix692: one artifact bundle carrying all four APKs.
+          name: Free4Me-IPTV-${{ steps.ver.outputs.version }}-apks
+          path: |
+            ${{ steps.ver.outputs.apk_arm }}
+            ${{ steps.ver.outputs.apk_arm64 }}
+            ${{ steps.ver.outputs.apk_x64 }}
+            ${{ steps.ver.outputs.apk_name }}
           retention-days: 14

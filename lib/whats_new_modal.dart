@@ -6,6 +6,15 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.0': [
+    'Smaller updates: releases now ship one APK per device type (arm, arm64, '
+        'x64 for emulators) plus a universal APK. The in-app updater '
+        'automatically downloads the smallest APK that fits your device — '
+        'about half the previous download size on most boxes.',
+    'Every downloaded update is now integrity-checked against a published '
+        'SHA-256 before installing.',
+    'Build toolchain updated to Flutter 3.44.5 (stable).',
+  ],
   '4.0.7': [
     'Converted recordings now show the correct length and let you seek/scrub. (Live-TV timestamps were making players report a huge bogus duration.)',
   ],

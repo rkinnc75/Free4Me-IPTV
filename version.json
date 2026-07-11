@@ -1,6 +1,12 @@
 {
-  "latest": "4.0.7",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.0.7",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.0.7/Free4Me-IPTV-4.0.7-arm64.apk",
-  "releaseNotes": "\u2022 Converted recordings now show the correct length and let you seek/scrub. (Live-TV timestamps were making players report a huge bogus duration.)"
+  "latest": "4.1.0",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.0",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.0/Free4Me-IPTV-4.1.0-universal.apk",
+  "releaseNotes": "\u2022 Smaller updates: releases now ship one APK per device type (arm, arm64, x64 for emulators) plus a universal APK. The in-app updater automatically downloads the smallest APK that fits your device \u2014 about half the previous download size on most boxes.\n\u2022 Every downloaded update is now integrity-checked against a published SHA-256 before installing.\n\u2022 Build toolchain updated to Flutter 3.44.5 (stable).",
+  "apkUrls": {
+    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.0/Free4Me-IPTV-4.1.0-arm.apk",
+    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.0/Free4Me-IPTV-4.1.0-arm64.apk",
+    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.0/Free4Me-IPTV-4.1.0-x64.apk",
+    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.0/Free4Me-IPTV-4.1.0-universal.apk"
+  }
 }

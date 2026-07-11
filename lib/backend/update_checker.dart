@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/http_client.dart';
@@ -336,6 +337,61 @@ class UpdateChecker {
     return parts;
   }
 
+  /// fix692: pick the smallest APK matching this device's ABI.
+  ///
+  /// Releases >= 4.1.0 publish four APKs and advertise them in version.json's
+  /// `apkUrls` map ({arm, arm64, x64, universal}) with matching SHA-256s in
+  /// `apkSha256s`. Walk the device's ABI preference order
+  /// (Build.SUPPORTED_ABIS) and take the first slim APK available; fall back
+  /// to the universal entry, then to the legacy single `apkUrl` (which also
+  /// keeps this working against an older version.json that has no map).
+  /// Returns the URL and its hash (null hash = updater skips verification,
+  /// finding 151 semantics).
+  static Future<(String?, String?)> _pickApk(Map<String, dynamic> info) async {
+    final urls = info['apkUrls'];
+    final shas = info['apkSha256s'];
+    if (urls is Map) {
+      String? urlFor(String key) {
+        final u = urls[key];
+        return (u is String && u.isNotEmpty) ? u : null;
+      }
+
+      String? shaFor(String key) {
+        if (shas is! Map) return null;
+        final s = shas[key];
+        return (s is String && s.isNotEmpty) ? s : null;
+      }
+
+      try {
+        if (Platform.isAndroid) {
+          final android = await DeviceInfoPlugin().androidInfo;
+          for (final abi in android.supportedAbis) {
+            final key = switch (abi) {
+              'arm64-v8a' => 'arm64',
+              'armeabi-v7a' => 'arm',
+              'x86_64' => 'x64',
+              _ => null,
+            };
+            final url = key == null ? null : urlFor(key);
+            if (url != null) {
+              AppLog.info('UpdateChecker: ABI $abi → $key APK');
+              return (url, shaFor(key!));
+            }
+          }
+        }
+      } catch (e) {
+        AppLog.warn('UpdateChecker: ABI detection failed — $e');
+      }
+      final uni = urlFor('universal');
+      if (uni != null) {
+        AppLog.info('UpdateChecker: no ABI-specific APK — using universal');
+        return (uni, shaFor('universal'));
+      }
+    }
+    // Legacy version.json (pre-4.1.0): single apkUrl + optional apkSha256.
+    return (info['apkUrl'] as String?, info['apkSha256'] as String?);
+  }
+
   static void _showUpdateDialog(
     BuildContext context,
     Map<String, dynamic> info,
@@ -362,10 +418,12 @@ class UpdateChecker {
               Navigator.pop(ctx);
               // fix310: prefer the in-app download + installer flow. Fall back
               // to opening the release page if no direct apkUrl is present.
-              final apkUrl = info['apkUrl'] as String?;
-              final apkSha = info['apkSha256'] as String?; // review finding 151
+              // fix692: ABI-aware — download the slim per-ABI APK when the
+              // release publishes one (apkUrls map), else the universal/legacy.
+              final (apkUrl, apkSha) = await _pickApk(info);
               final remoteVersion = info['latest'] as String? ?? '';
               if (apkUrl != null && apkUrl.isNotEmpty) {
+                if (!context.mounted) return;
                 await _downloadAndInstall(
                     context, apkUrl, remoteVersion, apkSha);
                 return;

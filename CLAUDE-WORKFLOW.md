@@ -63,7 +63,7 @@ edit files in Cowork  →  bump pubspec.yaml  →  update changelog
                                                         ↓
                                GitHub Actions: .github/workflows/release.yml
                                                         ↓
-                       Flutter 3.44.0 + Java 21 Temurin + Android SDK 36
+                       Flutter 3.44.5 + Java 21 Temurin + Android SDK 36
                                                         ↓
                                    flutter build apk --release
                                                         ↓

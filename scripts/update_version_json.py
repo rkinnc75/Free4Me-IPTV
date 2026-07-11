@@ -29,6 +29,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 import re
 import sys
@@ -123,12 +124,39 @@ def main() -> None:
     data["releaseUrl"] = (
         f"https://github.com/{GITHUB_REPO}/releases/tag/{tag}"
     )
-    # fix310: direct APK download URL for the in-app auto-updater. Asset name
-    # matches release.yml: Free4Me-IPTV-${VERSION}-arm64.apk
-    data["apkUrl"] = (
+    # fix692: four release artifacts (see release.yml). The LEGACY `apkUrl`
+    # field — the only one pre-4.1.0 updaters read — points at the UNIVERSAL
+    # APK so it installs on every device regardless of ABI (fix504 history:
+    # an arm64-only apkUrl bricked in-app updates on 32-bit boxes). Updaters
+    # >= 4.1.0 read `apkUrls` and pick the slim APK for their device ABI.
+    asset_base = (
         f"https://github.com/{GITHUB_REPO}/releases/download/{tag}/"
-        f"Free4Me-IPTV-{version}-arm64.apk"
+        f"Free4Me-IPTV-{version}"
     )
+    data["apkUrl"] = f"{asset_base}-universal.apk"
+    data["apkUrls"] = {
+        "arm": f"{asset_base}-arm.apk",
+        "arm64": f"{asset_base}-arm64.apk",
+        "x64": f"{asset_base}-x64.apk",
+        "universal": f"{asset_base}-universal.apk",
+    }
+    # fix692: per-APK SHA-256s, provided by release.yml's post-upload sync
+    # step via APK_SHA256_{ARM,ARM64,X64,UNIVERSAL} env vars (computed from
+    # the staged files). When absent (developer pre-tag runs, where the APKs
+    # don't exist yet) the sha fields are REMOVED — a stale hash from the
+    # previous release would make the updater reject a good download, and
+    # the updater treats a missing hash as skip-verify (finding 151).
+    shas = {
+        key: os.environ.get(f"APK_SHA256_{key.upper()}")
+        for key in ("arm", "arm64", "x64", "universal")
+    }
+    if all(shas.values()):
+        data["apkSha256s"] = shas
+        # Legacy single-hash field pairs with the legacy apkUrl (universal).
+        data["apkSha256"] = shas["universal"]
+    else:
+        data.pop("apkSha256s", None)
+        data.pop("apkSha256", None)
     data["releaseNotes"] = notes
 
     # Match the formatting the local `scripts/build_and_release.sh` Python

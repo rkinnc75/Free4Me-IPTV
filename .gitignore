@@ -186,3 +186,7 @@ free4me-epg.sqlite*
 free4me-settings*.json
 free4me-source-dump*.txt
 free4me_log*.txt
+
+# Local reference material — third-party app analysis, not part of the app.
+Peer2_Analysis-main/
+Peer2_Analysis-main.zip

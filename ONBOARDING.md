@@ -39,7 +39,7 @@ This machine has the full toolchain (`flutter`, `gh`, `adb`, git push, CI) worki
 
 - Flutter SDK: **`~/development/flutter/bin`** (verified). Some scripts hardcode `~/tools/flutter/bin` — adjust if you hit a "flutter not found".
 - `flutter pub get` / `analyze` / `test` all run locally. First `pub get` after a fresh clone is slow — it clones the `media-kit` monorepo git dep and downloads the custom libmpv jars (MD5-verified).
-- CI mirrors: **Flutter 3.44.0, Java 21 Temurin, Android SDK 36, NDK 28.2.13676358** (see `BUILD-ENV.md` for the exact pinned env).
+- CI mirrors: **Flutter 3.44.5, Java 21 Temurin, Android SDK 36, NDK 28.2.13676358** (see `BUILD-ENV.md` for the exact pinned env).
 - No local release keystore → **release builds happen in CI** (the tag push), not via `scripts/build_and_release.sh` (which requires `android/key.properties` + `release.keystore`).
 
 ---

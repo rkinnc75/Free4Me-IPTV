@@ -13,7 +13,7 @@ APK produced by the build run captured below: `build/app/outputs/flutter-apk/app
 ### `flutter --version`
 
 ```
-Flutter 3.44.0 - channel stable - https://github.com/flutter/flutter.git
+Flutter 3.44.5 - channel stable - https://github.com/flutter/flutter.git
 Framework - revision 559ffa3f75 (7 days ago) - 2026-05-15 14:13:13 -0700
 Engine - hash fcf463a2242790d1fdcd9d044f533080f5022e18 (revision 4c525dac5e) (7 days ago) - 2026-05-15 19:00:04.000Z
 Tools - Dart 3.12.0 - DevTools 2.57.0
@@ -546,8 +546,8 @@ Not set in either properties file. Daemon JVM is taken from the active `JAVA_HOM
 ## 8. `flutter doctor -v` (full)
 
 ```
-[✓] Flutter (Channel stable, 3.44.0, on macOS 26.3.1 25D771280a darwin-arm64, locale en-US) [167ms]
-    • Flutter version 3.44.0 on channel stable at ~/tools/flutter
+[✓] Flutter (Channel stable, 3.44.5, on macOS 26.3.1 25D771280a darwin-arm64, locale en-US) [167ms]
+    • Flutter version 3.44.5 on channel stable at ~/tools/flutter
     • Upstream repository https://github.com/flutter/flutter.git
     • Framework revision 559ffa3f75 (7 days ago), 2026-05-15 14:13:13 -0700
     • Engine revision 4c525dac5e
