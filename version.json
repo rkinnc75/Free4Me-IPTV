@@ -1,19 +1,19 @@
 {
-  "latest": "4.1.0",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.0",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.0/Free4Me-IPTV-4.1.0-universal.apk",
-  "releaseNotes": "\u2022 Smaller updates: releases now ship one APK per device type (arm, arm64, x64 for emulators) plus a universal APK. The in-app updater automatically downloads the smallest APK that fits your device \u2014 about half the previous download size on most boxes.\n\u2022 Every downloaded update is now integrity-checked against a published SHA-256 before installing.\n\u2022 Build toolchain updated to Flutter 3.44.5 (stable).",
+  "latest": "4.1.1",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.1",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.1/Free4Me-IPTV-4.1.1-universal.apk",
+  "releaseNotes": "\u2022 Recordings screen: the record indicator now blinks while a recording is in progress, deleting a recording lets you keep or remove the saved file, and long-press (or hold OK on TV) shows file details and the saved path.",
   "apkUrls": {
-    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.0/Free4Me-IPTV-4.1.0-arm.apk",
-    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.0/Free4Me-IPTV-4.1.0-arm64.apk",
-    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.0/Free4Me-IPTV-4.1.0-x64.apk",
-    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.0/Free4Me-IPTV-4.1.0-universal.apk"
+    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.1/Free4Me-IPTV-4.1.1-arm.apk",
+    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.1/Free4Me-IPTV-4.1.1-arm64.apk",
+    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.1/Free4Me-IPTV-4.1.1-x64.apk",
+    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.1/Free4Me-IPTV-4.1.1-universal.apk"
   },
   "apkSha256s": {
-    "arm": "1cb579002155f978fb59b6ab9d1e589725dc93d2eb40e31fe807c336030ce515",
-    "arm64": "843603428f7a1685ba9da7d5fd5c47a6e3a6d379e509c57e706a84e88191bba9",
-    "x64": "891f65e69adab82beb439de5e86787cff18ed3459f690e7827155fff8e3970be",
-    "universal": "d5f49970f01df654a81ec3296f4dba43c5a52be2f222dd5458510dc1765a72f1"
+    "arm": "24f71cb53ebc0f0065b55ba533094ca4834d8b0feb4f28af2ce7fda1c5f2d849",
+    "arm64": "838a131d00a8ecd9afe53c66da21d87f94cb2e8e8a933bef913a8f1d702b8a47",
+    "x64": "83443332778959b704a77c0e17fbae950428046b500118f2d47090086b091e88",
+    "universal": "601df7baee6ccbc0b00a1cedf6270942d2558d892370ba5d035d200545fe55c9"
   },
-  "apkSha256": "d5f49970f01df654a81ec3296f4dba43c5a52be2f222dd5458510dc1765a72f1"
+  "apkSha256": "601df7baee6ccbc0b00a1cedf6270942d2558d892370ba5d035d200545fe55c9"
 }
