@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.4': [
+    'Source refresh finishes sooner: the search indexes the app rebuilds after '
+        'a refresh now finish in the background instead of holding up the '
+        '"refreshing…" screen. The guide and lists are ready right away; the '
+        'last few indexes settle a moment later.',
+  ],
   '4.1.3': [
     'Faster EPG (guide) updates, especially when little changed: the app now '
         'skips re-downloading or re-processing a guide that hasn\'t changed '

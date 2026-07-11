@@ -510,6 +510,26 @@ class Sql {
   /// without it each becomes a full-catalog scan. All other secondary indexes
   /// (the expensive composite/CASE browse-tier ones) are still dropped +
   /// rebuilt once.
+  /// fix696: of the browse/secondary indexes dropped for a bulk refresh, these
+  /// two are the ONLY ones the refresh's own remaining work needs the moment
+  /// withDroppedBrowseIndexes exits — the EPG match step runs right after and
+  /// its feeder queries seek by them (getChannelsNeedingEpgMatch →
+  /// idx_epg_unmatched; getChannelsForEpgMatching / no-query browse →
+  /// idx_channel_src_media_url; index map §2 EPG-match reads). They are rebuilt
+  /// SYNCHRONOUSLY in the finally. Every OTHER dropped index is pure-browse
+  /// (needed only when the user browses, which is post-refresh) and is DEFERRED
+  /// to a background ensureBrowseIndexesPresent() pass the refresh caller kicks
+  /// once channels+EPG+match are done — moving ~14 × ~20s CREATE INDEXes off
+  /// the perceived-refresh (dialog) critical path. Browse is index-degraded
+  /// (temp b-tree, _indexExists gates already prevent crashes) for the short
+  /// window until the deferred pass completes — the same tolerated state that
+  /// already exists mid-refresh; the startup self-heal (fix628) is the backstop
+  /// if a caller never kicks the pass.
+  static const List<String> _refreshCriticalIndexes = [
+    'idx_epg_unmatched',
+    'idx_channel_src_media_url',
+  ];
+
   static const List<String> _keepIndexesDuringRefresh = [
     'index_channel_source_id',
     // Review finding 129: restorePreserve's UPDATE...FROM joins on
@@ -629,37 +649,53 @@ class Sql {
         AppLog.warn('Sql.withDroppedBrowseIndexes: failed to set recreate'
             ' memory pragmas (continuing on defaults) — $e');
       }
+      // fix696: recreate ONLY the match-critical indexes synchronously; DEFER
+      // the rest (pure-browse) to a background pass. `critical` preserves the
+      // captured order; `deferred` is left dropped and its DDL kept in
+      // app_meta so the kicked ensureBrowseIndexesPresent() (or the startup
+      // self-heal) rebuilds exactly those.
+      final critical =
+          rows.where((r) => _refreshCriticalIndexes.contains(r['name'])).toList();
+      final deferred = rows
+          .where((r) => !_refreshCriticalIndexes.contains(r['name']))
+          .toList();
       var restored = 0;
-      final total = rows.length;
-      // fix549: surface the previously-silent index recreate phase (the
-      // dominant tail of "Saving to database…" — each CREATE INDEX over the
-      // ~1.17M-row catalog is a multi-second external merge-sort on eMMC).
-      // Without this the UI sat on a static "Saving to database…" for minutes
-      // and looked frozen. Per-index counter to the dialog + per-index elapsed
-      // ms to the log so the slow ones are identifiable in field diagnostics.
-      for (var i = 0; i < rows.length; i++) {
-        final r = rows[i];
+      final total = critical.length;
+      // fix549: surface the recreate phase to the progress dialog (per-index
+      // counter) + per-index elapsed ms to the log.
+      for (var i = 0; i < critical.length; i++) {
+        final r = critical[i];
         onProgress?.call('Building index ${i + 1}/$total…');
         final swIdx = Stopwatch()..start();
         try {
           await db.execute(r['sql'] as String);
           restored++;
           AppLog.info('Sql.withDroppedBrowseIndexes: built ${i + 1}/$total'
-              ' "${r['name']}" in ${swIdx.elapsedMilliseconds}ms');
+              ' "${r['name']}" in ${swIdx.elapsedMilliseconds}ms (critical)');
         } catch (e) {
           AppLog.error('Sql.withDroppedBrowseIndexes: FAILED to recreate index'
               ' "${r['name']}" — $e');
         }
       }
-      // fix628: clear the persisted rebuild DDL only when EVERY index came back
-      // — a partial recreate leaves it so ensureBrowseIndexesPresent() finishes
-      // the rest on next startup.
-      if (restored == total) {
-        try {
+      // fix696: rewrite the persisted DDL to the DEFERRED set only. If every
+      // deferred index rebuilds in the background pass, that pass deletes the
+      // key; a crash before then leaves exactly the still-missing set for the
+      // startup self-heal. (When there is nothing to defer — e.g. only the two
+      // critical were dropped — clear it outright.)
+      try {
+        if (deferred.isEmpty && restored == total) {
           await db.execute(
               "DELETE FROM app_meta WHERE key = 'pending_browse_index_ddl'");
-        } catch (_) {}
-      }
+        } else {
+          await db.execute(
+              "INSERT OR REPLACE INTO app_meta (key, value) "
+              "VALUES ('pending_browse_index_ddl', ?)",
+              [jsonEncode(deferred.map((r) => r['sql'] as String).toList())]);
+        }
+      } catch (_) {}
+      AppLog.info('Sql.withDroppedBrowseIndexes: recreated $restored/$total'
+          ' critical index(es); DEFERRED ${deferred.length} browse index(es)'
+          ' to the background pass (fix696)');
       onProgress?.call('Finalizing database…');
       try {
         await db.execute('PRAGMA optimize;');
@@ -671,8 +707,9 @@ class Sql {
         await db.execute('PRAGMA cache_size = -2000;');
       } catch (_) {}
       _browseIndexesDropped = false;
-      AppLog.info('Sql.withDroppedBrowseIndexes: recreated $restored/'
-          '${rows.length} channels index(es) + PRAGMA optimize');
+      AppLog.info('Sql.withDroppedBrowseIndexes: critical recreate done'
+          ' ($restored/$total) + PRAGMA optimize; ${deferred.length} deferred'
+          ' — caller should kick ensureBrowseIndexesPresent() post-refresh');
     }
   }
 
@@ -2064,7 +2101,18 @@ class Sql {
   /// map). Idempotent + cheap when all indexes are present (one lookup, no-op).
   /// MUST be called unawaited/deferred (a full rebuild of the ~1.2M-row catalog
   /// is minutes of merge-sort — never on the cold-start/splash path).
+  /// fix696: guard against two overlapping runs — the fix628 startup call and
+  /// the fix696 post-refresh kick can otherwise race, each issuing CREATE for
+  /// the same index (the second throws "already exists"; harmless but noisy,
+  /// and doubles the merge-sort work). Second caller returns immediately.
+  static bool _ensuringBrowseIndexes = false;
+
   static Future<void> ensureBrowseIndexesPresent() async {
+    if (_ensuringBrowseIndexes) {
+      AppLog.info('Sql.ensureBrowseIndexesPresent: already running — skip');
+      return;
+    }
+    _ensuringBrowseIndexes = true;
     try {
       final db = await DbFactory.db;
       final pending = await db.getOptional(
@@ -2149,6 +2197,8 @@ class Sql {
     } catch (e) {
       AppLog.warn('Sql.ensureBrowseIndexesPresent: skipped'
           ' (will retry next launch) — $e');
+    } finally {
+      _ensuringBrowseIndexes = false; // fix696
     }
   }
 

@@ -936,6 +936,11 @@ class _SettingsState extends State<SettingsView> {
           );
         }
         AppLog.info('Settings: refresh "${source.name}" — done');
+        // fix696: channels + EPG + match are done, so the sqlite writer is now
+        // free — kick the deferred browse-index rebuild (the ~14 indexes
+        // withDroppedBrowseIndexes left dropped to dismiss this dialog sooner).
+        // Unawaited: the dialog completes now; the rebuild runs on the idle box.
+        unawaited(Sql.ensureBrowseIndexesPresent());
         setSt(() {
           done = true;
           status = 'Refresh complete.';

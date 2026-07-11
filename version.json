@@ -1,19 +1,12 @@
 {
-  "latest": "4.1.3",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.3",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.3/Free4Me-IPTV-4.1.3-universal.apk",
-  "releaseNotes": "\u2022 Faster EPG (guide) updates, especially when little changed: the app now skips re-downloading or re-processing a guide that hasn't changed since last time, and only stores programmes for channels you actually carry. Big drop in refresh time on large playlists.",
+  "latest": "4.1.4",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.4",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.4/Free4Me-IPTV-4.1.4-universal.apk",
+  "releaseNotes": "\u2022 Source refresh finishes sooner: the search indexes the app rebuilds after a refresh now finish in the background instead of holding up the \"refreshing\u2026\" screen. The guide and lists are ready right away; the last few indexes settle a moment later.",
   "apkUrls": {
-    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.3/Free4Me-IPTV-4.1.3-arm.apk",
-    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.3/Free4Me-IPTV-4.1.3-arm64.apk",
-    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.3/Free4Me-IPTV-4.1.3-x64.apk",
-    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.3/Free4Me-IPTV-4.1.3-universal.apk"
-  },
-  "apkSha256s": {
-    "arm": "0fe69c8e60238a8ab46ab886f2c29b489ee6bb32b45a97ef22cf863379214eed",
-    "arm64": "afe6b3a3e11d6a1dcf55f19e8799458213c9a67d50ae27ee5f5f4425303fa2ed",
-    "x64": "b19904198f830902ceaef11b1bf1ea558a1157ed8fc43d3a691a3e7acc775487",
-    "universal": "9cff0273d10ca7ef84f43b9e3f5c707df89e2947f1d2a78b1e116365cf95e6b5"
-  },
-  "apkSha256": "9cff0273d10ca7ef84f43b9e3f5c707df89e2947f1d2a78b1e116365cf95e6b5"
+    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.4/Free4Me-IPTV-4.1.4-arm.apk",
+    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.4/Free4Me-IPTV-4.1.4-arm64.apk",
+    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.4/Free4Me-IPTV-4.1.4-x64.apk",
+    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.4/Free4Me-IPTV-4.1.4-universal.apk"
+  }
 }

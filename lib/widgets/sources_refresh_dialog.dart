@@ -290,6 +290,16 @@ Future<void> showSourcesRefreshDialog(BuildContext context) async {
       }
     }
 
+    // fix696: the (channels) refresh is finished and the sqlite writer is free,
+    // so kick the deferred browse-index rebuild — the ~14 indexes
+    // withDroppedBrowseIndexes left dropped to dismiss this dialog sooner.
+    // Unawaited so the dialog reports done immediately; the rebuild runs in the
+    // background (guarded against overlapping the startup self-heal). Skipped
+    // when nothing loaded (no drop happened).
+    if (error == null && sourceTotal > 0) {
+      unawaited(Sql.ensureBrowseIndexesPresent());
+    }
+
     setSt(() {
       done = true;
       if (error != null) {
