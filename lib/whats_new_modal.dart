@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.2': [
+    'Source refresh is about 3½ minutes faster on large playlists: the '
+        'search index is rebuilt with a much faster method after a refresh, '
+        'and a redundant index health check at refresh start now runs only '
+        'where it\'s actually needed.',
+  ],
   '4.1.1': [
     'Recordings screen: the record indicator now blinks while a recording is in progress, deleting a recording lets you keep or remove the saved file, and long-press (or hold OK on TV) shows file details and the saved path.',
   ],

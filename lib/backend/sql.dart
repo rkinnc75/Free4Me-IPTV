@@ -346,6 +346,28 @@ class Sql {
         if (total > 0 &&
             src <= _ftsTargetedMaxRows &&
             src / total <= _ftsTargetedMaxFraction) {
+          // fix694: integrity-check HERE, not as a refresh-entry pre-flight
+          // (fix620's placement). The check exists solely to protect this
+          // targeted delete from hanging on a corrupt index — the big-source
+          // path never needed it (its finalization now DROP+repopulates, which
+          // discards any corruption), yet the old pre-flight cost a measured
+          // 10.9s on EVERY refresh (onn, 2026-07-08 baseline). On a malformed
+          // index, skip targeted — the finally's full rebuild restores
+          // consistency without ever touching the corrupt shadow tables.
+          var ftsHealthy = true;
+          try {
+            await db.execute(
+                "INSERT INTO channels_fts(channels_fts) VALUES('integrity-check');");
+          } catch (e) {
+            if (!isMalformedDbError(e)) rethrow;
+            ftsHealthy = false;
+            AppLog.warn('Sql.withSuspendedFtsTriggers: FTS integrity-check '
+                'failed ($e) — skipping targeted re-index; the end-of-refresh '
+                'DROP+repopulate will rebuild it');
+          }
+          if (!ftsHealthy) {
+            // Fall through with useTargeted=false → full rebuild in finally.
+          } else {
           // Delete this source's FTS entries NOW, while `channels` still
           // holds them — see the correctness note above. Materialize the id
           // list first; chunk at 900 (SQLite's 999 bind-parameter limit).
@@ -364,6 +386,7 @@ class Sql {
             );
           }
           useTargeted = true;
+          }
         }
       }
       AppLog.info('Sql.withSuspendedFtsTriggers: FTS triggers dropped'
@@ -418,23 +441,33 @@ class Sql {
               'end-of-batch via DROP+repopulate (fix621)');
         } else {
           // Either targeted wasn't applicable (large source / large
-          // fraction / no sourceId given), or body() threw before finishing
-          // its wipe+reinsert — in the latter case a targeted delete may
-          // have already removed this source's OLD entries with nothing
-          // reinserted yet, so a global rebuild is the only safe way to
-          // leave search consistent.
-          // fix611: this branch runs the full-catalog FTS rebuild — the
-          // multi-minute cost on a 1M+ row catalog. Signal the search UI to
-          // disable FTS-backed search for its duration, and ALWAYS clear the
-          // flag (try/finally) so a throw here never strands search disabled.
+          // fraction / no sourceId given / corrupt index), or body() threw
+          // before finishing its wipe+reinsert — in the latter case a
+          // targeted delete may have already removed this source's OLD
+          // entries with nothing reinserted yet, so a full rebuild is the
+          // only safe way to leave search consistent.
+          // fix694: rebuild via DROP+repopulate, NOT the fts5 'rebuild'
+          // command that reconcileFtsTriggers(true) issues. Both produce an
+          // identical fresh index, but on the onn baseline (2026-07-08,
+          // 1.16M rows) 'rebuild' took 231s while DROP+repopulate takes
+          // ~42s — 'rebuild' re-tokenizes INTO the existing segment
+          // structure (merge/tombstone overhead), DROP discards the shadow
+          // tables and repopulates clean. This is the same path fix621 uses
+          // at end-of-batch and fix619/620 use for self-heal; it also
+          // recreates the sync triggers byte-identical.
+          // fix611: gate FTS-backed search off for the rebuild's duration;
+          // ALWAYS clear the flag so a throw never strands search disabled.
           ftsRebuilding.value = true;
           try {
-            await reconcileFtsTriggers(true);
+            await rebuildFtsTableFromScratch(
+                reason: bodySucceeded
+                    ? 'large-source refresh repopulate (fix694)'
+                    : 'refresh failed mid-body — restore consistent index');
           } finally {
             ftsRebuilding.value = false;
           }
           AppLog.info('Sql.withSuspendedFtsTriggers: FTS triggers restored'
-              ' + index rebuilt');
+              ' + index rebuilt via DROP+repopulate (fix694)');
         }
       }
     }

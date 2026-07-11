@@ -35,17 +35,12 @@ class Utils {
     bool Function()? shouldCancel, // review finding 143
   }) async {
     refreshedSeries.clear();
-    // fix620: repair a malformed FTS index BEFORE touching it — a corrupt index
-    // makes the per-source delete hang on the main isolate (the single-source
-    // "Emjay" refresh hang). Heal proactively. Non-fatal on failure.
-    try {
-      if (await Sql.ensureFtsHealthy()) {
-        onProgress?.call('Repaired search index');
-      }
-    } catch (e) {
-      AppLog.warn('Utils.refreshSource: FTS pre-flight check failed '
-          '(non-fatal, continuing) — $e');
-    }
+    // fix694: the fix620 FTS pre-flight integrity-check that lived here
+    // (10.9s measured on every refresh, onn 2026-07-08) moved INTO
+    // Sql.withSuspendedFtsTriggers' targeted branch — the only code the check
+    // ever protected (a corrupt index hangs the targeted delete; the
+    // big-source path now finalizes via DROP+repopulate, which discards any
+    // corruption for free).
     await processSource(source, true, onProgress, onRowProgress, shouldCancel);
     // After channels are populated, apply any favorites and last-
     // watched timestamps that an imported backup staged for this
