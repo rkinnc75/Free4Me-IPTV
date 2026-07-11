@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:open_tv/backend/app_logger.dart';
+import 'package:open_tv/tv/theme/accent_scope.dart'; // fix701 (TV GUI redesign)
+import 'package:open_tv/tv/theme/f4_tokens.dart'; // fix701 (TV GUI redesign)
 import 'package:open_tv/backend/playback_analyzer.dart';
 import 'package:open_tv/backend/channel_search_cache.dart';
 import 'package:open_tv/backend/device_memory.dart';
@@ -67,10 +69,12 @@ Future<void> main() async {
   // The DB migration creates the triggers on every install, but they are only
   // needed for FTS search methods; drop them otherwise so refresh inserts stay
   // fast. Unawaited — not on the critical render path.
-  unawaited(Sql.reconcileFtsTriggers(
-    settings.searchMethod == SearchMethod.ftsAnd ||
-        settings.searchMethod == SearchMethod.ftsPhrase,
-  ));
+  unawaited(
+    Sql.reconcileFtsTriggers(
+      settings.searchMethod == SearchMethod.ftsAnd ||
+          settings.searchMethod == SearchMethod.ftsPhrase,
+    ),
+  );
 
   // unawaited — startup continues immediately; the cache is ready by the time
   // the user first types in the search box.
@@ -78,9 +82,11 @@ Future<void> main() async {
   // stale-EPG refresh (fix600) can be deferred until they finish — see below.
   final warmups = <Future<void>>[];
   if (settings.searchMethod == SearchMethod.inMemory) {
-    warmups.add(ChannelSearchCache.ensureBuilt().then((_) {
-      AppLog.info('main: ChannelSearchCache warm-up complete');
-    }));
+    warmups.add(
+      ChannelSearchCache.ensureBuilt().then((_) {
+        AppLog.info('main: ChannelSearchCache warm-up complete');
+      }),
+    );
   }
 
   // Parallelize the remaining cold-start awaits.
@@ -97,8 +103,7 @@ Future<void> main() async {
     'App started — version=${packageInfo.version}'
     ' build=${packageInfo.buildNumber}'
     ' searchMethod=${settings.searchMethod.name}' // fix361: which search
-    ' (ftsTriggers=${settings.searchMethod == SearchMethod.ftsAnd ||
-        settings.searchMethod == SearchMethod.ftsPhrase})',
+    ' (ftsTriggers=${settings.searchMethod == SearchMethod.ftsAnd || settings.searchMethod == SearchMethod.ftsPhrase})',
   );
   // fix314: log SoC/board + Tegra detection so multi-view decode routing is
   // verifiable on real hardware (Shield colour-corruption investigation).
@@ -113,11 +118,15 @@ Future<void> main() async {
   // pulls those pages into cache so the user's first Home.load is fast. Off the
   // render path (unawaited); skipped when there are no sources yet.
   if (hasSources) {
-    warmups.add(Sql.warmBrowseCache(settings).then((ms) {
-      AppLog.info('main: browse cache warm-up complete (${ms}ms)');
-    }).catchError((e) {
-      AppLog.warn('main: browse warm-up failed — $e');
-    }));
+    warmups.add(
+      Sql.warmBrowseCache(settings)
+          .then((ms) {
+            AppLog.info('main: browse cache warm-up complete (${ms}ms)');
+          })
+          .catchError((e) {
+            AppLog.warn('main: browse warm-up failed — $e');
+          }),
+    );
     // fix542: run the deferred one-time fix537 index maintenance (drop unused +
     // rebuild cat_enabled-free browse indexes + VACUUM) HERE, off the cold-start
     // critical path (unawaited, after first frame), so it can never block
@@ -127,8 +136,11 @@ Future<void> main() async {
     // index maintenance so ANALYZE reflects the final index shapes. Both are
     // off the critical path; runPendingIndexMaintenance swallows its own errors
     // so the .then always runs.
-    warmups.add(Sql.runPendingIndexMaintenance()
-        .then((_) => Sql.runPendingFtsAndAnalyze()));
+    warmups.add(
+      Sql.runPendingIndexMaintenance().then(
+        (_) => Sql.runPendingFtsAndAnalyze(),
+      ),
+    );
     // fix546: purge legacy divider rows once, also off the cold-start path.
     unawaited(Sql.runPendingDividerCleanup());
     // fix628: self-heal channels indexes lost to an interrupted/killed refresh
@@ -159,9 +171,9 @@ Future<void> main() async {
       // far sooner (when the warm-ups actually finish).
       .timeout(const Duration(minutes: 4), onTimeout: () => <void>[])
       .whenComplete(() {
-    appWarmupDone.value = true; // fix609: lift the "Preparing…" splash
-    unawaited(EpgService.refreshIfStale());
-  });
+        appWarmupDone.value = true; // fix609: lift the "Preparing…" splash
+        unawaited(EpgService.refreshIfStale());
+      });
   // fix506: mirror the render-cap setting to the native SharedPref so the
   // 1080p cap decision is correct on the NEXT launch.
   unawaited(RenderCap.setEnabled(settings.cap1080pOnLowRam));
@@ -281,8 +293,7 @@ class _RootPageState extends State<_RootPage> with WidgetsBindingObserver {
     final Widget home;
     if (widget.settings.forceTVMode ||
         widget.isTV ||
-        (!widget.hasTouchScreen &&
-            (Platform.isAndroid || Platform.isIOS))) {
+        (!widget.hasTouchScreen && (Platform.isAndroid || Platform.isIOS))) {
       home = TvHome(settings: widget.settings);
     } else {
       home = Home(
@@ -327,7 +338,10 @@ class _StartupSplash extends StatelessWidget {
     return const Stack(
       fit: StackFit.expand,
       children: [
-        Image(image: AssetImage('assets/tv_background.webp'), fit: BoxFit.cover),
+        Image(
+          image: AssetImage('assets/tv_background.webp'),
+          fit: BoxFit.cover,
+        ),
         ColoredBox(color: Color(0xD9000000)), // 85% scrim
         Center(
           child: Column(
@@ -387,28 +401,34 @@ class MyApp extends StatelessWidget {
       navigatorKey: navigatorKey,
       navigatorObservers: [playerRouteObserver], // fix98
       builder: (context, child) {
-        return Stack(
-          children: [
-            CallbackShortcuts(
-              bindings: {
-                CustomShortcut(
-                  const SingleActivator(LogicalKeyboardKey.escape),
-                ): () {
-                  if (_isEditingText) return;
-                  navigatorKey.currentState?.maybePop();
+        // fix701 (TV GUI redesign, Phase 0): install the live accent high in the
+        // tree, above all route content, so TvFocusable reads it at draw time.
+        // Inert for the phone path (phone widgets never read AccentScope).
+        return AccentScope(
+          notifier: appAccentNotifier,
+          child: Stack(
+            children: [
+              CallbackShortcuts(
+                bindings: {
+                  CustomShortcut(
+                    const SingleActivator(LogicalKeyboardKey.escape),
+                  ): () {
+                    if (_isEditingText) return;
+                    navigatorKey.currentState?.maybePop();
+                  },
+                  CustomShortcut(
+                    const SingleActivator(LogicalKeyboardKey.backspace),
+                  ): () {
+                    if (_isEditingText) return;
+                    navigatorKey.currentState?.maybePop();
+                  },
                 },
-                CustomShortcut(
-                  const SingleActivator(LogicalKeyboardKey.backspace),
-                ): () {
-                  if (_isEditingText) return;
-                  navigatorKey.currentState?.maybePop();
-                },
-              },
-              child: child ?? const SizedBox.shrink(),
-            ),
-            // Floating mini-player overlay — always on top of all routes
-            const OverlayPlayerWidget(),
-          ],
+                child: child ?? const SizedBox.shrink(),
+              ),
+              // Floating mini-player overlay — always on top of all routes
+              const OverlayPlayerWidget(),
+            ],
+          ),
         );
       },
       theme: ThemeData(
@@ -472,6 +492,10 @@ class MyApp extends StatelessWidget {
           ),
         ),
         useMaterial3: true,
+        // fix701 (TV GUI redesign, Phase 0): attach the static TV token tree so
+        // TV widgets can read it via F4.of(context). Inert for the phone path —
+        // phone widgets never read the extension, so the touch UI is unchanged.
+        extensions: const <ThemeExtension<dynamic>>[F4Tokens()],
       ),
       themeMode: ThemeMode.dark,
       debugShowCheckedModeBanner: false,
