@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.1': [
+    'Recordings screen: the record indicator now blinks while a recording is in progress, deleting a recording lets you keep or remove the saved file, and long-press (or hold OK on TV) shows file details and the saved path.',
+  ],
   '4.1.0': [
     'Smaller updates: releases now ship one APK per device type (arm, arm64, '
         'x64 for emulators) plus a universal APK. The in-app updater '

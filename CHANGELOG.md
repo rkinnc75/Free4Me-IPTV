@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.1+693] - 2026-07-10
+
+**Recordings list UX:** blinking record indicator, keep-or-remove-file delete, and a details view.
+
+### Added / Changed
+- **fix693 — Recordings-list interactions** — (1) The red record indicator now pulses while a recording is actively in progress (`_BlinkingDot`, fades between full and dim so layout/focus stay stable). (2) Deleting a recording that has a saved file now offers three choices — Cancel / Delete + remove file / Delete, keep file — removing the file via the existing MediaStore delete channel; recordings with no file keep the simple confirm. (3) Long-press (touch) or held-OK (D-pad, reusing the fix607 hold-timer pattern) on a row opens a details sheet showing resolution, duration, bitrate, format, size, and the saved path, read via a new `recordingFileInfo` channel method (MediaMetadataRetriever + MediaStore query).
+
+### Technical
+- **fix693**: `recordings_view.dart` (new `_BlinkingDot`, `_RecordingTile` with held-OK+long-press, `_DetailsSheet`; 3-way `_delete`; `_showDetails`), `MainActivity.kt` (`recordingFileInfo` on the recording channel); version → 4.1.1+693. Verified with real `flutter analyze` (Flutter 3.44.5) → "No issues found!".
+
 ## [v4.0.7+691] - 2026-07-10
 
 **Correct duration + working seek bar** on converted recordings.

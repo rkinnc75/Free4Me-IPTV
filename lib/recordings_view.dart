@@ -1,5 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/recording_capture.dart';
 import 'package:open_tv/backend/recording_scheduler.dart';
 import 'package:open_tv/backend/recording_status_journal.dart';
@@ -86,31 +90,55 @@ class _RecordingsViewState extends State<RecordingsView> {
     await _load();
   }
 
+  /// fix693: shared channel with the native recording service — reused here to
+  /// delete the saved MediaStore file (remuxDeleteTs) and to read file metadata
+  /// (recordingFileInfo).
+  static const MethodChannel _recCh = MethodChannel('me.free4me.iptv/recording');
+
   Future<void> _delete(Recording r) async {
     if (r.id == null) return;
-    final confirm = await showDialog<bool>(
+    final hasFile = (r.outputPath ?? '').isNotEmpty;
+    // fix693: three choices when a saved file exists — remove the file too, or
+    // keep it on disk and only drop the list entry. No file → plain confirm.
+    final choice = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete recording?'),
-        content: Text('Remove "${r.channelName}" from the list? '
-            'This does not delete the saved video file.'),
+        content: Text(hasFile
+            ? 'Delete "${r.channelName}" from the list. Do you also want to '
+                'remove the saved video file?'
+            : 'Remove "${r.channelName}" from the list?'),
         actions: [
           TextButton(
             autofocus: true,
-            onPressed: () => Navigator.pop(ctx, false),
+            onPressed: () => Navigator.pop(ctx, 'cancel'),
             child: const Text('Cancel'),
           ),
+          if (hasFile)
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'keep'),
+              child: const Text('Delete, keep file'),
+            ),
           TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
+            onPressed: () => Navigator.pop(ctx, hasFile ? 'remove' : 'keep'),
+            child: Text(hasFile ? 'Delete + remove file' : 'Delete'),
           ),
         ],
       ),
     );
-    if (confirm != true) return;
+    if (choice == null || choice == 'cancel') return;
+
     // If it's still running, stop the capture first.
-    if (r.status == RecordingStatus.recording && r.id != null) {
+    if (r.status == RecordingStatus.recording) {
       await RecordingCapture.stop(r.id!);
+    }
+    // fix693: optionally remove the saved file (MediaStore content:// URI).
+    if (choice == 'remove' && hasFile) {
+      try {
+        await _recCh.invokeMethod('remuxDeleteTs', {'uri': r.outputPath});
+      } catch (e) {
+        AppLog.warn('RecordingsView: file delete failed — $e');
+      }
     }
     // fix679: cancel the alarm before removing the row, otherwise its
     // rescheduleOnReboot registration is orphaned and re-fires on every boot
@@ -119,6 +147,28 @@ class _RecordingsViewState extends State<RecordingsView> {
     await RecordingScheduler.cancelAlarm(r.id!);
     await Sql.deleteRecording(r.id!);
     await _load();
+  }
+
+  /// fix693: long-press / held-OK → file metadata (MediaMetadataRetriever) +
+  /// local path in a bottom sheet.
+  Future<void> _showDetails(Recording r) async {
+    Map<String, dynamic>? info;
+    final path = r.outputPath;
+    if (path != null && path.isNotEmpty) {
+      try {
+        final raw = await _recCh
+            .invokeMapMethod<String, dynamic>('recordingFileInfo', {'uri': path});
+        info = raw;
+      } catch (e) {
+        AppLog.warn('RecordingsView: file info failed — $e');
+      }
+    }
+    if (!mounted) return;
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => _DetailsSheet(recording: r, info: info),
+    );
   }
 
   (IconData, Color, String) _statusChip(RecordingStatus s) {
@@ -210,16 +260,20 @@ class _RecordingsViewState extends State<RecordingsView> {
                     itemBuilder: (context, i) {
                       final r = _recordings[i];
                       final (icon, color, label) = _statusChip(r.status);
-                      return ListTile(
-                        leading: Icon(icon, color: color),
-                        title: Text(r.channelName,
-                            maxLines: 1, overflow: TextOverflow.ellipsis),
-                        subtitle: Text('$label · ${_subtitle(r)}',
-                            maxLines: 2, overflow: TextOverflow.ellipsis),
+                      final blinking = r.status == RecordingStatus.recording;
+                      return _RecordingTile(
+                        leading: _BlinkingDot(
+                          icon: icon,
+                          color: color,
+                          blinking: blinking,
+                        ),
+                        title: r.channelName,
+                        subtitle: '$label · ${_subtitle(r)}',
                         trailing: _trailing(r),
                         onTap: r.status == RecordingStatus.done
                             ? () => _play(r)
                             : null,
+                        onDetails: () => _showDetails(r),
                       );
                     },
                   ),
@@ -243,6 +297,236 @@ class _RecordingsViewState extends State<RecordingsView> {
             textAlign: TextAlign.center,
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// fix693: the recording-status leading icon, pulsing while actively recording.
+class _BlinkingDot extends StatefulWidget {
+  const _BlinkingDot({
+    required this.icon,
+    required this.color,
+    required this.blinking,
+  });
+
+  final IconData icon;
+  final Color color;
+  final bool blinking;
+
+  @override
+  State<_BlinkingDot> createState() => _BlinkingDotState();
+}
+
+class _BlinkingDotState extends State<_BlinkingDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 700),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.blinking) _c.repeat(reverse: true);
+  }
+
+  @override
+  void didUpdateWidget(covariant _BlinkingDot old) {
+    super.didUpdateWidget(old);
+    if (widget.blinking && !_c.isAnimating) {
+      _c.repeat(reverse: true);
+    } else if (!widget.blinking && _c.isAnimating) {
+      _c.stop();
+      _c.value = 1;
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = Icon(widget.icon, color: widget.color);
+    if (!widget.blinking) return icon;
+    // Fade between full and dim (never fully invisible, so focus/layout is
+    // stable) to read as a pulsing "REC" indicator.
+    return FadeTransition(
+      opacity: Tween<double>(begin: 1, end: 0.25).animate(_c),
+      child: icon,
+    );
+  }
+}
+
+/// fix693: a focusable recordings row. Short OK/tap = [onTap]; long-press
+/// (touch) or held-OK (D-pad, fix586/fix607 pattern) = [onDetails].
+class _RecordingTile extends StatefulWidget {
+  const _RecordingTile({
+    required this.leading,
+    required this.title,
+    required this.subtitle,
+    required this.trailing,
+    required this.onTap,
+    required this.onDetails,
+  });
+
+  final Widget leading;
+  final String title;
+  final String subtitle;
+  final Widget trailing;
+  final VoidCallback? onTap;
+  final VoidCallback onDetails;
+
+  @override
+  State<_RecordingTile> createState() => _RecordingTileState();
+}
+
+class _RecordingTileState extends State<_RecordingTile> {
+  final FocusNode _node = FocusNode(debugLabel: 'recording-tile');
+  Timer? _holdTimer;
+  bool _selectDown = false;
+  bool _heldLong = false;
+  static const Duration _holdDelay = Duration(milliseconds: 600);
+
+  @override
+  void initState() {
+    super.initState();
+    // fix693: held-OK on the D-pad opens details (mirrors tv_top_tab_bar's
+    // fix607 model — timer marks the hold, KeyUp decides held vs quick).
+    _node.onKeyEvent = (n, event) {
+      final k = event.logicalKey;
+      final isSelect = k == LogicalKeyboardKey.select ||
+          k == LogicalKeyboardKey.enter ||
+          k == LogicalKeyboardKey.numpadEnter ||
+          k == LogicalKeyboardKey.gameButtonA;
+      if (!isSelect) return KeyEventResult.ignored;
+      if (event is KeyDownEvent) {
+        _selectDown = true;
+        _heldLong = false;
+        _holdTimer?.cancel();
+        _holdTimer = Timer(_holdDelay, () {
+          if (mounted && n.hasFocus) _heldLong = true;
+        });
+        return KeyEventResult.handled;
+      }
+      if (event is KeyUpEvent) {
+        _holdTimer?.cancel();
+        _holdTimer = null;
+        if (!_selectDown) return KeyEventResult.handled;
+        _selectDown = false;
+        final long = _heldLong;
+        _heldLong = false;
+        if (long) {
+          widget.onDetails();
+        } else {
+          widget.onTap?.call();
+        }
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.handled; // swallow repeats; timer marks the hold
+    };
+  }
+
+  @override
+  void dispose() {
+    _holdTimer?.cancel();
+    _node.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      focusNode: _node,
+      leading: widget.leading,
+      title: Text(widget.title,
+          maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: Text(widget.subtitle,
+          maxLines: 2, overflow: TextOverflow.ellipsis),
+      trailing: widget.trailing,
+      onTap: widget.onTap,
+      onLongPress: widget.onDetails, // touchscreens
+    );
+  }
+}
+
+/// fix693: recording detail sheet — file metadata (MediaMetadataRetriever) +
+/// local path.
+class _DetailsSheet extends StatelessWidget {
+  const _DetailsSheet({required this.recording, required this.info});
+
+  final Recording recording;
+  final Map<String, dynamic>? info;
+
+  String _fmtDuration(int? ms) {
+    if (ms == null || ms <= 0) return '—';
+    final s = ms ~/ 1000;
+    final h = s ~/ 3600, m = (s % 3600) ~/ 60, sec = s % 60;
+    return h > 0
+        ? '${h}h ${m}m ${sec}s'
+        : (m > 0 ? '${m}m ${sec}s' : '${sec}s');
+  }
+
+  String _fmtSize(int? bytes) {
+    if (bytes == null || bytes <= 0) return '—';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    var b = bytes.toDouble();
+    var u = 0;
+    while (b >= 1024 && u < units.length - 1) {
+      b /= 1024;
+      u++;
+    }
+    return '${b.toStringAsFixed(b >= 10 || u == 0 ? 0 : 1)} ${units[u]}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final i = info ?? const {};
+    final w = (i['width'] as num?)?.toInt();
+    final h = (i['height'] as num?)?.toInt();
+    final rows = <(String, String)>[
+      ('Channel', recording.channelName),
+      if (w != null && h != null) ('Resolution', '$w × $h'),
+      ('Duration', _fmtDuration((i['durationMs'] as num?)?.toInt())),
+      if (i['bitrate'] != null)
+        ('Bitrate', '${(((i['bitrate'] as num).toInt()) / 1000).round()} kbps'),
+      if (i['mime'] != null) ('Format', i['mime'].toString()),
+      ('Size', _fmtSize((i['sizeBytes'] as num?)?.toInt())),
+      ('File', (i['path'] ?? recording.outputPath ?? '—').toString()),
+    ];
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Recording details',
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 12),
+            for (final (k, v) in rows)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 96,
+                      child: Text(k,
+                          style: Theme.of(context).textTheme.bodySmall),
+                    ),
+                    Expanded(
+                      child: Text(v,
+                          style: Theme.of(context).textTheme.bodyMedium),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

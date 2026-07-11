@@ -248,6 +248,53 @@ class MainActivity : FlutterActivity() {
                         result.error("statfs_failed", e.message, null)
                     }
                 }
+                // ── fix693: recording file metadata for the details sheet ─────
+                "recordingFileInfo" -> {
+                    val uri = call.argument<String>("uri")
+                    if (uri == null) { result.error("bad_args", "uri required", null); return@setMethodCallHandler }
+                    val out = HashMap<String, Any?>()
+                    val u = android.net.Uri.parse(uri)
+                    // Size + a human-readable relative path from MediaStore.
+                    try {
+                        contentResolver.query(
+                            u,
+                            arrayOf(
+                                android.provider.MediaStore.MediaColumns.SIZE,
+                                android.provider.MediaStore.MediaColumns.RELATIVE_PATH,
+                                android.provider.MediaStore.MediaColumns.DISPLAY_NAME,
+                            ),
+                            null, null, null,
+                        )?.use { c ->
+                            if (c.moveToFirst()) {
+                                val si = c.getColumnIndex(android.provider.MediaStore.MediaColumns.SIZE)
+                                val ri = c.getColumnIndex(android.provider.MediaStore.MediaColumns.RELATIVE_PATH)
+                                val di = c.getColumnIndex(android.provider.MediaStore.MediaColumns.DISPLAY_NAME)
+                                if (si >= 0 && !c.isNull(si)) out["sizeBytes"] = c.getLong(si)
+                                val rel = if (ri >= 0) c.getString(ri) ?: "" else ""
+                                val disp = if (di >= 0) c.getString(di) ?: "" else ""
+                                if (rel.isNotEmpty() || disp.isNotEmpty()) out["path"] = "$rel$disp"
+                            }
+                        }
+                    } catch (_: Exception) {
+                        // best-effort: fall through with whatever we have
+                    }
+                    // Media metadata (resolution, duration, bitrate, mime).
+                    val mmr = android.media.MediaMetadataRetriever()
+                    try {
+                        mmr.setDataSource(applicationContext, u)
+                        fun m(k: Int) = mmr.extractMetadata(k)
+                        m(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull()?.let { out["width"] = it }
+                        m(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull()?.let { out["height"] = it }
+                        m(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()?.let { out["durationMs"] = it }
+                        m(android.media.MediaMetadataRetriever.METADATA_KEY_BITRATE)?.toLongOrNull()?.let { out["bitrate"] = it }
+                        m(android.media.MediaMetadataRetriever.METADATA_KEY_MIMETYPE)?.let { out["mime"] = it }
+                    } catch (_: Exception) {
+                        // metadata is best-effort; sheet shows what resolved
+                    } finally {
+                        try { mmr.release() } catch (_: Exception) {}
+                    }
+                    result.success(out)
+                }
                 // ── fix685: MediaStore fds for the Dart FFI remux ─────────────
                 // The .ts capture and its .mp4/.mkv output live in MediaStore
                 // (content:// Uris). Dart's libavformat remux (RecordingRemux)
