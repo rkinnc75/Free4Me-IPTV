@@ -376,6 +376,21 @@ class MpvEngine implements PlayerEngine {
       initDone.complete();
     }
 
+    // fix699: the locked 1.5s wait is often too short — the platform texture
+    // typically attaches ~2–2.7s in. Opening with a still-null surface makes
+    // mediacodec bind a NULL surface; when the texture then arrives mpv does a
+    // vo=null→vo=gpu switch that forces a full mediacodec reconfigure + ~2s
+    // content replay (a big chunk of the observed ~7s first-open on a slow 1080p
+    // source). Wait up to ~1.5s MORE for the texture so open() binds the real
+    // surface on the FIRST init. This runs UN-LOCKED (initDone already completed,
+    // so it never stalls a concurrent engine create), completes early the instant
+    // the texture attaches, and is bounded — if the controller is genuinely slow
+    // (fix352: ~25% attach >4s) it just falls through to today's null-surface
+    // path (no regression). `_controller` is `late final` → same cached instance.
+    if (!previewMode) {
+      await _waitForTextureId(_controller, const Duration(milliseconds: 1500));
+    }
+
     await _player.open(
       mk.Media(
         url,
@@ -1135,6 +1150,22 @@ class MpvEngine implements PlayerEngine {
         await np.setProperty(
             'demuxer-max-back-bytes', dvrBackMB > 0 ? '${dvrBackMB}MiB' : '0');
         if (dvrBackMB > 0) _startDvrGuard(dvrBackMB);
+      }
+      // fix700: opt-in live pre-buffer (default OFF via livePrebufferSecs=0, so
+      // the fix354 "live keeps the default behaviour" is unchanged unless the
+      // user enables it). When on, mpv holds/refills to livePrebufferSecs of
+      // cache before (re)starting live playback — converting the sub-second
+      // rebuffer thrashing seen on an under-delivering or concurrently-recorded
+      // feed (bug: A3000/Trex YES stutter + watch-while-recording contention)
+      // into fewer, longer refills, at the cost of a small pause at the live
+      // edge (hence default-off). Skipped under DVR (its buffer semantics differ).
+      if (s.livePrebufferSecs > 0 && dvrBackMB <= 0) {
+        // fix700: force cache-pause on — the live low-latency profile above sets
+        // cache-pause=no, which would otherwise make the two properties below a
+        // silent no-op when Low-latency is also enabled.
+        await np.setProperty('cache-pause', 'yes');
+        await np.setProperty('cache-pause-initial', 'yes');
+        await np.setProperty('cache-pause-wait', s.livePrebufferSecs.toString());
       }
     } else {
       await np.setProperty('cache-secs', s.vodCacheSecs.toString());

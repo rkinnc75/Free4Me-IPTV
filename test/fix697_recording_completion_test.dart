@@ -227,7 +227,7 @@ void main() {
 
     test('_load shows completion snacks only after the first (opening) drain', () {
       expect(view.contains('bool _firstLoad = true'), isTrue);
-      final ld = _slice(view, 'Future<void> _load()', 'void _showCompletionSnacks');
+      final ld = _slice(view, 'Future<void> _load(', 'void _showCompletionSnacks');
       expect(ld.contains('await RecordingStatusJournal.drain()'), isTrue);
       expect(ld.contains('if (!wasFirst && completions.isNotEmpty)'), isTrue);
       final snk = _slice(view, 'void _showCompletionSnacks', '(IconData, Color, String) _statusChip');

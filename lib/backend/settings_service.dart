@@ -32,6 +32,7 @@ const liveCacheSecsProp = "liveCacheSecs";
 const liveDemuxerMaxMBProp = "liveDemuxerMaxMB";
 const vodCacheSecsProp = "vodCacheSecs";
 const vodPrebufferSecsProp = "vodPrebufferSecs"; // fix354
+const livePrebufferSecsProp = "livePrebufferSecs"; // fix700
 const dvrEnabledProp = "dvrEnabled"; // fix357
 const use24HourTimeProp = "use24HourTime"; // fix604 (#5)
 
@@ -205,6 +206,7 @@ class SettingsService {
     var liveMB = settingsMap[liveDemuxerMaxMBProp];
     var vodSecs = settingsMap[vodCacheSecsProp];
     var vodPre = settingsMap[vodPrebufferSecsProp];
+    var livePre = settingsMap[livePrebufferSecsProp]; // fix700
     var dvrEn = settingsMap[dvrEnabledProp];
     var use24h = settingsMap[use24HourTimeProp]; // fix604 (#5)
     var audioDmx = settingsMap[audioDownmixStereoProp];
@@ -269,6 +271,7 @@ class SettingsService {
     if (liveMB != null) settings.liveDemuxerMaxMB = int.parse(liveMB);
     if (vodSecs != null) settings.vodCacheSecs = int.parse(vodSecs);
     if (vodPre != null) settings.vodPrebufferSecs = int.parse(vodPre);
+    if (livePre != null) settings.livePrebufferSecs = int.parse(livePre); // fix700
     if (dvrEn != null) settings.dvrEnabled = dvrEn == 'true';
     if (use24h != null) settings.use24HourTime = use24h == 'true'; // fix604
     if (audioDmx != null) settings.audioDownmixStereo = audioDmx == 'true';
@@ -532,6 +535,8 @@ class SettingsService {
     settingsMap[liveDemuxerMaxMBProp] = settings.liveDemuxerMaxMB.toString();
     settingsMap[vodCacheSecsProp] = settings.vodCacheSecs.toString();
     settingsMap[vodPrebufferSecsProp] = settings.vodPrebufferSecs.toString();
+    settingsMap[livePrebufferSecsProp] =
+        settings.livePrebufferSecs.toString(); // fix700
     settingsMap[dvrEnabledProp] = settings.dvrEnabled.toString();
     settingsMap[use24HourTimeProp] = settings.use24HourTime.toString(); // fix604
     settingsMap[audioDownmixStereoProp] = settings.audioDownmixStereo.toString();

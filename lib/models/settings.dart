@@ -58,6 +58,14 @@ class Settings {
   /// before resuming after an underrun). 0 disables the pre-buffer pause.
   int vodPrebufferSecs;
 
+  /// fix700: seconds of cache mpv must fill before LIVE playback resumes after
+  /// an underrun (and at start). 0 = OFF (mpv default; preserves the fix354
+  /// "live keeps default" behaviour). >0 opts into converting sub-second
+  /// rebuffer thrashing on an under-delivering or concurrently-recorded feed
+  /// into fewer, longer refills — at the cost of a small pause at the live edge
+  /// (which is why it defaults to off).
+  int livePrebufferSecs;
+
   /// fix357: live DVR-to-disk buffer (full-screen single view only).
   bool dvrEnabled;
 
@@ -342,6 +350,7 @@ class Settings {
     this.liveDemuxerMaxMB = 150,
     this.vodCacheSecs = 60,
     this.vodPrebufferSecs = 15,
+    this.livePrebufferSecs = 0, // fix700: OFF by default (live unchanged)
     this.dvrEnabled = false,
     this.audioDownmixStereo = true,
     this.dvrMinutes = 5,
@@ -507,6 +516,7 @@ class Settings {
     s.liveCacheSecs = isTV ? 45 : 30;
     s.vodCacheSecs = 60;
     s.vodPrebufferSecs = 15;
+    s.livePrebufferSecs = 0; // fix700
     s.dvrEnabled = false;
     s.audioDownmixStereo = true;
     s.dvrMinutes = 5;

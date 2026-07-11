@@ -1,6 +1,20 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.6+700] - 2026-07-11
+
+**Recordings + playback fixes from owner-reported bugs.**
+
+### Added / Changed
+- **fix698 — Recording indicator** — the red REC dot now blinks noticeably (was too faint to see), and the Recordings screen refreshes itself while a recording is scheduled or running, so it flips from Scheduled → Recording → Done live without a manual refresh.
+- **fix699 — Faster first channel open** — the player now waits for its video surface before starting the stream, avoiding a decoder re-init that could add several seconds to the first time you open a channel.
+- **fix700 — Smoother live buffering (optional)** — a new **Live pre-buffer (seconds)** setting (default off) that, when turned on, rides through constant stutter on a slow provider or weak Wi-Fi (and when watching a channel you're also recording) by pausing briefly to build a cushion instead of rebuffering every second. Trades a small delay behind the live edge for fewer interruptions.
+
+### Technical
+- **fix698**: `recordings_view.dart` — `_BlinkingDot` 1.0↔0.15 / 450ms; `_RecordingsViewState` quiet 3s poll while any row is transient (cancelled in dispose).
+- **fix699**: `mpv_engine.dart open()` — extra un-locked bounded `_waitForTextureId` before `_player.open()` (full-screen only) so mediacodec binds the final surface first (no `vo=null→gpu` restart).
+- **fix700**: new `livePrebufferSecs` setting (default 0) → `cache-pause-initial`+`cache-pause-wait` on the mpv live branch (skipped under DVR); mirrors `vodPrebufferSecs` plumbing. Also mitigates watch-while-recording contention (a full playback-from-recording tee is infeasible — mpv can't tail a growing file). Version → 4.1.6+700.
+
 ## [v4.1.5+697] - 2026-07-11
 
 **Recordings: completion alert + safe delete of an in-progress recording.**

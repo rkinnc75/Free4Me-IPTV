@@ -35,6 +35,11 @@ class _RecordingsViewState extends State<RecordingsView> {
   // finalizes to 'done' (row kept), so skip the "Recording complete" snack for
   // them (mirrors the native postCompletion user-stop suppression).
   final Set<int> _userEndedIds = <int>{};
+  // fix698: live-refresh poll. The Recordings screen otherwise only reloads on
+  // open + manual refresh, so a background scheduled→recording→done transition
+  // (and the blinking REC dot) is never seen live. Runs only while a row is in a
+  // transient state; cancelled in dispose.
+  Timer? _poll;
 
   @override
   void initState() {
@@ -42,8 +47,16 @@ class _RecordingsViewState extends State<RecordingsView> {
     _load();
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  @override
+  void dispose() {
+    _poll?.cancel(); // fix698
+    super.dispose();
+  }
+
+  /// [quiet] = a background poll refresh: skip the full-screen spinner so the
+  /// list doesn't flash on every 3s tick (fix698).
+  Future<void> _load({bool quiet = false}) async {
+    if (!quiet) setState(() => _loading = true);
     // fix681: apply any status events the native capture service wrote to its
     // journal (single-writer: only Dart touches the DB) before reading rows.
     // fix697: drain reports the terminal (done/failed) transitions it applied.
@@ -56,10 +69,33 @@ class _RecordingsViewState extends State<RecordingsView> {
       _recordings = recs;
       _loading = false;
     });
+    _syncPoll(); // fix698: start/stop the live-refresh poll to match row state
     // fix697: item 2 — in-app twin of the native completion notification. Only
     // for transitions observed while the screen is already open (not the opening
     // drain of a stale journal, which the native notification already covered).
     if (!wasFirst && completions.isNotEmpty) _showCompletionSnacks(completions);
+  }
+
+  // fix698: poll a QUIET reload every 3s while any row is TRANSIENT
+  // (scheduled/recording/compressing) so status changes — and the blinking REC
+  // dot — appear live without a manual refresh. Self-cancels once every row is
+  // terminal (done/failed/cancelled); restarts when a transient row reappears.
+  void _syncPoll() {
+    final soon = DateTime.now().add(const Duration(minutes: 2));
+    final transient = _recordings.any((r) =>
+        r.status == RecordingStatus.recording ||
+        r.status == RecordingStatus.compressing ||
+        // fix698: poll for an IMMINENT scheduled row (e.g. "record now" fires
+        // within ~5s) so it flips to recording live — but NOT a far-future
+        // schedule, which would keep the 3s poll running for hours.
+        (r.status == RecordingStatus.scheduled && r.startTime.isBefore(soon)));
+    if (transient) {
+      _poll ??= Timer.periodic(
+          const Duration(seconds: 3), (_) => _load(quiet: true));
+    } else {
+      _poll?.cancel();
+      _poll = null;
+    }
   }
 
   // fix697: SnackBar for recordings that finished/failed while this screen was
@@ -381,7 +417,14 @@ class _BlinkingDotState extends State<_BlinkingDot>
     with SingleTickerProviderStateMixin {
   late final AnimationController _c = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 700),
+    // fix698: 450ms (was 700) — a faster cycle reads as a "blink", not a breathe.
+    duration: const Duration(milliseconds: 450),
+  );
+  // fix698: built ONCE (not per build) via drive/chain, so the fix698 poll-driven
+  // rebuilds don't leak a fresh CurvedAnimation status-listener on _c each tick.
+  late final Animation<double> _fade = _c.drive(
+    Tween<double>(begin: 1, end: 0.15)
+        .chain(CurveTween(curve: Curves.easeInOut)),
   );
 
   @override
@@ -411,12 +454,10 @@ class _BlinkingDotState extends State<_BlinkingDot>
   Widget build(BuildContext context) {
     final icon = Icon(widget.icon, color: widget.color);
     if (!widget.blinking) return icon;
-    // Fade between full and dim (never fully invisible, so focus/layout is
-    // stable) to read as a pulsing "REC" indicator.
-    return FadeTransition(
-      opacity: Tween<double>(begin: 1, end: 0.25).animate(_c),
-      child: icon,
-    );
+    // fix698: a pronounced on/off pulse (1.0↔0.15, easeInOut via [_fade]) — the
+    // old 1.0↔0.25 swing was too shallow to register as "blinking" on the small
+    // red dot. Still never fully invisible, so layout/focus stay stable.
+    return FadeTransition(opacity: _fade, child: icon);
   }
 }
 

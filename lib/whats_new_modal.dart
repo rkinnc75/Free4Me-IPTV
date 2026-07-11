@@ -6,6 +6,17 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.6': [
+    'Recordings: the red REC dot now blinks clearly and the Recordings list '
+        'updates itself live (Scheduled → Recording → Done) without a manual '
+        'refresh.',
+    'Channels can open faster the first time (the player waits for its video '
+        'surface before starting, avoiding a slow decoder restart).',
+    'New optional "Live pre-buffer" setting (Settings → off by default): turn '
+        'it on if a channel stutters constantly on a slow provider or weak Wi-Fi '
+        '— it pauses briefly to build a cushion instead of rebuffering every '
+        'second (adds a small delay behind live).',
+  ],
   '4.1.5': [
     'Recordings now tell you when they finish: a scheduled recording that '
         'completes (or fails) shows a notification — even if the app is closed. '

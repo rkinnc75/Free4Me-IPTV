@@ -276,6 +276,23 @@ const _helpVodPrebufferSecs = (
       'Restart required: applied when player instances are created.',
 );
 
+const _helpLivePrebufferSecs = (
+  title: 'Live pre-buffer (seconds)',
+  body:
+      'How many seconds must be buffered before a LIVE channel resumes after '
+      'it runs dry (and before it first starts).\n\n'
+      'Default: 0 (off) — live starts instantly and resumes the moment any '
+      'data arrives, matching standard behaviour.\n\n'
+      'Increasing: On channels that stutter/rebuffer constantly during busy '
+      'moments (a slow provider, weak Wi-Fi, or watching a channel you are '
+      'also recording), this trades a brief pause at the live edge for far '
+      'fewer, smoother rebuffers. Try 3–5 s.\n\n'
+      'Note: this cannot fix a feed the server simply cannot deliver fast '
+      'enough — it only makes the interruptions less frequent and less jarring. '
+      'It also adds a small delay behind the true live edge.\n\n'
+      'Restart required: applied when player instances are created.',
+);
+
 const _helpAudioDownmix = (
   title: 'Downmix audio to stereo',
   body:
@@ -3324,6 +3341,19 @@ class _SettingsState extends State<SettingsView> {
                     help: _helpVodPrebufferSecs,
                     onChanged: (v) {
                       setState(() => settings.vodPrebufferSecs = v.round());
+                      updateSettings();
+                    },
+                  ),
+                  // fix700: opt-in live pre-buffer (0 = off, current behaviour).
+                  _bufferSlider(
+                    label: "Live pre-buffer (seconds)",
+                    value: settings.livePrebufferSecs.toDouble(),
+                    min: 0,
+                    max: 15,
+                    divisions: 15,
+                    help: _helpLivePrebufferSecs,
+                    onChanged: (v) {
+                      setState(() => settings.livePrebufferSecs = v.round());
                       updateSettings();
                     },
                   ),

@@ -675,6 +675,7 @@ class SettingsIo {
         'liveDemuxerMaxMB': s.liveDemuxerMaxMB,
         'vodCacheSecs': s.vodCacheSecs,
         'vodPrebufferSecs': s.vodPrebufferSecs, // fix354
+        'livePrebufferSecs': s.livePrebufferSecs, // fix700
         'dvrEnabled': s.dvrEnabled, // fix357
         'audioDownmixStereo': s.audioDownmixStereo, // fix361
         'dvrMinutes': s.dvrMinutes, // fix357
@@ -765,6 +766,7 @@ class SettingsIo {
       liveDemuxerMaxMB: m['liveDemuxerMaxMB'] as int? ?? 150,
       vodCacheSecs: m['vodCacheSecs'] as int? ?? 60,
       vodPrebufferSecs: m['vodPrebufferSecs'] as int? ?? 15,
+      livePrebufferSecs: m['livePrebufferSecs'] as int? ?? 0, // fix700
       dvrEnabled: m['dvrEnabled'] as bool? ?? false,
       audioDownmixStereo: m['audioDownmixStereo'] as bool? ?? true,
       dvrMinutes: m['dvrMinutes'] as int? ?? 5,
