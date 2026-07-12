@@ -1,6 +1,18 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.7+702] - 2026-07-11
+
+**TV GUI redesign — Phase 0 foundation + Phase 1 (top tab bar).** TV mode only; the phone UI is unchanged.
+
+### Added / Changed
+- **fix701 — Design foundation (invisible)** — a single design-token tree (`F4Tokens`), a live user-selectable focus accent (`AccentScope`, default white), a shared motion vocabulary, and one focus primitive (`TvFocusable`: an accent focus ring that snaps in and fades out to kill the focus flash, a subtle lift, and the held-OK menu unified onto the safe fire-on-release model). Nothing visible yet — it's the plumbing the rest of the redesign builds on.
+- **fix702 — Top tab bar** — the TV top tabs now use the new focus engine: a clean accent ring on the focused tab (replacing the flat yellow border) with a subtle lift; the selected tab keeps its section color. Held-OK still reaches the Live-TV diagnostic / History-clear actions, and a held OK on any other tab still just switches to it.
+
+### Technical
+- **fix701**: new `lib/tv/theme/{f4_tokens,accent_scope,f4_motion}.dart` + `lib/tv/focus/{tv_focusable,dpad_repeat_gate}.dart`; `main.dart` attaches `F4Tokens` to `ThemeData.extensions` + installs `AccentScope`. Inert; phone byte-identical.
+- **fix702**: `tv_top_tab_bar.dart` `_TabButton` → `TvFocusable` (accent `ringChrome`, section-color pill kept, 600ms held-OK preserved). Version → 4.1.7+702.
+
 ## [v4.1.6+700] - 2026-07-11
 
 **Recordings + playback fixes from owner-reported bugs.**

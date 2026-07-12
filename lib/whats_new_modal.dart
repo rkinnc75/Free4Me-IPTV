@@ -6,6 +6,13 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.7': [
+    'TV look refresh (in progress): the top tabs now show a cleaner focus '
+        'highlight — a crisp accent ring with a subtle lift instead of the old '
+        'flat yellow box. The selected tab keeps its section color, and hold-OK '
+        'still reaches its actions. First step of a wider TV redesign; more to '
+        'come. (Phone UI is unchanged.)',
+  ],
   '4.1.6': [
     'Recordings: the red REC dot now blinks clearly and the Recordings list '
         'updates itself live (Scheduled → Recording → Done) without a manual '

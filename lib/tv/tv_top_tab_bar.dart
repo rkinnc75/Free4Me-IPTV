@@ -1,9 +1,9 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/view_type.dart';
+import 'package:open_tv/tv/focus/tv_focusable.dart'; // fix702 (TV GUI redesign)
+import 'package:open_tv/tv/theme/f4_motion.dart'; // fix702
+import 'package:open_tv/tv/theme/f4_tokens.dart'; // fix702
 
 /// fix500: a single tab in the TV shell's top bar.
 ///
@@ -39,8 +39,9 @@ class TvTab {
 
 /// fix500: the persistent top tab bar — brand · tabs · Settings gear.
 /// D-pad: tabs are a horizontal [FocusTraversalGroup]; the active tab is
-/// highlighted with its section color and the focused tab draws a yellow ring
-/// (matching the app-wide TV focus border). Down from a tab enters the body.
+/// highlighted with its section color and the focused tab draws the accent ring
+/// (fix702: via [TvFocusable], replacing the flat yellow border). Down from a
+/// tab enters the body.
 class TvTopTabBar extends StatelessWidget {
   final List<TvTab> tabs;
   final int selectedIndex;
@@ -123,7 +124,19 @@ class TvTopTabBar extends StatelessWidget {
   }
 }
 
-class _TabButton extends StatefulWidget {
+/// fix702: a single tab, now on the shared [TvFocusable] — accent focus ring +
+/// 1.05× lift + the unified fire-on-release held-OK. The selected pill keeps its
+/// section-identity fill (our win). Held-OK is only wired for tabs that declare
+/// a long-press action (Live TV → diagnostic report; History → clear); other
+/// tabs pass `onHeldOk: null`, so a held OK still fires `onTap` (switches) —
+/// preserving the fix607 "held-OK on Movies/Series must still switch" behaviour.
+///
+/// Touch note (fix607): the old code withheld touch `onLongPress` to avoid a
+/// touch long-press silently firing the diagnostic POST / clear. [TvFocusable]
+/// does wire touch `onLongPress → onHeldOk`, but this tab bar is a TV-only
+/// surface (the shell renders only on `!hasTouchScreen`; touch devices use the
+/// phone `BottomNav`), so no touchscreen ever reaches it — the guard is moot.
+class _TabButton extends StatelessWidget {
   final TvTab tab;
   final bool selected;
   final bool autofocus;
@@ -139,108 +152,38 @@ class _TabButton extends StatefulWidget {
   });
 
   @override
-  State<_TabButton> createState() => _TabButtonState();
-}
-
-class _TabButtonState extends State<_TabButton> {
-  bool _focused = false;
-  // fix607: TV remotes can't fire InkWell.onLongPress (touch only), so the
-  // tab's long-press actions (History → clear; Live TV → diagnostic report)
-  // were unreachable by D-pad. Detect a HELD select on this tab's own node and
-  // open on RELEASE — same model as the Live-guide channel tiles (fix603):
-  // _selectDown guards orphan KeyUps, the timer only marks _heldLong, and the
-  // KeyUp decides held (onLongPress) vs quick (onTap). Touch onLongPress is
-  // kept for touchscreens.
-  final FocusNode _node = FocusNode(debugLabel: 'tv-tab');
-  Timer? _holdTimer;
-  bool _selectDown = false;
-  bool _heldLong = false;
-  static const Duration _holdDelay = Duration(milliseconds: 600);
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.onLongPress != null) {
-      _node.onKeyEvent = (n, event) {
-        final k = event.logicalKey;
-        final isSelect = k == LogicalKeyboardKey.select ||
-            k == LogicalKeyboardKey.enter ||
-            k == LogicalKeyboardKey.numpadEnter ||
-            k == LogicalKeyboardKey.gameButtonA;
-        if (!isSelect) return KeyEventResult.ignored;
-        if (event is KeyDownEvent) {
-          _selectDown = true;
-          _heldLong = false;
-          _holdTimer?.cancel();
-          _holdTimer = Timer(_holdDelay, () {
-            if (mounted && n.hasFocus) _heldLong = true;
-          });
-          return KeyEventResult.handled;
-        }
-        if (event is KeyUpEvent) {
-          _holdTimer?.cancel();
-          _holdTimer = null;
-          if (!_selectDown) return KeyEventResult.handled;
-          _selectDown = false;
-          final long = _heldLong;
-          _heldLong = false;
-          if (long) {
-            widget.onLongPress?.call();
-          } else {
-            widget.onTap();
-          }
-          return KeyEventResult.handled;
-        }
-        return KeyEventResult.handled; // swallow repeats; timer marks the hold
-      };
-    }
-  }
-
-  @override
-  void dispose() {
-    _holdTimer?.cancel();
-    _node.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final bool selected = widget.selected;
-    final Color bg = selected ? widget.tab.color : Colors.transparent;
-    final Color fg = selected ? Colors.black : Colors.white70;
-    final Color border = _focused ? Colors.yellow : Colors.transparent;
-
+    final tokens = F4.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: Material(
-        color: bg,
-        borderRadius: BorderRadius.circular(999),
-        child: InkWell(
-          focusNode: _node,
-          autofocus: widget.autofocus,
-          borderRadius: BorderRadius.circular(999),
-          onTap: widget.onTap,
-          // fix607: NO touch onLongPress — the long-press action (diagnostic
-          // submit / clear history) is reachable ONLY via the held-OK D-pad
-          // detector above. A touch long-press here would silently fire the
-          // diagnostic POST with no confirmation (footgun on touch builds).
-          onFocusChange: (value) => setState(() => _focused = value),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
+      child: TvFocusable(
+        autofocus: autofocus,
+        onTap: onTap,
+        onHeldOk: onLongPress, // null → held OK still switches (fix607)
+        outlineWidth: tokens.focus.ringChrome,
+        borderRadius: tokens.radius.pill,
+        // Keep the tab's established 600ms hold (fix607) rather than the 500ms
+        // default, so the diagnostic/clear feel is unchanged.
+        holdThreshold: const Duration(milliseconds: 600),
+        builder: (context, isFocused) {
+          final bg = selected ? tab.color : Colors.transparent;
+          final fg = selected ? Colors.black : tokens.colors.textSecondary;
+          return AnimatedContainer(
+            duration: F4Motion.fast,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: border, width: 3),
+              color: bg,
+              borderRadius: BorderRadius.circular(tokens.radius.pill),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (widget.tab.isSearch) ...[
+                if (tab.isSearch) ...[
                   Icon(Icons.search, size: 18, color: fg),
                   const SizedBox(width: 6),
                 ],
                 Text(
-                  widget.tab.label,
+                  tab.label,
                   style: TextStyle(
                     color: fg,
                     fontSize: 14,
@@ -249,8 +192,8 @@ class _TabButtonState extends State<_TabButton> {
                 ),
               ],
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }

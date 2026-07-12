@@ -50,6 +50,10 @@ void main() {
       // instant focus-in, animated focus-out
       expect(tvf.contains('_ring.value = 1.0'), isTrue);
       expect(tvf.contains('_ring.animateTo(0'), isTrue);
+      // review fix: focus-out resets transient press/hold state (no stuck 0.97
+      // scale / leaked timer if focus is stolen mid-hold).
+      expect(tvf.contains('_focused = false') && tvf.contains('_pressed = false'),
+          isTrue);
       // fire-on-release: KeyUp decides held vs quick; repeats swallowed
       expect(tvf.contains('event is KeyUpEvent'), isTrue);
       expect(tvf.contains('widget.onHeldOk!()'), isTrue);

@@ -95,10 +95,23 @@ class _TvFocusableState extends State<TvFocusable>
 
   void _handleFocusChange(bool focused) {
     if (focused == _focused) return;
-    setState(() => _focused = focused);
     if (focused) {
+      setState(() => _focused = true);
       _ring.value = 1.0; // instant in — no flash
     } else {
+      // review fix: if focus is stolen while OK is physically held (a dialog
+      // push, an autofocus, a parent-driven move), the KeyUp goes to the new
+      // focus owner and this widget's KeyUp branch never runs — leaving
+      // _pressed/_selectDown/_holdTimer set (stuck at the 0.97 pressed scale +
+      // a live timer). Reset the transient press/hold state on focus loss.
+      _holdTimer?.cancel();
+      _holdTimer = null;
+      _selectDown = false;
+      _heldLong = false;
+      setState(() {
+        _focused = false;
+        _pressed = false;
+      });
       _ring.animateTo(0, curve: F4Motion.easeOut); // fade out over focusOut
     }
     widget.onFocusChange?.call(focused);
