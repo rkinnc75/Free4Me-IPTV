@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.9+704] - 2026-07-12
+
+**TV GUI redesign — Phase 3, unit 1: rail focus rings (guide + browse + categories).** TV mode only; phone UI unchanged.
+
+### Added / Changed
+- **fix704 — Rail focus ring** — the highlighted rail item on every browsing surface — the TV Guide rail (channel / category / frozen channel column), the browse rail, and the Categories rail — now shows the accent focus ring (white by default), matching the tabs (fix702) and tiles (fix703), instead of the old flat yellow border. This unifies the whole browsing surface on one focus look. Guide layout, rail↔grid Y-alignment, :00/:30 timeline snap, 12/24h clock, dwell-gated live preview, place-memory, and the held-OK (fire-on-release) menu are all unchanged. (The TV button/dialog focus theme in Settings is a separate later pass and still shows the old style for now.)
+
+### Technical
+- **fix704**: the three copy-pasted `_FocusTile` rails — `tv_guide_view.dart`, `tv_browse_view.dart`, `tv_categories_view.dart` — ring `Colors.yellow`→`AccentScope.of(context)` (null-safe; falls back to white with no ancestor). Width 3 kept so row itemExtent chrome budgets are unchanged (guide 56px `_rowHeight`). Guide program cells (`_block`) are `ExcludeFocus`/passive and unaffected; guide rail-alignment, held-OK on-release model, and place-memory untouched. The 4 global TV button focus themes in `main.dart` (Filled/Icon/Text/Outlined, `!hasTouchScreen`) remain yellow — deferred to a dedicated chrome pass (needs live-accent reactivity + broad dialog verify). Reviewed adversarially (guide file). Version → 4.1.9+704.
+
 ## [v4.1.8+703] - 2026-07-12
 
 **TV GUI redesign — Phase 2 (channel/poster tiles).** TV mode only; phone UI unchanged.

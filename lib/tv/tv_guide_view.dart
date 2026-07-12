@@ -19,6 +19,7 @@ import 'package:open_tv/models/view_type.dart';
 import 'package:open_tv/multi_view_screen.dart';
 import 'package:open_tv/player.dart';
 import 'package:open_tv/player/overlay_player_controller.dart';
+import 'package:open_tv/tv/theme/accent_scope.dart'; // fix704 (TV GUI redesign)
 import 'package:open_tv/source_color_picker.dart';
 import 'package:open_tv/tv/tv_hero_preview.dart';
 
@@ -1233,8 +1234,11 @@ class TvGuideViewState extends State<TvGuideView> {
   }
 }
 
-/// Small D-pad-friendly tile with a yellow focus ring (matches the app's TV
-/// focus standard) used by the rail + the frozen channel column.
+/// Small D-pad-friendly tile with an accent focus ring (matches the app's TV
+/// focus standard — fix701-704 token language) used by the rail + the frozen
+/// channel column. fix704: ring color is the app accent (AccentScope, default
+/// white) instead of the old flat yellow, consistent with the tab bar (fix702)
+/// and channel/poster tiles (fix703).
 class _FocusTile extends StatefulWidget {
   final bool selected;
   final bool autofocus;
@@ -1377,7 +1381,10 @@ class _FocusTileState extends State<_FocusTile> {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                color: _focused ? Colors.yellow : Colors.transparent,
+                // fix704: accent ring (default white) at draw time, not flat
+                // yellow — matches tab bar (fix702) + tiles (fix703). Width 3
+                // kept: the 56px itemExtent chrome budget (see below) is unchanged.
+                color: _focused ? AccentScope.of(context) : Colors.transparent,
                 width: 3,
               ),
             ),

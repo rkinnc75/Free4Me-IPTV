@@ -6,6 +6,14 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.9': [
+    'TV look refresh continues across the browsing surface: the highlighted '
+        'item in the TV Guide rail, the browse list, and the Categories list '
+        'now shows the same clean accent focus ring (white by default) as the '
+        'tabs and tiles, instead of the old yellow box. Guide layout, times, '
+        'live preview and hold-OK menu are all unchanged. (Phone UI is '
+        'unchanged.)',
+  ],
   '4.1.8': [
     'TV look refresh continues: channel, movie, series and category tiles now '
         'get the same clean accent focus ring and a subtle lift when selected '

@@ -14,6 +14,7 @@ import 'package:open_tv/models/node.dart';
 import 'package:open_tv/models/node_type.dart';
 import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/view_type.dart';
+import 'package:open_tv/tv/theme/accent_scope.dart'; // fix704 (TV GUI redesign)
 
 /// fix507: the TV Movies / Series browse screen.
 ///
@@ -382,7 +383,9 @@ class _FocusTileState extends State<_FocusTile> {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                color: _focused ? Colors.yellow : Colors.transparent,
+                // fix704: accent ring (default white) at draw time, not flat
+                // yellow — matches the guide rail + tabs + tiles. Null-safe.
+                color: _focused ? AccentScope.of(context) : Colors.transparent,
                 width: 3,
               ),
             ),
