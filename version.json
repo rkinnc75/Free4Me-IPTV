@@ -1,19 +1,19 @@
 {
-  "latest": "4.1.17",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.17",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.17/Free4Me-IPTV-4.1.17-universal.apk",
-  "releaseNotes": "\u2022 \"Re-match all channels\" now works even when your provider's guide file hasn't changed since the last refresh. It used to be skipped with a \"failed to download EPG\" message in exactly that situation \u2014 which is the very case the button exists for. The EPG refresh summary also now says \"feed unchanged\" instead of warning about \"0 programs loaded\" when nothing changed.",
+  "latest": "4.1.18",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.18",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.18/Free4Me-IPTV-4.1.18-universal.apk",
+  "releaseNotes": "\u2022 TV player redesign (in progress): the on-screen info now sits in a clean bottom bar \u2014 channel logo + name, the current programme, and the progress bar together on one glass panel, instead of scattered across the top. Playback controls and channel surfing are unchanged. (Phone UI is unchanged.)",
   "apkUrls": {
-    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.17/Free4Me-IPTV-4.1.17-arm.apk",
-    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.17/Free4Me-IPTV-4.1.17-arm64.apk",
-    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.17/Free4Me-IPTV-4.1.17-x64.apk",
-    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.17/Free4Me-IPTV-4.1.17-universal.apk"
+    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.18/Free4Me-IPTV-4.1.18-arm.apk",
+    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.18/Free4Me-IPTV-4.1.18-arm64.apk",
+    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.18/Free4Me-IPTV-4.1.18-x64.apk",
+    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.18/Free4Me-IPTV-4.1.18-universal.apk"
   },
   "apkSha256s": {
-    "arm": "3769d11a8b17d94eac155ae154b852a7275cc112d3f7374a7973c56d1456418b",
-    "arm64": "c1e3ae17fdd4a45cb7104c111a63760bf0bc2fafa1bdc19efb29e406a35be750",
-    "x64": "edba1ea638996f0d8f8fe92cdf4f3319f53fc451e5ac1d01aee3fa42dd228fbb",
-    "universal": "283785b98010698ac68476a626b47eeb36afd12aae2e7d3bdfdea0f7c8e7f175"
+    "arm": "4379d1a957462eae1762552c42c72211e642a5ce7708d6af416bc4349bcbbc63",
+    "arm64": "44a3b3cd3d494f8ab122a73cdf26bf478eee93e438885e6923be61adb13c53d5",
+    "x64": "c74ca2da77d731fda8bc6b057d62afbe66d817f43675b4bc72148c3260cae778",
+    "universal": "be4b729eb5ac6c5b51f386e0a08dae06d33ca810a83d727c6fbffb22d9333caf"
   },
-  "apkSha256": "283785b98010698ac68476a626b47eeb36afd12aae2e7d3bdfdea0f7c8e7f175"
+  "apkSha256": "be4b729eb5ac6c5b51f386e0a08dae06d33ca810a83d727c6fbffb22d9333caf"
 }
