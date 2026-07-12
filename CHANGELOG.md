@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.24+720] - 2026-07-12
+
+**TV GUI redesign — Phase 5, unit 3: bottom-sheet menu restyle.** TV mode only; phone/touch UI unchanged.
+
+### Changed
+- **fix720 — TV context-menu glass restyle** — the pop-up menus that appear on TV (the held-OK channel context menu from fix586, and any other modal bottom sheet) now use the redesign's dark glass card with rounded top corners, matching the migrated dialogs/OSD instead of the flat Material sheet.
+
+### Technical
+- **fix720**: added a `bottomSheetTheme` to `main.dart`'s `ThemeData`, gated `hasTouchScreen ? null : BottomSheetThemeData(...)` — TV gets `backgroundColor`/`modalBackgroundColor` `0xF00B0F19` (opaque F4 glass), `surfaceTintColor: transparent` (no M3 elevation tint), and a `RoundedRectangleBorder` top radius 20 (`F4Radius.modal`); phone gets `null` → the Material default, so the touch sheets are byte-identical. Theme-level, so it covers every `showModalBottomSheet` uniformly (no per-call-site edits). `test/fix720_bottomsheet_theme_test.dart` (2). Version → 4.1.24+720.
+
 ## [v4.1.23+719] - 2026-07-12
 
 **TV GUI redesign — Phase 5, unit 2: accent-color picker.** TV mode only; phone/touch UI unchanged.

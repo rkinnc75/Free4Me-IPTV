@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.24': [
+    'On TV, the pop-up menus (like the one you get holding OK on a channel) now '
+        'match the rest of the redesigned interface — a darker card with rounded '
+        'corners. (Phone UI is unchanged.)',
+  ],
   '4.1.23': [
     'New on TV: pick your accent color. Settings ▸ Playback ▸ Accent color lets '
         'you switch the focus outline between White, Sky Blue, Amber, Magenta, '

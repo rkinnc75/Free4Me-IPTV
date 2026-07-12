@@ -510,6 +510,24 @@ class MyApp extends StatelessWidget {
             }),
           ),
         ),
+        // fix720 (TV GUI redesign, Phase 5): tokenize the modal bottom sheets
+        // (e.g. the channel context menu, fix586) to the redesign glass look —
+        // dark glass fill + rounded top corners — so they match the migrated
+        // dialogs/menus instead of the flat Material sheet. TV only: null on the
+        // phone/touch path keeps the Material default (byte-identical). Values
+        // mirror F4Tokens (glassFill 0xCC0B0F19, radius.modal 20) as literals
+        // since ThemeData is built without an F4.of(context) here.
+        bottomSheetTheme: hasTouchScreen
+            ? null
+            : const BottomSheetThemeData(
+                backgroundColor: Color(0xF00B0F19),
+                modalBackgroundColor: Color(0xF00B0F19),
+                surfaceTintColor: Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius:
+                      BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+              ),
         useMaterial3: true,
         // fix701 (TV GUI redesign, Phase 0): attach the static TV token tree so
         // TV widgets can read it via F4.of(context). Inert for the phone path —
