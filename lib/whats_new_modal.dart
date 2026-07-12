@@ -6,6 +6,13 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.16': [
+    'More reliable EPG: when you have several sources, the guide now refreshes '
+        'them one at a time. Refreshing them together could starve each other '
+        '(a source finishing with "0 programs loaded" or a "database is locked" '
+        'error), leaving parts of the guide empty. One-at-a-time is a little '
+        'slower but loads every source\'s listings reliably.',
+  ],
   '4.1.15': [
     'TV Guide genre colour is now visible: the colour tag for the show that\'s '
         'on now moved to the top edge of the cell, so it\'s no longer hidden '

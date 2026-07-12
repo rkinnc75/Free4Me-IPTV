@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.16+712] - 2026-07-12
+
+**EPG multi-source refresh — serialize sources (the real fix; fix709 was insufficient).** Backend; all platforms.
+
+### Fixed
+- **fix712 — Refresh sources one at a time** — fix709 serialized the channel-match phase, but on-device verification (onn, a 2GB box) proved the *download/parse* phase also races under a concurrent multi-source refresh: with two sources refreshing at once, one source's temp-XML fetch was starved ("0 programs loaded") and the `epg_refresh_log` / insert writes exhausted the SQLITE_BUSY retries ("database is locked, code 5") — both sources failed (non-destructively: existing EPG survived). Sources now refresh **one at a time** (`maxConcurrent` 2→1), matching the proven-good single-source path (Trex: 185,516 programs, 35851/35851 matched). Covers every trigger (manual, background 24h, launch-if-stale) via the shared `refreshAllSources`.
+
+### Technical
+- **fix712**: `epg_service.dart` `refreshAllSources` — `const maxConcurrent = 2` → `1`; the chunked loop is unchanged (chunk size 1 = serial). fix709's `_serializeMatch` gate stays as a belt-and-suspenders invariant. Slower for N sources (serial downloads) but this is a nightly background op — correctness >> speed; also gentler on providers. The disproven "HTTP fetches don't fight" doc rationale is corrected. `test/fix712_serialize_refresh_test.dart` (4). Version → 4.1.16+712.
+
 ## [v4.1.15+711] - 2026-07-12
 
 **TV GUI — genre stripe visibility (fix708 follow-up).** TV mode only; phone UI unchanged.

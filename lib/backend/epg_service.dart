@@ -165,11 +165,13 @@ class EpgService {
 
   /// Refresh EPG for all sources that have an EPG URL configured.
   ///
-  /// Sources run in chunks of [maxConcurrent] (default 2) so two providers
-  /// can download in parallel — HTTP fetches don't fight each other and the
-  /// SQLite writer naturally serializes the DB-write phase. Matches the
-  /// `Utils.refreshAllSources` cadence so we don't surprise providers with
-  /// burst traffic.
+  /// fix712: sources run ONE AT A TIME (`maxConcurrent = 1`). The old
+  /// `maxConcurrent = 2` assumed "HTTP fetches don't fight and the SQLite writer
+  /// naturally serializes" — on-device verification disproved both: concurrent
+  /// downloads starved each other's temp-XML fetch (→ 0 programs) and the
+  /// concurrent DB writes exhausted the SQLITE_BUSY retries. Serial per-source is
+  /// correct + gentler on providers (no burst traffic). See the maxConcurrent
+  /// comment below for the full trace.
   static Future<void> refreshAllSources({bool background = false}) async {
     // Review finding 141: the BACKGROUND WorkManager pass yields to a
     // foreground catalog refresh (cross-isolate advisory lock in app_meta) —
@@ -207,7 +209,19 @@ class EpgService {
     final eligible = (await Sql.getSources())
         .where((s) => s.enabled && resolveEpgUrl(s) != null)
         .toList(growable: false);
-    const maxConcurrent = 2;
+    // fix712: refresh sources ONE AT A TIME. maxConcurrent=2 was meant for
+    // parallel downloads, but on-device verification (2026-07-12, onn 4K Plus, a
+    // 2GB box) proved concurrent multi-source refresh RACES the download/parse
+    // phase — not just the match (fix709). With Trex + A3000 refreshing at once:
+    // one source's temp-XML download was starved (PathNotFoundException
+    // epg_src_N.xml → "0 programs loaded"), and the epg_refresh_log / insert
+    // writes exhausted the SQLITE_BUSY retries ("database is locked, code 5") —
+    // BOTH sources failed. Serial per-source (download→parse→insert→match alone)
+    // matches the proven-good single-source path (Trex: 185516 programs,
+    // 35851/35851 matched) and is gentler on providers. Slower for N sources, but
+    // this is a nightly background op where correctness >> speed. fix709's match
+    // gate stays as a belt-and-suspenders invariant.
+    const maxConcurrent = 1;
     for (var i = 0; i < eligible.length; i += maxConcurrent) {
       final end = i + maxConcurrent > eligible.length
           ? eligible.length
