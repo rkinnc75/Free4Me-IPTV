@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.8+703] - 2026-07-12
+
+**TV GUI redesign — Phase 2 (channel/poster tiles).** TV mode only; phone UI unchanged.
+
+### Added / Changed
+- **fix703 — Tile focus** — on TV, a focused channel/movie/series/category tile now shows the accent focus ring (matching the tabs, white by default) and lifts slightly, instead of the old flat yellow border. All the existing tile behavior is unchanged (source-color edge bar, favorite star, category checkbox, D-pad edge-back / arrow navigation, hold-OK menu). The phone UI is untouched.
+
+### Technical
+- **fix703**: `channel_tile.dart` — focused-tile ring `Colors.yellow`→`AccentScope.of(context)` (gated on `showSourceEdgeBar`, the TV-only signal; AccentScope sits inside the gated ternary so it is never evaluated on the phone build) + a 1.05× `AnimatedScale` focus lift wrapping the Card on the TV path (phone returns the bare Card). ChannelTile keeps its own FocusNode + specialized key handling (not delegated to TvFocusable, which would risk regressions across 5 screens). Version → 4.1.8+703.
+
 ## [v4.1.7+702] - 2026-07-11
 
 **TV GUI redesign — Phase 0 foundation + Phase 1 (top tab bar).** TV mode only; the phone UI is unchanged.

@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:open_tv/source_color_picker.dart';
+import 'package:open_tv/tv/theme/accent_scope.dart'; // fix703 (TV GUI redesign)
+import 'package:open_tv/tv/theme/f4_motion.dart'; // fix703
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:open_tv/backend/app_logger.dart';
@@ -737,7 +739,7 @@ class _ChannelTileState extends State<ChannelTile> {
     final scanOk = widget.channel.streamValidated == true ||
         (widget.channel.id != null &&
             StreamScanner.results[widget.channel.id] == true);
-    return Card(
+    final Widget tile = Card(
       elevation: _focusNode.hasFocus ? 8.0 : 2.0,
       // fix501: clip so the TV edge bar follows the card's rounded corners.
       // Gated on the TV flag so the phone card's clipping is unchanged.
@@ -745,10 +747,12 @@ class _ChannelTileState extends State<ChannelTile> {
           widget.showSourceEdgeBar ? Clip.antiAlias : Clip.none,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        // fix501: on TV, a focused tile shows the app-standard yellow ring
-        // (drawn over the source tint). Phone keeps elevation-only focus.
+        // fix703 (TV GUI redesign): a focused TV tile now shows the ACCENT ring
+        // (read from AccentScope at draw time) instead of the flat yellow border
+        // — consistent with the tab bar. Phone keeps elevation-only focus (the
+        // ring is gated on showSourceEdgeBar, which is TV-only).
         side: (widget.showSourceEdgeBar && _focusNode.hasFocus)
-            ? const BorderSide(color: Colors.yellow, width: 3)
+            ? BorderSide(color: AccentScope.of(context), width: 2.5)
             : scanOk
                 ? const BorderSide(color: Colors.greenAccent, width: 2.5)
                 : BorderSide.none,
@@ -878,6 +882,17 @@ class _ChannelTileState extends State<ChannelTile> {
           ],
         ),
       ),
+    );
+
+    // fix703 (TV GUI redesign): a focused TV tile lifts 1.05x (token motion) so
+    // the selection reads at 10ft, matching the tab bar. Gated on the TV signal
+    // (showSourceEdgeBar); the phone keeps elevation-only focus, unchanged.
+    if (!widget.showSourceEdgeBar) return tile;
+    return AnimatedScale(
+      scale: _focusNode.hasFocus ? F4Motion.scaleFocused : 1.0,
+      duration: F4Motion.normal,
+      curve: F4Motion.easeOut,
+      child: RepaintBoundary(child: tile),
     );
   }
 }
