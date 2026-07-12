@@ -443,8 +443,14 @@ class MyApp extends StatelessWidget {
           style: ButtonStyle(
             side: WidgetStateProperty.resolveWith((states) {
               if (states.contains(WidgetState.focused) && !hasTouchScreen) {
-                return const BorderSide(
-                  color: Colors.yellow, // yellow border
+                // fix707 (TV GUI redesign): accent focus ring (default white)
+                // instead of flat yellow — completes the accent-ring language
+                // across TV chrome (buttons / dialogs / gear). Non-const: reads
+                // appAccentNotifier at theme-build time. Accent is white today
+                // (no picker UI yet); a future accent-preset unit adds live
+                // reactivity by rebuilding the theme when the notifier changes.
+                return BorderSide(
+                  color: appAccentNotifier.value,
                   width: 4,
                 );
               }
@@ -465,7 +471,7 @@ class MyApp extends StatelessWidget {
           style: ButtonStyle(
             side: WidgetStateProperty.resolveWith((states) {
               if (states.contains(WidgetState.focused) && !hasTouchScreen) {
-                return const BorderSide(color: Colors.yellow, width: 3);
+                return BorderSide(color: appAccentNotifier.value, width: 3); // fix707: accent, was yellow
               }
               return null;
             }),
@@ -475,7 +481,7 @@ class MyApp extends StatelessWidget {
           style: ButtonStyle(
             side: WidgetStateProperty.resolveWith((states) {
               if (states.contains(WidgetState.focused) && !hasTouchScreen) {
-                return const BorderSide(color: Colors.yellow, width: 3);
+                return BorderSide(color: appAccentNotifier.value, width: 3); // fix707: accent, was yellow
               }
               return null;
             }),
@@ -485,7 +491,7 @@ class MyApp extends StatelessWidget {
           style: ButtonStyle(
             side: WidgetStateProperty.resolveWith((states) {
               if (states.contains(WidgetState.focused) && !hasTouchScreen) {
-                return const BorderSide(color: Colors.yellow, width: 3);
+                return BorderSide(color: appAccentNotifier.value, width: 3); // fix707: accent, was yellow
               }
               return null;
             }),

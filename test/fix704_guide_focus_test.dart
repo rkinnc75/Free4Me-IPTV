@@ -62,14 +62,8 @@ void main() {
     expect(guide.contains('open the menu on release'), isTrue);
   });
 
-  test('global button chrome (main.dart) is deliberately left for a later unit',
-      () {
-    // fix704 unifies the browsing-surface rails only; the TV button focus theme
-    // (settings/dialogs/gear) is a separate higher-blast-radius pass. Assert it
-    // is still present (unchanged) so this test flags if the scopes get merged
-    // without updating the plan.
-    final main = File('lib/main.dart').readAsStringSync();
-    expect(main.contains('Colors.yellow'), isTrue,
-        reason: 'button focus theme intentionally not migrated in fix704');
-  });
+  // NOTE: fix704 deliberately left the global TV button focus theme (main.dart)
+  // yellow — that higher-blast-radius chrome pass was done separately in fix707
+  // (see test/fix707_chrome_accent_test.dart). The old "main.dart still has
+  // yellow" guard here was removed when fix707 completed that migration.
 }

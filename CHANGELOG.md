@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.12+707] - 2026-07-12
+
+**TV GUI redesign — chrome pass: button/dialog/gear focus rings.** TV mode only; phone UI unchanged.
+
+### Added / Changed
+- **fix707 — TV chrome focus ring** — the global TV focus ring on buttons, dialogs and the settings gear (Filled / Icon / Text / Outlined buttons) now uses the accent colour (white by default) instead of the old flat yellow, completing the accent-ring language across all TV chrome (tabs fix702, tiles fix703, rails fix704, and now buttons). Phone UI unchanged (all four are gated on `!hasTouchScreen`).
+
+### Technical
+- **fix707**: `lib/main.dart` — the 4 `ButtonStyle.side` focused resolvers `Colors.yellow`→`appAccentNotifier.value` (widths 4/3/3/3 kept). Non-const read at theme-build time: accent is white today (no picker UI), so it's visually the intended white ring; a future accent-preset unit adds live reactivity by rebuilding the theme on notifier change. `test/fix704_guide_focus_test.dart`'s "main.dart still yellow" guard retired (that migration is now done); `test/fix707_chrome_accent_test.dart` asserts no `Colors.yellow` + all 4 rings read the notifier + `!hasTouchScreen` gating kept. Version → 4.1.12+707.
+
 ## [v4.1.11+706] - 2026-07-12
 
 **TV GUI redesign — Phase 3 unit 4: guide "no guide data" placeholders.** TV mode only; phone UI unchanged.

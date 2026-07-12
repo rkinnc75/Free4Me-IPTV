@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.12': [
+    'TV look refresh finishing touch: the focus highlight on buttons, dialogs '
+        'and the settings gear now matches everything else — a clean accent '
+        'ring (white by default) instead of the old yellow box. (Phone UI is '
+        'unchanged.)',
+  ],
   '4.1.11': [
     'TV Guide no longer shows blank rows: channels without a program guide '
         '(24/7 / VOD-style feeds) now show a clear "No guide data" strip instead '
