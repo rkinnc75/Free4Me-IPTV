@@ -1159,6 +1159,12 @@ class TvGuideViewState extends State<TvGuideView> {
         padding: const EdgeInsets.symmetric(horizontal: 4),
         child: LayoutBuilder(builder: (context, c) {
           return Stack(children: [
+            // fix706 (Phase 3 unit 4): never a blank row. Channels with no EPG
+            // in the window (loop / VOD-style feeds with no XMLTV) previously
+            // rendered an empty grid; now they show a dim full-width "No guide
+            // data" placeholder. When `progs` is non-empty the for-loop draws
+            // the real cells and this collection-if adds nothing.
+            if (progs.isEmpty) _emptyRowPlaceholder(c.maxWidth),
             for (final p in progs) _block(p, c.maxWidth, nowEpoch, ch),
             _nowLine(c.maxWidth, nowEpoch),
           ]);
@@ -1175,6 +1181,39 @@ class TvGuideViewState extends State<TvGuideView> {
   double _x(int epoch, double width) {
     final frac = (epoch - _windowStart) / (_windowEnd - _windowStart);
     return (frac.clamp(0.0, 1.0)) * width;
+  }
+
+  // fix706 (Phase 3 unit 4): dim full-width placeholder for a channel row that
+  // has no programme data in the current window — "never a blank/broken cell".
+  // Styled like a muted programme cell; the NOW line still draws over it.
+  Widget _emptyRowPlaceholder(double width) {
+    final scheme = Theme.of(context).colorScheme;
+    return Positioned(
+      left: 0,
+      top: 3,
+      bottom: 3,
+      width: width,
+      child: Padding(
+        padding: const EdgeInsets.only(right: 2),
+        child: Container(
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerHighest.withValues(alpha: 0.35),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Text(
+            'No guide data',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 11,
+              color: scheme.onSurface.withValues(alpha: 0.45),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _block(Program p, double width, int nowEpoch, Channel ch) {

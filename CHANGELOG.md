@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.11+706] - 2026-07-12
+
+**TV GUI redesign — Phase 3 unit 4: guide "no guide data" placeholders.** TV mode only; phone UI unchanged.
+
+### Added / Changed
+- **fix706 — Never a blank guide row** — channels with no EPG programmes in the window (24/7 loop / VOD-style feeds that carry no XMLTV — common in these bundles) previously rendered an empty grid row that looked broken. They now show a dim full-width **"No guide data"** placeholder. Populated rows are unchanged. (Reordered ahead of the genre-tint unit because it's the higher-value, lower-risk change and is verifiable in the common EPG-sparse state.)
+
+### Technical
+- **fix706**: `tv_guide_view.dart` — new `_emptyRowPlaceholder(width)` (a muted `surfaceContainerHighest`@0.35 full-width cell, left-aligned "No guide data", fontSize 11). Added to `_gridRow`'s `Stack` via `if (progs.isEmpty) _emptyRowPlaceholder(c.maxWidth)`. Purely additive — the real-cell `for`-loop and the NOW-line are unchanged, and the collection-if contributes nothing when `progs` is non-empty, so populated rows are byte-identical. No data layer. Version → 4.1.11+706.
+
 ## [v4.1.10+705] - 2026-07-12
 
 **TV GUI redesign — Phase 3 unit 2: guide NOW emphasis.** TV mode only; phone UI unchanged.
