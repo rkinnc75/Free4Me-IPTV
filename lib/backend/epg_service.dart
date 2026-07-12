@@ -1,3 +1,4 @@
+import 'dart:async' show Completer;
 import 'dart:convert' show jsonDecode, jsonEncode;
 import 'dart:math' show min;
 
@@ -531,6 +532,38 @@ class EpgService {
     }
   }
 
+  // fix709: serialize the channel-MATCH phase across concurrently-refreshing
+  // sources. refreshAllSources runs sources maxConcurrent=2, and each
+  // refreshSource does download → match. Two matchChannels running at once
+  // collide on db.sqlite: setChannelEpgIds + the WAL **TRUNCATE** checkpoint
+  // (matchChannels line ~517 — TRUNCATE needs an EXCLUSIVE lock). The
+  // SQLITE_BUSY retries (5×, ~5s) exhaust under sustained contention →
+  // matchChannels throws → the per-source catch in refreshAllSources swallows
+  // it → that source's channels are left silently UNMATCHED (the "guide empty
+  // on every channel" bug; a single-source refresh has no concurrency and
+  // matched 35851/35851). The DOWNLOAD phase stays parallel — it is already
+  // contention-tolerant (epg.sqlite writes retry; its db.sqlite checkpoint is
+  // PASSIVE, line 378). Only the match (db.sqlite TRUNCATE) must serialize.
+  //
+  // In-isolate mutex: a chained-Future gate. This covers the maxConcurrent=2
+  // concurrency, which lives WITHIN one refreshAllSources call in one isolate.
+  // Cross-isolate (foreground vs Workmanager background) is separately guarded
+  // by the app_meta refresh lock + the SQLITE_BUSY retries. The gate never
+  // completes with an error (finally), so awaiting it can't throw or wedge.
+  static Future<void> _matchGate = Future<void>.value();
+
+  static Future<void> _serializeMatch(Future<void> Function() body) async {
+    final prev = _matchGate;
+    final done = Completer<void>();
+    _matchGate = done.future;
+    await prev; // wait for any in-flight match to finish (prev never errors)
+    try {
+      await body();
+    } finally {
+      done.complete();
+    }
+  }
+
   /// Combined refresh (download + incremental match).
   ///
   /// Pass [forceRematch] = true to re-match every channel, not just
@@ -550,12 +583,15 @@ class EpgService {
       onProgress: onProgress,
     );
     if (channelMap == null) return;
-    await matchChannels(
-      source,
-      channelMap,
-      forceAll: forceRematch,
-      onProgress: onProgress,
-    );
+    // fix709: serialize the match so two concurrently-refreshing sources can't
+    // collide on the db.sqlite writer + TRUNCATE checkpoint (the SQLITE_BUSY-→
+    // silently-unmatched bug). Downloads above already ran in parallel.
+    await _serializeMatch(() => matchChannels(
+          source,
+          channelMap,
+          forceAll: forceRematch,
+          onProgress: onProgress,
+        ));
     epgVersion.value++; // fix600: notify listeners (guide) to reflect new EPG
     // finding 38: bridge the per-isolate epgVersion gap. The in-process bump
     // above only reaches listeners in THIS isolate; a Workmanager background

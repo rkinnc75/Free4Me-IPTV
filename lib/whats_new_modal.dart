@@ -6,6 +6,14 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.14': [
+    'Fixed a bug where the TV Guide could show "No guide data" on most or all '
+        'channels even though the guide had downloaded. When more than one '
+        'source refreshed at the same time, the step that links channels to '
+        'their listings could quietly fail; it now runs one source at a time so '
+        'the listings reliably attach. If your guide looks empty, run Settings → '
+        'EPG → Refresh EPG now once and it will fill in.',
+  ],
   '4.1.13': [
     'TV Guide now colour-codes what\'s on: the show currently airing gets a '
         'small colour stripe by genre (news, sport, movies, kids, music, docs), '

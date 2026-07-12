@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.14+709] - 2026-07-12
+
+**EPG matching fix — guide empty on all channels (concurrency).** Backend; all platforms.
+
+### Fixed
+- **fix709 — Serialize the EPG channel-match phase** — the TV Guide could show "No guide data" on most/all channels even though the EPG had downloaded. Root cause: a multi-source EPG refresh runs sources concurrently (`maxConcurrent=2`), and two channel-match steps at once collided on the `db.sqlite` writer + the WAL **TRUNCATE** checkpoint (an exclusive lock); the SQLITE_BUSY retries exhausted, `matchChannels` threw, and the per-source `catch` swallowed it — leaving that source's channels silently unmatched. (A single-source refresh, with no concurrency, matched 35851/35851 on-device.) This is the recurring trigger behind "works after a manual refresh, empty again after the nightly auto-refresh."
+
+### Technical
+- **fix709**: `epg_service.dart` — an in-isolate chained-Future gate (`_matchGate` / `_serializeMatch`) serializes `matchChannels` so no two matches run at once; **downloads stay parallel** (they are already contention-tolerant — retried epg.sqlite writes + a PASSIVE db.sqlite checkpoint, line 378). Only the match's db.sqlite TRUNCATE checkpoint needed serializing. Covers all triggers (manual refresh, background 24h task, launch-if-stale) since they share `refreshAllSources`. In-isolate only, which is where the `maxConcurrent=2` concurrency lives; cross-isolate stays guarded by the app_meta refresh lock + SQLITE_BUSY retries. Gate releases in `finally` (a throwing match can't wedge it). `test/fix709_epg_serialize_match_test.dart` (4): wiring present + gate logic serializes (no overlap, FIFO) + throwing body doesn't wedge. Adversarially reviewed (concurrency-correctness + fixes-bug/regression lenses). Version → 4.1.14+709.
+
 ## [v4.1.13+708] - 2026-07-12
 
 **TV GUI redesign — Phase 3 unit 3: guide genre tint.** TV mode only; phone UI unchanged.
