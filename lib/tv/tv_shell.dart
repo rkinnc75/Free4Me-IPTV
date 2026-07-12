@@ -228,8 +228,10 @@ class _TvShellState extends State<TvShell> {
       );
     } else if (t.isRecordings) {
       // fix669: the Scheduled Recording list.
+      // fix718: tv:true → recording tiles get the accent focus ring.
       _built[i] = const RecordingsView(
         key: ValueKey<String>('tv-recordings'),
+        tv: true,
       );
     } else if (i == 0) {
       _built[i] = TvGuideView(key: _guideKey, settings: widget.settings);

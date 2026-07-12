@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.22+718] - 2026-07-12
+
+**TV GUI redesign — Phase 5 (settings/menus), unit 1: Recordings restyle.** TV mode only; phone/touch UI unchanged.
+
+### Added / Changed
+- **fix718 — Recordings accent focus ring** — on TV, the focused row in the Recordings list now shows the shared accent focus outline (matching the tabs / tiles / rails / buttons from fix704/707), instead of only the faint Material highlight. Phone keeps the bare Material list.
+
+### Technical
+- **fix718**: `RecordingsView` gains `final bool tv` (default false); the TV shell builds `RecordingsView(tv: true)`, phone `bottom_nav` unchanged. `_RecordingTile` gains `tv` + a `_focused` flag driven by a `_node` focus listener (added initState / removed dispose). build() returns the bare `ListTile` when `!tv` (phone byte-identical); on TV wraps it in an `AnimatedContainer` (`F4Motion.fast`) with `Border.all(width: 2, color: _focused ? AccentScope.of(context) : transparent)` + `t.radius.card`. The 2px border is always allocated (color-only change) so focus causes no layout reflow; the ListTile keeps `focusNode`/`onTap`/`onLongPress` and the fix693 held-OK key model is untouched. Adversarial review. `test/fix718_recordings_accent_test.dart` (5). Version → 4.1.22+718.
+
 ## [v4.1.21+717] - 2026-07-12
 
 **EPG reliability — route "Re-match all" through the shared match gate.** No UI change; TV + phone.

@@ -13,6 +13,9 @@ import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/recording.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/player.dart';
+import 'package:open_tv/tv/theme/accent_scope.dart';
+import 'package:open_tv/tv/theme/f4_motion.dart';
+import 'package:open_tv/tv/theme/f4_tokens.dart';
 
 /// fix669: Scheduled Recording list — a top-level destination alongside
 /// Live/Movies/Series. Shows recordings grouped by state with per-item actions:
@@ -21,7 +24,11 @@ import 'package:open_tv/player.dart';
 ///
 /// This is distinct from the app's live "DVR" (rewind-within-live-stream).
 class RecordingsView extends StatefulWidget {
-  const RecordingsView({super.key});
+  // fix718: [tv] is set true only by the TV shell (the !hasTouchScreen path);
+  // it gates the accent focus ring so the phone list stays byte-identical.
+  const RecordingsView({super.key, this.tv = false});
+
+  final bool tv;
 
   @override
   State<RecordingsView> createState() => _RecordingsViewState();
@@ -357,6 +364,7 @@ class _RecordingsViewState extends State<RecordingsView> {
                       final (icon, color, label) = _statusChip(r.status);
                       final blinking = r.status == RecordingStatus.recording;
                       return _RecordingTile(
+                        tv: widget.tv,
                         leading: _BlinkingDot(
                           icon: icon,
                           color: color,
@@ -465,6 +473,7 @@ class _BlinkingDotState extends State<_BlinkingDot>
 /// (touch) or held-OK (D-pad, fix586/fix607 pattern) = [onDetails].
 class _RecordingTile extends StatefulWidget {
   const _RecordingTile({
+    required this.tv,
     required this.leading,
     required this.title,
     required this.subtitle,
@@ -473,6 +482,7 @@ class _RecordingTile extends StatefulWidget {
     required this.onDetails,
   });
 
+  final bool tv;
   final Widget leading;
   final String title;
   final String subtitle;
@@ -489,11 +499,18 @@ class _RecordingTileState extends State<_RecordingTile> {
   Timer? _holdTimer;
   bool _selectDown = false;
   bool _heldLong = false;
+  bool _focused = false; // fix718: drives the TV accent ring
   static const Duration _holdDelay = Duration(milliseconds: 600);
+
+  void _onFocusChange() {
+    if (!mounted) return;
+    if (_node.hasFocus != _focused) setState(() => _focused = _node.hasFocus);
+  }
 
   @override
   void initState() {
     super.initState();
+    if (widget.tv) _node.addListener(_onFocusChange); // fix718 (TV-only)
     // fix693: held-OK on the D-pad opens details (mirrors tv_top_tab_bar's
     // fix607 model — timer marks the hold, KeyUp decides held vs quick).
     _node.onKeyEvent = (n, event) {
@@ -533,13 +550,14 @@ class _RecordingTileState extends State<_RecordingTile> {
   @override
   void dispose() {
     _holdTimer?.cancel();
+    if (widget.tv) _node.removeListener(_onFocusChange); // fix718 (TV-only)
     _node.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
+    final tile = ListTile(
       focusNode: _node,
       leading: widget.leading,
       title: Text(widget.title,
@@ -549,6 +567,27 @@ class _RecordingTileState extends State<_RecordingTile> {
       trailing: widget.trailing,
       onTap: widget.onTap,
       onLongPress: widget.onDetails, // touchscreens
+    );
+    // fix718: phone keeps the bare Material tile (byte-identical). On TV, wrap
+    // in the shared accent focus ring so Recordings matches the rest of the
+    // redesigned UI (tabs/tiles/rails/buttons). The ListTile keeps the focus
+    // node + held-OK key handling; the ring is paint-only around it.
+    if (!widget.tv) return tile;
+    final t = F4.of(context);
+    return AnimatedContainer(
+      duration: F4Motion.fast,
+      curve: Curves.easeOut,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(t.radius.card),
+        border: Border.all(
+          // fix718: shared ring width (2.5) + in-hue alpha fade (not
+          // transparent→accent, which Color.lerp routes through muddy gray),
+          // matching TvFocusable so Recordings looks identical to other tiles.
+          width: t.focus.ringCard,
+          color: AccentScope.of(context).withValues(alpha: _focused ? 1 : 0),
+        ),
+      ),
+      child: tile,
     );
   }
 }
