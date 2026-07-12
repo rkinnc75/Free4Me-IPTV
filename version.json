@@ -1,19 +1,19 @@
 {
-  "latest": "4.1.24",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.24",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.24/Free4Me-IPTV-4.1.24-universal.apk",
-  "releaseNotes": "\u2022 On TV, the pop-up menus (like the one you get holding OK on a channel) now match the rest of the redesigned interface \u2014 a darker card with rounded corners. (Phone UI is unchanged.)",
+  "latest": "4.1.25",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.25",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.25/Free4Me-IPTV-4.1.25-universal.apk",
+  "releaseNotes": "\u2022 On TV, pop-up dialogs (confirmations, pickers, the \"Re-match complete\" notice) now use the same dark glass card as the rest of the redesign, matching the menus. (Phone UI is unchanged.)",
   "apkUrls": {
-    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.24/Free4Me-IPTV-4.1.24-arm.apk",
-    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.24/Free4Me-IPTV-4.1.24-arm64.apk",
-    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.24/Free4Me-IPTV-4.1.24-x64.apk",
-    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.24/Free4Me-IPTV-4.1.24-universal.apk"
+    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.25/Free4Me-IPTV-4.1.25-arm.apk",
+    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.25/Free4Me-IPTV-4.1.25-arm64.apk",
+    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.25/Free4Me-IPTV-4.1.25-x64.apk",
+    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.25/Free4Me-IPTV-4.1.25-universal.apk"
   },
   "apkSha256s": {
-    "arm": "7d1cebe2c04c4e06e1e84a894cc492cdce1b1d9b765169158dfe832479436809",
-    "arm64": "b25b59f6165d331b341788f0e77ef6a5f4708b8617767d0284c5a0479b87e54f",
-    "x64": "5f6bc5bf768ac9cb9b5b9f1d3fda3d5cdf9883de528769728f7cbf2ede07e591",
-    "universal": "fa4f80ee06884cc42cc69ac4585f0a6cebdebbc90d2366cf46339774eb64f0f9"
+    "arm": "371b6a3c0a0e2fac6a363351d71fae06d6f536c32f591fa20c9f99fdcb15315b",
+    "arm64": "eedcef33e660558e30659a011ddf0b98f9998b3738199b6c91c45815966669b6",
+    "x64": "9075bce9769ffea9ae14886bb2760d114f3395ba8d371a163144f0c93ddad3c2",
+    "universal": "96e0bab1dbbf0a85764cb36213febdb046d3975a2f36bbe458d828f703fb1a77"
   },
-  "apkSha256": "fa4f80ee06884cc42cc69ac4585f0a6cebdebbc90d2366cf46339774eb64f0f9"
+  "apkSha256": "96e0bab1dbbf0a85764cb36213febdb046d3975a2f36bbe458d828f703fb1a77"
 }
