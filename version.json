@@ -1,19 +1,19 @@
 {
-  "latest": "4.1.9",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.9",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.9/Free4Me-IPTV-4.1.9-universal.apk",
-  "releaseNotes": "\u2022 TV look refresh continues across the browsing surface: the highlighted item in the TV Guide rail, the browse list, and the Categories list now shows the same clean accent focus ring (white by default) as the tabs and tiles, instead of the old yellow box. Guide layout, times, live preview and hold-OK menu are all unchanged. (Phone UI is unchanged.)",
+  "latest": "4.1.10",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.10",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.10/Free4Me-IPTV-4.1.10-universal.apk",
+  "releaseNotes": "\u2022 TV Guide is easier to read at a glance: the \"now\" line has a soft glow, and the show that's currently on fills in from the left to show how far through it is \u2014 a built-in progress bar. Times, layout, live preview and hold-OK menu are unchanged. (Phone UI is unchanged.)",
   "apkUrls": {
-    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.9/Free4Me-IPTV-4.1.9-arm.apk",
-    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.9/Free4Me-IPTV-4.1.9-arm64.apk",
-    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.9/Free4Me-IPTV-4.1.9-x64.apk",
-    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.9/Free4Me-IPTV-4.1.9-universal.apk"
+    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.10/Free4Me-IPTV-4.1.10-arm.apk",
+    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.10/Free4Me-IPTV-4.1.10-arm64.apk",
+    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.10/Free4Me-IPTV-4.1.10-x64.apk",
+    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.10/Free4Me-IPTV-4.1.10-universal.apk"
   },
   "apkSha256s": {
-    "arm": "9e3b64a867fe050a551e457da8e4c1a93b5e1ec87277a1f29a5568894f3bb838",
-    "arm64": "b1f2d06b52243220ec209589169cfd6c63776b4135a14a2463ee3fe239505243",
-    "x64": "1795c4f27100b40fcf0c9d494ca170d7efb8839ad96e353b0cf45f765320a9cd",
-    "universal": "a7a5d3f41cf656e0adb32e40e4e8c3147ffc099351c232f4957cc143dbbc142f"
+    "arm": "01e8d03df800e5011418257bb1462d29dcf40c310f7e2dfddda08fcd7f19f7f6",
+    "arm64": "c8862db6ccde560416e3010fc86890fb64eb53869b6a0526a88dfc417e65518c",
+    "x64": "d17f407911e4ee57b34d65abf2575a598e3e3c4d56f3e23a1cda6a8e6bc42f07",
+    "universal": "866492d340f32c9154e82a98a2a9f8c781d30a29ec8c4089c649fc5aa73d8ac5"
   },
-  "apkSha256": "a7a5d3f41cf656e0adb32e40e4e8c3147ffc099351c232f4957cc143dbbc142f"
+  "apkSha256": "866492d340f32c9154e82a98a2a9f8c781d30a29ec8c4089c649fc5aa73d8ac5"
 }
