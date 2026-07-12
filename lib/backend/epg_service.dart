@@ -598,6 +598,32 @@ class EpgService {
     }
   }
 
+  /// fix717: the ONLY entry point external callers should use to match a
+  /// source. Routes [matchChannels] through the shared [_matchGate] so a
+  /// "Re-match all" (settings) can't collide on the db.sqlite writer + WAL
+  /// TRUNCATE with a concurrent FOREGROUND refresh (launch/stale refreshIfStale,
+  /// or a source refresh) that shares THIS isolate — the same
+  /// SQLITE_BUSY-→silently-unmatched bug fix709 closed for the refresh path.
+  ///
+  /// Scope: SAME-ISOLATE only. [_matchGate] is a `static` field and Dart statics
+  /// are per-isolate, so this does NOT serialize a Workmanager BACKGROUND refresh
+  /// (separate isolate) against a foreground Re-match. That cross-isolate window
+  /// is guarded only by the SQLITE_BUSY retries — the app_meta refresh lock
+  /// guards refreshAllSources callers, which the settings Re-match is NOT (see
+  /// task: have Re-match honor epg_refresh_in_progress to close it).
+  static Future<void> matchChannelsSerialized(
+    Source source,
+    Map<String, String> channelMap, {
+    bool forceAll = false,
+    void Function(XmltvProgress)? onProgress,
+  }) =>
+      _serializeMatch(() => matchChannels(
+            source,
+            channelMap,
+            forceAll: forceAll,
+            onProgress: onProgress,
+          ));
+
   /// Combined refresh (download + incremental match).
   ///
   /// Pass [forceRematch] = true to re-match every channel, not just
@@ -627,12 +653,12 @@ class EpgService {
     // fix709: serialize the match so two concurrently-refreshing sources can't
     // collide on the db.sqlite writer + TRUNCATE checkpoint (the SQLITE_BUSY-→
     // silently-unmatched bug). Downloads above already ran in parallel.
-    await _serializeMatch(() => matchChannels(
-          source,
-          channelMap,
-          forceAll: forceRematch,
-          onProgress: onProgress,
-        ));
+    await matchChannelsSerialized(
+      source,
+      channelMap,
+      forceAll: forceRematch,
+      onProgress: onProgress,
+    );
     epgVersion.value++; // fix600: notify listeners (guide) to reflect new EPG
     // finding 38: bridge the per-isolate epgVersion gap. The in-process bump
     // above only reaches listeners in THIS isolate; a Workmanager background

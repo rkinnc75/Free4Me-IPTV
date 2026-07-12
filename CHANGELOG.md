@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.21+717] - 2026-07-12
+
+**EPG reliability — route "Re-match all" through the shared match gate.** No UI change; TV + phone.
+
+### Fixed
+- **fix717 — Re-match all match-gate** — the Settings "Re-match all channels" action no longer collides with an automatic guide refresh running on the same isolate. Two channel-matches writing to the guide database at once could exhaust the busy-retries and leave a source's channels silently without listings (the "guide empty on every channel" failure); Re-match now serializes against the refresh path.
+
+### Technical
+- **fix717**: new public `EpgService.matchChannelsSerialized(...)` = `_serializeMatch(() => matchChannels(...))` — the single entry point external callers use; `refreshSource` routes through it too (one gate source of truth; `matchChannels(` now has exactly two occurrences: its definition + the wrapper's call). `settings_view.dart` "Re-match all" loop calls the wrapper instead of `matchChannels` directly. **Scope (per adversarial review):** the gate (`_matchGate`) is a per-isolate static, so this closes the realistic same-isolate window (Re-match vs a foreground launch/stale refresh — `BackgroundTaskService.run` spawns no isolate); a Workmanager BACKGROUND refresh (separate isolate) is out of scope and still relies on the SQLITE_BUSY retries (follow-up: have Re-match honor `epg_refresh_in_progress`). `test/fix717_rematch_gated_test.dart` (4). Version → 4.1.21+717.
+
 ## [v4.1.20+716] - 2026-07-12
 
 **TV GUI redesign — Phase 4 (player OSD), unit 3: Channel Bar.** TV mode only; phone/touch UI unchanged.

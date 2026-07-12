@@ -1330,7 +1330,12 @@ class _SettingsState extends State<SettingsView> {
               ' (${channelMap.length} channel entries),'
               ' starting force-match',
             );
-            await EpgService.matchChannels(
+            // fix717: route through the shared match gate so this Re-match
+            // can't collide on the db.sqlite writer/TRUNCATE with a concurrent
+            // FOREGROUND refresh on this isolate (the SQLITE_BUSY-→unmatched
+            // bug). Cross-isolate (Workmanager background) is out of scope —
+            // per-isolate static gate; that window relies on SQLITE_BUSY retries.
+            await EpgService.matchChannelsSerialized(
               source,
               channelMap,
               forceAll: true,

@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.21': [
+    'Re-matching the TV guide ("Re-match all channels" in Settings) is now more '
+        'reliable — it no longer clashes with an automatic guide refresh running '
+        'at the same time, which could previously leave some channels without '
+        'listings.',
+  ],
   '4.1.20': [
     'TV player now shows a channel strip: bring up the on-screen controls and '
         'you\'ll see the channels around the one you\'re watching, with the '
