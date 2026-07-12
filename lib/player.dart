@@ -11,6 +11,7 @@ import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/utils.dart';
 import 'package:open_tv/models/device_detector.dart';
 import 'package:open_tv/player/tv_osd/action_button.dart'; // fix715 (Phase 4 OSD)
+import 'package:open_tv/player/tv_osd/channel_bar.dart'; // fix716 (Phase 4 OSD)
 import 'package:open_tv/player/tv_osd/info_bar.dart'; // fix714 (Phase 4 OSD)
 import 'package:open_tv/widgets/player_channel_name_label.dart';
 import 'package:open_tv/backend/recording_actions.dart';
@@ -1844,6 +1845,16 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
             children: [
               topBar,
               const Spacer(),
+              // fix716 (Phase 4 OSD unit 3): Peer2 Channel Bar — a display-only
+              // surf-context strip (current group, tuned channel highlighted),
+              // above the Info Bar. Only when there's a surfable group. It's
+              // IgnorePointer/non-focusable, so the D-pad/_navMode model is
+              // untouched (Option B); ▲▼ still surfs and a fresh Player at the
+              // new index re-centers it.
+              if (_canSurf && widget.playlist != null) ...[
+                PlayerChannelBar(playlist: widget.playlist!),
+                const SizedBox(height: 8),
+              ],
               // fix714 (Phase 4 OSD unit 1): Peer2 bottom Info Bar — channel
               // logo + name + NOW programme + the seek-progress row (moved here
               // from the top bar + the old standalone progress row), on a token

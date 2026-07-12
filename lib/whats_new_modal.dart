@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.20': [
+    'TV player now shows a channel strip: bring up the on-screen controls and '
+        'you\'ll see the channels around the one you\'re watching, with the '
+        'current one highlighted — handy context while you channel-surf with '
+        'up/down. (Phone UI is unchanged.)',
+  ],
   '4.1.19': [
     'TV player controls now lift and highlight when focused (a clean accent '
         'ring + a subtle raise), matching the rest of the redesign. The buttons '

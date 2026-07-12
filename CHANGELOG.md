@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.20+716] - 2026-07-12
+
+**TV GUI redesign — Phase 4 (player OSD), unit 3: Channel Bar.** TV mode only; phone/touch UI unchanged.
+
+### Added / Changed
+- **fix716 — Player Channel Bar** — the revealed player OSD now shows a horizontal strip of the current surf group above the Info Bar, centered on the channel you're watching (accent-highlighted) with its neighbours dimmed — channel-surf context. It's display-only: you still surf with ▲▼ and the strip re-centers on the new channel; the D-pad/trigger behavior is unchanged (Option B). Only shows when there's a surfable group.
+
+### Technical
+- **fix716**: new `lib/player/tv_osd/channel_bar.dart` (`PlayerChannelBar` — a horizontal `ListView.builder` over `PlaybackPlaylist.channels`, current index = accent border + full opacity, others dimmed 0.55; a `ScrollController` post-frame `jumpTo` centers the tuned channel; `IgnorePointer` + `NeverScrollableScrollPhysics` + no `FocusNode` → not interactive, stays out of the overlay `FocusTraversalGroup`). Wired into `player.dart` `_buildTvOverlay` above the `PlayerInfoBar`, gated `if (_canSurf && widget.playlist != null)`. Reuses the existing surf playlist — no engine/surf/focus change. Adversarial review. `test/fix716_player_channel_bar_test.dart` (5). Version → 4.1.20+716.
+
 ## [v4.1.19+715] - 2026-07-12
 
 **TV GUI redesign — Phase 4 (player OSD), unit 2: action-button focus lift.** TV mode only; phone/touch UI unchanged.
