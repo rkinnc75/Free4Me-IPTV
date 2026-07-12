@@ -1,19 +1,19 @@
 {
-  "latest": "4.1.10",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.10",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.10/Free4Me-IPTV-4.1.10-universal.apk",
-  "releaseNotes": "\u2022 TV Guide is easier to read at a glance: the \"now\" line has a soft glow, and the show that's currently on fills in from the left to show how far through it is \u2014 a built-in progress bar. Times, layout, live preview and hold-OK menu are unchanged. (Phone UI is unchanged.)",
+  "latest": "4.1.11",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.11",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.11/Free4Me-IPTV-4.1.11-universal.apk",
+  "releaseNotes": "\u2022 TV Guide no longer shows blank rows: channels without a program guide (24/7 / VOD-style feeds) now show a clear \"No guide data\" strip instead of an empty grid, so the guide never looks broken. (Phone UI is unchanged.)",
   "apkUrls": {
-    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.10/Free4Me-IPTV-4.1.10-arm.apk",
-    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.10/Free4Me-IPTV-4.1.10-arm64.apk",
-    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.10/Free4Me-IPTV-4.1.10-x64.apk",
-    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.10/Free4Me-IPTV-4.1.10-universal.apk"
+    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.11/Free4Me-IPTV-4.1.11-arm.apk",
+    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.11/Free4Me-IPTV-4.1.11-arm64.apk",
+    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.11/Free4Me-IPTV-4.1.11-x64.apk",
+    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.11/Free4Me-IPTV-4.1.11-universal.apk"
   },
   "apkSha256s": {
-    "arm": "01e8d03df800e5011418257bb1462d29dcf40c310f7e2dfddda08fcd7f19f7f6",
-    "arm64": "c8862db6ccde560416e3010fc86890fb64eb53869b6a0526a88dfc417e65518c",
-    "x64": "d17f407911e4ee57b34d65abf2575a598e3e3c4d56f3e23a1cda6a8e6bc42f07",
-    "universal": "866492d340f32c9154e82a98a2a9f8c781d30a29ec8c4089c649fc5aa73d8ac5"
+    "arm": "cc6c88b6f852b072fdf0ed51dd5f281c30e6307d9e76835a4c576f85eec3c95f",
+    "arm64": "53bfdb0e73dfa90b57a263dcc61a2c916eb9aefef512feadc211f2a60e440f39",
+    "x64": "b52a64056064004d7dda518ac9536e3c69f0a7f53bf8c20df98793bf55560039",
+    "universal": "738057cb35c764c64cc1444fdc0057a63bddff2a7745bdd1d2e804ae0d78f231"
   },
-  "apkSha256": "866492d340f32c9154e82a98a2a9f8c781d30a29ec8c4089c649fc5aa73d8ac5"
+  "apkSha256": "738057cb35c764c64cc1444fdc0057a63bddff2a7745bdd1d2e804ae0d78f231"
 }
