@@ -1,19 +1,19 @@
 {
-  "latest": "4.1.20",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.20",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.20/Free4Me-IPTV-4.1.20-universal.apk",
-  "releaseNotes": "\u2022 TV player now shows a channel strip: bring up the on-screen controls and you'll see the channels around the one you're watching, with the current one highlighted \u2014 handy context while you channel-surf with up/down. (Phone UI is unchanged.)",
+  "latest": "4.1.21",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.21",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.21/Free4Me-IPTV-4.1.21-universal.apk",
+  "releaseNotes": "\u2022 Re-matching the TV guide (\"Re-match all channels\" in Settings) is now more reliable \u2014 it no longer clashes with an automatic guide refresh running at the same time, which could previously leave some channels without listings.",
   "apkUrls": {
-    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.20/Free4Me-IPTV-4.1.20-arm.apk",
-    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.20/Free4Me-IPTV-4.1.20-arm64.apk",
-    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.20/Free4Me-IPTV-4.1.20-x64.apk",
-    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.20/Free4Me-IPTV-4.1.20-universal.apk"
+    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.21/Free4Me-IPTV-4.1.21-arm.apk",
+    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.21/Free4Me-IPTV-4.1.21-arm64.apk",
+    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.21/Free4Me-IPTV-4.1.21-x64.apk",
+    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.21/Free4Me-IPTV-4.1.21-universal.apk"
   },
   "apkSha256s": {
-    "arm": "cf206a86475ee27315eb8608573d34809db66e2f652680f38464a186941b1af2",
-    "arm64": "c6166b9fb2eebfb2fc6fd7c2710b6f2e75bc5a94d8f13f2b2cd672084294926e",
-    "x64": "526f6152cd97c4df4db72b480aa5657708d4f7af3d5cee1d8b3e5f6c79b8fc62",
-    "universal": "c5e4b04f9c5fe57a1ee28e9edcac5504ab11c5639d35588afae1bf413ca60d98"
+    "arm": "674bbe8a39527c3fe51419d967ef65c4af9d3cc740e37a0e47441b5fab30aba9",
+    "arm64": "6cbdee096cde69066357dc5bb139d5763c04749c124e636205fe4705fa21d20b",
+    "x64": "c473a74457479216443849986db13be912f1eac406fdcfec954e34375af85639",
+    "universal": "cb286fdfacd04aeba3f56c2f2d4d30a94fd6d809789a34a220b073a7fd67a4af"
   },
-  "apkSha256": "c5e4b04f9c5fe57a1ee28e9edcac5504ab11c5639d35588afae1bf413ca60d98"
+  "apkSha256": "cb286fdfacd04aeba3f56c2f2d4d30a94fd6d809789a34a220b073a7fd67a4af"
 }
