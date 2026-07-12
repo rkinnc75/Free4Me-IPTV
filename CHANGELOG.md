@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.26+722] - 2026-07-12
+
+**TV GUI redesign — Phase 5, unit 5: multi-view accent ring.** TV mode only; phone/touch UI unchanged. Completes the accent focus-ring language across every TV surface.
+
+### Changed
+- **fix722 — multi-view accent focus ring** — the focused-cell ring in multi-view (and the empty-cell "+" button focus border) now use the shared accent color on TV, matching the tabs / tiles / rails / buttons / recordings. This was the last surface still on the old `colorScheme.primary` ring. Phone keeps its original color.
+
+### Technical
+- **fix722**: `multi_view_cell.dart` gains `_isTvLike` (mirrors channel_tile's finding-107 signal: `settings.forceTVMode || DeviceDetector.isTvCached || !hasTouchScreenCached`) and `_ringColor(context, fallback) => _isTvLike ? AccentScope.of(context) : fallback`. The two cell focus-ring `Border.all` colors route through it (fallback = `colorScheme.primary`), as does the "+" button focused border (fallback = white). Ambient-gated → no constructor/call-site plumbing and phone renders the original colors (byte-identical). The `_CellMenuIntent` single-press menu, audio-focus-on-focus (fix170), and cell-0 autofocus (fix172) are untouched — only color expressions changed. Adversarial review. `test/fix722_multiview_accent_ring_test.dart` (5). Version → 4.1.26+722.
+
 ## [v4.1.25+721] - 2026-07-12
 
 **TV GUI redesign — Phase 5, unit 4: dialog glass** + **CI: pub-cache speedup** (folded in). TV mode only for the UI; phone/touch UI unchanged.

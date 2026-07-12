@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/sql.dart';
+import 'package:open_tv/backend/utils.dart'; // fix722: hasTouchScreenCached
 import 'package:open_tv/channel_picker_screen.dart';
 import 'package:open_tv/models/channel.dart';
 import 'package:open_tv/models/channel_http_headers.dart';
+import 'package:open_tv/models/device_detector.dart'; // fix722: isTvCached
 import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/source.dart';
@@ -14,6 +16,7 @@ import 'package:open_tv/player.dart';
 import 'package:open_tv/player/debug_stats_overlay.dart';
 import 'package:open_tv/player/mpv_engine.dart';
 import 'package:open_tv/player/player_engine.dart';
+import 'package:open_tv/tv/theme/accent_scope.dart'; // fix722: accent ring
 import 'package:open_tv/widgets/now_next_strip.dart';
 
 /// fix250: D-pad select/menu intent that opens a cell's options menu (or, on
@@ -157,6 +160,20 @@ class _MultiViewCellState extends State<MultiViewCell> {
   /// fix250: whether the empty-cell "+" button currently has D-pad focus
   /// (drives its highlight ring).
   bool _addButtonFocused = false;
+
+  /// fix722: on a TV (the only place multi-view's D-pad focus ring matters),
+  /// paint the focus ring with the shared accent (AccentScope) so the last
+  /// grid on the old `colorScheme.primary` ring joins the accent-ring language.
+  /// Mirrors channel_tile's isTvLike (finding 107). On a phone this stays false
+  /// → the ring keeps its original [fallback] color (touch UI byte-identical).
+  bool get _isTvLike =>
+      widget.settings.forceTVMode ||
+      DeviceDetector.isTvCached == true ||
+      Utils.hasTouchScreenCached == false;
+
+  /// The focus-ring color: shared accent on TV, else the original [fallback].
+  Color _ringColor(BuildContext context, Color fallback) =>
+      _isTvLike ? AccentScope.of(context) : fallback;
 
   @override
   void initState() {
@@ -951,7 +968,7 @@ class _MultiViewCellState extends State<MultiViewCell> {
                 shape: BoxShape.circle,
                 border: Border.all(
                   color: _addButtonFocused
-                      ? Colors.white
+                      ? _ringColor(context, Colors.white)
                       : Colors.white24,
                   width: _addButtonFocused ? 3 : 1,
                 ),
@@ -1088,7 +1105,8 @@ class _MultiViewCellState extends State<MultiViewCell> {
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     border: Border.all(
-                      color: Theme.of(context).colorScheme.primary,
+                      color: _ringColor(
+                          context, Theme.of(context).colorScheme.primary),
                       width: 3,
                     ),
                   ),
@@ -1226,7 +1244,8 @@ class _MultiViewCellState extends State<MultiViewCell> {
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     border: Border.all(
-                      color: Theme.of(context).colorScheme.primary,
+                      color: _ringColor(
+                          context, Theme.of(context).colorScheme.primary),
                       width: 3,
                     ),
                   ),
