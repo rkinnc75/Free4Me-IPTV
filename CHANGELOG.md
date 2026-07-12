@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.19+715] - 2026-07-12
+
+**TV GUI redesign — Phase 4 (player OSD), unit 2: action-button focus lift.** TV mode only; phone/touch UI unchanged.
+
+### Added / Changed
+- **fix715 — OSD action-button lift** — the TV player control buttons (subtitles / audio / channel-surf / seek / aspect / play-pause / etc.) now scale up slightly on focus (the Peer2 "lift"), on top of the accent focus ring the global button theme already draws (fix707). **Option B:** the reveal trigger and all D-pad behavior are unchanged — a short OK still reveals the controls and play/pauses exactly as before.
+
+### Technical
+- **fix715**: new `lib/player/tv_osd/action_button.dart` (`OsdActionButton` — wraps the overlay `IconButton` in an `AnimatedScale` 1.0→1.15 on focus, `F4Motion.fast`/`easeOut`; observes the IconButton's focus node — the caller's when supplied, e.g. play/pause's `_overlayFirstFocus`, else an internal one — and disposes only a self-created node). `player.dart` `_ovlButton` now returns `OsdActionButton` (onInteract: `_resetOverlayHideTimer`), so all overlay-button call sites are untouched. No trigger/`_navMode`/`_onPlayerKey`/surf/seek/autofocus change (AnimatedScale is paint-only, not a focus boundary). Focus-lifecycle adversarial review. `test/fix715_osd_action_button_test.dart` (5). Version → 4.1.19+715.
+
 ## [v4.1.18+714] - 2026-07-12
 
 **TV GUI redesign — Phase 4 (player OSD), unit 1: Info Bar.** TV mode only; phone/touch UI unchanged.

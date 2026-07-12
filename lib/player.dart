@@ -10,6 +10,7 @@ import 'package:open_tv/backend/conn_timing.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/utils.dart';
 import 'package:open_tv/models/device_detector.dart';
+import 'package:open_tv/player/tv_osd/action_button.dart'; // fix715 (Phase 4 OSD)
 import 'package:open_tv/player/tv_osd/info_bar.dart'; // fix714 (Phase 4 OSD)
 import 'package:open_tv/widgets/player_channel_name_label.dart';
 import 'package:open_tv/backend/recording_actions.dart';
@@ -1664,16 +1665,18 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   /// runs [onTap]. media_kit's Material* buttons are deliberately NOT used —
   /// they are not focusable and read media_kit's controller context, which is
   /// absent under NoVideoControls.
+  // fix715 (Phase 4 OSD unit 2): route through OsdActionButton so the button
+  // gets the Peer2 focus lift (scale-up) on top of the accent ring the global
+  // iconButtonTheme already draws (fix707). Trigger + focus behavior unchanged
+  // (Option B). onInteract preserves the old onPressed → _resetOverlayHideTimer.
   Widget _ovlButton(IconData icon, String tip, VoidCallback onTap,
           {FocusNode? focusNode}) =>
-      IconButton(
+      OsdActionButton(
+        icon: icon,
+        tip: tip,
+        onTap: onTap,
+        onInteract: _resetOverlayHideTimer,
         focusNode: focusNode,
-        icon: Icon(icon, color: Colors.white, size: 34),
-        tooltip: tip,
-        onPressed: () {
-          _resetOverlayHideTimer();
-          onTap();
-        },
       );
 
   Future<void> _openSubtitlesFromOverlay() async {
