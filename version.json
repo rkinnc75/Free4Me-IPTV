@@ -1,19 +1,19 @@
 {
-  "latest": "4.1.14",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.14",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.14/Free4Me-IPTV-4.1.14-universal.apk",
-  "releaseNotes": "\u2022 Fixed a bug where the TV Guide could show \"No guide data\" on most or all channels even though the guide had downloaded. When more than one source refreshed at the same time, the step that links channels to their listings could quietly fail; it now runs one source at a time so the listings reliably attach. If your guide looks empty, run Settings \u2192 EPG \u2192 Refresh EPG now once and it will fill in.",
+  "latest": "4.1.15",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.15",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.15/Free4Me-IPTV-4.1.15-universal.apk",
+  "releaseNotes": "\u2022 TV Guide genre colour is now visible: the colour tag for the show that's on now moved to the top edge of the cell, so it's no longer hidden behind the \"now\" line. (Phone UI is unchanged.)",
   "apkUrls": {
-    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.14/Free4Me-IPTV-4.1.14-arm.apk",
-    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.14/Free4Me-IPTV-4.1.14-arm64.apk",
-    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.14/Free4Me-IPTV-4.1.14-x64.apk",
-    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.14/Free4Me-IPTV-4.1.14-universal.apk"
+    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.15/Free4Me-IPTV-4.1.15-arm.apk",
+    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.15/Free4Me-IPTV-4.1.15-arm64.apk",
+    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.15/Free4Me-IPTV-4.1.15-x64.apk",
+    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.15/Free4Me-IPTV-4.1.15-universal.apk"
   },
   "apkSha256s": {
-    "arm": "88e66412c0c4fac3e8e2b6c9277651862c1823a31d7ad4cd31eea2bcf8906fa7",
-    "arm64": "cbfb26dc19f9bda264b5696d183d4eb7aaa688b59536e50ec1c65fd6e1d6c11e",
-    "x64": "3f6598eabb270f88b2e50ef11a479a24b3a0316c913beb55b90e21b806435266",
-    "universal": "b8f3dd1b381546e957b6e027a76abe48f6b8710ade16dfb5a247d8970468a01f"
+    "arm": "baafb2eb5e61f4a361651a5659fda7627bdb375cfd4c58519e008603d356be31",
+    "arm64": "94e247b51b0260a61bfa3cc1d00c96e69df01910dff83b8dc9f0f6fb3c828b25",
+    "x64": "1e59ff22e6e6842b60a0948077d4b980109117dc74d62c2e7eb0743ed38e94fc",
+    "universal": "b12df3bc805f4fedeb5ed3e0b1d26a058e134203de0dcbe203d5a81b2bec9b4f"
   },
-  "apkSha256": "b8f3dd1b381546e957b6e027a76abe48f6b8710ade16dfb5a247d8970468a01f"
+  "apkSha256": "b12df3bc805f4fedeb5ed3e0b1d26a058e134203de0dcbe203d5a81b2bec9b4f"
 }
