@@ -1,19 +1,19 @@
 {
-  "latest": "4.1.15",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.15",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.15/Free4Me-IPTV-4.1.15-universal.apk",
-  "releaseNotes": "\u2022 TV Guide genre colour is now visible: the colour tag for the show that's on now moved to the top edge of the cell, so it's no longer hidden behind the \"now\" line. (Phone UI is unchanged.)",
+  "latest": "4.1.16",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.16",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.16/Free4Me-IPTV-4.1.16-universal.apk",
+  "releaseNotes": "\u2022 More reliable EPG: when you have several sources, the guide now refreshes them one at a time. Refreshing them together could starve each other (a source finishing with \"0 programs loaded\" or a \"database is locked\" error), leaving parts of the guide empty. One-at-a-time is a little slower but loads every source's listings reliably.",
   "apkUrls": {
-    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.15/Free4Me-IPTV-4.1.15-arm.apk",
-    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.15/Free4Me-IPTV-4.1.15-arm64.apk",
-    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.15/Free4Me-IPTV-4.1.15-x64.apk",
-    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.15/Free4Me-IPTV-4.1.15-universal.apk"
+    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.16/Free4Me-IPTV-4.1.16-arm.apk",
+    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.16/Free4Me-IPTV-4.1.16-arm64.apk",
+    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.16/Free4Me-IPTV-4.1.16-x64.apk",
+    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.16/Free4Me-IPTV-4.1.16-universal.apk"
   },
   "apkSha256s": {
-    "arm": "baafb2eb5e61f4a361651a5659fda7627bdb375cfd4c58519e008603d356be31",
-    "arm64": "94e247b51b0260a61bfa3cc1d00c96e69df01910dff83b8dc9f0f6fb3c828b25",
-    "x64": "1e59ff22e6e6842b60a0948077d4b980109117dc74d62c2e7eb0743ed38e94fc",
-    "universal": "b12df3bc805f4fedeb5ed3e0b1d26a058e134203de0dcbe203d5a81b2bec9b4f"
+    "arm": "46b3e0055fbab18c9dbcc299d60905d1b89b3c87b2c3ccae0096dca500e9a2e5",
+    "arm64": "89aaf1d74e5888f0db879e5537d42a3279911aee565d63f6784ca4b03c09853e",
+    "x64": "9aa35909a68803c11268a7df67eb56f725fd22a8891acbe4ecae274b39dcc016",
+    "universal": "abf825341b8d71ebe0a2a52fbbdd26533c678244207c4b295a40e88d5e3c9545"
   },
-  "apkSha256": "b12df3bc805f4fedeb5ed3e0b1d26a058e134203de0dcbe203d5a81b2bec9b4f"
+  "apkSha256": "abf825341b8d71ebe0a2a52fbbdd26533c678244207c4b295a40e88d5e3c9545"
 }
