@@ -9,7 +9,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:open_tv/tv/theme/accent_scope.dart';
 
 void main() {
-  final accent = File('lib/tv/theme/accent_scope.dart').readAsStringSync();
   final settings = File('lib/models/settings.dart').readAsStringSync();
   final svc = File('lib/backend/settings_service.dart').readAsStringSync();
   final main = File('lib/main.dart').readAsStringSync();
