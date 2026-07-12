@@ -51,6 +51,7 @@ import 'package:open_tv/models/view_type.dart';
 import 'package:open_tv/error.dart';
 import 'package:open_tv/setup.dart';
 import 'package:open_tv/whats_new_modal.dart';
+import 'package:open_tv/tv/theme/accent_scope.dart'; // fix719 accent picker
 import 'package:open_tv/widgets/setting_help_dialog.dart';
 import 'package:open_tv/widgets/sources_refresh_dialog.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -2558,6 +2559,41 @@ class _SettingsState extends State<SettingsView> {
     );
   }
 
+  /// fix719 (TV GUI redesign, Phase 5): the TV accent-color picker — a row of
+  /// [kAccentPresets] swatches. Selecting one persists `accentName` and updates
+  /// [appAccentNotifier] live (every focus ring recolors immediately). TV only.
+  Widget _accentColorTile() {
+    return ListTile(
+      leading: _helpIcon(
+        title: 'Accent color',
+        body: 'The highlight color used for the focus outline as you move '
+            'around the TV interface with the remote. Pick whichever stands '
+            'out best on your screen. Default: White.',
+      ),
+      title: const Text('Accent color'),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Row(
+          children: [
+            for (final p in kAccentPresets)
+              Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: _AccentSwatch(
+                  preset: p,
+                  selected: settings.accentName == p.id,
+                  onSelected: () {
+                    setState(() => settings.accentName = p.id);
+                    appAccentNotifier.value = p.color; // live recolor
+                    updateSettings(); // persist
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// A slider row where tapping the label also opens the help dialog.
   Widget _bufferSlider({
     required String label,
@@ -3046,6 +3082,10 @@ class _SettingsState extends State<SettingsView> {
                           updateSettings();
                         },
                       ),
+                      // fix719: TV accent picker — TV layout only (the accent
+                      // recolors TV focus rings; it's a no-op on phone, so the
+                      // touch settings list stays byte-identical).
+                      if (widget.tvRailPane) _accentColorTile(),
                       _switchTile(
                         label: "Low latency livestreams",
                         value: settings.lowLatency,
@@ -5334,6 +5374,55 @@ class _DpadFriendlySliderState extends State<_DpadFriendlySlider> {
           // per rebuild during drag); disposed with the state.
           focusNode: _innerInertNode,
           onChanged: widget.onChanged,
+        ),
+      ),
+    );
+  }
+}
+
+/// fix719 (TV GUI redesign, Phase 5): one focusable accent swatch in the TV
+/// settings picker. D-pad focusable (InkWell → the theme focus highlight shows
+/// which is focused); the selected preset carries a white ring + a check.
+class _AccentSwatch extends StatelessWidget {
+  const _AccentSwatch({
+    required this.preset,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final AccentPreset preset;
+  final bool selected;
+  final VoidCallback onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    // Contrast the check against the swatch so it's visible on White too.
+    final checkColor =
+        preset.color.computeLuminance() > 0.5 ? Colors.black : Colors.white;
+    return Semantics(
+      label: '${preset.label} accent',
+      button: true,
+      selected: selected,
+      child: InkWell(
+        onTap: onSelected,
+        customBorder: const CircleBorder(),
+        child: Padding(
+          padding: const EdgeInsets.all(6),
+          child: Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: preset.color,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: selected ? Colors.white : Colors.white24,
+                width: selected ? 3 : 1,
+              ),
+            ),
+            child: selected
+                ? Icon(Icons.check, size: 20, color: checkColor)
+                : null,
+          ),
         ),
       ),
     );

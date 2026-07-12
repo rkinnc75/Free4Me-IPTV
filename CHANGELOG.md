@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.23+719] - 2026-07-12
+
+**TV GUI redesign — Phase 5, unit 2: accent-color picker.** TV mode only; phone/touch UI unchanged.
+
+### Added
+- **fix719 — TV accent picker** — Settings ▸ Playback ▸ **Accent color** now lets you choose the focus-ring accent from a curated palette (White · Sky Blue · Amber · Magenta · Green). The choice recolors every focus outline across the TV UI instantly and persists across restarts. Default: White (unchanged look for anyone who doesn't touch it).
+
+### Technical
+- **fix719**: `accent_scope.dart` gains `AccentPreset` + `kAccentPresets` (the 5 curated colors) + `accentColorFromId` (unknown/null → White). New persisted `Settings.accentName` (default `'white'`) round-tripped via `accentNameProp` in `SettingsService`. `main.dart` restores it into `appAccentNotifier` before the first frame, and now wraps `MaterialApp` in a `ValueListenableBuilder<Color>(appAccentNotifier)` so the button-theme focus rings (which read the notifier in their `resolveWith`) re-resolve live on change — `AccentScope`-based widgets already update via the InheritedNotifier. Picker UI (`_accentColorTile` + `_AccentSwatch` D-pad-focusable swatches) is added to `_playbackChildren` gated `if (widget.tvRailPane)`, so the phone settings list is byte-identical. Adversarial review. `test/fix719_accent_picker_test.dart` (6). Version → 4.1.23+719.
+
 ## [v4.1.22+718] - 2026-07-12
 
 **TV GUI redesign — Phase 5 (settings/menus), unit 1: Recordings restyle.** TV mode only; phone/touch UI unchanged.

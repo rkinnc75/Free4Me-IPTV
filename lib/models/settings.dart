@@ -45,6 +45,11 @@ class Settings {
   /// 12-hour (e.g. 9:38 PM).
   bool use24HourTime;
 
+  /// fix719 (TV GUI redesign, Phase 5): the selected TV accent preset id (see
+  /// [kAccentPresets]). Default 'white'. Recolors every focus ring on TV; inert
+  /// on the phone/touch path.
+  String accentName;
+
   /// libmpv cache read-ahead in seconds for live streams.
   int liveCacheSecs;
 
@@ -346,6 +351,7 @@ class Settings {
     this.showSeries = true,
     this.forceTVMode = false,
     this.use24HourTime = false, // fix604 (#5): 12-hour by default
+    this.accentName = 'white', // fix719: default TV accent
     this.liveCacheSecs = 20,
     this.liveDemuxerMaxMB = 150,
     this.vodCacheSecs = 60,

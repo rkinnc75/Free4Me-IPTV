@@ -35,6 +35,7 @@ const vodPrebufferSecsProp = "vodPrebufferSecs"; // fix354
 const livePrebufferSecsProp = "livePrebufferSecs"; // fix700
 const dvrEnabledProp = "dvrEnabled"; // fix357
 const use24HourTimeProp = "use24HourTime"; // fix604 (#5)
+const accentNameProp = "accentName"; // fix719 (TV accent picker)
 
 /// fix604 (#5): the shared EPG/guide clock format, honoring the use24HourTime
 /// setting (default 12-hour). EVERY guide/EPG program-time display routes
@@ -209,6 +210,7 @@ class SettingsService {
     var livePre = settingsMap[livePrebufferSecsProp]; // fix700
     var dvrEn = settingsMap[dvrEnabledProp];
     var use24h = settingsMap[use24HourTimeProp]; // fix604 (#5)
+    var accentNm = settingsMap[accentNameProp]; // fix719
     var audioDmx = settingsMap[audioDownmixStereoProp];
     var dvrMin = settingsMap[dvrMinutesProp];
     var vodMB = settingsMap[vodDemuxerMaxMBProp];
@@ -274,6 +276,9 @@ class SettingsService {
     if (livePre != null) settings.livePrebufferSecs = int.parse(livePre); // fix700
     if (dvrEn != null) settings.dvrEnabled = dvrEn == 'true';
     if (use24h != null) settings.use24HourTime = use24h == 'true'; // fix604
+    if (accentNm != null && accentNm.isNotEmpty) {
+      settings.accentName = accentNm; // fix719
+    }
     if (audioDmx != null) settings.audioDownmixStereo = audioDmx == 'true';
     if (dvrMin != null) settings.dvrMinutes = int.parse(dvrMin);
     if (vodMB != null) settings.vodDemuxerMaxMB = int.parse(vodMB);
@@ -539,6 +544,7 @@ class SettingsService {
         settings.livePrebufferSecs.toString(); // fix700
     settingsMap[dvrEnabledProp] = settings.dvrEnabled.toString();
     settingsMap[use24HourTimeProp] = settings.use24HourTime.toString(); // fix604
+    settingsMap[accentNameProp] = settings.accentName; // fix719
     settingsMap[audioDownmixStereoProp] = settings.audioDownmixStereo.toString();
     settingsMap[dvrMinutesProp] = settings.dvrMinutes.toString();
     settingsMap[vodDemuxerMaxMBProp] = settings.vodDemuxerMaxMB.toString();

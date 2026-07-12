@@ -56,6 +56,11 @@ Future<void> main() async {
   await DeviceMemory.init();
   final settings = await SettingsService.reload();
 
+  // fix719 (TV GUI redesign, Phase 5): restore the persisted TV accent into the
+  // live notifier before the first frame so focus rings paint the chosen color
+  // from the start (default 'white'). Inert on phone (accent unused there).
+  appAccentNotifier.value = accentColorFromId(settings.accentName);
+
   // fix667: initialise the DVR alarm scheduler (Android only; no-op else).
   // After settings so a first-run box has its config; safe if it fails.
   unawaited(RecordingScheduler.init());
@@ -396,9 +401,17 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Free4Me',
-      navigatorKey: navigatorKey,
+    // fix719 (TV GUI redesign, Phase 5): rebuild MaterialApp when the accent
+    // changes so the button-theme focus rings (which read appAccentNotifier at
+    // resolve time) re-resolve to the new color immediately. AccentScope-based
+    // widgets (rails/tiles/etc.) already update via the InheritedNotifier; this
+    // covers the theme-level rings. The rebuild only fires on the rare accent
+    // pick (in Settings — no player active), so it never stutters the Texture.
+    return ValueListenableBuilder<Color>(
+      valueListenable: appAccentNotifier,
+      builder: (context, _, _) => MaterialApp(
+        title: 'Free4Me',
+        navigatorKey: navigatorKey,
       navigatorObservers: [playerRouteObserver], // fix98
       builder: (context, child) {
         // fix701 (TV GUI redesign, Phase 0): install the live accent high in the
@@ -511,6 +524,7 @@ class MyApp extends StatelessWidget {
         hasTouchScreen: hasTouchScreen,
         isTV: isTV,
       ),
-    );
+      ), // fix719: close MaterialApp
+    ); // fix719: close ValueListenableBuilder
   }
 }

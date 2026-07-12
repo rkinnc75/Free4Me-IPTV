@@ -58,14 +58,33 @@ final ValueNotifier<Color> appAccentNotifier = ValueNotifier<Color>(
   accentFromName(null),
 );
 
-/// The selectable accent names, in ROYGBIV order with White first (default).
-const List<String> kAccentNames = <String>[
-  'white',
-  'red',
-  'orange',
-  'yellow',
-  'green',
-  'blue',
-  'indigo',
-  'violet',
+// fix719: the fix701 ROYGBIV `kAccentNames` list was superseded by the curated
+// `kAccentPresets` below (the picker's actual palette) and is removed as dead
+// code. `accentFromName` stays — it still provides the white notifier default.
+
+/// fix719 (TV GUI redesign, Phase 5) — one curated accent preset for the
+/// Settings picker: a stable [id] (persisted), a human [label], and the [color].
+class AccentPreset {
+  const AccentPreset(this.id, this.label, this.color);
+  final String id;
+  final String label;
+  final Color color;
+}
+
+/// fix719: the curated accent palette the Settings picker offers — White
+/// (default) + four tasteful colors that read well on the dark UI (owner's
+/// "White + 4 curated colors" choice, 2026-07-12). Persisted by [AccentPreset.id]
+/// (see `accentName` in Settings); resolved back with [accentColorFromId].
+const List<AccentPreset> kAccentPresets = <AccentPreset>[
+  AccentPreset('white', 'White', Color(0xFFFFFFFF)),
+  AccentPreset('skyblue', 'Sky Blue', Color(0xFF4FC3F7)),
+  AccentPreset('amber', 'Amber', Color(0xFFFFC107)),
+  AccentPreset('magenta', 'Magenta', Color(0xFFE040FB)),
+  AccentPreset('green', 'Green', Color(0xFF66BB6A)),
 ];
+
+/// fix719: resolve a persisted accent [id] to its color. Unknown / null → White
+/// (the first preset), so an older backup or a retired id degrades safely.
+Color accentColorFromId(String? id) => kAccentPresets
+    .firstWhere((p) => p.id == id, orElse: () => kAccentPresets.first)
+    .color;
