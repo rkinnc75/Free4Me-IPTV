@@ -1,6 +1,23 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.18+714] - 2026-07-12
+
+**TV GUI redesign — Phase 4 (player OSD), unit 1: Info Bar.** TV mode only; phone/touch UI unchanged.
+
+### Added / Changed
+- **fix714 — Player Info Bar** — the TV player overlay's channel identity (logo + name), the NOW programme, and the seek/progress row now live together in a token-glass **Info Bar** anchored at the bottom (Peer2 three-bar anatomy), instead of scattered across the flat top bar. The top bar keeps just Back + Cast + PiP. Playback controls, channel-surf, seek, auto-hide, and the touch (non-TV) control path are all unchanged.
+
+### Technical
+- **fix714**: new `lib/player/tv_osd/info_bar.dart` (`PlayerInfoBar` — a display-only, token-glass `Container`: logo `CachedNetworkImage` + `PlayerChannelNameLabel` on top, `PlayerEpgNowLabel` when live, the caller's `_buildOverlayProgress()` row when seekable). `player.dart` `_buildTvOverlay`: top bar slimmed to Back + Cast/PiP; `PlayerInfoBar` added above the action `bottomBar`; the standalone progress row folded into it. Reuses the existing self-updating labels — no engine/focus/key/surf changes; `PlayerInfoBar` has no focusable children so the `FocusTraversalGroup` + `_overlayFirstFocus` autofocus are unaffected. Two-lens adversarial review (layout + focus/regression). `test/fix714_player_info_bar_test.dart` (5). Version → 4.1.18+714.
+
+## [v4.1.17+713] - 2026-07-12
+
+**EPG — Re-match all works when the feed is unchanged.** Backend (authored by the owner).
+
+### Fixed
+- **fix713 — Re-match all when feed unchanged** — "Re-match all channels" failed (`⚠ failed to download EPG`) whenever the provider's feed was byte-identical to the last refresh (HTTP 304 / body-hash match, fix695) — inverted from its purpose (matcher updated, feed identical). `downloadAndParseEpg` now returns a tri-state (`EpgDownloadResult` refreshed/unchanged/failed) and re-match passes `forceParse: true` to bypass the unchanged-feed short-circuit. Also relabels an unchanged plain-refresh from the bogus "⚠ 0 programs loaded" to "✓ feed unchanged — kept existing data". Preserves fix709 (match gate) + fix712 (serial refresh).
+
 ## [v4.1.16+712] - 2026-07-12
 
 **EPG multi-source refresh — serialize sources (the real fix; fix709 was insufficient).** Backend; all platforms.

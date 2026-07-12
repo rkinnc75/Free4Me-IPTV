@@ -6,6 +6,13 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.18': [
+    'TV player redesign (in progress): the on-screen info now sits in a clean '
+        'bottom bar — channel logo + name, the current programme, and the '
+        'progress bar together on one glass panel, instead of scattered across '
+        'the top. Playback controls and channel surfing are unchanged. (Phone '
+        'UI is unchanged.)',
+  ],
   '4.1.17': [
     '"Re-match all channels" now works even when your provider\'s guide file '
         'hasn\'t changed since the last refresh. It used to be skipped with a '

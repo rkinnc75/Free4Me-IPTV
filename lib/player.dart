@@ -10,6 +10,7 @@ import 'package:open_tv/backend/conn_timing.dart';
 import 'package:open_tv/backend/settings_service.dart';
 import 'package:open_tv/backend/utils.dart';
 import 'package:open_tv/models/device_detector.dart';
+import 'package:open_tv/player/tv_osd/info_bar.dart'; // fix714 (Phase 4 OSD)
 import 'package:open_tv/widgets/player_channel_name_label.dart';
 import 'package:open_tv/backend/recording_actions.dart';
 import 'package:open_tv/widgets/player_epg_now_label.dart';
@@ -1720,8 +1721,11 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
         final frac = (pos.inMilliseconds / dur.inMilliseconds)
             .clamp(0.0, 1.0)
             .toDouble();
+        // fix714: no bottom padding — this row now lives inside the Info Bar's
+        // padded glass card, so the card's own spacing governs (was
+        // EdgeInsets.only(bottom: 8), which double-padded inside the card).
         return Padding(
-          padding: const EdgeInsets.only(bottom: 8),
+          padding: EdgeInsets.zero,
           child: Row(
             children: [
               Text(fmt(pos), style: const TextStyle(color: Colors.white)),
@@ -1759,27 +1763,10 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     final topBar = Row(
       children: [
         _ovlButton(Icons.arrow_back, 'Back', onExit),
-        const SizedBox(width: 8),
-        Flexible(
-          child: IgnorePointer(
-            child: PlayerChannelNameLabel(
-                channelName: widget.channel.name, engine: engine),
-          ),
-        ),
-        const SizedBox(width: 12),
-        // fix650: the now/next EPG label only makes sense on live channels;
-        // on VOD the slot becomes a plain spacer.
-        if (live)
-          Expanded(
-            child: IgnorePointer(
-              child: PlayerEpgNowLabel(
-                epgChannelId: widget.channel.epgChannelId,
-                sourceId: widget.channel.sourceId,
-              ),
-            ),
-          )
-        else
-          const Spacer(),
+        const Spacer(),
+        // fix714 (Phase 4 OSD unit 1): the channel name + NOW/NEXT EPG moved out
+        // of the flat top bar into the bottom Info Bar (Peer2 anatomy). The top
+        // bar keeps just Back + Cast/PiP.
         if (_castSupported)
           // finding 34: route through the dialog-aware wrapper so the 8s
           // auto-hide timer is cancelled while the cast dialog is open.
@@ -1854,9 +1841,17 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
             children: [
               topBar,
               const Spacer(),
-              // fix650: position / duration row (display-only) above the
-              // buttons, whenever the stream is seekable and reports a length.
-              if (seekable) _buildOverlayProgress(),
+              // fix714 (Phase 4 OSD unit 1): Peer2 bottom Info Bar — channel
+              // logo + name + NOW programme + the seek-progress row (moved here
+              // from the top bar + the old standalone progress row), on a token
+              // glass card. The action buttons stay below, unchanged.
+              PlayerInfoBar(
+                channel: widget.channel,
+                engine: engine,
+                live: live,
+                progress: seekable ? _buildOverlayProgress() : null,
+              ),
+              const SizedBox(height: 8),
               bottomBar,
             ],
           ),
