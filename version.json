@@ -1,19 +1,19 @@
 {
-  "latest": "4.1.8",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.8",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.8/Free4Me-IPTV-4.1.8-universal.apk",
-  "releaseNotes": "\u2022 TV look refresh continues: channel, movie, series and category tiles now get the same clean accent focus ring and a subtle lift when selected (replacing the old yellow box) \u2014 consistent with the tabs. Everything else about the tiles is unchanged. (Phone UI is unchanged.)",
+  "latest": "4.1.9",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.9",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.9/Free4Me-IPTV-4.1.9-universal.apk",
+  "releaseNotes": "\u2022 TV look refresh continues across the browsing surface: the highlighted item in the TV Guide rail, the browse list, and the Categories list now shows the same clean accent focus ring (white by default) as the tabs and tiles, instead of the old yellow box. Guide layout, times, live preview and hold-OK menu are all unchanged. (Phone UI is unchanged.)",
   "apkUrls": {
-    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.8/Free4Me-IPTV-4.1.8-arm.apk",
-    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.8/Free4Me-IPTV-4.1.8-arm64.apk",
-    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.8/Free4Me-IPTV-4.1.8-x64.apk",
-    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.8/Free4Me-IPTV-4.1.8-universal.apk"
+    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.9/Free4Me-IPTV-4.1.9-arm.apk",
+    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.9/Free4Me-IPTV-4.1.9-arm64.apk",
+    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.9/Free4Me-IPTV-4.1.9-x64.apk",
+    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.9/Free4Me-IPTV-4.1.9-universal.apk"
   },
   "apkSha256s": {
-    "arm": "8b0e579c10e69be31f59826bf217877701731e8423c59ddbc470265c4b63d944",
-    "arm64": "3eac9f460b42f603f4811ede1079da18a1e091f0abd53f6be919580b4e32ae67",
-    "x64": "f17ec375c85bc123b29c3b5ea6a14ce1ee12a9660106ec7a9f347c6a196be78f",
-    "universal": "7fdc54040be4a58d356da7fd6349722e9794e5558c6a5f36dad3636e53a0659d"
+    "arm": "9e3b64a867fe050a551e457da8e4c1a93b5e1ec87277a1f29a5568894f3bb838",
+    "arm64": "b1f2d06b52243220ec209589169cfd6c63776b4135a14a2463ee3fe239505243",
+    "x64": "1795c4f27100b40fcf0c9d494ca170d7efb8839ad96e353b0cf45f765320a9cd",
+    "universal": "a7a5d3f41cf656e0adb32e40e4e8c3147ffc099351c232f4957cc143dbbc142f"
   },
-  "apkSha256": "7fdc54040be4a58d356da7fd6349722e9794e5558c6a5f36dad3636e53a0659d"
+  "apkSha256": "a7a5d3f41cf656e0adb32e40e4e8c3147ffc099351c232f4957cc143dbbc142f"
 }
