@@ -1,19 +1,19 @@
 {
-  "latest": "4.1.13",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.13",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.13/Free4Me-IPTV-4.1.13-universal.apk",
-  "releaseNotes": "\u2022 TV Guide now colour-codes what's on: the show currently airing gets a small colour stripe by genre (news, sport, movies, kids, music, docs), so you can spot the kind of programme at a glance. (Phone UI is unchanged.)",
+  "latest": "4.1.14",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.14",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.14/Free4Me-IPTV-4.1.14-universal.apk",
+  "releaseNotes": "\u2022 Fixed a bug where the TV Guide could show \"No guide data\" on most or all channels even though the guide had downloaded. When more than one source refreshed at the same time, the step that links channels to their listings could quietly fail; it now runs one source at a time so the listings reliably attach. If your guide looks empty, run Settings \u2192 EPG \u2192 Refresh EPG now once and it will fill in.",
   "apkUrls": {
-    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.13/Free4Me-IPTV-4.1.13-arm.apk",
-    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.13/Free4Me-IPTV-4.1.13-arm64.apk",
-    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.13/Free4Me-IPTV-4.1.13-x64.apk",
-    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.13/Free4Me-IPTV-4.1.13-universal.apk"
+    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.14/Free4Me-IPTV-4.1.14-arm.apk",
+    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.14/Free4Me-IPTV-4.1.14-arm64.apk",
+    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.14/Free4Me-IPTV-4.1.14-x64.apk",
+    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.14/Free4Me-IPTV-4.1.14-universal.apk"
   },
   "apkSha256s": {
-    "arm": "a13ee3e051079226f68f4bbf47152802d847d46f431a5d4a8031284243c663d0",
-    "arm64": "3af5b5cb521f32d1e9e4b7fb733898da0dcc4666122f4bd8580d7813b59fc9e2",
-    "x64": "d41e6e87a61716e4463dea059e0a69ede54a1575da5f21644f835a76b7957d8f",
-    "universal": "857abbff8c966fcab599f2489dadb1b479767e42e7040181ffce05636c5f7b9c"
+    "arm": "88e66412c0c4fac3e8e2b6c9277651862c1823a31d7ad4cd31eea2bcf8906fa7",
+    "arm64": "cbfb26dc19f9bda264b5696d183d4eb7aaa688b59536e50ec1c65fd6e1d6c11e",
+    "x64": "3f6598eabb270f88b2e50ef11a479a24b3a0316c913beb55b90e21b806435266",
+    "universal": "b8f3dd1b381546e957b6e027a76abe48f6b8710ade16dfb5a247d8970468a01f"
   },
-  "apkSha256": "857abbff8c966fcab599f2489dadb1b479767e42e7040181ffce05636c5f7b9c"
+  "apkSha256": "b8f3dd1b381546e957b6e027a76abe48f6b8710ade16dfb5a247d8970468a01f"
 }
