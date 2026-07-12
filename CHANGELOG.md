@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.10+705] - 2026-07-12
+
+**TV GUI redesign — Phase 3 unit 2: guide NOW emphasis.** TV mode only; phone UI unchanged.
+
+### Added / Changed
+- **fix705 — Guide NOW emphasis** — in the TV Guide: (1) the "now" vertical line now has a soft glow so the current moment reads at 10 feet (colour kept blue/`primary`, deliberately distinct from the white accent focus ring); (2) the on-now programme cell shows a progress-within-cell fill — the elapsed fraction of the show's runtime tints the left portion of the cell a little stronger, a built-in progress bar. Both derive purely from EPG programme times; no new data. HD/SD badges were considered but dropped (the `Program` model has no quality field; a title heuristic would be a separate concern). Guide layout, rail↔grid Y-alignment, :00/:30 snap, live preview, place-memory and the held-OK menu are unchanged.
+
+### Technical
+- **fix705**: `tv_guide_view.dart` — `_nowLine` gains a `BoxShadow` (blur = token `nowGlowRadius` 8, spread 0.5, colour `primary`). `_block` wraps the on-now cell content in a `Stack` with a `Positioned.fill(FractionallySizedBox(widthFactor: elapsedFrac))` fill behind the title; `elapsedFrac` guarded against zero/negative duration. `Material.clipBehavior` is `isNow ? Clip.antiAlias : Clip.none` — only on-now cells pay the clip (no per-cell clip layer across the dense grid, protecting scroll fps). Passive-grid `ExcludeFocus` (finding 75) + `onTap: _play(ch)` intact. Adversarially reviewed + on-device scroll-fps checked on the onn. Version → 4.1.10+705.
+
 ## [v4.1.9+704] - 2026-07-12
 
 **TV GUI redesign — Phase 3, unit 1: rail focus rings (guide + browse + categories).** TV mode only; phone UI unchanged.

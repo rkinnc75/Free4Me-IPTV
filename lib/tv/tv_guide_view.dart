@@ -20,6 +20,7 @@ import 'package:open_tv/multi_view_screen.dart';
 import 'package:open_tv/player.dart';
 import 'package:open_tv/player/overlay_player_controller.dart';
 import 'package:open_tv/tv/theme/accent_scope.dart'; // fix704 (TV GUI redesign)
+import 'package:open_tv/tv/theme/f4_tokens.dart'; // fix705 (TV GUI redesign)
 import 'package:open_tv/source_color_picker.dart';
 import 'package:open_tv/tv/tv_hero_preview.dart';
 
@@ -1183,6 +1184,15 @@ class TvGuideViewState extends State<TvGuideView> {
     if (w <= 1) return const SizedBox.shrink();
     final isNow = p.isOnNow(nowEpoch);
     final scheme = Theme.of(context).colorScheme;
+    // fix705 (Phase 3 unit 2): progress-within-cell fill. For the on-now
+    // programme, the elapsed fraction of its runtime tints the left portion of
+    // the cell a little stronger than the rest — a built-in progress bar. Uses
+    // only Program times (no data layer). Guarded against a zero/negative
+    // duration (bad EPG data) so the fraction can't divide-by-zero or overflow.
+    final int dur = p.stopUtc - p.startUtc;
+    final double elapsedFrac = (isNow && dur > 0)
+        ? ((nowEpoch - p.startUtc) / dur).clamp(0.0, 1.0)
+        : 0.0;
     return Positioned(
       left: left,
       top: 3,
@@ -1195,6 +1205,11 @@ class TvGuideViewState extends State<TvGuideView> {
               ? scheme.primary.withValues(alpha: 0.22)
               : scheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(4),
+          // fix705: clip children (the progress fill) to the rounded corners —
+          // only for on-now cells, which are the only ones that add a fill
+          // layer. Non-now cells keep the default Clip.none (no per-cell clip
+          // layer across the dense grid → protects scroll fps).
+          clipBehavior: isNow ? Clip.antiAlias : Clip.none,
           // finding 75: passive grid — exclude programme blocks from D-pad focus
           // traversal so RIGHT from a rail channel never lands inside the grid.
           // onTap still works for touch builds (a tap needs no focus).
@@ -1202,18 +1217,35 @@ class TvGuideViewState extends State<TvGuideView> {
             child: InkWell(
             onTap: () => _play(ch),
             borderRadius: BorderRadius.circular(4),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(p.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: isNow ? FontWeight.w600 : FontWeight.normal,
-                    )),
-              ),
+            child: Stack(
+              children: [
+                // fix705: elapsed-progress fill behind the title (on-now only).
+                if (elapsedFrac > 0)
+                  Positioned.fill(
+                    child: FractionallySizedBox(
+                      alignment: Alignment.centerLeft,
+                      widthFactor: elapsedFrac,
+                      child: Container(
+                        color: scheme.primary.withValues(alpha: 0.18),
+                      ),
+                    ),
+                  ),
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(p.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight:
+                              isNow ? FontWeight.w600 : FontWeight.normal,
+                        )),
+                  ),
+                ),
+              ],
             ),
           ),
           ),
@@ -1224,12 +1256,29 @@ class TvGuideViewState extends State<TvGuideView> {
 
   Widget _nowLine(double width, int nowEpoch) {
     final x = _x(nowEpoch, width);
+    final scheme = Theme.of(context).colorScheme;
+    // fix705 (Phase 3 unit 2): the NOW line gets a soft glow so "now" reads at
+    // 10 feet. Colour stays `primary` (blue) — deliberately distinct from the
+    // white accent focus ring, so the time indicator and the focus indicator
+    // never read as the same thing. Blur radius from the token (nowGlowRadius).
+    final glow = F4.of(context).focus.nowGlowRadius;
     return Positioned(
       left: x,
       top: 0,
       bottom: 0,
       width: 2,
-      child: Container(color: Theme.of(context).colorScheme.primary),
+      child: Container(
+        decoration: BoxDecoration(
+          color: scheme.primary,
+          boxShadow: [
+            BoxShadow(
+              color: scheme.primary.withValues(alpha: 0.7),
+              blurRadius: glow,
+              spreadRadius: 0.5,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
