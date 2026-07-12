@@ -1,19 +1,19 @@
 {
-  "latest": "4.1.21",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.21",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.21/Free4Me-IPTV-4.1.21-universal.apk",
-  "releaseNotes": "\u2022 Re-matching the TV guide (\"Re-match all channels\" in Settings) is now more reliable \u2014 it no longer clashes with an automatic guide refresh running at the same time, which could previously leave some channels without listings.",
+  "latest": "4.1.22",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.22",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.22/Free4Me-IPTV-4.1.22-universal.apk",
+  "releaseNotes": "\u2022 On TV, the Recordings list now shows the same accent focus outline as the rest of the app when you move between recordings. (Phone UI is unchanged.)",
   "apkUrls": {
-    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.21/Free4Me-IPTV-4.1.21-arm.apk",
-    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.21/Free4Me-IPTV-4.1.21-arm64.apk",
-    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.21/Free4Me-IPTV-4.1.21-x64.apk",
-    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.21/Free4Me-IPTV-4.1.21-universal.apk"
+    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.22/Free4Me-IPTV-4.1.22-arm.apk",
+    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.22/Free4Me-IPTV-4.1.22-arm64.apk",
+    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.22/Free4Me-IPTV-4.1.22-x64.apk",
+    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.22/Free4Me-IPTV-4.1.22-universal.apk"
   },
   "apkSha256s": {
-    "arm": "674bbe8a39527c3fe51419d967ef65c4af9d3cc740e37a0e47441b5fab30aba9",
-    "arm64": "6cbdee096cde69066357dc5bb139d5763c04749c124e636205fe4705fa21d20b",
-    "x64": "c473a74457479216443849986db13be912f1eac406fdcfec954e34375af85639",
-    "universal": "cb286fdfacd04aeba3f56c2f2d4d30a94fd6d809789a34a220b073a7fd67a4af"
+    "arm": "5922017241cf39914df6806b906448bfbfd67c03badb078942ab1f9553a98d05",
+    "arm64": "8b447ec8dc065b968a9cb4458609f1b7f137bbb189a98f09dfdeab76d87029c8",
+    "x64": "dab7c5fd1ad785d380c8cd6dd85fc2931487c2267b6adc5a6c2cf38aeb9c09ab",
+    "universal": "c0ffabdfbbe7398f0398f40947e2378ad8d963f04ef8702897c3df84adc8a766"
   },
-  "apkSha256": "cb286fdfacd04aeba3f56c2f2d4d30a94fd6d809789a34a220b073a7fd67a4af"
+  "apkSha256": "c0ffabdfbbe7398f0398f40947e2378ad8d963f04ef8702897c3df84adc8a766"
 }
