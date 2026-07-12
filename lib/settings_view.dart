@@ -1116,7 +1116,7 @@ class _SettingsState extends State<SettingsView> {
           int sourceTotalChannels = 0;
           String? sourceError;
           try {
-            await EpgService.refreshSource(
+            final outcome = await EpgService.refreshSource(
               source,
               epgUrl: url,
               onProgress: (p) {
@@ -1147,7 +1147,17 @@ class _SettingsState extends State<SettingsView> {
                 }
               },
             );
-            if (sourceInserted == 0) {
+            if (outcome == EpgRefreshOutcome.unchanged) {
+              // fix713: a provider-confirmed-unchanged feed (304 / body-hash
+              // match) is a success, not a "0 programs loaded" failure.
+              AppLog.info(
+                'EpgRefresh: source "${source.name}" — feed unchanged'
+                ' (kept existing programs and matches)',
+              );
+              results.add(
+                '✓ ${source.name}: feed unchanged — kept existing data',
+              );
+            } else if (sourceInserted == 0) {
               AppLog.warn(
                 'EpgRefresh: source "${source.name}" — 0 programs loaded'
                 ' (check EPG URL / server / date window)',
@@ -1296,17 +1306,22 @@ class _SettingsState extends State<SettingsView> {
 
           try {
             // Download fresh XMLTV to get the latest channelMap, then force-match.
-            final channelMap = await EpgService.downloadAndParseEpg(
+            // fix713: forceParse bypasses the fix695 unchanged-feed skip —
+            // re-match's whole purpose is the feed-unchanged case.
+            final dl = await EpgService.downloadAndParseEpg(
               source,
               epgUrl: epgUrl,
+              forceParse: true,
               onProgress: (p) {
                 status = '${source.name}: ${p.statusMessage ?? "downloading…"}';
                 _updateRefreshDialog(status);
                 update(status);
               },
             );
+            final channelMap = dl.channelMap;
             if (channelMap == null) {
-              AppLog.warn('EpgRematch: source "${source.name}" — download returned null');
+              AppLog.warn(
+                  'EpgRematch: source "${source.name}" — download failed');
               results.add('⚠ ${source.name}: failed to download EPG');
               continue;
             }

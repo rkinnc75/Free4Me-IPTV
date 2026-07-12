@@ -6,6 +6,14 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.17': [
+    '"Re-match all channels" now works even when your provider\'s guide file '
+        'hasn\'t changed since the last refresh. It used to be skipped with a '
+        '"failed to download EPG" message in exactly that situation — which is '
+        'the very case the button exists for. The EPG refresh summary also now '
+        'says "feed unchanged" instead of warning about "0 programs loaded" '
+        'when nothing changed.',
+  ],
   '4.1.16': [
     'More reliable EPG: when you have several sources, the guide now refreshes '
         'them one at a time. Refreshing them together could starve each other '

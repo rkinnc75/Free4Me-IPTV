@@ -41,6 +41,22 @@ void callbackDispatcher() {
   });
 }
 
+/// fix713: outcome of a source refresh, so callers can distinguish a
+/// provider-confirmed-unchanged feed (a success — existing programmes and
+/// matches stand) from a real failure. Previously both surfaced as
+/// "0 programs loaded".
+enum EpgRefreshOutcome { refreshed, unchanged, failed }
+
+/// fix713: tri-state download result. [unchanged] means the provider confirmed
+/// the feed is identical to the previous refresh (HTTP 304 or body-hash
+/// match, fix695) — it is NOT a failure. A null [channelMap] with
+/// [unchanged] == false is a genuine download/parse failure.
+class EpgDownloadResult {
+  final Map<String, String>? channelMap;
+  final bool unchanged;
+  const EpgDownloadResult({this.channelMap, this.unchanged = false});
+}
+
 class EpgService {
   /// fix600: bumped after every successful per-source EPG refresh. Views (the
   /// Live guide) listen and reload so a foreground/launch refresh becomes
@@ -277,18 +293,21 @@ class EpgService {
   /// Step 1 — Download and parse XMLTV, insert programs.
   /// Returns the EPG channel map (epgId → display names) for use in
   /// [matchChannels], or null if the source has no EPG URL or an error occurs.
-  static Future<Map<String, String>?> downloadAndParseEpg(
+  static Future<EpgDownloadResult> downloadAndParseEpg(
     Source source, {
     String? epgUrl,
     bool rebuildFts = true, // finding 36: false in the multi-source path
+    // fix713: bypass the fix695 unchanged-feed short-circuits so a full parse
+    // always yields the channelMap (used by "Re-match all channels").
+    bool forceParse = false,
     void Function(XmltvProgress)? onProgress,
   }) async {
     final settings = await SettingsService.getSettings();
     final url = epgUrl ?? resolveEpgUrl(source);
-    if (source.id == null) return null;
+    if (source.id == null) return const EpgDownloadResult();
     if (url == null) {
       AppLog.warn('EPG: skipping "${source.name}" — no EPG URL configured');
-      return null;
+      return const EpgDownloadResult();
     }
 
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
@@ -324,6 +343,7 @@ class EpgService {
         priorEtag: priorEtag,
         priorLastModified: priorLastModified,
         priorHash: priorHash,
+        forceParse: forceParse, // fix713
         boundEpgIds: boundEpgIds,
         onBatch: (batch) async {
           await Sql.insertProgramsBatch(batch);
@@ -352,7 +372,7 @@ class EpgService {
         AppLog.info('EPG: "${source.name}" unchanged — skipped parse/insert'
             ' (saved the write+checkpoint+match tail)');
         await Sql.upsertEpgRefreshLog(source.id!, 0, null);
-        return null;
+        return const EpgDownloadResult(unchanged: true);
       }
       final channelMap = result.channelMap;
 
@@ -398,11 +418,11 @@ class EpgService {
       // counted as a clean success by the launch-refresh debounce (finding 37).
       await Sql.upsertEpgRefreshLog(
           source.id!, inserted, result.truncated ? 'partial/timeout' : null);
-      return channelMap;
+      return EpgDownloadResult(channelMap: channelMap);
     } catch (e, st) {
       AppLog.error('EPG: download failed for "${source.name}": $e\n$st');
       await Sql.upsertEpgRefreshLog(source.id!, 0, e.toString());
-      return null;
+      return const EpgDownloadResult();
     }
   }
 
@@ -582,7 +602,7 @@ class EpgService {
   ///
   /// Pass [forceRematch] = true to re-match every channel, not just
   /// unmatched ones (e.g. after an EPG feed change or matcher update).
-  static Future<void> refreshSource(
+  static Future<EpgRefreshOutcome> refreshSource(
     Source source, {
     String? epgUrl,
     bool background = false,
@@ -590,13 +610,20 @@ class EpgService {
     bool rebuildFts = true, // finding 36: false from the multi-source path
     void Function(XmltvProgress)? onProgress,
   }) async {
-    final channelMap = await downloadAndParseEpg(
+    // fix713: forceRematch forces a real download+parse — the fix695
+    // unchanged-feed skip would otherwise return no channelMap and the
+    // re-match would be silently impossible in exactly its intended case
+    // (matcher updated, feed identical).
+    final dl = await downloadAndParseEpg(
       source,
       epgUrl: epgUrl,
       rebuildFts: rebuildFts,
+      forceParse: forceRematch,
       onProgress: onProgress,
     );
-    if (channelMap == null) return;
+    if (dl.unchanged) return EpgRefreshOutcome.unchanged;
+    final channelMap = dl.channelMap;
+    if (channelMap == null) return EpgRefreshOutcome.failed;
     // fix709: serialize the match so two concurrently-refreshing sources can't
     // collide on the db.sqlite writer + TRUNCATE checkpoint (the SQLITE_BUSY-→
     // silently-unmatched bug). Downloads above already ran in parallel.
@@ -620,6 +647,7 @@ class EpgService {
       'epg_last_completed_utc',
       (DateTime.now().millisecondsSinceEpoch ~/ 1000).toString(),
     );
+    return EpgRefreshOutcome.refreshed;
   }
 
   /// Determines the EPG URL to use for a source:

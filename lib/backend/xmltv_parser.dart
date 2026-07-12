@@ -90,6 +90,11 @@ class XmltvParser {
     // fix695: SHA-256 of the previous body — if the new body hashes the same,
     // skip parse+insert entirely (the feed is byte-identical).
     String? priorHash,
+    // fix713: bypass the fix695 unchanged-feed short-circuits (conditional GET
+    // validators + body-hash skip) so a full parse always yields the
+    // channelMap. Used by "Re-match all channels", whose whole purpose is the
+    // feed-unchanged case (matcher updated, feed identical).
+    bool forceParse = false,
     // fix695: only keep programmes for xmltv channel-ids we actually carry
     // (the channels already matched to an epg_channel_id on this source). Null
     // or empty ⇒ no filter (first-ever EPG for the source, before any match).
@@ -104,8 +109,13 @@ class XmltvParser {
     // download. (Many Xtream xmltv.php endpoints are dynamic and won't; the
     // body-hash below is the provider-independent fallback.)
     final request = await AppHttp.buildGetRequest(uri, headers: {
-      if (priorEtag != null && priorEtag.isNotEmpty) 'If-None-Match': priorEtag,
-      if (priorLastModified != null && priorLastModified.isNotEmpty)
+      // fix713: no validators when forceParse — a 304 would defeat the forced
+      // full parse the caller explicitly asked for.
+      if (!forceParse && priorEtag != null && priorEtag.isNotEmpty)
+        'If-None-Match': priorEtag,
+      if (!forceParse &&
+          priorLastModified != null &&
+          priorLastModified.isNotEmpty)
         'If-Modified-Since': priorLastModified,
     });
     final response = await AppHttp.sendStreaming(
@@ -190,7 +200,7 @@ class XmltvParser {
     // fix695: identical body → skip the expensive parse/insert/checkpoint.
     // Never skip on a truncated download (a stalled partial would hash
     // differently anyway, but guard explicitly).
-    if (!truncated && bodyHash != null && bodyHash == priorHash) {
+    if (!forceParse && !truncated && bodyHash != null && bodyHash == priorHash) {
       AppLog.info('XMLTV: body unchanged (hash match) — skipping parse/insert');
       try {
         await tmpFile.delete();
