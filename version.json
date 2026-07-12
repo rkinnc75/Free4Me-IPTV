@@ -1,19 +1,19 @@
 {
-  "latest": "4.1.6",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.6",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.6/Free4Me-IPTV-4.1.6-universal.apk",
-  "releaseNotes": "\u2022 Recordings: the red REC dot now blinks clearly and the Recordings list updates itself live (Scheduled \u2192 Recording \u2192 Done) without a manual refresh.\n\u2022 Channels can open faster the first time (the player waits for its video surface before starting, avoiding a slow decoder restart).\n\u2022 New optional \"Live pre-buffer\" setting (Settings \u2192 off by default): turn it on if a channel stutters constantly on a slow provider or weak Wi-Fi \u2014 it pauses briefly to build a cushion instead of rebuffering every second (adds a small delay behind live).",
+  "latest": "4.1.7",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.7",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.7/Free4Me-IPTV-4.1.7-universal.apk",
+  "releaseNotes": "\u2022 TV look refresh (in progress): the top tabs now show a cleaner focus highlight \u2014 a crisp accent ring with a subtle lift instead of the old flat yellow box. The selected tab keeps its section color, and hold-OK still reaches its actions. First step of a wider TV redesign; more to come. (Phone UI is unchanged.)",
   "apkUrls": {
-    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.6/Free4Me-IPTV-4.1.6-arm.apk",
-    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.6/Free4Me-IPTV-4.1.6-arm64.apk",
-    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.6/Free4Me-IPTV-4.1.6-x64.apk",
-    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.6/Free4Me-IPTV-4.1.6-universal.apk"
+    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.7/Free4Me-IPTV-4.1.7-arm.apk",
+    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.7/Free4Me-IPTV-4.1.7-arm64.apk",
+    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.7/Free4Me-IPTV-4.1.7-x64.apk",
+    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.7/Free4Me-IPTV-4.1.7-universal.apk"
   },
   "apkSha256s": {
-    "arm": "563639d6560278d1df6c9699ae2fe56b5c290ef2f58c179f8bf8039f7d7643f0",
-    "arm64": "6bb253415fdbfbce98c653a79acd10b8797426b42ab7959a5a13eadf7a46b4da",
-    "x64": "bfb808976255d665f4312acd9982cd3fabcf9c900dd32f78cea8b13eb52ade65",
-    "universal": "bf420a6dca11b135de97462d7b6949996c0b5ef407bbaa4352ec93a4e21a37b2"
+    "arm": "cd57878497b37746ed82a578990b3dc715f3c9ea6debc45f1d232d542ad7f60d",
+    "arm64": "fd06063bb3adb520d52f4fd2c89a0a8e047a340e3b8b46020f7817bef46d1109",
+    "x64": "e7d2677cfa1934065c1dd8fd62347c5c8f4084c63c7bbab8aa3416c13c21de21",
+    "universal": "c2b82266c8d039986c9954340ceaf114017564b7f444129a821ab561d9718c68"
   },
-  "apkSha256": "bf420a6dca11b135de97462d7b6949996c0b5ef407bbaa4352ec93a4e21a37b2"
+  "apkSha256": "c2b82266c8d039986c9954340ceaf114017564b7f444129a821ab561d9718c68"
 }
