@@ -1216,9 +1216,13 @@ class _SettingsState extends State<SettingsView> {
       ),
     );
     // finding 12: refresh the memoized "last loaded" subtitle after a run.
+    // fix723: re-check mounted AFTER the await — the guard above is stale once
+    // getLatestEpgRefresh() yields, so if the user leaves Settings during it the
+    // setState would fire on a disposed State (the same null-check throw fix723
+    // closes in _updateRefreshDialog). Assign inside the re-checked setState.
     if (mounted) {
-      _latestEpgRefreshTs = await Sql.getLatestEpgRefresh();
-      setState(() {});
+      final ts = await Sql.getLatestEpgRefresh();
+      if (mounted) setState(() => _latestEpgRefreshTs = ts);
     }
   }
 
@@ -1401,8 +1405,26 @@ class _SettingsState extends State<SettingsView> {
   int? _latestEpgRefreshTs;
 
   void _updateRefreshDialog(String status) {
-    _refreshStatus = status;
-    _refreshSetState?.call(() {});
+    _refreshStatus = status; // latched; repaints when a dialog is next shown
+    // fix723: the refresh/re-match WORK runs on BackgroundTaskService (fix349),
+    // which outlives the Settings screen. If the user navigates away mid-run,
+    // this State AND the progress dialog's StatefulBuilder State are disposed
+    // while the loop keeps calling here. `?.` guards a null REFERENCE, not a
+    // DISPOSED State — so the captured setState hit markNeedsBuild() on an
+    // unmounted State, throwing 'Null check operator used on a null value'
+    // (framework.dart) UNHANDLED inside the work loop → the whole Re-match /
+    // source-refresh ABORTED partway (only the first source completed). Skip the
+    // UI update once this State is gone — the work runs to completion headless
+    // (its foreground-service notification is managed + stopped by
+    // BackgroundTaskService). The try/catch is belt-and-
+    // suspenders for the narrow window where the dialog's State is torn down but
+    // `_refreshSetState` hasn't been nulled yet (lines ~1086/1282).
+    if (!mounted) return;
+    try {
+      _refreshSetState?.call(() {});
+    } catch (_) {
+      // dialog State disposed mid-update — status stays latched above.
+    }
   }
 
   /// fix612: run the on-device search benchmark and, if the user picks a

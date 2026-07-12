@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.27': [
+    'Fixed: leaving the Settings screen while "Re-match all channels" or a '
+        'source refresh was running would silently stop it partway (often after '
+        'only the first source). It now keeps running in the background to '
+        'completion, so you can navigate away freely.',
+  ],
   '4.1.26': [
     'On TV, multi-view now shows the same accent focus outline as the rest of '
         'the app when you move between the video cells. (Phone UI is unchanged.)',

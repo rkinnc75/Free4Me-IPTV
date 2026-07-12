@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.27+723] - 2026-07-12
+
+**Bug fix — Re-match / source-refresh no longer aborts when you leave Settings.** TV + phone.
+
+### Fixed
+- **fix723** — a long-standing bug where navigating away from the Settings screen during "Re-match all channels" or a source refresh **silently aborted** the operation partway (often after only the first source). The background work now runs to completion regardless of navigation.
+
+### Technical
+- **fix723**: the refresh/re-match work runs on `BackgroundTaskService` (fix349), which outlives the Settings screen. `_updateRefreshDialog` did `_refreshSetState?.call(() {})` — `?.` guards a null reference but not a **disposed** dialog State, so after navigate-away the captured `setState` hit `markNeedsBuild()` on an unmounted State and threw `Null check operator used on a null value` unhandled inside the loop → abort. Added an `if (!mounted) return;` guard (the work continues headless; its foreground-service notification is managed by `BackgroundTaskService`) plus a belt-and-suspenders `try/catch` around the call for the narrow window where the dialog State is torn down before `_refreshSetState` is nulled. `_refreshStatus` is latched before the guard so a re-opened dialog repaints. **Adversarial review also caught a second, pre-existing setState-after-dispose in the same flow** (`_runEpgRefresh`: `mounted` was checked *before* `await Sql.getLatestEpgRefresh()` but `setState` ran after it without re-checking) — folded in a post-await `if (mounted) setState(...)` re-check. `test/fix723_refresh_dialog_disposed_guard_test.dart` (4). Version → 4.1.27+723.
+
 ## [v4.1.26+722] - 2026-07-12
 
 **TV GUI redesign — Phase 5, unit 5: multi-view accent ring.** TV mode only; phone/touch UI unchanged. Completes the accent focus-ring language across every TV surface.
