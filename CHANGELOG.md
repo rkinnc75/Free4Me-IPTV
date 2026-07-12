@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.13+708] - 2026-07-12
+
+**TV GUI redesign — Phase 3 unit 3: guide genre tint.** TV mode only; phone UI unchanged.
+
+### Added / Changed
+- **fix708 — Genre colour stripe** — in the TV Guide, the on-now programme cell now shows a small left-edge colour stripe by genre (news / sport / movies / kids / music / docs, with a neutral fallback), so you can spot the kind of show at a glance. Colour is derived per-programme from the XMLTV category (a channel airs many genres through the day, so it's per on-now cell, not per channel). Only shows on channels that carry EPG data.
+
+### Technical
+- **fix708**: new `lib/tv/theme/genre.dart` — `normalizeGenre(String? category)` maps free-text XMLTV `Program.category` onto one of the 7 buckets keying `kGenreColors` (case-insensitive substring, most-specific-first, `general` fallback for null/unknown — never guesses a vivid colour); `genreEdgeColor()` returns the bucket's vivid colour. `tv_guide_view.dart` `_block` draws a 3px `Positioned` left-edge stripe on the on-now cell (`if (isNow)`), clipped by the existing `Clip.antiAlias`, painted under the title / over the fix705 progress fill; positioned child, so no layout/size/alignment change. Adversarially reviewed (SHIP; fixed a `'mma'`→`'mixed martial'` false-positive that hit "programma"/"grammar"). `test/fix708_genre_test.dart` (8): normalizer buckets + precedence + false-positive guard + total fallback + edge-colour + guide wiring. Version → 4.1.13+708.
+
 ## [v4.1.12+707] - 2026-07-12
 
 **TV GUI redesign — chrome pass: button/dialog/gear focus rings.** TV mode only; phone UI unchanged.

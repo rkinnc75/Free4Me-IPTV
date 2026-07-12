@@ -21,6 +21,7 @@ import 'package:open_tv/player.dart';
 import 'package:open_tv/player/overlay_player_controller.dart';
 import 'package:open_tv/tv/theme/accent_scope.dart'; // fix704 (TV GUI redesign)
 import 'package:open_tv/tv/theme/f4_tokens.dart'; // fix705 (TV GUI redesign)
+import 'package:open_tv/tv/theme/genre.dart'; // fix708 (TV GUI redesign)
 import 'package:open_tv/source_color_picker.dart';
 import 'package:open_tv/tv/tv_hero_preview.dart';
 
@@ -1268,6 +1269,20 @@ class TvGuideViewState extends State<TvGuideView> {
                         color: scheme.primary.withValues(alpha: 0.18),
                       ),
                     ),
+                  ),
+                // fix708 (Phase 3 unit 3): genre left-edge tint on the on-now
+                // cell. The current programme's free-text XMLTV `category` is
+                // normalized to one of 7 buckets → a vivid stripe. Per-cell (a
+                // channel airs many genres through the day), not per-channel.
+                // Unknown/empty categories fall back to the neutral `general`
+                // colour, so a channel with no category still gets a valid tint.
+                if (isNow)
+                  Positioned(
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: 3,
+                    child: Container(color: genreEdgeColor(p.category)),
                   ),
                 Padding(
                   padding:

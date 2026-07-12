@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.13': [
+    'TV Guide now colour-codes what\'s on: the show currently airing gets a '
+        'small colour stripe by genre (news, sport, movies, kids, music, docs), '
+        'so you can spot the kind of programme at a glance. (Phone UI is '
+        'unchanged.)',
+  ],
   '4.1.12': [
     'TV look refresh finishing touch: the focus highlight on buttons, dialogs '
         'and the settings gear now matches everything else — a clean accent '
