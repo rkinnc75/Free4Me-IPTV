@@ -86,15 +86,20 @@ void main() {
     test('imports the genre helper', () {
       expect(guide.contains('tv/theme/genre.dart'), isTrue);
     });
-    test('on-now cell draws a 3px genre left-edge stripe', () {
+    test('on-now cell draws a 3px genre TOP-edge stripe (fix711)', () {
       expect(guide.contains('if (isNow)'), isTrue);
       expect(guide.contains('genreEdgeColor(p.category)'), isTrue);
-      // a thin left-anchored stripe
+      // fix711: full-width TOP-edge stripe (was a left-edge stripe hidden under
+      // the now-line). left+right:0 + top:0 + height:3.
       expect(
-          guide.contains('left: 0,') &&
-              guide.contains('width: 3,') &&
+          guide.contains('right: 0,') &&
+              guide.contains('top: 0,') &&
+              guide.contains('height: 3,') &&
               guide.contains('Container(color: genreEdgeColor(p.category))'),
           isTrue);
+      // the old left-edge form (width:3 vertical stripe) is gone
+      expect(guide.contains('width: 3,\n                    child: Container(color: genreEdgeColor'),
+          isFalse);
     });
   });
 }

@@ -1270,18 +1270,22 @@ class TvGuideViewState extends State<TvGuideView> {
                       ),
                     ),
                   ),
-                // fix708 (Phase 3 unit 3): genre left-edge tint on the on-now
-                // cell. The current programme's free-text XMLTV `category` is
-                // normalized to one of 7 buckets → a vivid stripe. Per-cell (a
-                // channel airs many genres through the day), not per-channel.
-                // Unknown/empty categories fall back to the neutral `general`
-                // colour, so a channel with no category still gets a valid tint.
+                // fix708 (Phase 3 unit 3): genre tint on the on-now cell. The
+                // current programme's free-text XMLTV `category` is normalized to
+                // one of 7 buckets → a vivid stripe. Per-cell (a channel airs
+                // many genres through the day), not per-channel. Unknown/empty
+                // categories fall back to the neutral `general` colour.
+                // fix711: the stripe is on the TOP edge (full-width, 3px), not
+                // the left edge. On-now cells start at ~"now", so a left stripe
+                // landed in the thin sliver under the vertical now-line + its
+                // glow and was invisible; a top stripe is never obscured by the
+                // now-line and reads clearly.
                 if (isNow)
                   Positioned(
                     left: 0,
+                    right: 0,
                     top: 0,
-                    bottom: 0,
-                    width: 3,
+                    height: 3,
                     child: Container(color: genreEdgeColor(p.category)),
                   ),
                 Padding(

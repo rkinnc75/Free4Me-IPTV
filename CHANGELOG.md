@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.15+711] - 2026-07-12
+
+**TV GUI — genre stripe visibility (fix708 follow-up).** TV mode only; phone UI unchanged.
+
+### Fixed
+- **fix711 — Genre stripe moved to the top edge** — the on-now cell's genre colour tag (fix708) was a left-edge stripe, but on-now cells begin at ~"now", so the stripe landed in the thin sliver under the vertical now-line + its glow and was effectively invisible on-device. Moved it to a full-width 3px **top-edge** stripe, which the now-line never covers, so the genre colour reads clearly.
+
+### Technical
+- **fix711**: `tv_guide_view.dart` `_block` — the on-now genre `Positioned` changed from `left:0, top:0, bottom:0, width:3` (vertical left stripe) to `left:0, right:0, top:0, height:3` (horizontal top stripe). Still gated on `isNow`, clipped by the fix705 `Clip.antiAlias`, painted under the title. `test/fix708_genre_test.dart` updated to assert the top-edge geometry. Version → 4.1.15+711.
+
 ## [v4.1.14+709] - 2026-07-12
 
 **EPG matching fix — guide empty on all channels (concurrency).** Backend; all platforms.

@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.15': [
+    'TV Guide genre colour is now visible: the colour tag for the show that\'s '
+        'on now moved to the top edge of the cell, so it\'s no longer hidden '
+        'behind the "now" line. (Phone UI is unchanged.)',
+  ],
   '4.1.14': [
     'Fixed a bug where the TV Guide could show "No guide data" on most or all '
         'channels even though the guide had downloaded. When more than one '
