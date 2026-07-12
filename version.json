@@ -1,19 +1,19 @@
 {
-  "latest": "4.1.23",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.23",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.23/Free4Me-IPTV-4.1.23-universal.apk",
-  "releaseNotes": "\u2022 New on TV: pick your accent color. Settings \u25b8 Playback \u25b8 Accent color lets you switch the focus outline between White, Sky Blue, Amber, Magenta, and Green \u2014 it recolors the whole interface instantly. (Phone UI is unchanged.)",
+  "latest": "4.1.24",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.24",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.24/Free4Me-IPTV-4.1.24-universal.apk",
+  "releaseNotes": "\u2022 On TV, the pop-up menus (like the one you get holding OK on a channel) now match the rest of the redesigned interface \u2014 a darker card with rounded corners. (Phone UI is unchanged.)",
   "apkUrls": {
-    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.23/Free4Me-IPTV-4.1.23-arm.apk",
-    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.23/Free4Me-IPTV-4.1.23-arm64.apk",
-    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.23/Free4Me-IPTV-4.1.23-x64.apk",
-    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.23/Free4Me-IPTV-4.1.23-universal.apk"
+    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.24/Free4Me-IPTV-4.1.24-arm.apk",
+    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.24/Free4Me-IPTV-4.1.24-arm64.apk",
+    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.24/Free4Me-IPTV-4.1.24-x64.apk",
+    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.24/Free4Me-IPTV-4.1.24-universal.apk"
   },
   "apkSha256s": {
-    "arm": "12cf07e44b322681e3bdfda8eee3daa36a4bddf8edb6d9234b25f5130a7a5b08",
-    "arm64": "a0b14ec7fcb2e62380198a6474b937be6b9f51ad4d407db2372fd40d612ccda7",
-    "x64": "85724ee31e44bca131379294628d106660e7633989b0545b7ab89172fbf16db2",
-    "universal": "f270d73a31ab7c25d1b8647b2c0501910255c8a7b28a668bdda7ff8ec8cbff3f"
+    "arm": "7d1cebe2c04c4e06e1e84a894cc492cdce1b1d9b765169158dfe832479436809",
+    "arm64": "b25b59f6165d331b341788f0e77ef6a5f4708b8617767d0284c5a0479b87e54f",
+    "x64": "5f6bc5bf768ac9cb9b5b9f1d3fda3d5cdf9883de528769728f7cbf2ede07e591",
+    "universal": "fa4f80ee06884cc42cc69ac4585f0a6cebdebbc90d2366cf46339774eb64f0f9"
   },
-  "apkSha256": "f270d73a31ab7c25d1b8647b2c0501910255c8a7b28a668bdda7ff8ec8cbff3f"
+  "apkSha256": "fa4f80ee06884cc42cc69ac4585f0a6cebdebbc90d2366cf46339774eb64f0f9"
 }
