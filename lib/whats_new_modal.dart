@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.25': [
+    'On TV, pop-up dialogs (confirmations, pickers, the "Re-match complete" '
+        'notice) now use the same dark glass card as the rest of the redesign, '
+        'matching the menus. (Phone UI is unchanged.)',
+  ],
   '4.1.24': [
     'On TV, the pop-up menus (like the one you get holding OK on a channel) now '
         'match the rest of the redesigned interface — a darker card with rounded '

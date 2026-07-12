@@ -528,6 +528,21 @@ class MyApp extends StatelessWidget {
                       BorderRadius.vertical(top: Radius.circular(20)),
                 ),
               ),
+        // fix721 (TV GUI redesign, Phase 5): match the AlertDialog/SelectDialog
+        // surfaces to the same redesign glass as the bottom sheets (fix720) so
+        // confirm/select/"Re-match Complete" dialogs read as migrated too. Same
+        // TV-gate (null on phone → Material default, byte-identical) + same F4
+        // glass literals (0xF00B0F19, radius.modal 20; all corners since a
+        // dialog floats).
+        dialogTheme: hasTouchScreen
+            ? null
+            : const DialogThemeData(
+                backgroundColor: Color(0xF00B0F19),
+                surfaceTintColor: Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.all(Radius.circular(20)),
+                ),
+              ),
         useMaterial3: true,
         // fix701 (TV GUI redesign, Phase 0): attach the static TV token tree so
         // TV widgets can read it via F4.of(context). Inert for the phone path —

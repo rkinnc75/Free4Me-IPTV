@@ -1,6 +1,19 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.25+721] - 2026-07-12
+
+**TV GUI redesign — Phase 5, unit 4: dialog glass** + **CI: pub-cache speedup** (folded in). TV mode only for the UI; phone/touch UI unchanged.
+
+### Changed
+- **fix721 — TV dialog glass** — `AlertDialog`/`SelectDialog` surfaces (confirmations, pickers, the "Re-match complete" notice, etc.) now use the same dark glass card + rounded corners as the fix720 bottom sheets, so every pop-up reads as migrated. TV only; phone keeps the Material default.
+
+### CI
+- Added an `actions/cache@v4` pub-cache step (`~/.pub-cache`, keyed on `pubspec.lock`) after the Flutter setup step in `analyze.yml` and in **both** `release.yml` jobs (the analyze gate and the build), so `flutter pub get` reuses resolved dependencies across runs. Purely a dependency-download speedup — the analyze gate, `needs: analyze`, triggers, concurrency groups, and `APK_BEFORE_VERSIONJSON` logic are untouched. Both YAML files validated with `ruby -ryaml`. Folded into this release rather than shipped standalone.
+
+### Technical
+- **fix721**: `main.dart` `ThemeData` gains `dialogTheme: hasTouchScreen ? null : DialogThemeData(backgroundColor 0xF00B0F19, surfaceTintColor transparent, all-corners radius 20)` — mirrors the fix720 `bottomSheetTheme`, same TV gate + F4 glass literals. `test/fix721_dialog_glass_and_pubcache_test.dart` (5) covers the dialog gate/glass and the pub-cache step in all three job locations. Version → 4.1.25+721.
+
 ## [v4.1.24+720] - 2026-07-12
 
 **TV GUI redesign — Phase 5, unit 3: bottom-sheet menu restyle.** TV mode only; phone/touch UI unchanged.
