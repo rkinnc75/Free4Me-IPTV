@@ -1084,6 +1084,24 @@ class DbFactory {
         await tx.execute(
             'CREATE INDEX IF NOT EXISTS idx_recordings_start '
             'ON recordings(scheduled_start_utc);');
+      }))
+      // fix743: persisted hwdec-probe blocklist. Keyed on the stream URL —
+      // NOT a channels column — because a source refresh wipes+reinserts the
+      // channels rows, which would silently destroy the flag on every
+      // refresh. A row means: the hw probe emitted "Could not open codec"
+      // and mpv's software fallback then produced a frame (fix742's
+      // confirmed-fallback latch), on this app_version, at failed_at_utc.
+      // Read side (mpv_engine) treats rows older than 30 days or from a
+      // different app version as absent, so a libmpv/ffmpeg bump or provider
+      // re-encode re-probes hardware automatically.
+      ..add(SqliteMigration(45, (tx) async {
+        await tx.execute('''
+          CREATE TABLE IF NOT EXISTS hwdec_blocklist (
+            url TEXT PRIMARY KEY,
+            failed_at_utc INTEGER NOT NULL,
+            app_version TEXT NOT NULL
+          );
+        ''');
       }));
   }
 

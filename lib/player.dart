@@ -741,6 +741,22 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     _engineSubs.add(_engine.firstFrameStream.listen((_) {
       // fix742: a decoded frame proves the decoder chain works — cancel any
       // pending codec-fallback escalation for this open().
+      // fix743: if this open saw a hw-probe codec-open error and the frame we
+      // just got is the CONFIRMATION of mpv's software fallback, persist the
+      // URL so future opens skip the doomed probe (30-day TTL, invalidated on
+      // app update — see Sql.isHwdecBlocklisted). Gated on hardware having
+      // actually been requested for this open (never on the 'no' path).
+      final eng = _engine;
+      if (_codecErrorLogged &&
+          !_codecFallbackConfirmed &&
+          eng is MpvEngine &&
+          eng.appliedHwdecMode != null &&
+          eng.appliedHwdecMode != 'no') {
+        final url = widget.channel.url;
+        if (url != null && url.isNotEmpty) {
+          unawaited(Sql.addHwdecBlocklist(url));
+        }
+      }
       _codecFallbackConfirmed = true;
       _codecFallbackTimer?.cancel();
       _codecFallbackTimer = null;

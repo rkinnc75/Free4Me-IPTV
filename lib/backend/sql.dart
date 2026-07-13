@@ -2,6 +2,7 @@ import 'dart:collection';
 import 'dart:convert';
 
 import 'package:open_tv/backend/app_logger.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:open_tv/backend/browse_order.dart';
 import 'package:open_tv/backend/visibility_clause.dart';
 import 'package:open_tv/backend/group_search_gate.dart';
@@ -3265,6 +3266,43 @@ class Sql {
   /// for 'epg_last_completed_utc' (finding 38, guide-refresh signal) and
   /// 'epg_refresh_in_progress' (finding 43, background/foreground mutual
   /// exclusion marker).
+  /// fix743: how long a persisted hw-probe failure suppresses re-probing.
+  static const int hwdecBlocklistTtlDays = 30;
+
+  /// fix743: true when [url] recently failed the hardware-decode probe on THIS
+  /// app version. Rows from another version or older than
+  /// [hwdecBlocklistTtlDays] are treated as absent (self-healing: an app/libmpv
+  /// update or the TTL expiring re-probes hardware automatically).
+  static Future<bool> isHwdecBlocklisted(String url) async {
+    var db = await DbFactory.db;
+    final rows = await db.getAll(
+        'SELECT failed_at_utc, app_version FROM hwdec_blocklist WHERE url = ?',
+        [url]);
+    if (rows.isEmpty) return false;
+    final info = await PackageInfo.fromPlatform();
+    if ((rows.first['app_version'] as String?) != info.version) return false;
+    final nowUtc = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final ageDays = (nowUtc - (rows.first['failed_at_utc'] as int)) / 86400.0;
+    return ageDays < hwdecBlocklistTtlDays;
+  }
+
+  /// fix743: record that [url]'s hardware probe failed and software fallback
+  /// was CONFIRMED by a decoded frame. Upsert keeps the newest failure.
+  static Future<void> addHwdecBlocklist(String url) async {
+    var db = await DbFactory.db;
+    final info = await PackageInfo.fromPlatform();
+    await db.execute(
+      'INSERT INTO hwdec_blocklist(url, failed_at_utc, app_version)'
+      ' VALUES(?, ?, ?)'
+      ' ON CONFLICT(url) DO UPDATE SET'
+      ' failed_at_utc = excluded.failed_at_utc,'
+      ' app_version = excluded.app_version',
+      [url, DateTime.now().millisecondsSinceEpoch ~/ 1000, info.version],
+    );
+    AppLog.info(
+        'Sql: hwdec blocklist upsert (fix743) url-hash=${url.hashCode}');
+  }
+
   static Future<void> setAppMeta(String key, String value) async {
     final db = await DbFactory.db;
     await db.execute(

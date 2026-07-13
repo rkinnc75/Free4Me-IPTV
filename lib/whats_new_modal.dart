@@ -6,6 +6,14 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.46': [
+    'Channels whose stream can\'t use hardware decoding (often 1080i sports '
+        'feeds) are now remembered, so the app skips the doomed hardware '
+        'attempt and starts those channels faster on later opens and '
+        'reconnects. The memory clears itself after 30 days or on any app '
+        'update, so hardware decoding is retried automatically when things '
+        'change.',
+  ],
   '4.1.45': [
     'Fixed: some channels (often 1080i sports feeds, e.g. YES Network) died '
         'with "max reconnects reached" even though the video was playable. '

@@ -10,6 +10,7 @@ import 'package:open_tv/models/device_detector.dart';
 import 'package:open_tv/models/media_type.dart';
 import 'package:open_tv/models/multi_view_decode.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/player/hwdec_routing.dart';
 import 'package:open_tv/player/hwdec_decode_state.dart';
@@ -62,6 +63,12 @@ class MpvEngine implements PlayerEngine {
   // mpv's spurious completed=true (EOF-at-TS-boundary) on live streams so the
   // documented "live must not emit completed" contract is actually honoured.
   bool _isLive = false;
+
+  /// fix743: the hwdec mode actually applied for the current FULL-SCREEN
+  /// open ('no' when the persisted blocklist skipped the probe; null until a
+  /// full-screen options pass runs — preview branches never set it). Lets the
+  /// player gate blocklist WRITES on hardware having actually been requested.
+  String? appliedHwdecMode;
 
   /// fix396: periodic decode heartbeat (full-screen + debug logging only).
   /// The Shield black-screen log had "12 s of silence" — no position lines —
@@ -1167,18 +1174,37 @@ class MpvEngine implements PlayerEngine {
       final isTV = await DeviceDetector.isTV();
       final isTegra = await DeviceDetector.isTegra();
       final isLowRam = await DeviceDetector.isLowRamDevice();
-      final hwdecMode = androidFullscreenHwdec(
+      var hwdecMode = androidFullscreenHwdec(
         isTegra: isTegra,
         isLowRam: isLowRam,
         isTV: isTV,
         forceHardware: s.forceHwDecode, // fix505: advanced override
       );
+      // fix743: persisted probe blocklist — this URL recently failed the hw
+      // probe on this app version and mpv's software fallback was confirmed
+      // by a decoded frame (fix742 latch). Skip the doomed probe entirely so
+      // reconnects and later tunes of the channel start faster.
+      // forceHwDecode bypasses the blocklist (manual escape hatch); TTL and
+      // app-version checks live in Sql.isHwdecBlocklisted.
+      var blocklistHit = false;
+      final chUrl = channel.url;
+      if (hwdecMode != 'no' &&
+          !s.forceHwDecode &&
+          chUrl != null &&
+          chUrl.isNotEmpty) {
+        blocklistHit = await Sql.isHwdecBlocklisted(chUrl);
+        if (blocklistHit) hwdecMode = 'no';
+      }
+      appliedHwdecMode = hwdecMode;
       await np.setProperty('hwdec', hwdecMode);
       AppLog.info('Player: hwdec=$hwdecMode isTV=$isTV isTegra=$isTegra '
-          'isLowRam=$isLowRam forceHw=${s.forceHwDecode} (fix395/505)');
+          'isLowRam=$isLowRam forceHw=${s.forceHwDecode}'
+          '${blocklistHit ? ' blocklist=hit (fix743)' : ''} (fix395/505)');
     } else if (s.hwDecode && Platform.isIOS) {
+      appliedHwdecMode = 'videotoolbox'; // fix743
       await np.setProperty('hwdec', 'videotoolbox');
     } else {
+      appliedHwdecMode = 'no'; // fix743
       await np.setProperty('hwdec', 'no');
     }
 
