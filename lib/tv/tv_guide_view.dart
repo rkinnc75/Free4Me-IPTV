@@ -699,6 +699,8 @@ class TvGuideViewState extends State<TvGuideView> {
       // its node handler) and survivors keep their correct pairing.
       key: ValueKey('gch-${ch.id ?? ch.name}'),
       selected: identical(ch, _focused),
+      background: tint, // mock §4.3: source-tinted rail cell
+
       // fix598: first channel autofocuses when the rail remounts into channels
       // mode (OK on a category) — lands focus at the top + fires _onChannelFocused
       // (which arms the preview on multi-connection sources).
@@ -720,7 +722,8 @@ class TvGuideViewState extends State<TvGuideView> {
             child: Text(ch.name,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 12)),
+                // mock §4.3 micro-ramp: channel name 11 (was 12)
+                style: const TextStyle(fontSize: 11)),
           ),
           // fix603 (#14): favorites had NO visible marker anywhere. Show a star
           // on favorited channels (the toggle already persists; only the
@@ -1297,7 +1300,8 @@ class TvGuideViewState extends State<TvGuideView> {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: 11,
+                          // mock §4.3 micro-ramp: programme title 10 (was 11)
+                          fontSize: 10,
                           fontWeight:
                               isNow ? FontWeight.w600 : FontWeight.normal,
                         )),
@@ -1351,6 +1355,9 @@ class _FocusTile extends StatefulWidget {
   final bool autofocus;
   final VoidCallback onTap;
   final Widget child;
+  /// mock §4.3: source-tinted rail cell background (SourcePalette.tintOver).
+  /// null = the old transparent/selected behaviour (category rows).
+  final Color? background;
   final ValueChanged<bool>? onFocusGained;
   /// fix584 (#4): caller-supplied node so another widget can requestFocus this
   /// tile directly (rail categories + the first channel row).
@@ -1368,6 +1375,7 @@ class _FocusTile extends StatefulWidget {
     required this.selected,
     required this.onTap,
     required this.child,
+    this.background,
     this.autofocus = false,
     this.onFocusGained,
     this.focusNode,
@@ -1464,9 +1472,13 @@ class _FocusTileState extends State<_FocusTile> {
     Widget tile = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       child: Material(
-        color: widget.selected
-            ? scheme.primary.withValues(alpha: 0.18)
-            : Colors.transparent,
+        // mock §4.3: a source-tinted rail cell keeps its tint always (focus is
+        // shown by the accent ring below); category rows (no background) keep
+        // the original transparent / selected-highlight behaviour.
+        color: widget.background ??
+            (widget.selected
+                ? scheme.primary.withValues(alpha: 0.18)
+                : Colors.transparent),
         borderRadius: BorderRadius.circular(8),
         child: InkWell(
           focusNode: widget.focusNode,

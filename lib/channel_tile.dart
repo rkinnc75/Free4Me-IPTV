@@ -622,11 +622,19 @@ class _ChannelTileState extends State<ChannelTile> {
   /// [ChannelTile.poster] is true. Swaps ONLY the visual layout of the InkWell
   /// child — play/drill-in/focus/long-press all stay on the shared code paths.
   Widget _buildPoster(BuildContext context) {
-    const fallback = ColoredBox(
-      color: Colors.black26,
+    // mock §4.2: on TV, an art-less tile's background is its SOURCE color
+    // scrimmed into near-black (SourcePalette.tintOver) rather than a flat grey
+    // rectangle — the same source identity the edge bar (fix501) already shows,
+    // now filling the card. Phone / non-edge tiles keep the plain grey.
+    final Color posterBg = (widget.showSourceEdgeBar && widget.tintColor != null)
+        ? SourcePalette.tintOver(widget.tintColor, Colors.black26)
+        : Colors.black26;
+    final fallback = ColoredBox(
+      color: posterBg,
       // fix538: smaller fallback glyph so it doesn't dominate the half-size
       // poster tiles (grid went from ~4 to ~8 across).
-      child: Center(child: Icon(Icons.movie, size: 28, color: Colors.grey)),
+      child: const Center(
+          child: Icon(Icons.movie, size: 28, color: Colors.grey)),
     );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -653,7 +661,7 @@ class _ChannelTileState extends State<ChannelTile> {
                             memCacheHeight: 360,
                             fit: BoxFit.contain,
                             placeholder: (c, u) =>
-                                const ColoredBox(color: Colors.black26),
+                                ColoredBox(color: posterBg),
                             errorWidget: (c, u, e) => fallback,
                           ),
                         ),
@@ -662,8 +670,7 @@ class _ChannelTileState extends State<ChannelTile> {
                         imageUrl: widget.channel.image!,
                         memCacheHeight: 360,
                         fit: BoxFit.cover,
-                        placeholder: (c, u) =>
-                            const ColoredBox(color: Colors.black26),
+                        placeholder: (c, u) => ColoredBox(color: posterBg),
                         errorWidget: (c, u, e) => fallback,
                       )
               else

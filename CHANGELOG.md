@@ -1,6 +1,23 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.29+725] - 2026-07-12
+
+**TV GUI redesign → mock: source color everywhere + guide micro-ramp.** TV mode only; phone/touch UI unchanged. (Renumbered from a working fix724/v4.1.28 that collided with a parallel commit — see note.)
+
+### Changed
+- **fix725 — guide source-tinted rails + micro-ramp + art-less tile tint** — matching the visual mock: (1) EPG guide rail cells now carry a source-tinted background (`SourcePalette.tintOver`, the same tint as the bright source edge), not just the 5px edge; (2) the typographic micro-ramp (channel name 12→11, programme title 11→10); (3) channel tiles with no artwork use the source-tinted card background on TV instead of a flat grey rectangle.
+
+### Technical
+- **fix725**: `tv_guide_view.dart` `_FocusTile` gains an optional `Color? background` (source-tinted rail always shows its tint; focus via the accent ring; category rows unchanged); `_channelItem` passes the already-computed `tint`; fonts per mock §4.3. `channel_tile.dart` `_buildPoster` computes `posterBg = showSourceEdgeBar && tintColor != null ? SourcePalette.tintOver(tintColor, black26) : black26` for the fallback + loading placeholders (phone / non-edge tiles unchanged). Rebased onto the parallel v4.1.28. `test/fix725_source_tint_test.dart` (4). Version → 4.1.29+725.
+
+## [v4.1.28+724] - 2026-07-12
+
+**Signing — APK Signature Scheme v3 (key-rotation insurance).** No user-visible change. *(Shipped by a parallel commit; documented here for a complete changelog.)*
+
+### Changed
+- **fix724** — `android/app/build.gradle` now also enables APK Signature Scheme v3 alongside v1/v2, so the release key can be rotated in future without breaking in-place updates.
+
 ## [v4.1.27+723] - 2026-07-12
 
 **Bug fix — Re-match / source-refresh no longer aborts when you leave Settings.** TV + phone.

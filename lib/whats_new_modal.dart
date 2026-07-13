@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.29': [
+    'TV design refresh: the EPG guide now tints each channel row by its source '
+        '(the same color as its edge bar), and channels without artwork show '
+        'that source color instead of a plain grey box — so it\'s easier to see '
+        'at a glance which provider a channel comes from. (Phone UI unchanged.)',
+  ],
   '4.1.28': [
     'Internal: APK now also carries Signature Scheme v3 (key-rotation '
         'insurance). No user-visible change; updates install exactly as '
