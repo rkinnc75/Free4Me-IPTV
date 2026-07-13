@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:open_tv/tv/theme/accent_scope.dart'; // fix726: appOledNotifier
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/home.dart';
@@ -402,14 +403,26 @@ class _TvShellState extends State<TvShell> {
       child: Stack(
       fit: StackFit.expand,
       children: [
-        const Image(
-          image: AssetImage('assets/tv_background.webp'),
-          fit: BoxFit.cover,
+        // fix726 (mock §4.1): OLED-black toggle. When on, paint pure #000000
+        // (no neon art, no scrim); else the fix540 background image + ~75%
+        // scrim. Listens to appOledNotifier so it swaps live from the setting.
+        ValueListenableBuilder<bool>(
+          valueListenable: appOledNotifier,
+          builder: (context, oled, _) => oled
+              ? const ColoredBox(color: Color(0xFF000000))
+              : const Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image(
+                      image: AssetImage('assets/tv_background.webp'),
+                      fit: BoxFit.cover,
+                    ),
+                    // Dark scrim: fix553 softened to ~75% black (0xBF) — lets
+                    // more neon art through while keeping foreground legible.
+                    ColoredBox(color: Color(0xBF000000)),
+                  ],
+                ),
         ),
-        // Dark scrim: fix553 softened further to ~75% black (0xCC->0xBF) per
-        // on-device review — lets more of the neon art through while keeping
-        // foreground text/tiles legible. (Was 90% fix540 -> 80% fix551.)
-        const ColoredBox(color: Color(0xBF000000)),
         Scaffold(
           backgroundColor: Colors.transparent,
           body: SafeArea(

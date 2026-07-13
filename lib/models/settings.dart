@@ -50,6 +50,10 @@ class Settings {
   /// on the phone/touch path.
   String accentName;
 
+  /// fix726 (mock §4.1): OLED-black TV background — paint pure #000000 instead of
+  /// the neon tv_background.webp. Default false. TV only.
+  bool oledBlack;
+
   /// libmpv cache read-ahead in seconds for live streams.
   int liveCacheSecs;
 
@@ -352,6 +356,7 @@ class Settings {
     this.forceTVMode = false,
     this.use24HourTime = false, // fix604 (#5): 12-hour by default
     this.accentName = 'white', // fix719: default TV accent
+    this.oledBlack = false, // fix726: OLED-black bg off by default
     this.liveCacheSecs = 20,
     this.liveDemuxerMaxMB = 150,
     this.vodCacheSecs = 60,

@@ -3108,6 +3108,24 @@ class _SettingsState extends State<SettingsView> {
                       // recolors TV focus rings; it's a no-op on phone, so the
                       // touch settings list stays byte-identical).
                       if (widget.tvRailPane) _accentColorTile(),
+                      // fix726 (mock §4.1): OLED-black background — TV only.
+                      if (widget.tvRailPane)
+                        _switchTile(
+                          label: "OLED-black background",
+                          value: settings.oledBlack,
+                          help: (
+                            title: 'OLED-black background',
+                            body:
+                                'Replace the neon artwork background with pure '
+                                'black. Cleaner on OLED TVs and saves a little '
+                                'power. Default: off.',
+                          ),
+                          onChanged: (v) {
+                            setState(() => settings.oledBlack = v);
+                            appOledNotifier.value = v; // live swap
+                            updateSettings(); // persist
+                          },
+                        ),
                       _switchTile(
                         label: "Low latency livestreams",
                         value: settings.lowLatency,

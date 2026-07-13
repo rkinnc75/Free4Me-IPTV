@@ -58,6 +58,12 @@ final ValueNotifier<Color> appAccentNotifier = ValueNotifier<Color>(
   accentFromName(null),
 );
 
+/// fix726 (mock §4.1) — app-wide OLED-black toggle. When true, the TV shell
+/// paints a pure #000000 background instead of the neon `tv_background.webp`.
+/// Set from the Settings toggle + restored at startup from `Settings.oledBlack`;
+/// the shell listens via a ValueListenableBuilder so it swaps live. Default off.
+final ValueNotifier<bool> appOledNotifier = ValueNotifier<bool>(false);
+
 // fix719: the fix701 ROYGBIV `kAccentNames` list was superseded by the curated
 // `kAccentPresets` below (the picker's actual palette) and is removed as dead
 // code. `accentFromName` stays — it still provides the white notifier default.

@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.30': [
+    'New on TV: Settings ▸ Playback ▸ OLED-black background — replaces the neon '
+        'artwork with a pure black background. Cleaner on OLED screens and saves '
+        'a little power. (Phone UI unchanged.)',
+  ],
   '4.1.29': [
     'TV design refresh: the EPG guide now tints each channel row by its source '
         '(the same color as its edge bar), and channels without artwork show '

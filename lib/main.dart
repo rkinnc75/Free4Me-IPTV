@@ -60,6 +60,8 @@ Future<void> main() async {
   // live notifier before the first frame so focus rings paint the chosen color
   // from the start (default 'white'). Inert on phone (accent unused there).
   appAccentNotifier.value = accentColorFromId(settings.accentName);
+  // fix726 (mock §4.1): restore the OLED-black background choice pre-first-frame.
+  appOledNotifier.value = settings.oledBlack;
 
   // fix667: initialise the DVR alarm scheduler (Android only; no-op else).
   // After settings so a first-run box has its config; safe if it fails.

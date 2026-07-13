@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.30+726] - 2026-07-12
+
+**TV GUI redesign → mock: OLED-black background toggle.** TV mode only; phone/touch UI unchanged.
+
+### Added
+- **fix726 — OLED-black background** — Settings ▸ Playback ▸ **OLED-black background** replaces the neon `tv_background.webp` with pure `#000000` (mock §4.1). Persists across restarts; swaps live.
+
+### Technical
+- **fix726**: `appOledNotifier` (in `accent_scope.dart`) + persisted `Settings.oledBlack` (`oledBlackProp`), restored at startup in `main.dart`. `tv_shell.dart` wraps its background (image + scrim) in a `ValueListenableBuilder(appOledNotifier)` → `ColoredBox(0xFF000000)` when on, else the webp + scrim (the keep-alive `IndexedStack` body is untouched). Settings toggle is a TV-gated `_switchTile`. (Crossfade route transitions — the other half of §4.1 — deferred to a separate fix to avoid an IndexedStack keep-alive rewrite.) `test/fix726_oled_toggle_test.dart` (6). Version → 4.1.30+726.
+
 ## [v4.1.29+725] - 2026-07-12
 
 **TV GUI redesign → mock: source color everywhere + guide micro-ramp.** TV mode only; phone/touch UI unchanged. (Renumbered from a working fix724/v4.1.28 that collided with a parallel commit — see note.)
