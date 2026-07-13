@@ -24,6 +24,7 @@ import 'package:open_tv/tv/theme/f4_tokens.dart'; // fix705 (TV GUI redesign)
 import 'package:open_tv/tv/theme/genre.dart'; // fix708 (TV GUI redesign)
 import 'package:open_tv/source_color_picker.dart';
 import 'package:open_tv/tv/tv_hero_preview.dart';
+import 'package:open_tv/views/channel_schedule.dart'; // fix736: guide → schedule/record
 
 // fix604 (#5): guide/EPG times go through the shared guideClockFmt()
 // (settings_service), which honors the use24HourTime setting — 24-hour "21:38"
@@ -769,6 +770,23 @@ class TvGuideViewState extends State<TvGuideView> {
                   _play(ch);
                 },
               ),
+              // fix736 (mock §4.3 / answers "can I browse a future show + record
+              // it from the guide"): open this channel's full programme schedule
+              // — a scrollable future-programme list with per-programme details +
+              // a Record (schedule) action. Reuses the proven ChannelScheduleView
+              // (RecordingActions.recordProgramme → the real Scheduled Recording
+              // arc), so no dense-grid focus surgery. Live only (EPG schedule).
+              if (isLive)
+                ListTile(
+                  leading: const Icon(Icons.calendar_month),
+                  title: const Text('Program guide & record'),
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => ChannelScheduleView(channel: ch),
+                    ));
+                  },
+                ),
               if (isLive)
                 ListTile(
                   leading: const Icon(Icons.grid_view),

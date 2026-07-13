@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.39+736] - 2026-07-13
+
+**Guide → schedule & record.** TV Live guide.
+
+### Added
+- **fix736 — Program guide & record from the guide (mock §4.3)** — the Live guide's channel menu (held-OK) now offers **Program guide & record**, opening the channel's full programme schedule where you can browse upcoming shows, read details, and schedule a recording. (In-grid cell navigation is a separate follow-up; this delivers the capability safely by reusing the proven schedule view + real Scheduled Recording arc.)
+
+### Technical
+- **fix736**: `tv_guide_view.dart` held-OK menu adds a live-only `ChannelScheduleView(channel: ch)` push (`RecordingActions.recordProgramme` → `RecordingScheduler.scheduleForProgramme`), avoiding focus-model surgery on the passive (ExcludeFocus, finding 75) dense grid. `test/fix736_guide_schedule_test.dart` (2). Version → 4.1.39+736.
+
 ## [v4.1.38+735] - 2026-07-13
 
 **Stability/performance (Peer2-guided).** A/V-desync watchdog → silent resync. Live full-screen only; phone/Shield/VOD/preview unaffected.
