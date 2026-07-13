@@ -1,6 +1,14 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.40+737] - 2026-07-13
+
+### Changed
+- **fix737 — Recordings rows → glass cards (mock §4.9)** — TV Recordings rows now render as token glass cards (fill + stroke + inter-card gap) instead of bare Material list tiles, matching the redesigned surfaces. Phone unchanged.
+
+### Technical
+- **fix737**: `recordings_view.dart` `_RecordingTile` TV branch adds `glassFill`/`glassStroke` + margin to the existing fix718 accent-ring `AnimatedContainer`; focus node + held-OK untouched. `test/fix737_recordings_glass_test.dart` (2). Version → 4.1.40+737.
+
 ## [v4.1.39+736] - 2026-07-13
 
 **Guide → schedule & record.** TV Live guide.

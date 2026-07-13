@@ -577,14 +577,25 @@ class _RecordingTileState extends State<_RecordingTile> {
     return AnimatedContainer(
       duration: F4Motion.fast,
       curve: Curves.easeOut,
+      // fix737 (mock §4.9): each TV recording row is a token GLASS CARD (was a
+      // bare Material ListTile on a flat Scaffold), with a small gap between
+      // cards, matching the rest of the redesigned TV surfaces. Phone still
+      // early-returns the bare tile above (byte-identical).
+      margin: EdgeInsets.symmetric(
+          vertical: t.spacing.xs / 2, horizontal: t.spacing.sm),
       decoration: BoxDecoration(
+        color: t.colors.glassFill,
         borderRadius: BorderRadius.circular(t.radius.card),
         border: Border.all(
           // fix718: shared ring width (2.5) + in-hue alpha fade (not
           // transparent→accent, which Color.lerp routes through muddy gray),
           // matching TvFocusable so Recordings looks identical to other tiles.
+          // fix737: unfocused = the glass stroke (not transparent) so the card
+          // edge reads even when not focused.
           width: t.focus.ringCard,
-          color: AccentScope.of(context).withValues(alpha: _focused ? 1 : 0),
+          color: _focused
+              ? AccentScope.of(context)
+              : t.colors.glassStroke,
         ),
       ),
       child: tile,
