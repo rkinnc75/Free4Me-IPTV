@@ -18,10 +18,17 @@ class PlayerEpgNowLabel extends StatefulWidget {
   final String? epgChannelId;
   final int sourceId;
 
+  /// fix731: pause the 30s DB poll while the OSD is hidden. The OSD is now
+  /// always mounted (for the fade), so without this the label would run
+  /// Sql.getNowNext every 30s for the whole session even when invisible —
+  /// needless DB traffic on the DB-lock-sensitive onn.
+  final bool active;
+
   const PlayerEpgNowLabel({
     super.key,
     required this.epgChannelId,
     required this.sourceId,
+    this.active = true,
   });
 
   @override
@@ -35,10 +42,28 @@ class _PlayerEpgNowLabelState extends State<PlayerEpgNowLabel> {
   @override
   void initState() {
     super.initState();
-    if (widget.epgChannelId != null) {
-      _load();
-      // Follow programme changes without hammering the DB.
-      _timer = Timer.periodic(const Duration(seconds: 30), (_) => _load());
+    if (widget.active) _start();
+  }
+
+  void _start() {
+    if (widget.epgChannelId == null || _timer != null) return;
+    _load(); // refresh immediately on (re)activation
+    // Follow programme changes without hammering the DB.
+    _timer = Timer.periodic(const Duration(seconds: 30), (_) => _load());
+  }
+
+  void _stop() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  @override
+  void didUpdateWidget(PlayerEpgNowLabel old) {
+    super.didUpdateWidget(old);
+    if (widget.active && !old.active) {
+      _start(); // OSD opened → resume + refresh
+    } else if (!widget.active && old.active) {
+      _stop(); // OSD hidden → pause polling (keep last _now for the fade-out)
     }
   }
 

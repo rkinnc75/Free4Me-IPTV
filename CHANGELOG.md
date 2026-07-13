@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.34+731] - 2026-07-12
+
+**Gap-audit item #2.** TV only. Player OSD now animates instead of snapping.
+
+### Changed
+- **fix731 — Player OSD animated fade + token scrim (mock §4.6/§5)** — the TV control overlay fades in/out (crossIn 250ms / crossOut 200ms, easeOut) instead of snapping mount↔unmount, and its scrim is the token `panelSlate` at the `playerMenu` (0.6) alpha instead of a static `black54` gradient.
+
+### Technical
+- **fix731**: the overlay is always mounted and wrapped `IgnorePointer(!_navMode) → ExcludeFocus(!_navMode) → AnimatedOpacity → FocusTraversalGroup`; `ExcludeFocus(excluding:true)` keeps the whole subtree (incl. `_overlayFirstFocus`) unreachable while hidden and `Opacity(0)` skips paint, so the hard-won D-pad model + fps are unchanged (verified against the pinned SDK by an adversarial review — verdict SHIP). Follow-up from that review: `active: _navMode` threaded through `PlayerInfoBar` → `PlayerEpgNowLabel` so its 30s `getNowNext` poll pauses while the OSD is hidden. `test/fix731_osd_fade_test.dart` (4). Version → 4.1.34+731.
+
 ## [v4.1.33+730] - 2026-07-12
 
 **Mock-vs-code gap audit → first fix.** TV only. An 11-agent audit of `docs/TV_GUI_REDESIGN.md` vs the code found ~28 remaining items; this is the highest-payoff trivial one.

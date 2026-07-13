@@ -37,6 +37,8 @@ import 'package:open_tv/player/debug_stats_overlay.dart';
 import 'package:open_tv/player/player_engine.dart';
 import 'package:open_tv/player/player_key_action.dart';
 import 'package:open_tv/select_dialog.dart';
+import 'package:open_tv/tv/theme/f4_motion.dart'; // fix731 OSD fade
+import 'package:open_tv/tv/theme/f4_tokens.dart'; // fix731 token scrim
 
 /// fix380: pure predicate extracted for unit testing. Mirrors
 /// `MultiViewCell._isSeekProbeError` (lib/multi_view_cell.dart:393).
@@ -1903,6 +1905,7 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     final live = widget.channel.mediaType == MediaType.livestream;
     final seekable = _canSeekTransport; // fix650: DVR or VOD
     final tracks = engine.supportsTrackSelection;
+    final tokens = F4.of(context); // fix731: token scrim
 
     final topBar = Row(
       children: [
@@ -1988,18 +1991,34 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
       ],
     );
 
+    // fix731 (mock §4.6/§5): the OSD is always mounted and fades in/out via
+    // AnimatedOpacity (crossIn/crossOut on the easeOut decel curve) instead of
+    // snapping mount↔unmount. While hidden it is focus- and pointer-excluded so
+    // the _navMode D-pad model is byte-unchanged (Opacity(0) also skips paint,
+    // so no per-frame cost on the onn). The scrim is the token panelSlate at the
+    // playerMenu (0.6) alpha → transparent middle, replacing the static black54.
+    final scrim = tokens.colors.panelSlate
+        .withValues(alpha: tokens.scrim.playerMenu);
     return Positioned.fill(
-      child: FocusTraversalGroup(
-        child: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Colors.black54, Colors.transparent, Colors.black54],
-              stops: [0.0, 0.5, 1.0],
-            ),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: IgnorePointer(
+        ignoring: !_navMode,
+        child: ExcludeFocus(
+          excluding: !_navMode,
+          child: AnimatedOpacity(
+            opacity: _navMode ? 1.0 : 0.0,
+            duration: _navMode ? F4Motion.crossIn : F4Motion.crossOut,
+            curve: F4Motion.easeOut,
+            child: FocusTraversalGroup(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [scrim, Colors.transparent, scrim],
+                    stops: const [0.0, 0.5, 1.0],
+                  ),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Column(
             children: [
               topBar,
@@ -2023,14 +2042,18 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
                 engine: engine,
                 live: live,
                 progress: seekable ? _buildOverlayProgress() : null,
+                active: _navMode, // fix731: pause EPG poll while OSD hidden
               ),
               const SizedBox(height: 8),
               bottomBar,
             ],
           ),
-        ),
-      ),
-    );
+              ), // Container
+            ), // FocusTraversalGroup
+          ), // AnimatedOpacity
+        ), // ExcludeFocus
+      ), // IgnorePointer
+    ); // Positioned
   }
 
   /// fix576: player key handling. On TV the player Focus holds focus, so the
@@ -2415,7 +2438,9 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
               if (widget.settings.debugLogging && _engine is MpvEngine)
                 DebugStatsOverlay(engine: _engine as MpvEngine),
               // fix580: custom focusable TV control overlay (Mode B).
-              if (_navMode) _buildTvOverlay(),
+              // fix731: always mounted so it can fade in/out (AnimatedOpacity);
+              // it self-hides (opacity 0 + focus/pointer excluded) when !_navMode.
+              _buildTvOverlay(),
             ],
           ),
         ),

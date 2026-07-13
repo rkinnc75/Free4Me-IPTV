@@ -26,12 +26,17 @@ class PlayerInfoBar extends StatelessWidget {
   /// seekable (DVR / VOD); null on a plain livestream.
   final Widget? progress;
 
+  /// fix731: forwarded to [PlayerEpgNowLabel] so its 30s DB poll pauses while
+  /// the (now always-mounted) OSD is hidden.
+  final bool active;
+
   const PlayerInfoBar({
     super.key,
     required this.channel,
     required this.engine,
     required this.live,
     this.progress,
+    this.active = true,
   });
 
   @override
@@ -88,6 +93,7 @@ class PlayerInfoBar extends StatelessWidget {
             PlayerEpgNowLabel(
               epgChannelId: channel.epgChannelId,
               sourceId: channel.sourceId,
+              active: active,
             ),
           if (progress != null) ...[
             SizedBox(height: t.spacing.sm),
