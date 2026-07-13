@@ -1,19 +1,19 @@
 {
-  "latest": "4.1.44",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.44",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.44/Free4Me-IPTV-4.1.44-universal.apk",
-  "releaseNotes": "\u2022 Guide (TV): channel logos now appear next to each channel in the guide (with initials when a logo is missing).",
+  "latest": "4.1.45",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.45",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.45/Free4Me-IPTV-4.1.45-universal.apk",
+  "releaseNotes": "\u2022 Fixed: some channels (often 1080i sports feeds, e.g. YES Network) died with \"max reconnects reached\" even though the video was playable. The player was tearing down mpv's own hardware\u2192software decoder fallback mid-recovery; it now waits for the fallback and only reconnects if no video actually appears.",
   "apkUrls": {
-    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.44/Free4Me-IPTV-4.1.44-arm.apk",
-    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.44/Free4Me-IPTV-4.1.44-arm64.apk",
-    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.44/Free4Me-IPTV-4.1.44-x64.apk",
-    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.44/Free4Me-IPTV-4.1.44-universal.apk"
+    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.45/Free4Me-IPTV-4.1.45-arm.apk",
+    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.45/Free4Me-IPTV-4.1.45-arm64.apk",
+    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.45/Free4Me-IPTV-4.1.45-x64.apk",
+    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.45/Free4Me-IPTV-4.1.45-universal.apk"
   },
   "apkSha256s": {
-    "arm": "92df6be5872c4b4213ac2e11fd0d4acfc73f8c48d9f226de77a464bd17882306",
-    "arm64": "dae4927b064a100439cdcd0e2891dbe49331dfd142a51fa05b2912b5f259b312",
-    "x64": "c656d932efed3af1d3d298570b4d9a847667ba4a4032a8ca188b2b218b58f4fb",
-    "universal": "6d108526984d09683626fa5ff0dc98ed262c8bb1ab868a309db0ef0a15bfd11d"
+    "arm": "49bbacd03854a1380bd6abc5e7433962e1638515398a8a99b9f50d6ba1932523",
+    "arm64": "32307286a52639146b02466e82e2b129ab14588cf2a258e52303b9fba89f1406",
+    "x64": "8b2db04364c764c0e7a72b9e261640e087e055c0d60c31af35700a40a9c3ff11",
+    "universal": "945a87034210ca6c0086fdf08c3e27ba6b4a26d41062cc48df20234b808a5e37"
   },
-  "apkSha256": "6d108526984d09683626fa5ff0dc98ed262c8bb1ab868a309db0ef0a15bfd11d"
+  "apkSha256": "945a87034210ca6c0086fdf08c3e27ba6b4a26d41062cc48df20234b808a5e37"
 }
