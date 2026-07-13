@@ -1,19 +1,19 @@
 {
-  "latest": "4.1.28",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.28",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.28/Free4Me-IPTV-4.1.28-universal.apk",
-  "releaseNotes": "\u2022 Internal: APK now also carries Signature Scheme v3 (key-rotation insurance). No user-visible change; updates install exactly as before.",
+  "latest": "4.1.29",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.29",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.29/Free4Me-IPTV-4.1.29-universal.apk",
+  "releaseNotes": "\u2022 TV design refresh: the EPG guide now tints each channel row by its source (the same color as its edge bar), and channels without artwork show that source color instead of a plain grey box \u2014 so it's easier to see at a glance which provider a channel comes from. (Phone UI unchanged.)",
   "apkUrls": {
-    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.28/Free4Me-IPTV-4.1.28-arm.apk",
-    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.28/Free4Me-IPTV-4.1.28-arm64.apk",
-    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.28/Free4Me-IPTV-4.1.28-x64.apk",
-    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.28/Free4Me-IPTV-4.1.28-universal.apk"
+    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.29/Free4Me-IPTV-4.1.29-arm.apk",
+    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.29/Free4Me-IPTV-4.1.29-arm64.apk",
+    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.29/Free4Me-IPTV-4.1.29-x64.apk",
+    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.29/Free4Me-IPTV-4.1.29-universal.apk"
   },
   "apkSha256s": {
-    "arm": "84612b3e3194c91bb6d3b94687543c45d724236e4f7f3cf773822d9ca7a86d5e",
-    "arm64": "63e9e012ee670ab61df6d32a04c3e21800bfd506eca1608db5889de350f361d8",
-    "x64": "c9aadf4a7ed4732541f036a5500b6a9bf591fe2f7092778e646f8c427d6e951d",
-    "universal": "a39edf578fb8ec97f043bc135920904cde93d509875f8f595432bb1dc462e131"
+    "arm": "c775d0ef3d04e70234622e71f96467c048dd127f564e0b8f3536868183c6bd70",
+    "arm64": "ce3fe2aaa09e483c2bfba32468efa7da1b6dac44e70d4bff50e7a90deea26f6b",
+    "x64": "07bd8d95f557754859a8a753180446b0b2b315823c66ef538c952d2a358a0b6f",
+    "universal": "fedd08d60078e2338f6c056aba2a88abdfb7c2356a10d89c76ef159f784c67e2"
   },
-  "apkSha256": "a39edf578fb8ec97f043bc135920904cde93d509875f8f595432bb1dc462e131"
+  "apkSha256": "fedd08d60078e2338f6c056aba2a88abdfb7c2356a10d89c76ef159f784c67e2"
 }
