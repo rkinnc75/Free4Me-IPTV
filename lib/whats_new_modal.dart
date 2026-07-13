@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.38': [
+    'Stability: on a very long uninterrupted viewing session the audio and '
+        'video could slowly drift out of sync — the player now detects this and '
+        'silently re-syncs itself.',
+  ],
   '4.1.37': [
     'Polish (TV): the Search box now has a subtle glass background and shows '
         'your accent color when selected.',

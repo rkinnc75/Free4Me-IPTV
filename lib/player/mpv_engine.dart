@@ -71,6 +71,20 @@ class MpvEngine implements PlayerEngine {
   Timer? _diagHeartbeat;
   Duration _lastHeartbeatPos = Duration.zero;
 
+  // fix735 (Peer2 watchdog→silent-resync, inverted for mpv): the diag heartbeat
+  // above is debug-gated; this ALWAYS-ON, live-only watchdog samples `avsync`
+  // and signals [desyncStream] when a playing/advancing/non-buffering stream has
+  // drifted past threshold for a sustained window. Peer2's buffering watchdog
+  // can't see this (position keeps advancing, paused-for-cache=no) and ExoPlayer
+  // exposes no avsync — monitoring it is an mpv advantage. Verified on the onn:
+  // a fresh open resets avsync to ~0, so the player's reopen resyncs.
+  Timer? _avsyncWatchdog;
+  int _desyncTicks = 0;
+  Duration _lastAvsyncPos = Duration.zero;
+  final _desyncCtrl = StreamController<double>.broadcast();
+  static const double _desyncThresholdSecs = 3.0;
+  static const int _desyncSustainTicks = 3; // 3 × 6s ≈ 18s sustained
+
   @override
   bool get dvrActive => _dvrActive; // fix364: was missing — UI read the
   // interface default (false), so the DVR transport bar never showed even
@@ -323,6 +337,10 @@ class MpvEngine implements PlayerEngine {
     AppLog.info('MpvEngine: promoteToFullScreen(dvrEligible=$dvrEligible)'
         ' demuxerMaxMB=${s.liveDemuxerMaxMB} hwdec=$hwdec'
         ' eid=${identityHashCode(this)} channel="${channel.name}"');
+    // fix735 (review): the adopt/promote path never calls open(), so start the
+    // A/V-desync watchdog here too — else a mini→full-screen promoted live
+    // stream would have no drift protection until its first reconnect.
+    _startAvsyncWatchdog();
   }
 
   @override
@@ -414,6 +432,7 @@ class MpvEngine implements PlayerEngine {
         if (!_disposed) unawaited(logDecodeState('+3s'));
       });
       if (settings.debugLogging) _startDiagHeartbeat();
+      _startAvsyncWatchdog(); // fix735 (live-only; self-gates)
     }
     // fix130: do NOT call media_kit enterFullscreen() — it pushes a hidden
     // second route onto the root navigator (a full Video on this controller)
@@ -531,6 +550,7 @@ class MpvEngine implements PlayerEngine {
     _disposed = true;
     _dvrGuard?.cancel(); // fix357
     _diagHeartbeat?.cancel(); // fix396
+    _avsyncWatchdog?.cancel(); // fix735
     if (_dvrActive) unawaited(_cleanupDvrDir()); // fix357
     AppLog.info(
       'MpvEngine: dispose() eid=${identityHashCode(this)}'
@@ -568,6 +588,7 @@ class MpvEngine implements PlayerEngine {
     await _positionCtrl.close();
     await _streamInfoCtrl.close();
     await _firstFrameCtrl.close(); // fix732
+    await _desyncCtrl.close(); // fix735
     await _player.dispose();
     AppLog.info('MpvEngine: dispose() player disposed (surface released by media_kit)'
         ' eid=${identityHashCode(this)}');
@@ -587,6 +608,12 @@ class MpvEngine implements PlayerEngine {
 
   @override
   Stream<void> get firstFrameStream => _firstFrameCtrl.stream; // fix732
+
+  /// fix735: emits the avsync value (seconds) when a live full-screen stream has
+  /// been A/V-desynced beyond threshold for a sustained window. The player
+  /// reopens to resync (a fresh open resets avsync to ~0).
+  @override
+  Stream<double> get desyncStream => _desyncCtrl.stream;
 
   @override
   String? get lastStreamInfo => _lastStreamInfo;
@@ -805,6 +832,55 @@ class MpvEngine implements PlayerEngine {
         }
       } catch (_) {
         // state read should never throw, but never let the timer crash.
+      }
+    });
+  }
+
+  /// fix735: A/V-desync watchdog (live full-screen only). Every 6s, on a
+  /// PLAYING, ADVANCING, non-buffering, not-paused-for-cache stream, reads
+  /// `avsync`; if |avsync| exceeds threshold for [_desyncSustainTicks]
+  /// consecutive ticks it signals [desyncStream] (the player reopens to
+  /// resync). Frozen/buffering streams are the buffering watchdog's job — the
+  /// advancing+playing gate is exactly what distinguishes a desynced-BUT-live
+  /// stream (invisible to every existing watchdog) from a stall.
+  void _startAvsyncWatchdog() {
+    if (channel.mediaType != MediaType.livestream) return; // live only
+    _avsyncWatchdog?.cancel();
+    _desyncTicks = 0;
+    _lastAvsyncPos = Duration.zero;
+    _avsyncWatchdog = Timer.periodic(const Duration(seconds: 6), (t) async {
+      if (_disposed) {
+        t.cancel();
+        return;
+      }
+      if (_player.platform is! mk.NativePlayer) return;
+      try {
+        final st = _player.state;
+        final advancing = st.position > _lastAvsyncPos;
+        _lastAvsyncPos = st.position;
+        if (!st.playing || st.buffering || !advancing) {
+          _desyncTicks = 0;
+          return;
+        }
+        final np = _player.platform as mk.NativePlayer;
+        if (await np.getProperty('paused-for-cache') == 'yes') {
+          _desyncTicks = 0;
+          return;
+        }
+        final avs = double.tryParse(await np.getProperty('avsync')) ?? 0.0;
+        if (avs.abs() > _desyncThresholdSecs) {
+          _desyncTicks++;
+          if (_desyncTicks >= _desyncSustainTicks) {
+            _desyncTicks = 0;
+            AppLog.warn('MpvEngine: A/V desync ${avs.toStringAsFixed(1)}s '
+                'sustained — signalling resync channel="${channel.name}"');
+            if (!_desyncCtrl.isClosed) _desyncCtrl.add(avs);
+          }
+        } else {
+          _desyncTicks = 0;
+        }
+      } catch (_) {
+        // never let the watchdog crash playback
       }
     });
   }

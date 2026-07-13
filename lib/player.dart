@@ -205,6 +205,16 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   // is the dead-engine fallback so it can never stick.
   bool _showShutter = true;
   Timer? _shutterTimeout;
+  // fix735 (Peer2 watchdog→silent-resync): reopen the live stream when the
+  // engine reports sustained A/V desync (a fresh open resets avsync to ~0). A
+  // resync that HOLDS (>3min synced) is a legit slow-drift correction — keep
+  // doing it indefinitely; resyncs that recur fast (<3min) mean the reopen is
+  // NOT helping (intrinsic PTS) → give up after a few strikes so we never
+  // reopen-loop. This is the ONLY recovery for a desynced-but-advancing stream
+  // (invisible to the buffering/startup watchdogs).
+  DateTime? _lastAvsyncResync;
+  int _avsyncResyncStrikes = 0;
+  bool _avsyncGaveUp = false; // fix735 (review): sticky give-up (a fresh tune resets)
   // fix580: first-focus target inside the overlay. autofocus is NOT enough —
   // _surfKeyFocus already holds primary focus in the same FocusScope, so an
   // autofocus request would be dropped (FocusManager only honors autofocus when
@@ -677,6 +687,8 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     // decoded frame renders. A fallback timer clears it regardless so a dead /
     // signal-less engine can never leave a stuck black shutter.
     _engineSubs.add(_engine.firstFrameStream.listen((_) => _clearShutter()));
+    // fix735: sustained A/V desync → silent resync (reopen). See _onAvsyncDesync.
+    _engineSubs.add(_engine.desyncStream.listen(_onAvsyncDesync));
     if (_showShutter) {
       _shutterTimeout = Timer(const Duration(seconds: 4), _clearShutter);
     }
@@ -687,6 +699,49 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     _shutterTimeout?.cancel();
     _shutterTimeout = null;
     if (mounted && _showShutter) setState(() => _showShutter = false);
+  }
+
+  /// fix735: react to a sustained A/V desync from the engine watchdog by
+  /// reopening the stream (a fresh open resets avsync to ~0 — device-verified).
+  /// Backoff: a resync that HOLDS >3min is a legit slow-drift correction (reset
+  /// strikes, keep correcting); resyncs recurring <3min apart mean the reopen
+  /// isn't helping (intrinsic PTS) → after 3 strikes give up and keep playing
+  /// (log only), so a broken feed degrades to a no-op instead of reopen-looping.
+  void _onAvsyncDesync(double avsync) {
+    // fix735 (review): also bail while casting (local engine paused) and once
+    // we've given up (sticky — a fresh tune / channel change is a new Player).
+    if (!mounted ||
+        exiting ||
+        _exitInvoked ||
+        _isReconnecting ||
+        _isCasting ||
+        _avsyncGaveUp) {
+      return;
+    }
+    final now = DateTime.now();
+    if (_lastAvsyncResync != null) {
+      final since = now.difference(_lastAvsyncResync!);
+      if (since < const Duration(seconds: 30)) return; // debounce overlaps
+      if (since < const Duration(minutes: 3)) {
+        _avsyncResyncStrikes++;
+      } else {
+        _avsyncResyncStrikes = 0; // previous resync held → drift, keep fixing
+      }
+    }
+    if (_avsyncResyncStrikes >= 3) {
+      // fix735 (review): TERMINAL give-up — a broken-PTS feed's reopen never
+      // holds, so stop retrying for this Player's life (avoids a perpetual
+      // throttled reopen-loop of black flashes); a fresh tune resets it.
+      _avsyncGaveUp = true;
+      AppLog.warn('Player: avsync watchdog giving up (sticky) — resync not '
+          'holding (intrinsic PTS?) avsync=${avsync.toStringAsFixed(1)}s');
+      return;
+    }
+    _lastAvsyncResync = now;
+    AppLog.info('Player: avsync watchdog → resync '
+        '(avsync=${avsync.toStringAsFixed(1)}s strikes=$_avsyncResyncStrikes) '
+        'channel="${widget.channel.name}"');
+    onDisconnect(reason: 'avsync watchdog');
   }
 
   String _playbackUrl() {

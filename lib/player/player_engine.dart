@@ -64,6 +64,11 @@ abstract class PlayerEngine {
   /// return an empty stream (the player falls back to a timeout).
   Stream<void> get firstFrameStream => const Stream<void>.empty();
 
+  /// fix735: emits the avsync value (seconds) when a live stream has been
+  /// A/V-desynced beyond threshold for a sustained window, so the player can
+  /// silently reopen to resync. Engines without avsync monitoring never emit.
+  Stream<double> get desyncStream => const Stream<double>.empty();
+
   /// fix522: the most recent stream-info label emitted this play, or null if
   /// none yet. Latched so a subscriber that attaches AFTER the emission (the
   /// media_kit topButtonBar read-once mount race — confirmed in the fix516

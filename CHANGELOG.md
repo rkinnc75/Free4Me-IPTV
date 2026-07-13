@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.38+735] - 2026-07-13
+
+**Stability/performance (Peer2-guided).** A/V-desync watchdog → silent resync. Live full-screen only; phone/Shield/VOD/preview unaffected.
+
+### Fixed
+- **fix735 — A/V-desync watchdog (Peer2 watchdog→resync, inverted for mpv)** — on a long uninterrupted single-channel session the audio/video could slowly drift out of sync (observed ~36s after ~3.5h on the onn under software decode). Root-caused: a fresh tune opens perfectly synced (avsync≈0) and drifts over hours; a reopen resets it. The player now monitors `avsync` and, on sustained desync of a live, advancing, non-buffering stream, silently reopens to re-sync — with a hold-based backoff so a broken-PTS feed can't reopen-loop.
+
+### Technical
+- **fix735**: `MpvEngine` gains an always-on (not debug-gated), live-only `_startAvsyncWatchdog()` — every 6s on a playing/advancing/non-buffering/not-paused-for-cache stream, if `|avsync| > 3s` for 3 consecutive ticks (~18s) it emits `desyncStream`. `player.dart` `_onAvsyncDesync` reopens via the proven `onDisconnect('avsync watchdog')` → fresh live `open()`; 30s debounce; a resync that holds >3min resets the strike count (legit drift correction), else strikes → **terminal** give-up after 3 (`_avsyncGaveUp`; a fresh tune resets). Guarded on `_isReconnecting`/`_isCasting`; also armed in `promoteToFullScreen()` (adopt path). This is the ONLY recovery for a desynced-but-advancing stream (invisible to the buffering/startup watchdogs); ExoPlayer exposes no avsync, so monitoring it is an mpv advantage. Adversarial-reviewed (false-trip + reopen-loop focus → SHIP-WITH-FIXES, all applied). `test/fix735_avsync_watchdog_test.dart` (6). Version → 4.1.38+735.
+
 ## [v4.1.37+734] - 2026-07-12
 
 **Gap-audit polish.** TV only. Search field glass + accent ring.
