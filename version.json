@@ -10,10 +10,10 @@
     "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.36/Free4Me-IPTV-4.1.36-universal.apk"
   },
   "apkSha256s": {
-    "arm": "c35b29561a07af3e97ac97c30820db75d60a5bf46fb38fd4250ddff0de979ea8",
-    "arm64": "06b1febb047e69235f8807310e6657791af3e5bab7bd2036c2e53c32942c74d7",
-    "x64": "bac07f7d0d91cf4d3f79d55270e4c944464b816a99cba32900f053367fc4e48e",
-    "universal": "6d776dd1069fdfb0be9da547a0d10d062036c67ba83f6ffa22224fe209fec714"
+    "arm": "fd6b7b274c5b902504d3834e53748c027d8ce417792f434b6b11cd071c9df97f",
+    "arm64": "abb05eeb005013ce2b1a4d966a8bccffec82f66b9d94b7aab9ea086145194f04",
+    "x64": "fd0b5f29113ca05f2338df2bde672964c35562a0c12db2f579988d877e3b8c41",
+    "universal": "e96e9856dfcd73669bef1e4513d2d729454aea3c14640552759f8e8a125218d3"
   },
-  "apkSha256": "6d776dd1069fdfb0be9da547a0d10d062036c67ba83f6ffa22224fe209fec714"
+  "apkSha256": "e96e9856dfcd73669bef1e4513d2d729454aea3c14640552759f8e8a125218d3"
 }
