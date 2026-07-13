@@ -20,6 +20,7 @@ import 'package:open_tv/backend/tv_home_publisher.dart';
 import 'package:open_tv/player.dart';
 import 'package:open_tv/player/overlay_player_controller.dart';
 import 'package:open_tv/tv/tv_categories_view.dart';
+import 'package:open_tv/tv/tv_history_view.dart'; // fix733
 import 'package:open_tv/recordings_view.dart';
 import 'package:open_tv/tv/tv_guide_view.dart';
 import 'package:open_tv/tv/tv_search_view.dart';
@@ -251,6 +252,13 @@ class _TvShellState extends State<TvShell> {
         key: ValueKey<String>('tv-categories-$_reloadGen'),
         settings: widget.settings,
       );
+    } else if (t.viewType == ViewType.history) {
+      // fix733 (mock §4.5): TV-native History poster grid, replacing the reused
+      // phone Home. Keyed on _historyGen so Clear-history remounts it.
+      _built[i] = TvHistoryView(
+        key: ValueKey<String>('tv-history-$_reloadGen-$_historyGen'),
+        settings: widget.settings,
+      );
     } else {
       _built[i] = Home(
         key: ValueKey<String>('tv-tab-${t.label}-$_reloadGen-$_historyGen'),
@@ -374,16 +382,10 @@ class _TvShellState extends State<TvShell> {
     if (!mounted) return;
     setState(() {
       _historyGen++;
-      final TvTab t = _tabs[i];
-      _built[i] = Home(
-        key: ValueKey<String>('tv-tab-${t.label}-$_reloadGen-$_historyGen'),
-        hasTouchScreen: false,
-        home: HomeManager(
-          filters: Filters(
-            viewType: t.viewType,
-            mediaTypes: List<MediaType>.of(t.mediaTypes),
-          ),
-        ),
+      // fix733: rebuild the History tab as the TV-native grid (was phone Home).
+      _built[i] = TvHistoryView(
+        key: ValueKey<String>('tv-history-$_reloadGen-$_historyGen'),
+        settings: widget.settings,
       );
     });
   }

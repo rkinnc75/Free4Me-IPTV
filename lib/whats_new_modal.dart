@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.36': [
+    'New look for History (TV): your recently-watched channels now show as a '
+        'poster grid like Movies and Series, instead of the old phone layout.',
+  ],
   '4.1.35': [
     'Polish (TV): switching channels now shows a clean fade instead of a brief '
         'flash of the previous channel.',

@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.36+733] - 2026-07-12
+
+**Gap-audit item #4** (largest unbuilt surface). TV only. History is now TV-native.
+
+### Changed
+- **fix733 — History tab → TV poster grid (mock §4.5)** — the History tab was still the reused phone `Home` body; it is now a tokenized poster grid of recently-watched channels, matching Movies/Series (source-tint tiles, D-pad focus, play + series drill-in).
+
+### Technical
+- **fix733**: new `lib/tv/tv_history_view.dart` — `Sql.search(viewType: history, all media types)` (bounded, cap 200) → `GridView` of `ChannelTile` on the shared spec (maxExtent 130, AR 0.838), reused verbatim (source edge bar, play/drill-in, `isHistory` remove). Empty/error+Retry/loading states; `onRemoveHistory` reloads. `tv_shell.dart` routes `ViewType.history` → `TvHistoryView` in both the initial build and the Clear-history rebuild. `test/fix733_history_grid_test.dart` (4). Version → 4.1.36+733.
+
 ## [v4.1.35+732] - 2026-07-12
 
 **Gap-audit item #3.** TV only. Channel-zap shutter.
