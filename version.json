@@ -1,19 +1,19 @@
 {
-  "latest": "4.1.45",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.45",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.45/Free4Me-IPTV-4.1.45-universal.apk",
-  "releaseNotes": "\u2022 Fixed: some channels (often 1080i sports feeds, e.g. YES Network) died with \"max reconnects reached\" even though the video was playable. The player was tearing down mpv's own hardware\u2192software decoder fallback mid-recovery; it now waits for the fallback and only reconnects if no video actually appears.",
+  "latest": "4.1.46",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.46",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.46/Free4Me-IPTV-4.1.46-universal.apk",
+  "releaseNotes": "\u2022 Channels whose stream can't use hardware decoding (often 1080i sports feeds) are now remembered, so the app skips the doomed hardware attempt and starts those channels faster on later opens and reconnects. The memory clears itself after 30 days or on any app update, so hardware decoding is retried automatically when things change.",
   "apkUrls": {
-    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.45/Free4Me-IPTV-4.1.45-arm.apk",
-    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.45/Free4Me-IPTV-4.1.45-arm64.apk",
-    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.45/Free4Me-IPTV-4.1.45-x64.apk",
-    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.45/Free4Me-IPTV-4.1.45-universal.apk"
+    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.46/Free4Me-IPTV-4.1.46-arm.apk",
+    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.46/Free4Me-IPTV-4.1.46-arm64.apk",
+    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.46/Free4Me-IPTV-4.1.46-x64.apk",
+    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.46/Free4Me-IPTV-4.1.46-universal.apk"
   },
   "apkSha256s": {
-    "arm": "49bbacd03854a1380bd6abc5e7433962e1638515398a8a99b9f50d6ba1932523",
-    "arm64": "32307286a52639146b02466e82e2b129ab14588cf2a258e52303b9fba89f1406",
-    "x64": "8b2db04364c764c0e7a72b9e261640e087e055c0d60c31af35700a40a9c3ff11",
-    "universal": "945a87034210ca6c0086fdf08c3e27ba6b4a26d41062cc48df20234b808a5e37"
+    "arm": "54951dcb03a5130b00ee345b915de13912f5feb4e7273a641ff6eb1355da2f93",
+    "arm64": "2f85f98d41f5fe4f6a1e7d4e51fec9fbe027014178a5949ced4347f2c9a242ba",
+    "x64": "a5b1329290aec84376cae4ed9aaccc85d00b2454957fda6577f2fd6bd7f66632",
+    "universal": "af703298019521a7952c0839a10cb90585412bf0617f6eb7c2e2135209ac91c1"
   },
-  "apkSha256": "945a87034210ca6c0086fdf08c3e27ba6b4a26d41062cc48df20234b808a5e37"
+  "apkSha256": "af703298019521a7952c0839a10cb90585412bf0617f6eb7c2e2135209ac91c1"
 }
