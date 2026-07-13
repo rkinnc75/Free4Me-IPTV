@@ -719,6 +719,8 @@ class TvGuideViewState extends State<TvGuideView> {
         children: [
           Container(width: 5, height: 28, color: _edgeColor(ch.sourceId, tint)),
           const SizedBox(width: 6),
+          _railLogo(ch), // fix741 (mock §4.3): logo + initials fallback
+          const SizedBox(width: 6),
           Expanded(
             child: Text(ch.name,
                 maxLines: 2,
@@ -737,6 +739,60 @@ class TvGuideViewState extends State<TvGuideView> {
         ],
       ),
     );
+  }
+
+  // fix741 (mock §4.3): a small channel logo in the rail cell, with a
+  // typographic-initials fallback so a channel WITHOUT a logo is never a blank
+  // box (Peer4 "branded fallback"). 26px, contained — fits the 56px itemExtent.
+  Widget _railLogo(Channel ch) {
+    const double sz = 26;
+    Widget initials() => Container(
+          width: sz,
+          height: sz,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: SourcePalette.tintOver(
+                _sourceColors[ch.sourceId], const Color(0xFF2A2A2A)),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(_channelInitials(ch.name),
+              maxLines: 1,
+              style: const TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white70)),
+        );
+    final img = ch.image;
+    if (img == null || img.isEmpty) return initials();
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(4),
+      child: CachedNetworkImage(
+        imageUrl: img,
+        width: sz,
+        height: sz,
+        fit: BoxFit.contain,
+        placeholder: (c, u) => initials(),
+        errorWidget: (c, u, e) => initials(),
+      ),
+    );
+  }
+
+  // fix741: 1–2 letter initials from a channel name, stripping a leading
+  // "(m) " / "[x]" tag and a "US| "/"DE| " source prefix + non-alphanumerics.
+  String _channelInitials(String name) {
+    final cleaned = name
+        .replaceAll(RegExp(r'^\s*[\(\[][^\)\]]*[\)\]]\s*'), '')
+        .replaceAll(RegExp(r'^\s*[A-Za-z]{1,3}\|\s*'), '')
+        .replaceAll(RegExp(r'[^A-Za-z0-9 ]'), ' ')
+        .trim();
+    final words =
+        cleaned.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+    if (words.isEmpty) return '?';
+    if (words.length == 1) {
+      final w = words.first;
+      return (w.length >= 2 ? w.substring(0, 2) : w).toUpperCase();
+    }
+    return (words[0][0] + words[1][0]).toUpperCase();
   }
 
   // fix600 (#6): the Live-guide channel context menu (held-OK). Mirrors

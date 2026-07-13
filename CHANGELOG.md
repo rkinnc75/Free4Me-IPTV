@@ -1,6 +1,14 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.44+741] - 2026-07-13
+
+### Added
+- **fix741 — Guide rail channel logos (mock §4.3)** — each channel in the Live guide rail now shows its logo (with a typographic-initials fallback so a logo-less channel is never a blank box).
+
+### Technical
+- **fix741**: `tv_guide_view.dart` rail cell adds `_railLogo(ch)` (26px `CachedNetworkImage`, contained) + `_channelInitials()` fallback (source-tinted box); fits the 56px itemExtent, focus/place-memory untouched. `test/fix741_rail_logo_test.dart` (2). Full suite +531. Version → 4.1.44+741.
+
 ## [v4.1.43+740] - 2026-07-13
 
 ### Changed
