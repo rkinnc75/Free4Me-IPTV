@@ -4988,11 +4988,13 @@ class _SettingsState extends State<SettingsView> {
                         },
                         onTap: () => setState(() => _railIndex = i),
                         child: Container(
+                          // fix730 (mock §4.8): the selected rail row follows the
+                          // chosen accent (AccentScope), not the seed-blue
+                          // colorScheme.primary — completes the accent language on
+                          // the Settings rail. Rebuilds via the fix719 MaterialApp
+                          // ValueListenableBuilder when the accent changes.
                           color: selected
-                              ? Theme.of(context)
-                                  .colorScheme
-                                  .primary
-                                  .withValues(alpha: 0.15)
+                              ? AccentScope.of(context).withValues(alpha: 0.15)
                               : null,
                           padding: const EdgeInsets.symmetric(
                             horizontal: 16,
@@ -5003,7 +5005,7 @@ class _SettingsState extends State<SettingsView> {
                               Icon(
                                 entries[i].icon,
                                 color: selected
-                                    ? Theme.of(context).colorScheme.primary
+                                    ? AccentScope.of(context)
                                     : null,
                               ),
                               const SizedBox(width: 16),

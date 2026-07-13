@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.33+730] - 2026-07-12
+
+**Mock-vs-code gap audit → first fix.** TV only. An 11-agent audit of `docs/TV_GUI_REDESIGN.md` vs the code found ~28 remaining items; this is the highest-payoff trivial one.
+
+### Fixed
+- **fix730 — Settings rail selection accent (mock §4.8)** — the selected row in the Settings two-pane rail followed the seed-blue `colorScheme.primary` instead of the chosen accent, so picking a non-white accent recolored every focus ring but left the Settings selection blue. The selected row background + icon now read `AccentScope`.
+
+### Technical
+- **fix730**: `settings_view.dart` `_buildTvRailPane` itemBuilder selected-branch → `AccentScope.of(context)` (bg `withValues(alpha:0.15)` + icon), rebuilding via the fix719 accent notifier. `test/fix730_settings_accent_test.dart` (4). Version → 4.1.33+730.
+
 ## [v4.1.32+728] - 2026-07-12
 
 **TV GUI redesign → mock §2: Inter type face (10-foot type).** TV only; phone/touch UI keeps the platform default. The last of the owner-approved "top visual payoff" items.
