@@ -26,12 +26,12 @@ void main() {
     test('phone returns the bare ListTile; TV wraps it in the accent ring', () {
       // the early return keeps the phone path byte-identical
       expect(rec.contains('if (!widget.tv) return tile;'), isTrue);
-      // the ring is the shared accent, focus-driven (in-hue alpha fade, shared
-      // ring width token), token radius
-      expect(
-          rec.contains(
-              'AccentScope.of(context).withValues(alpha: _focused ? 1 : 0)'),
-          isTrue);
+      // fix737: the row is now a glass card — the focus-driven border is accent
+      // when focused, the glass stroke when not (was an in-hue alpha fade of
+      // accent@0→1). Still shared ring width + token radius.
+      expect(rec.contains('_focused'), isTrue);
+      expect(rec.contains('? AccentScope.of(context)'), isTrue);
+      expect(rec.contains(': t.colors.glassStroke'), isTrue);
       expect(rec.contains('width: t.focus.ringCard'), isTrue);
       expect(rec.contains('BorderRadius.circular(t.radius.card)'), isTrue);
     });

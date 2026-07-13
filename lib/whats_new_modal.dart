@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.42': [
+    'This build delivers several improvements that a build-system issue had held '
+        'back: audio/video auto-resync on long sessions, recording future shows '
+        'from the guide, and TV polish for Recordings and the program guide.',
+  ],
   '4.1.41': [
     'Guide (TV): the show that\'s on now gets a LIVE badge, already-finished shows are dimmed, and the timeline shows a NOW marker.',
   ],

@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.42+739] - 2026-07-13
+
+**Release-gate repair.** A stale source-check test (fix718's, invalidated by fix737's border change) failed the analyze/test gate, cancelling/failing every release build v4.1.38–v4.1.41 — so the A/V-sync fix + guide/recordings/EPG polish (all merged to main) never produced an APK. This build fixes the test so the gate passes and those changes ship.
+
+### Fixed
+- **fix739** — updated `test/fix718_recordings_accent_test.dart` to the post-fix737 recording-row border (focused→accent / unfocused→glassStroke); full `flutter test` suite green (+527). Carries fix735 (A/V-desync watchdog), fix736 (guide → schedule & record), fix737 (recordings glass cards), fix738 (guide EPG display polish) into a shippable build.
+
+### Technical
+- **fix739**: test-only repair; no app-code change. Lesson: the CI gate runs the FULL `flutter test` suite, so shared-code edits can break other fixes' source-check tests — run the whole suite before tagging. Version → 4.1.42+739.
+
 ## [v4.1.41+738] - 2026-07-13
 
 ### Added
