@@ -1,6 +1,14 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.41+738] - 2026-07-13
+
+### Added
+- **fix738 — Guide EPG display polish (mock §4.3)** — the on-now cell gets a **LIVE** badge, already-ended programmes are **dimmed** (0.55), and the timeline header shows a **"NOW hh:mm" pill**. (NEW/ARCHIVE badges omitted — no is-new/catch-up data in the programme model.)
+
+### Technical
+- **fix738**: `tv_guide_view.dart` `_block` — `Opacity(scrim.pastProgramDim)` when `p.stopUtc <= nowEpoch`; on-now cell adds a white-on-`colors.liveRed` LIVE chip; `_timeHeader` left label → accent-tinted "NOW …" pill. Display-only (no focus change). `test/fix738_guide_display_test.dart` (3). Version → 4.1.41+738.
+
 ## [v4.1.40+737] - 2026-07-13
 
 ### Changed

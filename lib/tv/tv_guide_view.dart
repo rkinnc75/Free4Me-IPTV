@@ -1132,13 +1132,22 @@ class TvGuideViewState extends State<TvGuideView> {
         child: LayoutBuilder(builder: (context, c) {
           final width = c.maxWidth;
           final labels = <Widget>[
-            // current time, pinned to the left edge.
+            // fix738 (mock §4.3): "NOW hh:mm" pill (accent-tinted) at the left
+            // edge — the window starts at the current time, so it labels + marks
+            // "now". Horizontal-padding-only so it stays within the 16px header.
             Positioned(
               left: 0,
               top: 0,
-              child: Text(_fmtEpoch(_windowStart),
-                  style: tickStyle.copyWith(
-                      color: Colors.white70, fontWeight: FontWeight.w600)),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                decoration: BoxDecoration(
+                  color: AccentScope.of(context).withValues(alpha: 0.20),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text('NOW ${_fmtEpoch(_windowStart)}',
+                    style: tickStyle.copyWith(
+                        color: Colors.white, fontWeight: FontWeight.w700)),
+              ),
             ),
           ];
           const step = 1800; // 30-minute boundaries
@@ -1244,7 +1253,9 @@ class TvGuideViewState extends State<TvGuideView> {
     final w = (right - left);
     if (w <= 1) return const SizedBox.shrink();
     final isNow = p.isOnNow(nowEpoch);
+    final isPast = p.stopUtc <= nowEpoch; // fix738: dim already-ended programmes
     final scheme = Theme.of(context).colorScheme;
+    final tokens = F4.of(context); // fix738: pastProgramDim + liveRed
     // fix705 (Phase 3 unit 2): progress-within-cell fill. For the on-now
     // programme, the elapsed fraction of its runtime tints the left portion of
     // the cell a little stronger than the rest — a built-in progress bar. Uses
@@ -1261,7 +1272,10 @@ class TvGuideViewState extends State<TvGuideView> {
       width: w,
       child: Padding(
         padding: const EdgeInsets.only(right: 2),
-        child: Material(
+        // fix738 (mock §4.3): dim already-ended programmes (Peer4 pastProgramDim).
+        child: Opacity(
+          opacity: isPast ? tokens.scrim.pastProgramDim : 1.0,
+          child: Material(
           color: isNow
               ? scheme.primary.withValues(alpha: 0.22)
               : scheme.surfaceContainerHighest,
@@ -1309,6 +1323,31 @@ class TvGuideViewState extends State<TvGuideView> {
                     height: 3,
                     child: Container(color: genreEdgeColor(p.category)),
                   ),
+                // fix738 (mock §4.3): LIVE badge on the on-now cell (white on the
+                // liveRed token). NEW/ARCHIVE badges are omitted — Program has no
+                // is-new / catch-up flag to derive them from (cf. fix705 dropping
+                // the quality badge for the same reason).
+                if (isNow)
+                  Positioned(
+                    top: 3,
+                    right: 4,
+                    child: Container(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: tokens.colors.liveRed,
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                      child: const Text('LIVE',
+                          style: TextStyle(
+                            fontSize: 8,
+                            height: 1.0,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                            letterSpacing: 0.5,
+                          )),
+                    ),
+                  ),
                 Padding(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
@@ -1330,6 +1369,7 @@ class TvGuideViewState extends State<TvGuideView> {
           ),
           ),
         ),
+        ), // fix738: Opacity (past-dim)
       ),
     );
   }
