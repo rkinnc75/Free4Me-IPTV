@@ -1,19 +1,19 @@
 {
-  "latest": "4.1.33",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.33",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.33/Free4Me-IPTV-4.1.33-universal.apk",
-  "releaseNotes": "\u2022 Polish (TV): the Settings menu highlight now matches your chosen accent color instead of always being blue.",
+  "latest": "4.1.35",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.35",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.35/Free4Me-IPTV-4.1.35-universal.apk",
+  "releaseNotes": "\u2022 Polish (TV): switching channels now shows a clean fade instead of a brief flash of the previous channel.",
   "apkUrls": {
-    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.33/Free4Me-IPTV-4.1.33-arm.apk",
-    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.33/Free4Me-IPTV-4.1.33-arm64.apk",
-    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.33/Free4Me-IPTV-4.1.33-x64.apk",
-    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.33/Free4Me-IPTV-4.1.33-universal.apk"
+    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.35/Free4Me-IPTV-4.1.35-arm.apk",
+    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.35/Free4Me-IPTV-4.1.35-arm64.apk",
+    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.35/Free4Me-IPTV-4.1.35-x64.apk",
+    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.35/Free4Me-IPTV-4.1.35-universal.apk"
   },
   "apkSha256s": {
-    "arm": "5b45e1a3e766476ee61008f8305ddc7ca0c71e4affe82852c2b9dff5182d4ad9",
-    "arm64": "fd3b8fc1e3759bd6353bfad12ee9a533e8d5570ec8f844cf3abcef41dc511ce9",
-    "x64": "2a614d8a1afa1205fcaeea87bf4adfc078de4eba1208b14d6bdd702f7ab26aba",
-    "universal": "d184ac3cbea1a32777e15dbf108bd24099d50cdcbe1498782fd500232d0bc31a"
+    "arm": "bf58b9b94bfd4c09069d44467e6eff3e05f18285c5e95577f0bd5e468b5a476e",
+    "arm64": "02f4887c7c7f31d11dc7e7f00d76752d8b29bdab141dbf933b64f1511f21b993",
+    "x64": "e4a2baf6cf0486ee8974ceb225d880c2c0c49f56c5bef3f0d42852c26f0c8651",
+    "universal": "6654f76b42c6fd34a63398c514f53923b71988917cee589f8871ed37b8fa0016"
   },
-  "apkSha256": "d184ac3cbea1a32777e15dbf108bd24099d50cdcbe1498782fd500232d0bc31a"
+  "apkSha256": "6654f76b42c6fd34a63398c514f53923b71988917cee589f8871ed37b8fa0016"
 }
