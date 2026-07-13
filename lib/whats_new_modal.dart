@@ -6,6 +6,13 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.45': [
+    'Fixed: some channels (often 1080i sports feeds, e.g. YES Network) died '
+        'with "max reconnects reached" even though the video was playable. '
+        'The player was tearing down mpv\'s own hardware→software decoder '
+        'fallback mid-recovery; it now waits for the fallback and only '
+        'reconnects if no video actually appears.',
+  ],
   '4.1.44': [
     'Guide (TV): channel logos now appear next to each channel in the guide (with initials when a logo is missing).',
   ],

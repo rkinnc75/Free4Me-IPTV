@@ -66,6 +66,20 @@ bool isVfOptionError(String err) {
   return err.contains('Option vf') || err.contains('could not create filter');
 }
 
+/// fix742: mpv's "Could not open codec." is emitted when ONE decoder in the
+/// candidate list fails to open — most commonly the hwdec probe
+/// (h264_mediacodec rejecting an interlaced/odd-profile stream, e.g. 1080i
+/// regional-sports feeds). mpv then falls back to the next candidate
+/// (ultimately software) ON ITS OWN and playback proceeds. Treating this
+/// error as an immediate disconnect made the app tear down a session that had
+/// already recovered, re-probe hwdec on the reopen, fail identically, and
+/// burn all reconnect attempts on a perfectly decodable stream (S938U field
+/// log 2026-07-13, "YES Network": three error → sw-fallback → first-frame →
+/// app-teardown cycles, then "max reconnects reached").
+bool isCodecOpenError(String err) {
+  return err.contains('Could not open codec');
+}
+
 class Player extends StatefulWidget {
   final Channel channel;
   final Settings settings;
@@ -286,6 +300,15 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   // (mirrors _seekProbeLogged) so a per-frame/per-retry error storm can't flood
   // the log. Reset alongside _seekProbeLogged at the top of each open.
   bool _vfErrorLogged = false;
+
+  // fix742: pending escalation window after a codec-open error — mpv gets a
+  // short grace to complete its own hw→sw decoder fallback before the error
+  // becomes a disconnect. Cancelled by the first decoded frame.
+  Timer? _codecFallbackTimer;
+  // fix742: latched once a frame has decoded this open() — any later
+  // codec-open error is a stale/duplicate probe failure, purely informational.
+  bool _codecFallbackConfirmed = false;
+  bool _codecErrorLogged = false; // one log per open(), mirrors _vfErrorLogged
 
   // Cast state
   // True only when Play Services are present AND the stream format is
@@ -647,6 +670,35 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
         return;
       }
 
+      // fix742: "Could not open codec." — mpv retries the next decoder in its
+      // candidate list (hwdec → software) by itself; the error is only fatal
+      // if NO decoder ends up producing video. Give that fallback a short
+      // window instead of disconnecting a session that is about to recover
+      // (and that DID recover, three times, in the field log that motivated
+      // this fix). If no frame arrives in time, escalate to the normal
+      // disconnect path with the original reason.
+      if (isCodecOpenError(err)) {
+        if (_codecFallbackConfirmed) return; // video already up this open()
+        if (!_codecErrorLogged) {
+          _codecErrorLogged = true;
+          AppLog.info(
+            'Player: codec-open error — awaiting mpv decoder fallback (2s)'
+            ' channel="${widget.channel.name}"',
+          );
+        }
+        _codecFallbackTimer ??= Timer(const Duration(seconds: 2), () {
+          _codecFallbackTimer = null;
+          if (!mounted || exiting || _exitInvoked || _isReconnecting) return;
+          if (_codecFallbackConfirmed) return;
+          AppLog.warn(
+            'Player: codec-open error — no decoded frame within fallback'
+            ' window, reconnecting channel="${widget.channel.name}"',
+          );
+          onDisconnect(reason: 'player error: Could not open codec');
+        });
+        return;
+      }
+
       final isPermanent = err.contains('Failed to open') ||
           err.contains('404') ||
           err.contains('403') ||
@@ -686,7 +738,14 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     // fix732 (mock §4.7): clear the channel-zap shutter the moment the first
     // decoded frame renders. A fallback timer clears it regardless so a dead /
     // signal-less engine can never leave a stuck black shutter.
-    _engineSubs.add(_engine.firstFrameStream.listen((_) => _clearShutter()));
+    _engineSubs.add(_engine.firstFrameStream.listen((_) {
+      // fix742: a decoded frame proves the decoder chain works — cancel any
+      // pending codec-fallback escalation for this open().
+      _codecFallbackConfirmed = true;
+      _codecFallbackTimer?.cancel();
+      _codecFallbackTimer = null;
+      _clearShutter();
+    }));
     // fix735: sustained A/V desync → silent resync (reopen). See _onAvsyncDesync.
     _engineSubs.add(_engine.desyncStream.listen(_onAvsyncDesync));
     if (_showShutter) {
@@ -1056,6 +1115,10 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     _startupGrace = false; // Reset on every attempt (including retries)
     _seekProbeLogged = false; // fix380: one log per open() for the startup probe
     _vfErrorLogged = false; // fix566: one vf-cap-error log per open()
+    _codecFallbackTimer?.cancel(); // fix742: fresh fallback window per open()
+    _codecFallbackTimer = null;
+    _codecFallbackConfirmed = false;
+    _codecErrorLogged = false;
     final timeout = Duration(seconds: widget.settings.openTimeoutSecs);
     try {
     while (true) {
@@ -1272,6 +1335,7 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     _overlayHideTimer?.cancel(); // fix580
     _sleepTimer?.cancel(); // fix727
     _shutterTimeout?.cancel(); // fix732
+    _codecFallbackTimer?.cancel(); // fix742
     _skipIndicatorTimer?.cancel(); // fix649
     _seekFlushTimer?.cancel(); // fix651
     _overlayFirstFocus.dispose(); // fix580

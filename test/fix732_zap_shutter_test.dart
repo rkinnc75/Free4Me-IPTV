@@ -34,11 +34,11 @@ void main() {
     expect(player.contains('opacity: _showShutter ? 1.0 : 0.0'), isTrue);
     expect(player.contains('duration: F4Motion.shutter'), isTrue);
     expect(player.contains('const ColoredBox(color: Colors.black)'), isTrue);
-    // cleared on the first-frame event
-    expect(
-        player.contains(
-            '_engine.firstFrameStream.listen((_) => _clearShutter())'),
-        isTrue);
+    // cleared on the first-frame event (block closure since fix742 — the
+    // same listener also latches _codecFallbackConfirmed and cancels the
+    // codec-open escalation window)
+    expect(player.contains('_engine.firstFrameStream.listen((_) {'), isTrue);
+    expect(player.contains('_clearShutter();'), isTrue);
   });
 
   test('shutter has a dead-engine fallback + skips on adopt', () {
