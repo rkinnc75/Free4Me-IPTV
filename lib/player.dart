@@ -199,6 +199,12 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   Timer? _sleepTimer;
   int _sleepMinutes = 0;
   DateTime? _sleepDeadline;
+  // fix732 (mock §4.7): channel-zap shutter. Starts opaque on a fresh play so
+  // the black-load period reads as a clean zap, fades out (F4Motion.shutter) on
+  // first-frame; an adopted (already-playing) engine skips it. _shutterTimeout
+  // is the dead-engine fallback so it can never stick.
+  bool _showShutter = true;
+  Timer? _shutterTimeout;
   // fix580: first-focus target inside the overlay. autofocus is NOT enough —
   // _surfKeyFocus already holds primary focus in the same FocusScope, so an
   // autofocus request would be dropped (FocusManager only honors autofocus when
@@ -349,6 +355,7 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
       // no open — the stream stays live, avoiding the reopen stall.
       _engine = adopt;
       _adopted = true;
+      _showShutter = false; // fix732: adopted engine is already rendering
       AppLog.info(
         'Player: ADOPTED engine eid=${identityHashCode(adopt)}'
         ' channel="${widget.channel.name}"',
@@ -666,6 +673,20 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
       onDisconnect(reason: 'player error: $err');
     }));
     _engineSubs.add(_engine.bufferingStream.listen(_onBufferingChanged));
+    // fix732 (mock §4.7): clear the channel-zap shutter the moment the first
+    // decoded frame renders. A fallback timer clears it regardless so a dead /
+    // signal-less engine can never leave a stuck black shutter.
+    _engineSubs.add(_engine.firstFrameStream.listen((_) => _clearShutter()));
+    if (_showShutter) {
+      _shutterTimeout = Timer(const Duration(seconds: 4), _clearShutter);
+    }
+  }
+
+  /// fix732: fade out the zap shutter (one-shot; cancels the fallback).
+  void _clearShutter() {
+    _shutterTimeout?.cancel();
+    _shutterTimeout = null;
+    if (mounted && _showShutter) setState(() => _showShutter = false);
   }
 
   String _playbackUrl() {
@@ -1195,6 +1216,7 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     _surfTimer?.cancel(); // fix397
     _overlayHideTimer?.cancel(); // fix580
     _sleepTimer?.cancel(); // fix727
+    _shutterTimeout?.cancel(); // fix732
     _skipIndicatorTimer?.cancel(); // fix649
     _seekFlushTimer?.cancel(); // fix651
     _overlayFirstFocus.dispose(); // fix580
@@ -2420,6 +2442,11 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
           body: Stack(
             children: [
               _buildVideoArea(),
+              // fix732 (mock §4.7): channel-zap shutter — a black cover over the
+              // fresh-play black-load, fading out (F4Motion.shutter, easeOut) on
+              // first-frame so the zap reads clean instead of a raw black flash.
+              // Above the video, below the buffering spinner / banner / OSD.
+              _buildZapShutter(),
               if (_bufferingState != null) _buildBufferingOverlay(),
               if (_surfBanner != null) _buildSurfBanner(),
               // fix649: ±seconds chip for ◀/▶ transport seeks.
@@ -2447,6 +2474,22 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
       ),
     );
   }
+
+  /// fix732 (mock §4.7): the channel-zap shutter — a full-bleed black cover that
+  /// masks the fresh-play black-load and fades out over F4Motion.shutter on
+  /// first-frame. Always mounted (so it can fade); IgnorePointer + Opacity(0)
+  /// when cleared, so it never blocks input or paints. The existing buffering
+  /// spinner + surf banner render above it.
+  Widget _buildZapShutter() => Positioned.fill(
+        child: IgnorePointer(
+          child: AnimatedOpacity(
+            opacity: _showShutter ? 1.0 : 0.0,
+            duration: F4Motion.shutter,
+            curve: F4Motion.easeOut,
+            child: const ColoredBox(color: Colors.black),
+          ),
+        ),
+      );
 
   /// fix397: transient overlay showing the channel being surfed to while the
   /// debounce settles, so rapid CH+/− presses give immediate feedback before

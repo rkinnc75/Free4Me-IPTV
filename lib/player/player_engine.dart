@@ -59,6 +59,11 @@ abstract class PlayerEngine {
   /// treat "no event yet" as "unknown", not an error.
   Stream<String> get streamInfoStream;
 
+  /// fix732 (mock §4.7): fires once when the first decoded frame renders, so the
+  /// player can fade out the channel-zap shutter. Engines without the signal
+  /// return an empty stream (the player falls back to a timeout).
+  Stream<void> get firstFrameStream => const Stream<void>.empty();
+
   /// fix522: the most recent stream-info label emitted this play, or null if
   /// none yet. Latched so a subscriber that attaches AFTER the emission (the
   /// media_kit topButtonBar read-once mount race — confirmed in the fix516

@@ -100,6 +100,9 @@ class MpvEngine implements PlayerEngine {
   // (e.g. after an engine-swap re-render) doesn't crash, though in practice
   // there's at most one event per play.
   final _streamInfoCtrl = StreamController<String>.broadcast();
+  // fix732 (mock §4.7): fires once when the first real decoded frame is sized
+  // (dwidth 0→WxH), so the player can fade out the channel-zap shutter.
+  final _firstFrameCtrl = StreamController<void>.broadcast();
   // fix522: latch the last label so a late subscriber can seed from it.
   String? _lastStreamInfo;
 
@@ -564,6 +567,7 @@ class MpvEngine implements PlayerEngine {
     await _errorCtrl.close();
     await _positionCtrl.close();
     await _streamInfoCtrl.close();
+    await _firstFrameCtrl.close(); // fix732
     await _player.dispose();
     AppLog.info('MpvEngine: dispose() player disposed (surface released by media_kit)'
         ' eid=${identityHashCode(this)}');
@@ -580,6 +584,9 @@ class MpvEngine implements PlayerEngine {
   Stream<Duration> get positionStream => _positionCtrl.stream;
   @override
   Stream<String> get streamInfoStream => _streamInfoCtrl.stream;
+
+  @override
+  Stream<void> get firstFrameStream => _firstFrameCtrl.stream; // fix732
 
   @override
   String? get lastStreamInfo => _lastStreamInfo;
@@ -871,6 +878,8 @@ class MpvEngine implements PlayerEngine {
       // Pair it with a full decode-state snapshot the first time a real size
       // lands, so we capture hwdec-current + vo at the moment video appears.
       if (value != '0' && value.isNotEmpty && value != '?') {
+        // fix732: real first frame landed — let the player clear the zap shutter
+        if (!_firstFrameCtrl.isClosed) _firstFrameCtrl.add(null);
         unawaited(logDecodeState('first-frame'));
         // fix515: sample dheight + codec at this same verified-real moment
         // and publish a friendly label for the top bar. Best-effort: a

@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.35+732] - 2026-07-12
+
+**Gap-audit item #3.** TV only. Channel-zap shutter.
+
+### Added
+- **fix732 — Channel-zap black shutter (mock §4.7)** — a black cover fades out (150ms, easeOut) the instant the first frame renders on a fresh play, masking the black-load so a channel change reads clean instead of flashing.
+
+### Technical
+- **fix732**: `MpvEngine` gains a broadcast `firstFrameStream` fired from the existing `dwidth` 0→WxH first-frame observe (`PlayerEngine` default = empty stream). `player.dart` `_buildZapShutter()` is a full-bleed black `AnimatedOpacity(F4Motion.shutter)` above the video / below the buffering spinner; `_showShutter` starts true on a fresh play, cleared on the first-frame event with a 4s fallback timer, and skipped for adopted (already-rendering) swap engines. `test/fix732_zap_shutter_test.dart` (4). Version → 4.1.35+732.
+
 ## [v4.1.34+731] - 2026-07-12
 
 **Gap-audit item #2.** TV only. Player OSD now animates instead of snapping.
