@@ -55,17 +55,24 @@ android {
                 storeFile = file(keystoreProperties['storeFile'])
                 storePassword = keystoreProperties['storePassword']
                 // fix548: enable the v1 (JAR) APK signature in addition to v2.
-                // The release was v2-only; some Google Play Protect heuristics
-                // still weight the presence of a v1 signature as a "known-app"
-                // signal, and its absence can contribute to the harsher
-                // "tries to bypass Android's security protections" sideload
-                // warning. v2/v3 stay enabled (default true) for modern Android;
-                // adding v1 is strictly additive and safe on all supported API
-                // levels. Does NOT change the signing key/cert — the cert
-                // SHA-256 is unchanged, so updates still install over prior
-                // releases cleanly.
-                v1SigningEnabled true
-                v2SigningEnabled true
+                // Some Google Play Protect heuristics weight the presence of a
+                // v1 signature as a "known-app" signal. Strictly additive and
+                // safe on all supported API levels.
+                // fix724: add the v3 signature (Android 9+). v3 is NOT enabled
+                // by default in AGP (the fix548 comment claiming "default true"
+                // was wrong — releases verified as v1+v2 only). v3's value is
+                // key ROTATION: if the release keystore is ever compromised or
+                // must be replaced, v3 lets us rotate to a new key without
+                // breaking updates for the installed base — critical for a
+                // sideloaded app whose entire update path depends on cert
+                // continuity. No rotation is performed here; the key/cert and
+                // its SHA-256 are unchanged, so updates install over prior
+                // releases exactly as before. (Old property names
+                // v1SigningEnabled/v2SigningEnabled replaced with the modern
+                // enableV*Signing aliases — same semantics.)
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
             }
         }
     }
