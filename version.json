@@ -1,19 +1,19 @@
 {
-  "latest": "4.1.30",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.30",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.30/Free4Me-IPTV-4.1.30-universal.apk",
-  "releaseNotes": "\u2022 New on TV: Settings \u25b8 Playback \u25b8 OLED-black background \u2014 replaces the neon artwork with a pure black background. Cleaner on OLED screens and saves a little power. (Phone UI unchanged.)",
+  "latest": "4.1.32",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.32",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.32/Free4Me-IPTV-4.1.32-universal.apk",
+  "releaseNotes": "\u2022 Fresh look on TV: the whole interface now uses the Inter type face \u2014 cleaner and easier to read from the couch. (Phone UI unchanged.)",
   "apkUrls": {
-    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.30/Free4Me-IPTV-4.1.30-arm.apk",
-    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.30/Free4Me-IPTV-4.1.30-arm64.apk",
-    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.30/Free4Me-IPTV-4.1.30-x64.apk",
-    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.30/Free4Me-IPTV-4.1.30-universal.apk"
+    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.32/Free4Me-IPTV-4.1.32-arm.apk",
+    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.32/Free4Me-IPTV-4.1.32-arm64.apk",
+    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.32/Free4Me-IPTV-4.1.32-x64.apk",
+    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.32/Free4Me-IPTV-4.1.32-universal.apk"
   },
   "apkSha256s": {
-    "arm": "ae2f6a86290c61461811e5c3632519a085992925a0f0ffe52730a719791dfce8",
-    "arm64": "39c9c7fa90147a376b2bcecf703b66f57a515ba54a52e9762e171edd1d317060",
-    "x64": "c6561aee31bc419daa2bddb3aaa9a9a8b9d1689695634a001778e2d4948dafb6",
-    "universal": "f200e8827b4f63950b30e5f6920747631f99a04add95aeeeb973093fb23e6003"
+    "arm": "41dc18f847130d24e418fe29bb832a22a6237da644d730f05380e9b36d25bbad",
+    "arm64": "ecc0cd80db0059718913ba67804733071fcaea6f7eea548d9afc9c8717c5e3a7",
+    "x64": "484f0ae6a147b7ce40c16494f966681ce6e9fce4a2657cc838f3bcddc9654437",
+    "universal": "15e98c67f58243c189a73ab3f427da1edde669393231c44504e8e422ffeefaf1"
   },
-  "apkSha256": "f200e8827b4f63950b30e5f6920747631f99a04add95aeeeb973093fb23e6003"
+  "apkSha256": "15e98c67f58243c189a73ab3f427da1edde669393231c44504e8e422ffeefaf1"
 }
