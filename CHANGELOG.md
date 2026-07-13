@@ -1,6 +1,17 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.31+727] - 2026-07-12
+
+**TV GUI redesign → mock: Player Actions Bar completion (§4.6).** TV OSD only; phone/touch bar unchanged. Chrome-only — the playback engine, channel-surf, and reconnect logic are untouched.
+
+### Added
+- **fix727 — Sleep timer** — Player OSD ▸ Sleep timer: {Off, 15, 30, 45, 60, 90} min. Arms a one-shot timer that pauses playback then exits the player; the bedtime icon fills while armed. **Survives channel surf** (the deadline is threaded across the fresh Player so "sleep to live TV" actually works).
+- **fix727 — Playback speed** — Player OSD ▸ Playback speed on VOD/catch-up: {0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0}×. Gated to non-live surfaces (2× would burn a DVR buffer to the live edge); the button label shows the active rate.
+
+### Technical
+- **fix727**: `PlayerEngine` gains `double get playbackRate` + `Future<void> setRate(double)` (default 1.0 / no-op), overridden in `MpvEngine` via media_kit `setRate`. `player.dart` adds `_openSpeedFromOverlay` / `_openSleepTimerFromOverlay` (reusing the glass `SelectDialog` + auto-hide-cancel wrapper the track pickers use), `_armSleepTimer` / `_scheduleSleep` (wall-clock deadline), and a `sleepDeadline` ctor param threaded through `_commitSurf`'s `pushReplacement`. Went through an adversarial (rr) review before ship — fixed a sleep-fire-pops-an-open-dialog wedge (`popUntil` the player route), the surf-cancels-the-timer gap (deadline carry), and gated speed to VOD. `test/fix727_actions_bar_test.dart` (7). Version → 4.1.31+727.
+
 ## [v4.1.30+726] - 2026-07-12
 
 **TV GUI redesign → mock: OLED-black background toggle.** TV mode only; phone/touch UI unchanged.

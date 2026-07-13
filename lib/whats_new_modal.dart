@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.31': [
+    'Player controls (TV): new Sleep timer — set 15–90 minutes and playback '
+        'stops on its own. Keeps counting even if you change channels.',
+    'Player controls (TV): Playback speed for movies & catch-up — 0.25× to 2× '
+        '(1× is normal). Live channels are unaffected.',
+  ],
   '4.1.30': [
     'New on TV: Settings ▸ Playback ▸ OLED-black background — replaces the neon '
         'artwork with a pure black background. Cleaner on OLED screens and saves '

@@ -83,6 +83,12 @@ class Player extends StatefulWidget {
   /// ▲/▼ and the remote CH+/CH− keys) to surf the list. Null = no surfing
   /// (e.g. launched from a context without a list, like a catchup URL).
   final PlaybackPlaylist? playlist;
+
+  /// fix727: an armed sleep-timer's wall-clock fire time, threaded across a
+  /// channel surf (pushReplacement → fresh Player) so the sleep timer keeps
+  /// counting down instead of resetting. Null = no timer armed. Only the surf
+  /// path sets it; every other launch site defaults to null.
+  final DateTime? sleepDeadline;
   const Player({
     super.key,
     required this.channel,
@@ -91,6 +97,7 @@ class Player extends StatefulWidget {
     this.overrideUrl,
     this.adoptEngine,
     this.playlist,
+    this.sleepDeadline,
   });
 
   /// Channels that recently hit max reconnects. Maps channel ID → DateTime
@@ -180,6 +187,16 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   bool _navMode = false;
   Timer? _overlayHideTimer;
   static const Duration _overlayAutoHide = Duration(seconds: 8);
+  // fix727 (mock §4.6): sleep timer. When >0 a one-shot Timer pauses playback
+  // and exits the player after _sleepMinutes; the OSD bedtime icon fills while
+  // armed. Cancelled on re-selection ("Off"), on a new selection, and in
+  // dispose() so it can never fire onto a torn-down State. _sleepDeadline is the
+  // wall-clock fire time, carried across channel-surf (pushReplacement builds a
+  // fresh Player) so the timer survives surfing — the point of "sleep to live TV"
+  // (adversarial-review finding 2).
+  Timer? _sleepTimer;
+  int _sleepMinutes = 0;
+  DateTime? _sleepDeadline;
   // fix580: first-focus target inside the overlay. autofocus is NOT enough —
   // _surfKeyFocus already holds primary focus in the same FocusScope, so an
   // autofocus request would be dropped (FocusManager only honors autofocus when
@@ -294,6 +311,15 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this); // fix136
+    // fix727: re-arm a sleep timer carried across a channel surf. Post-frame so
+    // _scheduleSleep's setState is legal (setState is disallowed during
+    // initState); a one-frame arm delay is nothing on a minutes-scale timer.
+    final deadline = widget.sleepDeadline;
+    if (deadline != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _scheduleSleep(deadline);
+      });
+    }
     // fix580: resolve TV-ness SYNCHRONOUSLY at build time (mirrors main.dart
     // routing) so the custom D-pad overlay engages from the first frame on
     // auto-detected leanback boxes — not only when the user forced TV mode, and
@@ -1166,6 +1192,7 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     _stableTimer?.cancel();
     _surfTimer?.cancel(); // fix397
     _overlayHideTimer?.cancel(); // fix580
+    _sleepTimer?.cancel(); // fix727
     _skipIndicatorTimer?.cancel(); // fix649
     _seekFlushTimer?.cancel(); // fix651
     _overlayFirstFocus.dispose(); // fix580
@@ -1589,6 +1616,7 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
           settings: widget.settings,
           source: src,
           playlist: pl.withIndex(target),
+          sleepDeadline: _sleepDeadline, // fix727: keep the sleep timer running
         ),
       ),
     );
@@ -1690,6 +1718,118 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     _overlayHideTimer?.cancel();
     await openAudioModal();
     if (mounted && _navMode) _resetOverlayHideTimer();
+  }
+
+  // fix727 (mock §4.6): playback-speed picker. Presets per the mock; the same
+  // SelectDialog the track pickers use, so it inherits the glass theme + D-pad
+  // traversal + the auto-hide-cancel wrapper. Only shown on VOD (the button gate
+  // is `!live && tracks`); the setState refreshes the button's rate label.
+  static const List<double> _speedPresets = [
+    0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0,
+  ];
+  Future<void> _openSpeedFromOverlay() async {
+    _overlayHideTimer?.cancel();
+    final current = _engine.playbackRate;
+    // nearest preset index so the active speed is pre-highlighted
+    var selected = 3; // 1.0×
+    for (var i = 0; i < _speedPresets.length; i++) {
+      if ((_speedPresets[i] - current).abs() <
+          (_speedPresets[selected] - current).abs()) {
+        selected = i;
+      }
+    }
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => SelectDialog(
+        title: 'Playback speed',
+        selectedId: selected,
+        action: (id) async {
+          await _engine.setRate(_speedPresets[id]);
+          if (context.mounted) Navigator.of(context).pop();
+          if (mounted) setState(() {}); // refresh the OSD speed affordance
+        },
+        data: [
+          for (var i = 0; i < _speedPresets.length; i++)
+            IdData(
+                id: i,
+                data: _speedPresets[i] == 1.0
+                    ? 'Normal (1.0×)'
+                    : '${_speedPresets[i]}×'),
+        ],
+      ),
+    );
+    if (mounted && _navMode) _resetOverlayHideTimer();
+  }
+
+  // fix727 (mock §4.6): sleep-timer picker. "Off" cancels; a duration arms a
+  // one-shot Timer that pauses playback then exits the player. Same SelectDialog
+  // pattern; 0 = Off is pre-highlighted when idle.
+  static const List<int> _sleepPresets = [0, 15, 30, 45, 60, 90];
+  Future<void> _openSleepTimerFromOverlay() async {
+    _overlayHideTimer?.cancel();
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => SelectDialog(
+        title: 'Sleep timer',
+        selectedId: _sleepMinutes,
+        action: (id) async {
+          _armSleepTimer(id);
+          if (context.mounted) Navigator.of(context).pop();
+        },
+        data: [
+          for (final m in _sleepPresets)
+            IdData(id: m, data: m == 0 ? 'Off' : '$m minutes'),
+        ],
+      ),
+    );
+    if (mounted && _navMode) _resetOverlayHideTimer();
+  }
+
+  /// Arm (or with [minutes] == 0, cancel) the sleep timer from a user pick.
+  /// Records the wall-clock deadline so a channel surf can carry it forward.
+  void _armSleepTimer(int minutes) {
+    if (minutes <= 0) {
+      _sleepTimer?.cancel();
+      _sleepTimer = null;
+      _sleepDeadline = null;
+      if (mounted) setState(() => _sleepMinutes = 0);
+      return;
+    }
+    _scheduleSleep(DateTime.now().add(Duration(minutes: minutes)));
+  }
+
+  /// Schedule the one-shot sleep fire for wall-clock [deadline]. Shared by a
+  /// fresh user pick and by initState re-arming across a channel surf. On fire:
+  /// dismiss any OSD dialog sitting above the player route (else onExit would
+  /// pop the DIALOG, not the player, wedging it — adversarial-review finding 1),
+  /// pause the engine, then route through the guarded [onExit].
+  void _scheduleSleep(DateTime deadline) {
+    _sleepTimer?.cancel();
+    final remaining = deadline.difference(DateTime.now());
+    if (remaining <= Duration.zero) {
+      _sleepTimer = null;
+      _sleepDeadline = null;
+      if (mounted) setState(() => _sleepMinutes = 0);
+      return;
+    }
+    _sleepDeadline = deadline;
+    _sleepTimer = Timer(remaining, () async {
+      if (!mounted) return;
+      final route = ModalRoute.of(context);
+      if (route != null && !route.isCurrent) {
+        // an OSD picker (or other dialog) is on top — drop it to the player
+        Navigator.of(context).popUntil((r) => r == route);
+      }
+      try {
+        await _engine.pause();
+      } catch (_) {}
+      if (mounted) onExit();
+    });
+    // round up for the icon label; ensures a sub-minute residual still reads ≥1
+    final mins = (remaining.inSeconds / 60).ceil();
+    if (mounted) setState(() => _sleepMinutes = mins);
   }
 
   /// finding 34: the overlay Cast action opens a device picker / stop dialog.
@@ -1819,6 +1959,19 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
         if (_canSurf)
           _ovlButton(Icons.keyboard_arrow_down, 'Channel down', () => _surf(1)),
         _ovlButton(Icons.aspect_ratio_outlined, 'Aspect ratio', toggleZoom),
+        // fix727 (mock §4.6): playback speed — VOD only. Live (incl. DVR-active)
+        // is excluded: 2.0× would burn a DVR buffer to the live edge and 0.25×
+        // fall behind it. `tracks` (supportsTrackSelection) is the MpvEngine
+        // proxy — the only engine that implements setRate. The label shows the
+        // active rate so the OSD reflects state; _openSpeedFromOverlay's setState
+        // refreshes it (adversarial-review findings 3/4).
+        if (!live && tracks)
+          _ovlButton(
+              Icons.speed,
+              engine.playbackRate == 1.0
+                  ? 'Playback speed'
+                  : 'Playback speed (${engine.playbackRate}×)',
+              _openSpeedFromOverlay),
         // finding 107: hide mini-player entry on TV/D-pad (controls not focusable)
         // finding 35: also gate on livestream to match the touch-bar bottomBar
         // gate — the mini-player (and its overlay engine) is a live-only path;
@@ -1826,6 +1979,12 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
         if (!_tvMode && widget.channel.mediaType == MediaType.livestream)
           _ovlButton(
               Icons.picture_in_picture, 'Mini-player', _minimizeToOverlay),
+        // fix727 (mock §4.6): sleep timer — the last Actions Bar entry. Filled
+        // bedtime icon while armed so the OSD shows it is running.
+        _ovlButton(
+            _sleepMinutes > 0 ? Icons.bedtime : Icons.bedtime_outlined,
+            _sleepMinutes > 0 ? 'Sleep timer ($_sleepMinutes min)' : 'Sleep timer',
+            _openSleepTimerFromOverlay),
       ],
     );
 

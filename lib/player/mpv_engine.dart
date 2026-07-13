@@ -502,6 +502,18 @@ class MpvEngine implements PlayerEngine {
     await _player.setVolume(volume * 100);
   }
 
+  // fix727 (mock §4.6): playback-speed passthrough. media_kit's setRate maps to
+  // mpv's `speed` property; we cache the last value so the OSD can show the
+  // active preset. Chrome-only addition — no engine/reconnect logic touched.
+  double _rate = 1.0;
+  @override
+  double get playbackRate => _rate;
+  @override
+  Future<void> setRate(double rate) async {
+    _rate = rate;
+    await _player.setRate(rate);
+  }
+
   @override
   Future<void> dispose() async {
     if (_disposed) {

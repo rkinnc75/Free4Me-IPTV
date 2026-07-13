@@ -103,6 +103,12 @@ abstract class PlayerEngine {
   /// Set playback volume. [volume] is 0.0 (muted) to 1.0 (full).
   Future<void> setVolume(double volume);
 
+  /// fix727 (mock §4.6): playback speed multiplier. Engines that cannot vary
+  /// rate report a fixed 1.0× and no-op on [setRate]; the TV OSD only surfaces
+  /// the speed control on seekable (VOD/DVR) surfaces regardless.
+  double get playbackRate => 1.0;
+  Future<void> setRate(double rate) async {}
+
 
   /// Whether this engine controls its own fullscreen transition.
   /// MpvEngine uses media_kit_video's VideoState; it delegates to the
