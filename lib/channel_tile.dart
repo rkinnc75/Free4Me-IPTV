@@ -629,12 +629,40 @@ class _ChannelTileState extends State<ChannelTile> {
     final Color posterBg = (widget.showSourceEdgeBar && widget.tintColor != null)
         ? SourcePalette.tintOver(widget.tintColor, Colors.black26)
         : Colors.black26;
-    final fallback = ColoredBox(
-      color: posterBg,
-      // fix538: smaller fallback glyph so it doesn't dominate the half-size
-      // poster tiles (grid went from ~4 to ~8 across).
-      child: const Center(
-          child: Icon(Icons.movie, size: 28, color: Colors.grey)),
+    // fix740 (mock §4.2): art-less tiles get a BRANDED gradient fill + the
+    // channel name centered over the art region (a "typographic" placeholder —
+    // never a blank box / lone generic glyph). The gradient runs the source
+    // tint (lighter, top-left) → the near-black posterBg (bottom-right), so the
+    // card reads as branded even with no poster. TV (edge-bar) tiles only carry
+    // the source tint; phone/non-edge keep the neutral fill.
+    final Color posterTop = (widget.showSourceEdgeBar && widget.tintColor != null)
+        ? SourcePalette.tintOver(widget.tintColor, const Color(0xFF3A3F46))
+        : const Color(0xFF2A2A2A);
+    final fallback = DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [posterTop, posterBg],
+        ),
+      ),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Text(
+            widget.channel.name,
+            maxLines: 3,
+            textAlign: TextAlign.center,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 12,
+              height: 1.15,
+              fontWeight: FontWeight.w700,
+              color: Colors.white70,
+            ),
+          ),
+        ),
+      ),
     );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

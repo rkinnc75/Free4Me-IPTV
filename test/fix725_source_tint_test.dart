@@ -34,7 +34,10 @@ void main() {
           isTrue);
     });
     test('fallback + loading placeholders use the tinted bg', () {
-      expect(tile.contains('color: posterBg,'), isTrue);
+      // fix740: the fallback is now a gradient posterTop→posterBg (was a flat
+      // ColoredBox(posterBg)); posterBg is still the source-tinted base, and the
+      // loading placeholders still use it.
+      expect(tile.contains('colors: [posterTop, posterBg]'), isTrue);
       expect(tile.contains('ColoredBox(color: posterBg)'), isTrue);
     });
   });

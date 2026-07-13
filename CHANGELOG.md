@@ -1,6 +1,14 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.43+740] - 2026-07-13
+
+### Changed
+- **fix740 — Poster branded fallback (mock §4.2)** — art-less tiles now render a branded gradient (source tint → near-black) with the channel name centered over the art region, instead of a flat fill + a generic movie glyph.
+
+### Technical
+- **fix740**: `channel_tile.dart` `_buildPoster` fallback → `DecoratedBox(LinearGradient[posterTop, posterBg])` + centered name `Text`. Source-tint (fix725) + loading placeholders unchanged; fix725's source-check test updated to the gradient. Full suite +529 green. `test/fix740_poster_fallback_test.dart` (2). Version → 4.1.43+740.
+
 ## [v4.1.42+739] - 2026-07-13
 
 **Release-gate repair.** A stale source-check test (fix718's, invalidated by fix737's border change) failed the analyze/test gate, cancelling/failing every release build v4.1.38–v4.1.41 — so the A/V-sync fix + guide/recordings/EPG polish (all merged to main) never produced an APK. This build fixes the test so the gate passes and those changes ship.

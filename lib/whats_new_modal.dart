@@ -6,6 +6,9 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.43': [
+    'Polish: channels/movies without artwork now show a nicer branded tile (a gradient with the name) instead of a generic film icon.',
+  ],
   '4.1.42': [
     'This build delivers several improvements that a build-system issue had held '
         'back: audio/video auto-resync on long sessions, recording future shows '
