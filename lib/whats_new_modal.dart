@@ -6,6 +6,10 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.32': [
+    'Fresh look on TV: the whole interface now uses the Inter type face — '
+        'cleaner and easier to read from the couch. (Phone UI unchanged.)',
+  ],
   '4.1.31': [
     'Player controls (TV): new Sleep timer — set 15–90 minutes and playback '
         'stops on its own. Keeps counting even if you change channels.',

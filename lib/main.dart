@@ -448,6 +448,11 @@ class MyApp extends StatelessWidget {
       },
       theme: ThemeData(
         brightness: Brightness.dark,
+        // fix728 (TV GUI redesign, mock §2): Inter as the 10-foot type face on
+        // TV only. Bundled variable font (assets/fonts/Inter.ttf, OFL 1.1); its
+        // wght axis maps to TextStyle.fontWeight automatically. Phone/touch UI
+        // keeps the platform default (null) so it stays byte-identical.
+        fontFamily: hasTouchScreen ? null : 'Inter',
         colorScheme: ColorScheme.fromSeed(
           seedColor: Colors.blue,
           surface: Colors.black,

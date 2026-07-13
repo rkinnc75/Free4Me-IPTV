@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.32+728] - 2026-07-12
+
+**TV GUI redesign → mock §2: Inter type face (10-foot type).** TV only; phone/touch UI keeps the platform default. The last of the owner-approved "top visual payoff" items.
+
+### Added
+- **fix728 — Inter font on TV** — bundles Inter (OFL 1.1 variable font) as the app-wide TV type face. The redesign's micro-ramp sizes, accent rings, and glass were all built on the default face; Inter is the final layer that makes the TV UI read as designed.
+
+### Technical
+- **fix728**: `assets/fonts/Inter.ttf` — the OFL variable font from github.com/google/fonts (`Inter[opsz,wght].ttf`, ~856 KB); its `wght` axis maps to `TextStyle.fontWeight`, so all weights come from one file. `pubspec.yaml` declares `family: Inter`; `main.dart` sets `ThemeData(fontFamily: hasTouchScreen ? null : 'Inter')` — the same TV gate the fix707 accent chrome uses, so phone stays byte-identical. License ships at `assets/fonts/Inter-OFL.txt`. `test/fix728_inter_font_test.dart` (4). Version → 4.1.32+728.
+
 ## [v4.1.31+727] - 2026-07-12
 
 **TV GUI redesign → mock: Player Actions Bar completion (§4.6).** TV OSD only; phone/touch bar unchanged. Chrome-only — the playback engine, channel-surf, and reconnect logic are untouched.
