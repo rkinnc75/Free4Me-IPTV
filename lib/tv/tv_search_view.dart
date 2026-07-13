@@ -18,6 +18,8 @@ import 'package:open_tv/models/settings.dart';
 import 'package:open_tv/models/view_type.dart';
 import 'package:open_tv/multi_view_screen.dart';
 import 'package:open_tv/widgets/dpad_text_field.dart';
+import 'package:open_tv/tv/theme/accent_scope.dart'; // fix734 search accent ring
+import 'package:open_tv/tv/theme/f4_tokens.dart'; // fix734 glass fill
 
 /// fix502 / fix509: TV "what's on" search.
 ///
@@ -363,11 +365,24 @@ class _TvSearchViewState extends State<TvSearchView> {
                 tooltip: 'Voice search',
                 onPressed: _ready ? () => VoiceSearch.start() : null,
               ),
+              // fix734 (mock §4.5): glass fill + accent focus ring. TV-only view,
+              // so no hasTouchScreen gate; AccentScope.of(context) makes the ring
+              // recolor live with the chosen accent (fix719).
+              filled: true,
+              fillColor: F4.of(context).colors.glassFill,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide.none,
+                borderSide: BorderSide(color: F4.of(context).colors.glassStroke),
               ),
-              filled: true,
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: F4.of(context).colors.glassStroke),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide:
+                    BorderSide(color: AccentScope.of(context), width: 2),
+              ),
             ),
           ),
         ),

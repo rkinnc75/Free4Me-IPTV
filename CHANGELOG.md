@@ -1,6 +1,16 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.37+734] - 2026-07-12
+
+**Gap-audit polish.** TV only. Search field glass + accent ring.
+
+### Changed
+- **fix734 — TV search field glass + accent ring (mock §4.5)** — the Search field was a borderless default-filled box; it now uses the token glass fill with a glass-stroke border and an accent focus ring (follows the accent picker).
+
+### Technical
+- **fix734**: `tv_search_view.dart` `InputDecoration` → `fillColor` = `F4.of(context).colors.glassFill`, enabled border = `glassStroke`, `focusedBorder` = `AccentScope.of(context)` width 2 (live-recolors via fix719). TV-only view, no `hasTouchScreen` gate. `test/fix734_search_glass_test.dart` (3). Version → 4.1.37+734.
+
 ## [v4.1.36+733] - 2026-07-12
 
 **Gap-audit item #4** (largest unbuilt surface). TV only. History is now TV-native.
