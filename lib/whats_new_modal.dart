@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.51': [
+    'Internal: the debug overlay and logs now record how the stream buffer is '
+        'being filled. This is diagnostic only — no change to playback — and '
+        'is needed to correctly tell a frozen channel apart from one that is '
+        'simply paused, before the freeze-recovery logic is reworked.',
+  ],
   '4.1.50': [
     'Removed "Low latency livestreams". It forced a playback mode that broke '
         'hardware video decoding (dropping every channel to slower software '

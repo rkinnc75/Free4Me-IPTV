@@ -796,6 +796,19 @@ class MpvEngine implements PlayerEngine {
       'video-bitrate', // bits/s
       'demuxer-cache-duration', // seconds buffered ahead
       'paused-for-cache', // 'yes' while rebuffering
+      // fix750 (DIAGNOSTIC ONLY): the silent-stall arc (fix747/fix749) keeps
+      // failing because we reason from mpv's `playing` flag, which reads false
+      // for BOTH a legitimate pause (user / OS audio-focus steal) and a
+      // demuxer wedge (S938U ABC30 freeze, 2026-07-14). Cache DEPTH can't
+      // separate them either — demuxer-cache-duration reads 0 in both. What
+      // should separate them is demuxer PROGRESS: during a pause the demuxer
+      // is healthy (idle or still filling); during a wedge it is starved and
+      // reading nothing. These four capture that so the next field log can
+      // prove — or kill — the hypothesis BEFORE any watchdog is rewritten.
+      'demuxer-cache-time', // PTS the demuxer has read UP TO — should advance
+      'cache-speed', // bytes/sec being read — 0 when nothing is arriving
+      'core-idle', // 'yes' when the player isn't actively playing
+      'eof-reached', // 'yes' when the demuxer hit end-of-stream
       'width',
       'height',
       'framedrop', // active frame-drop mode (no/vo/decoder) — "drop video"

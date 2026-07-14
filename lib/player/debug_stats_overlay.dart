@@ -84,6 +84,12 @@ class _DebugStatsOverlayState extends State<DebugStatsOverlay> {
       'avsync="${s['avsync']}" vbitrate="${s['video-bitrate']}" '
       'cache="${s['demuxer-cache-duration']}" '
       'pausedForCache="${s['paused-for-cache']}" '
+      // fix750 (DIAGNOSTIC ONLY — no behavior change): demuxer progress, to
+      // distinguish a legitimate pause from a starved/wedged demuxer.
+      'demuxTime="${s['demuxer-cache-time']}" '
+      'cacheSpeed="${s['cache-speed']}" '
+      'coreIdle="${s['core-idle']}" '
+      'eof="${s['eof-reached']}" '
       'res=${s['width']}x${s['height']} '
       'framedrop="${s['framedrop']}" videoSync="${s['video-sync']}"',
     );

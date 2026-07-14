@@ -1,0 +1,71 @@
+diff --git a/lib/player/debug_stats_overlay.dart b/lib/player/debug_stats_overlay.dart
+index 1306940..d1d13c8 100644
+--- a/lib/player/debug_stats_overlay.dart
++++ b/lib/player/debug_stats_overlay.dart
+@@ -84,6 +84,12 @@ class _DebugStatsOverlayState extends State<DebugStatsOverlay> {
+       'avsync="${s['avsync']}" vbitrate="${s['video-bitrate']}" '
+       'cache="${s['demuxer-cache-duration']}" '
+       'pausedForCache="${s['paused-for-cache']}" '
++      // fix750 (DIAGNOSTIC ONLY — no behavior change): demuxer progress, to
++      // distinguish a legitimate pause from a starved/wedged demuxer.
++      'demuxTime="${s['demuxer-cache-time']}" '
++      'cacheSpeed="${s['cache-speed']}" '
++      'coreIdle="${s['core-idle']}" '
++      'eof="${s['eof-reached']}" '
+       'res=${s['width']}x${s['height']} '
+       'framedrop="${s['framedrop']}" videoSync="${s['video-sync']}"',
+     );
+diff --git a/lib/player/mpv_engine.dart b/lib/player/mpv_engine.dart
+index 47ba03c..7971a97 100644
+--- a/lib/player/mpv_engine.dart
++++ b/lib/player/mpv_engine.dart
+@@ -796,6 +796,19 @@ class MpvEngine implements PlayerEngine {
+       'video-bitrate', // bits/s
+       'demuxer-cache-duration', // seconds buffered ahead
+       'paused-for-cache', // 'yes' while rebuffering
++      // fix750 (DIAGNOSTIC ONLY): the silent-stall arc (fix747/fix749) keeps
++      // failing because we reason from mpv's `playing` flag, which reads false
++      // for BOTH a legitimate pause (user / OS audio-focus steal) and a
++      // demuxer wedge (S938U ABC30 freeze, 2026-07-14). Cache DEPTH can't
++      // separate them either — demuxer-cache-duration reads 0 in both. What
++      // should separate them is demuxer PROGRESS: during a pause the demuxer
++      // is healthy (idle or still filling); during a wedge it is starved and
++      // reading nothing. These four capture that so the next field log can
++      // prove — or kill — the hypothesis BEFORE any watchdog is rewritten.
++      'demuxer-cache-time', // PTS the demuxer has read UP TO — should advance
++      'cache-speed', // bytes/sec being read — 0 when nothing is arriving
++      'core-idle', // 'yes' when the player isn't actively playing
++      'eof-reached', // 'yes' when the demuxer hit end-of-stream
+       'width',
+       'height',
+       'framedrop', // active frame-drop mode (no/vo/decoder) — "drop video"
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index e37859d..9d00ba1 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '4.1.51': [
++    'Internal: the debug overlay and logs now record how the stream buffer is '
++        'being filled. This is diagnostic only — no change to playback — and '
++        'is needed to correctly tell a frozen channel apart from one that is '
++        'simply paused, before the freeze-recovery logic is reworked.',
++  ],
+   '4.1.50': [
+     'Removed "Low latency livestreams". It forced a playback mode that broke '
+         'hardware video decoding (dropping every channel to slower software '
+diff --git a/pubspec.yaml b/pubspec.yaml
+index e96dd12..3c1a7c4 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 4.1.50+748
++version: 4.1.51+750
+ 
+ environment:
+   sdk: ^3.10.7
