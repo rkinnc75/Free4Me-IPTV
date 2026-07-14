@@ -284,6 +284,19 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   Timer? _startupWatchdog;
   Timer? _stableTimer;
   bool _isReconnecting = false;
+  // fix747: silent-stall watchdog. _bufferingWatchdog only arms on a
+  // buffering=true event, but a live feed can wedge — the demuxer starves at
+  // cache=0 and playback freezes on one frame with NO buffering signal (the
+  // onn "frozen frame for 25 min" freeze) while mpv still reports playing.
+  // This periodic timer catches that class by watching the playback position
+  // stop advancing while the engine still claims to be playing.
+  Timer? _stallWatchdog;
+  Duration? _stallLastPos;
+  DateTime? _stallLastAdvanceAt;
+  bool _enginePlaying = false;
+  // A live position frozen this long, while playing and not buffering, is a
+  // dead feed (normal live playback advances ~1s/s) → reconnect.
+  static const int _stallWatchdogSecs = 15;
   // finding 28: true once playback has meaningfully started this session (first
   // buffering=false). Gates the movie resume-position save so a failed/aborted
   // open can't overwrite a good stored position with 0.
@@ -735,6 +748,10 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
       onDisconnect(reason: 'player error: $err');
     }));
     _engineSubs.add(_engine.bufferingStream.listen(_onBufferingChanged));
+    // fix747: track mpv's play/pause state so the stall watchdog never fires
+    // on a legitimately user-paused (or DVR-paused) live stream — during a
+    // silent stall mpv keeps reporting playing=true.
+    _engineSubs.add(_engine.playingStream.listen((p) => _enginePlaying = p));
     // fix732 (mock §4.7): clear the channel-zap shutter the moment the first
     // decoded frame renders. A fallback timer clears it regardless so a dead /
     // signal-less engine can never leave a stuck black shutter.
@@ -819,6 +836,54 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     onDisconnect(reason: 'avsync watchdog');
   }
 
+  /// fix747: (re)arm the silent-stall watchdog. Samples the playback position
+  /// every few seconds; if a live stream's position stops advancing while the
+  /// engine still reports playing and isn't buffering, the feed has silently
+  /// wedged (no buffering event ever fired) → reconnect. Cancelled on
+  /// buffering, reconnect, and dispose; re-armed on the next buffering=false.
+  void _startStallWatchdog() {
+    _stallWatchdog?.cancel();
+    _stallLastPos = _engine.position;
+    _stallLastAdvanceAt = DateTime.now();
+    _stallWatchdog =
+        Timer.periodic(const Duration(seconds: 3), _checkStall);
+  }
+
+  void _checkStall(Timer _) {
+    // Keep the baseline fresh whenever steady progress isn't expected, so a
+    // pause / buffering / grace window can never be mistaken for a stall.
+    if (!mounted ||
+        exiting ||
+        _exitInvoked ||
+        _isReconnecting ||
+        _isCasting ||
+        _startupGrace ||
+        _bufferingState != null ||
+        !_enginePlaying) {
+      _stallLastPos = _engine.position;
+      _stallLastAdvanceAt = DateTime.now();
+      return;
+    }
+    final pos = _engine.position;
+    if (_stallLastPos == null || pos != _stallLastPos) {
+      _stallLastPos = pos;
+      _stallLastAdvanceAt = DateTime.now();
+      return;
+    }
+    final frozenFor =
+        DateTime.now().difference(_stallLastAdvanceAt ?? DateTime.now());
+    if (frozenFor.inSeconds >= _stallWatchdogSecs) {
+      AppLog.warn(
+        'Player: stall watchdog → reconnect — live position frozen at '
+        '${pos.inSeconds}s for ${frozenFor.inSeconds}s with no buffering '
+        'signal channel="${widget.channel.name}"',
+      );
+      _stallWatchdog?.cancel();
+      _stallWatchdog = null;
+      onDisconnect(reason: 'stall watchdog');
+    }
+  }
+
   String _playbackUrl() {
     if (widget.overrideUrl != null) return widget.overrideUrl!;
     final id = widget.channel.id;
@@ -854,6 +919,11 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     AppLog.info('Player: buffering=$buffering channel="${widget.channel.name}"');
     if (buffering) {
       _stableTimer?.cancel(); // stream is no longer stable
+      // fix747: buffering=true means mpv KNOWS it stalled — _bufferingWatchdog
+      // owns recovery from here; stand the silent-stall watchdog down until
+      // playback resumes (buffering=false re-arms it).
+      _stallWatchdog?.cancel();
+      _stallWatchdog = null;
       if (mounted) {
         setState(() => _bufferingState = 'Buffering...');
         AppLog.info(
@@ -910,6 +980,11 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
       // now a movie resume-position save is safe.
       _playbackStartedThisSession = true;
       if (mounted) setState(() => _bufferingState = null);
+      // fix747: playback is (re)flowing — arm the silent-stall watchdog for
+      // live streams so a later wedge with no buffering event is still caught.
+      if (widget.channel.mediaType == MediaType.livestream) {
+        _startStallWatchdog();
+      }
 
       // Expire startup grace 500ms after buffering=false. The mpv seek probe
       // fires at the same instant as buffering=false — delaying expiry ensures
@@ -969,6 +1044,10 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     // arriving in the same event-loop tick is rejected by the guard above.
     _isReconnecting = true;
     _totalReconnectAttempts++;
+    // fix747: stand the silent-stall watchdog down for the reconnect; it
+    // re-arms on the next buffering=false once playback flows again.
+    _stallWatchdog?.cancel();
+    _stallWatchdog = null;
     // fix92: cancel any pending stable-timer so a late "stream stable"
     // callback can't zero the counter mid-give-up.
     if (_stableTimer != null) {
@@ -1346,6 +1425,7 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     unawaited(PipController.setPlaying(false));
     _bufferingWatchdog?.cancel();
     _startupWatchdog?.cancel(); // fix94
+    _stallWatchdog?.cancel(); // fix747
     _stableTimer?.cancel();
     _surfTimer?.cancel(); // fix397
     _overlayHideTimer?.cancel(); // fix580
@@ -2344,6 +2424,8 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     _bufferingWatchdog = null;
     _startupWatchdog?.cancel();
     _startupWatchdog = null;
+    _stallWatchdog?.cancel(); // fix747: symmetry with the other swap cancels
+    _stallWatchdog = null;
     _stableTimer?.cancel();
     _stableTimer = null;
     try {
@@ -2374,6 +2456,8 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     _bufferingWatchdog = null;
     _startupWatchdog?.cancel();
     _startupWatchdog = null;
+    _stallWatchdog?.cancel(); // fix747: symmetry with the other swap cancels
+    _stallWatchdog = null;
     _stableTimer?.cancel();
     _stableTimer = null;
     for (final s in _engineSubs) {

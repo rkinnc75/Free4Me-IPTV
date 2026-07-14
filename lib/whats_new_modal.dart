@@ -6,6 +6,16 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.50': [
+    'Removed "Low latency livestreams". It forced a playback mode that broke '
+        'hardware video decoding (dropping every channel to slower software '
+        'decoding, and on phones sometimes failing to play at all) and could '
+        'freeze weak TV boxes. Live TV now always uses the reliable buffered '
+        'path — smoother, better quality, hardware-accelerated.',
+    'Frozen live channels now recover on their own: if a stream silently '
+        'wedges on one frame, the player detects that playback has stopped '
+        'advancing and automatically reconnects, instead of sitting frozen.',
+  ],
   '4.1.49': [
     'New in Settings → Playback: "Re-test hardware decoding" — if the app '
         'auto-switched this device to software decoding after hardware '
