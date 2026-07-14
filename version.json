@@ -1,19 +1,19 @@
 {
-  "latest": "4.1.52",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.52",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.52/Free4Me-IPTV-4.1.52-universal.apk",
-  "releaseNotes": "\u2022 Internal: one more diagnostic value added to the debug logs (whether the player itself considers playback paused). No change to playback \u2014 this is the last measurement needed before the frozen-channel recovery logic is rewritten.",
+  "latest": "4.1.53",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.53",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.53/Free4Me-IPTV-4.1.53-universal.apk",
+  "releaseNotes": "\u2022 Fixed a serious refresh bug that could leave a source with NO channels. If the provider failed to send one kind of content (live channels, movies or series) \u2014 which can happen when a provider allows only one connection and a stream is playing \u2014 the refresh treated the missing content as \"empty\" and cleared it. That content is now kept, and the refresh tells you what could not be fetched instead of reporting success.",
   "apkUrls": {
-    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.52/Free4Me-IPTV-4.1.52-arm.apk",
-    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.52/Free4Me-IPTV-4.1.52-arm64.apk",
-    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.52/Free4Me-IPTV-4.1.52-x64.apk",
-    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.52/Free4Me-IPTV-4.1.52-universal.apk"
+    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.53/Free4Me-IPTV-4.1.53-arm.apk",
+    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.53/Free4Me-IPTV-4.1.53-arm64.apk",
+    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.53/Free4Me-IPTV-4.1.53-x64.apk",
+    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.53/Free4Me-IPTV-4.1.53-universal.apk"
   },
   "apkSha256s": {
-    "arm": "bfb042d12147b9b4aef3d1d84d188148c1162d5af574c59dc129ce3d46796e41",
-    "arm64": "f650169241f0d0ce47b0eed888d7b539f86f199f601fc860f38d6575b46c31a8",
-    "x64": "d1410f7087804ed63b3dc8ef0031388073de350bb922d693cb82dcf6c2c4573a",
-    "universal": "590759f990a6049b40e9dcb8154097727e5f01ef7e1c140f59686d593a5cd14c"
+    "arm": "d1798fe950148de26a606f55a2c02cfb2a5423d207b82a8fec8ac676dfa1420d",
+    "arm64": "8992b308c08aabc9c3ec5cdbdd9a99db0bd7246c5615efd3e0884603a5565811",
+    "x64": "c7f17fde4270afa75cb49d78afa27cd777821f6b09b639295d869e6f10b8ff60",
+    "universal": "abffdd590e678de1c8f7d7f73e747ea6c974d624d4718e37d1ae02e70bfb6d25"
   },
-  "apkSha256": "590759f990a6049b40e9dcb8154097727e5f01ef7e1c140f59686d593a5cd14c"
+  "apkSha256": "abffdd590e678de1c8f7d7f73e747ea6c974d624d4718e37d1ae02e70bfb6d25"
 }
