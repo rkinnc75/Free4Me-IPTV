@@ -67,6 +67,13 @@ Future<void> getXtream(
   AppLog.info('Xtream: fetching source="${source.name}" url="${source.url}"');
   onProgress?.call('Fetching data from provider…');
   int failCount = 0;
+  // fix752: WHICH types failed, not just how many. A failed fetch is not data:
+  // these types must be preserved from the wipe regardless of prior state (see
+  // XtreamRefreshLogic.typesToKeepOnFetchFailure).
+  final failedMediaTypes = <int>{};
+  // fix752: set when SOME types failed — surfaced to the caller after the
+  // commit succeeds (the fresh types are still written).
+  String? partialWarning;
   int liveCount = 0;
   int movieCount = 0;
   int seriesCount = 0;
@@ -100,6 +107,7 @@ Future<void> getXtream(
     ]);
     if (res[0] == null || res[1] == null) {
       failCount++;
+      failedMediaTypes.add(MediaType.livestream.index); // fix752
       return 0;
     }
     try {
@@ -116,6 +124,7 @@ Future<void> getXtream(
       return count;
     } catch (e) {
       failCount++;
+      failedMediaTypes.add(MediaType.livestream.index); // fix752
       return 0;
     }
   }
@@ -127,6 +136,7 @@ Future<void> getXtream(
     ]);
     if (res[0] == null || res[1] == null) {
       failCount++;
+      failedMediaTypes.add(MediaType.movie.index); // fix752
       return 0;
     }
     try {
@@ -158,6 +168,7 @@ Future<void> getXtream(
       return count;
     } catch (e) {
       failCount++;
+      failedMediaTypes.add(MediaType.movie.index); // fix752
       return 0;
     }
   }
@@ -169,6 +180,7 @@ Future<void> getXtream(
     ]);
     if (res[0] == null || res[1] == null) {
       failCount++;
+      failedMediaTypes.add(MediaType.serie.index); // fix752
       return 0;
     }
     try {
@@ -185,6 +197,7 @@ Future<void> getXtream(
       return count;
     } catch (e) {
       failCount++;
+      failedMediaTypes.add(MediaType.serie.index); // fix752
       return 0;
     }
   }
@@ -284,6 +297,15 @@ Future<void> getXtream(
       await preserveIfEmptyButHasRows(movieCount, MediaType.movie);
       await preserveIfEmptyButHasRows(seriesCount, MediaType.serie);
     }
+    // fix752: a type whose fetch FAILED is preserved from the wipe regardless
+    // of prior state. The three guards above all key off prior state (retry
+    // needs lastCount>0; preserve needs existing rows; the throw needs 3/3),
+    // and ALL of them are defeated once an interrupted refresh has already
+    // emptied the source — which is exactly how 55,325 live channels stayed
+    // gone on 2026-07-14. A failed fetch is not data, so it must never be
+    // committed as "empty" and must never contribute to a wipe.
+    keepMediaTypes
+        .addAll(XtreamRefreshLogic.typesToKeepOnFetchFailure(failedMediaTypes));
     if (keepMediaTypes.isNotEmpty) {
       AppLog.warn(
         'Xtream.fix321: preserving existing rows for media types '
@@ -326,6 +348,23 @@ Future<void> getXtream(
     ' live=$liveCount movies=$movieCount series=$seriesCount'
     '${keepMediaTypes.isEmpty ? '' : ' (preserved: ${keepMediaTypes.toList()})'}',
   );
+  // fix752: a PARTIAL refresh (some types fetched, others failed) still
+  // commits — the successful types are legitimately fresh — but the user must
+  // be told, or a provider hiccup silently leaves a stale/empty catalogue
+  // looking like a successful refresh. Thrown AFTER the commit statements are
+  // assembled but reported by the caller once the write completes.
+  if (XtreamRefreshLogic.isPartialRefresh(
+      failedMediaTypes: failedMediaTypes, typeCount: 3)) {
+    final names = failedMediaTypes
+        .map((i) => const {0: 'Live channels', 1: 'Movies', 2: 'Series'}[i] ??
+            'Content')
+        .join(', ');
+    partialWarning = '$names could not be fetched — existing content kept. '
+        'Check the provider and refresh again (a max_connections=1 line can '
+        'fail this call while a stream is playing).';
+    AppLog.warn('Xtream.fix752: PARTIAL refresh source="${source.name}" — '
+        'failed types=${failedMediaTypes.toList()} preserved from wipe');
+  }
   statements.add(Sql.updateGroups());
   if (preserve != null) {
     statements.add(Sql.restorePreserve(preserve));
@@ -431,6 +470,25 @@ Future<void> getXtream(
   if (source.id != null) {
     await Sql.updateSource(source);
   }
+  // fix752: everything that WAS fetched is now committed, and the failed types
+  // kept their previous rows — the data is safe. Only now surface the partial
+  // failure, so the caller can warn the user. Silently reporting success here
+  // is what let an empty catalogue masquerade as a completed refresh
+  // (2026-07-14): the user saw "refresh complete" and no channels.
+  if (partialWarning != null) {
+    throw XtreamPartialRefreshException(partialWarning);
+  }
+}
+
+/// fix752: thrown AFTER a successful commit when some content types could not
+/// be fetched. Everything retrieved WAS written and the failed types kept
+/// their existing rows — this is a warning, not a data-loss error, and callers
+/// must render it as such rather than treating the whole refresh as failed.
+class XtreamPartialRefreshException implements Exception {
+  final String message;
+  XtreamPartialRefreshException(this.message);
+  @override
+  String toString() => message;
 }
 
 List<T> processJsonList<T>(
@@ -905,6 +963,7 @@ Future<void> getEpisodes(Channel channel) async {
   }
   await Sql.commitWrite(statements);
 }
+
 
 Channel episodeToChannel(XtreamEpisode episode, Source source, int seriesId) {
   return Channel(

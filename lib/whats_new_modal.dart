@@ -6,6 +6,15 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.53': [
+    'Fixed a serious refresh bug that could leave a source with NO channels. '
+        'If the provider failed to send one kind of content (live channels, '
+        'movies or series) — which can happen when a provider allows only one '
+        'connection and a stream is playing — the refresh treated the missing '
+        'content as "empty" and cleared it. That content is now kept, and the '
+        'refresh tells you what could not be fetched instead of reporting '
+        'success.',
+  ],
   '4.1.52': [
     'Internal: one more diagnostic value added to the debug logs (whether the '
         'player itself considers playback paused). No change to playback — '

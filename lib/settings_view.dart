@@ -22,6 +22,7 @@ import 'package:open_tv/models/multi_view_layout.dart';
 import 'package:open_tv/models/multi_view_decode.dart';
 import 'package:open_tv/multi_view_picker_dialog.dart';
 import 'package:open_tv/backend/epg_service.dart';
+import 'package:open_tv/backend/xtream.dart';
 import 'package:open_tv/backend/issue_reporter.dart';
 import 'package:open_tv/backend/settings_io.dart';
 import 'package:open_tv/views/epg_channel_mapping.dart';
@@ -911,13 +912,27 @@ class _SettingsState extends State<SettingsView> {
 
     unawaited(() async {
       await dialogReady.future;
+      // fix752: a PARTIAL refresh (e.g. live channels failed, VOD succeeded)
+      // throws AFTER a successful commit. It must NOT abort the rest of the
+      // pipeline: skipping the EPG refresh and — critically —
+      // ensureBrowseIndexesPresent() would leave the browse indexes dropped,
+      // which is precisely the "interrupted refresh" state that caused the
+      // 2026-07-14 data incident. Capture it, finish the pipeline, warn at the
+      // end.
+      String? partialWarning;
       try {
-        await Utils.refreshSource(
-          source,
-          onProgress: (msg) => setSt(() {
-            status = msg.length > 60 ? '${msg.substring(0, 60)}…' : msg;
-          }),
-        );
+        try {
+          await Utils.refreshSource(
+            source,
+            onProgress: (msg) => setSt(() {
+              status = msg.length > 60 ? '${msg.substring(0, 60)}…' : msg;
+            }),
+          );
+        } on XtreamPartialRefreshException catch (e) {
+          partialWarning = e.message;
+          AppLog.warn('Settings: refresh "${source.name}" — PARTIAL: '
+              '${e.message}');
+        }
         // fix600: also refresh this source's EPG so the guide/On-now have a
         // current forecast — the channel refresh alone left the EPG stale
         // (the onn's background EPG task is unreliable).
@@ -943,7 +958,12 @@ class _SettingsState extends State<SettingsView> {
         unawaited(Sql.ensureBrowseIndexesPresent());
         setSt(() {
           done = true;
-          status = 'Refresh complete.';
+          // fix752: never report a bare "Refresh complete." when a content
+          // type failed — that is exactly how an empty catalogue looked like a
+          // success on 2026-07-14.
+          status = partialWarning == null
+              ? 'Refresh complete.'
+              : '⚠ $partialWarning';
         });
       } catch (e, st) {
         errorMsg = e.toString();
