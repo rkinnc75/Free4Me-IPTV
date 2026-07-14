@@ -1,19 +1,19 @@
 {
-  "latest": "4.1.48",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.48",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.48/Free4Me-IPTV-4.1.48-universal.apk",
-  "releaseNotes": "\u2022 Fixed: turning on \"Low latency mode\" silently broke hardware video decoding \u2014 every channel fell back to software decoding (and on older versions could fail to play at all). Low latency mode now keeps hardware decoding working, and its software fallback uses all CPU cores instead of one. If 4.1.47 auto-switched your device to software decoding, this update re-tests hardware automatically.",
+  "latest": "4.1.49",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.49",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.49/Free4Me-IPTV-4.1.49-universal.apk",
+  "releaseNotes": "\u2022 New in Settings \u2192 Playback: \"Re-test hardware decoding\" \u2014 if the app auto-switched this device to software decoding after hardware failures, this clears that memory on the spot so the next channel tries hardware again (no need to wait for an app update).",
   "apkUrls": {
-    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.48/Free4Me-IPTV-4.1.48-arm.apk",
-    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.48/Free4Me-IPTV-4.1.48-arm64.apk",
-    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.48/Free4Me-IPTV-4.1.48-x64.apk",
-    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.48/Free4Me-IPTV-4.1.48-universal.apk"
+    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.49/Free4Me-IPTV-4.1.49-arm.apk",
+    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.49/Free4Me-IPTV-4.1.49-arm64.apk",
+    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.49/Free4Me-IPTV-4.1.49-x64.apk",
+    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.49/Free4Me-IPTV-4.1.49-universal.apk"
   },
   "apkSha256s": {
-    "arm": "7899822d345c0b4ef1c38c5e8ad7ccb20e42793eb86aebbad43a5502cd824142",
-    "arm64": "a8842ceda7def16e8a9af571495d62fcc71e4dbfb09ce3c019883488f9604f41",
-    "x64": "63a340628e236bad0ea1bd604b1d4322c7ce3c4e88da9ed85948af1ea0d54343",
-    "universal": "4344091b977733756a0594d73c0f6e7c83e2826e4651c3b3b2461ee366d6c066"
+    "arm": "8f7630548b691e305aec6677c5359a6566f1e00d28098ad0fc4a437e5e1075be",
+    "arm64": "dfec29d7a64de7e6ae4f255ee456d958a4e0c36f21ee47aae73cd53ce5831e75",
+    "x64": "0ee806f3657d367dc58ec0114b7584f69baf460fb6dc9c0080df0a3e76c7b67d",
+    "universal": "84164d320451533193cfac3a61f5a1753070829400676c45da69ca900b597cdf"
   },
-  "apkSha256": "4344091b977733756a0594d73c0f6e7c83e2826e4651c3b3b2461ee366d6c066"
+  "apkSha256": "84164d320451533193cfac3a61f5a1753070829400676c45da69ca900b597cdf"
 }
