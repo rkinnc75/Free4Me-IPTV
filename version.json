@@ -1,19 +1,19 @@
 {
-  "latest": "4.1.51",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.51",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.51/Free4Me-IPTV-4.1.51-universal.apk",
-  "releaseNotes": "\u2022 Internal: the debug overlay and logs now record how the stream buffer is being filled. This is diagnostic only \u2014 no change to playback \u2014 and is needed to correctly tell a frozen channel apart from one that is simply paused, before the freeze-recovery logic is reworked.",
+  "latest": "4.1.52",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.52",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.52/Free4Me-IPTV-4.1.52-universal.apk",
+  "releaseNotes": "\u2022 Internal: one more diagnostic value added to the debug logs (whether the player itself considers playback paused). No change to playback \u2014 this is the last measurement needed before the frozen-channel recovery logic is rewritten.",
   "apkUrls": {
-    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.51/Free4Me-IPTV-4.1.51-arm.apk",
-    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.51/Free4Me-IPTV-4.1.51-arm64.apk",
-    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.51/Free4Me-IPTV-4.1.51-x64.apk",
-    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.51/Free4Me-IPTV-4.1.51-universal.apk"
+    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.52/Free4Me-IPTV-4.1.52-arm.apk",
+    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.52/Free4Me-IPTV-4.1.52-arm64.apk",
+    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.52/Free4Me-IPTV-4.1.52-x64.apk",
+    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.52/Free4Me-IPTV-4.1.52-universal.apk"
   },
   "apkSha256s": {
-    "arm": "228014de3755117662e2d372c9155f967d564c5bb0f1859108655269a4fc033d",
-    "arm64": "6ba6d48b18658f7d4b14cb2705211906ba823ed69926f507f087eae8abc56b72",
-    "x64": "36f7b6f1adcbe4732e4c8ffaefb69f52b0d1fe43d248bfb33c2234dd8381e40f",
-    "universal": "98ce54457be3d08b74438312461f791e0d240e1f284dfff13f1b9b74c9260ede"
+    "arm": "bfb042d12147b9b4aef3d1d84d188148c1162d5af574c59dc129ce3d46796e41",
+    "arm64": "f650169241f0d0ce47b0eed888d7b539f86f199f601fc860f38d6575b46c31a8",
+    "x64": "d1410f7087804ed63b3dc8ef0031388073de350bb922d693cb82dcf6c2c4573a",
+    "universal": "590759f990a6049b40e9dcb8154097727e5f01ef7e1c140f59686d593a5cd14c"
   },
-  "apkSha256": "98ce54457be3d08b74438312461f791e0d240e1f284dfff13f1b9b74c9260ede"
+  "apkSha256": "590759f990a6049b40e9dcb8154097727e5f01ef7e1c140f59686d593a5cd14c"
 }
