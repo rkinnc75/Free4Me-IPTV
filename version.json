@@ -1,19 +1,19 @@
 {
-  "latest": "4.1.50",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.50",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.50/Free4Me-IPTV-4.1.50-universal.apk",
-  "releaseNotes": "\u2022 Removed \"Low latency livestreams\". It forced a playback mode that broke hardware video decoding (dropping every channel to slower software decoding, and on phones sometimes failing to play at all) and could freeze weak TV boxes. Live TV now always uses the reliable buffered path \u2014 smoother, better quality, hardware-accelerated.\n\u2022 Frozen live channels now recover on their own: if a stream silently wedges on one frame, the player detects that playback has stopped advancing and automatically reconnects, instead of sitting frozen.",
+  "latest": "4.1.51",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.51",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.51/Free4Me-IPTV-4.1.51-universal.apk",
+  "releaseNotes": "\u2022 Internal: the debug overlay and logs now record how the stream buffer is being filled. This is diagnostic only \u2014 no change to playback \u2014 and is needed to correctly tell a frozen channel apart from one that is simply paused, before the freeze-recovery logic is reworked.",
   "apkUrls": {
-    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.50/Free4Me-IPTV-4.1.50-arm.apk",
-    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.50/Free4Me-IPTV-4.1.50-arm64.apk",
-    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.50/Free4Me-IPTV-4.1.50-x64.apk",
-    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.50/Free4Me-IPTV-4.1.50-universal.apk"
+    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.51/Free4Me-IPTV-4.1.51-arm.apk",
+    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.51/Free4Me-IPTV-4.1.51-arm64.apk",
+    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.51/Free4Me-IPTV-4.1.51-x64.apk",
+    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.51/Free4Me-IPTV-4.1.51-universal.apk"
   },
   "apkSha256s": {
-    "arm": "c84010b4bb8c3ed2abdf29c48347c25d3629b541b59ccfb709a5c3fe014350b9",
-    "arm64": "2ca370c1d3424e80497769b5fc96c4913203535aaf92dfc085a9aa58ce67df1b",
-    "x64": "69797d6863ae046e64533e10cb68f9b7d14c8cc56f1d27612e4648eca94f1b2d",
-    "universal": "dc91d3c7f9a4a559b0453d96d43d372e75065a6044f6e9cde1ecb404dab7c8c5"
+    "arm": "228014de3755117662e2d372c9155f967d564c5bb0f1859108655269a4fc033d",
+    "arm64": "6ba6d48b18658f7d4b14cb2705211906ba823ed69926f507f087eae8abc56b72",
+    "x64": "36f7b6f1adcbe4732e4c8ffaefb69f52b0d1fe43d248bfb33c2234dd8381e40f",
+    "universal": "98ce54457be3d08b74438312461f791e0d240e1f284dfff13f1b9b74c9260ede"
   },
-  "apkSha256": "dc91d3c7f9a4a559b0453d96d43d372e75065a6044f6e9cde1ecb404dab7c8c5"
+  "apkSha256": "98ce54457be3d08b74438312461f791e0d240e1f284dfff13f1b9b74c9260ede"
 }
