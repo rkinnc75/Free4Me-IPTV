@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.49': [
+    'New in Settings → Playback: "Re-test hardware decoding" — if the app '
+        'auto-switched this device to software decoding after hardware '
+        'failures, this clears that memory on the spot so the next channel '
+        'tries hardware again (no need to wait for an app update).',
+  ],
   '4.1.48': [
     'Fixed: turning on "Low latency mode" silently broke hardware video '
         'decoding — every channel fell back to software decoding (and on '

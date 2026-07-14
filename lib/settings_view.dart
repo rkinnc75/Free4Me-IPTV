@@ -3171,6 +3171,38 @@ class _SettingsState extends State<SettingsView> {
                           updateSettings();
                         },
                       ),
+                      // fix746: manual escape hatch for the fix744
+                      // auto-software latch (and fix743 per-URL skip list).
+                      // Without this the latch only cleared via the 30-day
+                      // TTL, an app update, or wiping app data.
+                      ListTile(
+                        leading: _helpIcon(
+                          title: 'Re-test hardware decoding',
+                          body:
+                              'If hardware decoding fails on several channels '
+                              'in a row, the app remembers that and switches '
+                              'this device to software decoding (see "Force '
+                              'hardware decode" above). This clears that '
+                              'memory right now — the next channel you play '
+                              'tries hardware decoding again. Use it after a '
+                              'device/system update, or if you think the app '
+                              'switched to software in error.',
+                        ),
+                        title: const Text('Re-test hardware decoding'),
+                        subtitle: const Text('Forget learned decoder failures '
+                            '— the next play tries hardware again'),
+                        onTap: () async {
+                          await Sql.clearHwdecHealthState();
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                  'Hardware decoding will be re-tested on the '
+                                  'next channel you play.'),
+                            ),
+                          );
+                        },
+                      ),
                       // fix506: 1080p render cap on low-RAM 4K boxes.
                       _switchTile(
                         label: "Render at 1080p on 4K (low-memory boxes)",

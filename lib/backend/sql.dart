@@ -3367,6 +3367,22 @@ class Sql {
     return false;
   }
 
+  /// fix746: manual escape hatch — forget every learned hardware-decode
+  /// failure: the fix744 device-unhealthy marker AND all fix743 per-URL
+  /// blocklist rows. The next open probes hardware again from scratch (and
+  /// re-latches within 3 failures/48h if the decoder is genuinely still
+  /// broken). Wired to "Re-test hardware decoding" in Settings → Playback;
+  /// without it the only clears were the 30-day TTL, an app update, or
+  /// wiping app data.
+  static Future<void> clearHwdecHealthState() async {
+    var db = await DbFactory.db;
+    await db.execute('DELETE FROM hwdec_blocklist');
+    await db.execute(
+        'DELETE FROM app_meta WHERE key = ?', [hwdecUnhealthyMarkerKey]);
+    AppLog.info(
+        'Sql: hwdec health state cleared (fix746) — next open re-probes hw');
+  }
+
   static Future<void> setAppMeta(String key, String value) async {
     final db = await DbFactory.db;
     await db.execute(
