@@ -1,19 +1,19 @@
 {
-  "latest": "4.1.47",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.47",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.47/Free4Me-IPTV-4.1.47-universal.apk",
-  "releaseNotes": "Version 4.1.47",
+  "latest": "4.1.48",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.48",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.48/Free4Me-IPTV-4.1.48-universal.apk",
+  "releaseNotes": "\u2022 Fixed: turning on \"Low latency mode\" silently broke hardware video decoding \u2014 every channel fell back to software decoding (and on older versions could fail to play at all). Low latency mode now keeps hardware decoding working, and its software fallback uses all CPU cores instead of one. If 4.1.47 auto-switched your device to software decoding, this update re-tests hardware automatically.",
   "apkUrls": {
-    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.47/Free4Me-IPTV-4.1.47-arm.apk",
-    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.47/Free4Me-IPTV-4.1.47-arm64.apk",
-    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.47/Free4Me-IPTV-4.1.47-x64.apk",
-    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.47/Free4Me-IPTV-4.1.47-universal.apk"
+    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.48/Free4Me-IPTV-4.1.48-arm.apk",
+    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.48/Free4Me-IPTV-4.1.48-arm64.apk",
+    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.48/Free4Me-IPTV-4.1.48-x64.apk",
+    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.48/Free4Me-IPTV-4.1.48-universal.apk"
   },
   "apkSha256s": {
-    "arm": "751607594793972fd3768716127ee3a6fa5cb46e7df2b3d9d0b516f8d5c9e5ed",
-    "arm64": "7a4ca95843049c3f77ddb2f92fd0b45ceac42447e6e1a345c08beae9527b0670",
-    "x64": "8f2d7ba657d447b5364825657e22c6ad3a9ab7f0897b805e8e13a0b26cdd64cb",
-    "universal": "a0706aa7485472ac5161555ba9ac5d8e5f0bfdbd1a4efec175f44137b17aaf04"
+    "arm": "7899822d345c0b4ef1c38c5e8ad7ccb20e42793eb86aebbad43a5502cd824142",
+    "arm64": "a8842ceda7def16e8a9af571495d62fcc71e4dbfb09ce3c019883488f9604f41",
+    "x64": "63a340628e236bad0ea1bd604b1d4322c7ce3c4e88da9ed85948af1ea0d54343",
+    "universal": "4344091b977733756a0594d73c0f6e7c83e2826e4651c3b3b2461ee366d6c066"
   },
-  "apkSha256": "a0706aa7485472ac5161555ba9ac5d8e5f0bfdbd1a4efec175f44137b17aaf04"
+  "apkSha256": "4344091b977733756a0594d73c0f6e7c83e2826e4651c3b3b2461ee366d6c066"
 }
