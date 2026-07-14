@@ -90,6 +90,9 @@ class _DebugStatsOverlayState extends State<DebugStatsOverlay> {
       'cacheSpeed="${s['cache-speed']}" '
       'coreIdle="${s['core-idle']}" '
       'eof="${s['eof-reached']}" '
+      // fix751 (DIAGNOSTIC ONLY): mpv's own pause flag — the discriminator
+      // between "someone paused this" and "this is wedged".
+      'pause="${s['pause']}" '
       'res=${s['width']}x${s['height']} '
       'framedrop="${s['framedrop']}" videoSync="${s['video-sync']}"',
     );

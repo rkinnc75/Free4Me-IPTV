@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.52': [
+    'Internal: one more diagnostic value added to the debug logs (whether the '
+        'player itself considers playback paused). No change to playback — '
+        'this is the last measurement needed before the frozen-channel '
+        'recovery logic is rewritten.',
+  ],
   '4.1.51': [
     'Internal: the debug overlay and logs now record how the stream buffer is '
         'being filled. This is diagnostic only — no change to playback — and '

@@ -809,6 +809,21 @@ class MpvEngine implements PlayerEngine {
       'cache-speed', // bytes/sec being read — 0 when nothing is arriving
       'core-idle', // 'yes' when the player isn't actively playing
       'eof-reached', // 'yes' when the demuxer hit end-of-stream
+      // fix751 (DIAGNOSTIC ONLY): mpv's OWN pause flag. This is the property
+      // the whole silent-stall arc has been trying to synthesize by hand.
+      // `core-idle` is true for BOTH a pause and a wedge, so it cannot
+      // discriminate; `pause` should be true ONLY when something actually
+      // paused playback (user, us, or the OS/media-session layer). If that
+      // holds, the stall watchdog needs no pause-reason allowlist at all —
+      // fix749's `_pauseRequested` flag and its five instrumented call sites
+      // become unnecessary, because mpv already tracks the answer, including
+      // causes we cannot enumerate. Two unknowns this must settle:
+      //   (a) does an OS/audio-focus steal (phone call) set pause=yes?
+      //       If NOT, fix749's spurious-reconnect regression returns.
+      //   (b) is pause=no during the ABC30-class wedge? If it reads 'yes',
+      //       a wedge is indistinguishable from a pause and this whole
+      //       direction is dead.
+      'pause', // 'yes' only when playback was actually PAUSED (vs starved)
       'width',
       'height',
       'framedrop', // active frame-drop mode (no/vo/decoder) — "drop video"
