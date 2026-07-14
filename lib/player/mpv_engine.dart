@@ -1102,7 +1102,9 @@ class MpvEngine implements PlayerEngine {
     }
 
     if (url.contains('.m3u8')) {
-      await np.setProperty('hls-bitrate', s.lowLatency ? 'min' : 'max');
+      // fix748: always request the highest-quality HLS rendition (the former
+      // 'min' path belonged to the removed Low-latency mode).
+      await np.setProperty('hls-bitrate', 'max');
     }
 
     // Preview mode (overlay + multi-view cells): use HARDWARE decode but in
@@ -1258,51 +1260,25 @@ class MpvEngine implements PlayerEngine {
       // streams reject seeks, which mpv surfaces as a fatal player error
       // ("Cannot seek in this stream.") causing an immediate reconnect loop.
       // VOD keeps its back buffer for normal reverse-seek support.
-      if (s.lowLatency && dvrBackMB <= 0) {
-        // Low latency only when DVR is NOT active — DVR needs the back buffer.
-        await np.setProperty('profile', 'low-latency');
-        // fix745: undo the two low-latency profile options that BREAK decoding
-        // (root cause of the S938U "phone never hardware-decodes" outage —
-        // every hw open died with "Could not open codec" the moment Low
-        // latency mode was enabled, on every app version):
-        //  • demuxer-lavf-probe-info=nostreams + analyzeduration=0.1 skip
-        //    stream probing, so a mid-stream live-TS join reaches the decoder
-        //    with NO SPS/PPS extradata. ffmpeg's h264_mediacodec must build
-        //    the MediaCodec csd buffers from extradata at configure(), so
-        //    hardware ALWAYS failed to open; software parses SPS/PPS in-band
-        //    and survived, masking this as a broken phone decoder. Restore
-        //    mpv defaults (auto probe, 0 = libavformat's own analyze cap):
-        //    identical to the proven non-low-latency path, and lavf returns
-        //    as soon as codec params are found (~100s of ms on live TS).
-        await np.setProperty('demuxer-lavf-probe-info', 'auto');
-        await np.setProperty('demuxer-lavf-analyzeduration', '0');
-        //  • vd-lavc-threads=1 single-threads the SOFTWARE decoder —
-        //    unwatchable for 1080p60 on weak SoCs (low-RAM TVs route to
-        //    software by design). 0 = auto (per-core); mediacodec ignores it.
-        //    (Same post-profile override pattern as fix700's cache-pause.)
-        await np.setProperty('vd-lavc-threads', '0');
-        await np.setProperty('demuxer-max-back-bytes', '0');
-      } else {
-        // fix370/MED-1: DVR active wins over low-latency. Previously
-        // s.lowLatency zeroed demuxer-max-back-bytes while _dvrActive stayed
-        // true, so the transport controls appeared but rewind/back-to-live had
-        // no buffer to seek in. When DVR is on we keep its back buffer (and
-        // skip the low-latency profile, which is fundamentally at odds with a
-        // multi-minute disk buffer).
-        if (s.lowLatency && dvrBackMB > 0) {
-          AppLog.info('MpvEngine: low-latency suppressed — DVR buffer active');
-        }
-        await np.setProperty('cache-secs', s.liveCacheSecs.toString());
-        // fix623: mini-player PiP uses the tiny cap; multi-view cells + full
-        // player use the real livestream demuxer cap.
-        final liveMB = (previewMode && !multiViewMode)
-            ? s.miniDemuxerMaxMB
-            : s.liveDemuxerMaxMB;
-        await np.setProperty('demuxer-max-bytes', '${liveMB}MiB');
-        await np.setProperty(
-            'demuxer-max-back-bytes', dvrBackMB > 0 ? '${dvrBackMB}MiB' : '0');
-        if (dvrBackMB > 0) _startDvrGuard(dvrBackMB);
-      }
+      // fix748: always use the buffered live path — the proven-good,
+      // hardware-friendly config. The removed "Low latency" mode applied mpv
+      // profile=low-latency, whose demuxer-lavf-probe-info=nostreams left
+      // mid-stream live-TS joins WITHOUT SPS/PPS extradata → h264_mediacodec
+      // configure() failed and EVERY stream fell back to single-threaded
+      // software decode (root cause of the S938U "never hardware-decodes"
+      // outage AND the onn freeze/stutter). Feature deleted; this is exactly
+      // the old else-branch, now unconditional. DVR still keeps its back
+      // buffer via dvrBackMB below.
+      await np.setProperty('cache-secs', s.liveCacheSecs.toString());
+      // fix623: mini-player PiP uses the tiny cap; multi-view cells + full
+      // player use the real livestream demuxer cap.
+      final liveMB = (previewMode && !multiViewMode)
+          ? s.miniDemuxerMaxMB
+          : s.liveDemuxerMaxMB;
+      await np.setProperty('demuxer-max-bytes', '${liveMB}MiB');
+      await np.setProperty(
+          'demuxer-max-back-bytes', dvrBackMB > 0 ? '${dvrBackMB}MiB' : '0');
+      if (dvrBackMB > 0) _startDvrGuard(dvrBackMB);
       // fix700: opt-in live pre-buffer (default OFF via livePrebufferSecs=0, so
       // the fix354 "live keeps the default behaviour" is unchanged unless the
       // user enables it). When on, mpv holds/refills to livePrebufferSecs of
@@ -1312,9 +1288,8 @@ class MpvEngine implements PlayerEngine {
       // into fewer, longer refills, at the cost of a small pause at the live
       // edge (hence default-off). Skipped under DVR (its buffer semantics differ).
       if (s.livePrebufferSecs > 0 && dvrBackMB <= 0) {
-        // fix700: force cache-pause on — the live low-latency profile above sets
-        // cache-pause=no, which would otherwise make the two properties below a
-        // silent no-op when Low-latency is also enabled.
+        // fix700: force cache-pause on explicitly so the pre-buffer properties
+        // below always take effect regardless of any inherited mpv default.
         await np.setProperty('cache-pause', 'yes');
         await np.setProperty('cache-pause-initial', 'yes');
         await np.setProperty('cache-pause-wait', s.livePrebufferSecs.toString());
@@ -1411,7 +1386,6 @@ class MpvEngine implements PlayerEngine {
       ' multiViewMode=$multiViewMode'
       ' demuxerMB=$demuxerMB'
       ' bufferSizeMB=${(previewMode && !multiViewMode) ? s.bufferSizeMB ~/ 2 : s.bufferSizeMB}'
-      ' lowLatency=${s.lowLatency}'
       ' netTimeoutSecs=${s.devNetworkTimeoutSecs}'
       ' tlsVerify=${ignoreSsl ? "no(source)" : (s.devTlsVerify ? "yes" : "no")}'
       ' videoSync=${s.devVideoSync.value}'

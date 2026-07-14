@@ -82,22 +82,6 @@ const _helpForceTvMode = (
       'and tablets where touch controls are easier to use.',
 );
 
-const _helpLowLatency = (
-  title: 'Low Latency (Live TV)',
-  body:
-      'Reduces the delay between the live broadcast and what you see on '
-      'screen.\n\n'
-      'Default: OFF.\n\n'
-      'ON: Requests the lowest-latency HLS behavior and reduces buffering. '
-      'Useful for live sports or events where being several seconds behind '
-      'matters. May reduce picture quality and can make unstable streams '
-      'buffer more often.\n\n'
-      'OFF: Uses normal buffering for smoother playback and better quality '
-      'selection on stable connections. Recommended for most users.\n\n'
-      'This mainly affects HLS streams. Non-HLS streams (MPEG-TS, RTMP) '
-      'may not benefit.',
-);
-
 const _helpRefreshOnStart = (
   title: 'Refresh Sources on Start',
   body:
@@ -220,8 +204,6 @@ const _helpLiveCacheSecs = (
       'Decreasing: Uses less RAM and reduces live delay. May buffer more '
       'often on weak Wi-Fi or unreliable providers.\n\n'
       'Interacts with:\n'
-      '• Low Latency mode — reduces or bypasses this buffer for a more '
-      'live feed at the cost of stability.\n'
       '• Livestream Demuxer Buffer — the cache lives inside the demuxer '
       'buffer; a large cache needs enough demuxer MB to hold it.',
 );
@@ -3126,15 +3108,6 @@ class _SettingsState extends State<SettingsView> {
                             updateSettings(); // persist
                           },
                         ),
-                      _switchTile(
-                        label: "Low latency livestreams",
-                        value: settings.lowLatency,
-                        help: _helpLowLatency,
-                        onChanged: (v) {
-                          setState(() => settings.lowLatency = v);
-                          updateSettings();
-                        },
-                      ),
                       _switchTile(
                         label: "Hardware decoding",
                         value: settings.hwDecode,

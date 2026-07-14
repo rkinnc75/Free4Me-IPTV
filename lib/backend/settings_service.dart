@@ -25,7 +25,6 @@ const lastSeenVersion = "lastSeenVersion";
 // moved to a file-based sidecar (AppLog.readClearedVersionMarker); the DB key
 // was dead code.
 const forceTvMode = "forceTVMode";
-const lowLatencyProp = "streamCaching";
 
 // New keys added by Free4Me-IPTV fork
 const liveCacheSecsProp = "liveCacheSecs";
@@ -202,7 +201,6 @@ class SettingsService {
     var movies = settingsMap[showMovies];
     var series = settingsMap[showSeries];
     var forceTV = settingsMap[forceTvMode];
-    var lowLatency = settingsMap[lowLatencyProp];
 
     var liveSecs = settingsMap[liveCacheSecsProp];
     var liveMB = settingsMap[liveDemuxerMaxMBProp];
@@ -269,7 +267,6 @@ class SettingsService {
     if (movies != null) settings.showMovies = int.parse(movies) == 1;
     if (series != null) settings.showSeries = int.parse(series) == 1;
     if (forceTV != null) settings.forceTVMode = int.parse(forceTV) == 1;
-    if (lowLatency != null) settings.lowLatency = int.parse(lowLatency) == 1;
 
     if (liveSecs != null) settings.liveCacheSecs = int.parse(liveSecs);
     if (liveMB != null) settings.liveDemuxerMaxMB = int.parse(liveMB);
@@ -537,7 +534,6 @@ class SettingsService {
     settingsMap[showMovies] = (settings.showMovies ? 1 : 0).toString();
     settingsMap[showSeries] = (settings.showSeries ? 1 : 0).toString();
     settingsMap[forceTvMode] = (settings.forceTVMode ? 1 : 0).toString();
-    settingsMap[lowLatencyProp] = (settings.lowLatency ? 1 : 0).toString();
 
     settingsMap[liveCacheSecsProp] = settings.liveCacheSecs.toString();
     settingsMap[liveDemuxerMaxMBProp] = settings.liveDemuxerMaxMB.toString();

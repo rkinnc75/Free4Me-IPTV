@@ -37,7 +37,6 @@ class Settings {
   ViewType defaultView;
   bool refreshOnStart;
   bool showLivestreams;
-  bool lowLatency;
   bool showMovies;
   bool showSeries;
   bool forceTVMode;
@@ -350,7 +349,6 @@ class Settings {
     this.defaultView = ViewType.all,
     this.refreshOnStart = false,
     this.showLivestreams = true,
-    this.lowLatency = false,
     this.showMovies = true,
     this.showSeries = true,
     this.forceTVMode = false,
@@ -559,10 +557,6 @@ class Settings {
     s.streamScanTimeoutSecs = isTV ? 10 : 8;
 
     s.multiViewAutoRestoreChannels = true;
-
-    // Low-latency mode disables back-buffer and tightens cache; on shaky
-    // providers it produces more disconnects than it prevents.
-    s.lowLatency = false;
 
     // fix394: Developer / libmpv advanced tunables — defaults match libmpv
     // upstream exactly. The 18 new fields are identical for TV and phone
