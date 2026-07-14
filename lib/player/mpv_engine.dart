@@ -1261,6 +1261,26 @@ class MpvEngine implements PlayerEngine {
       if (s.lowLatency && dvrBackMB <= 0) {
         // Low latency only when DVR is NOT active — DVR needs the back buffer.
         await np.setProperty('profile', 'low-latency');
+        // fix745: undo the two low-latency profile options that BREAK decoding
+        // (root cause of the S938U "phone never hardware-decodes" outage —
+        // every hw open died with "Could not open codec" the moment Low
+        // latency mode was enabled, on every app version):
+        //  • demuxer-lavf-probe-info=nostreams + analyzeduration=0.1 skip
+        //    stream probing, so a mid-stream live-TS join reaches the decoder
+        //    with NO SPS/PPS extradata. ffmpeg's h264_mediacodec must build
+        //    the MediaCodec csd buffers from extradata at configure(), so
+        //    hardware ALWAYS failed to open; software parses SPS/PPS in-band
+        //    and survived, masking this as a broken phone decoder. Restore
+        //    mpv defaults (auto probe, 0 = libavformat's own analyze cap):
+        //    identical to the proven non-low-latency path, and lavf returns
+        //    as soon as codec params are found (~100s of ms on live TS).
+        await np.setProperty('demuxer-lavf-probe-info', 'auto');
+        await np.setProperty('demuxer-lavf-analyzeduration', '0');
+        //  • vd-lavc-threads=1 single-threads the SOFTWARE decoder —
+        //    unwatchable for 1080p60 on weak SoCs (low-RAM TVs route to
+        //    software by design). 0 = auto (per-core); mediacodec ignores it.
+        //    (Same post-profile override pattern as fix700's cache-pause.)
+        await np.setProperty('vd-lavc-threads', '0');
         await np.setProperty('demuxer-max-back-bytes', '0');
       } else {
         // fix370/MED-1: DVR active wins over low-latency. Previously

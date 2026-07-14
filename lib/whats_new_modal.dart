@@ -6,6 +6,21 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.48': [
+    'Fixed: turning on "Low latency mode" silently broke hardware video '
+        'decoding — every channel fell back to software decoding (and on '
+        'older versions could fail to play at all). Low latency mode now '
+        'keeps hardware decoding working, and its software fallback uses all '
+        'CPU cores instead of one. If 4.1.47 auto-switched your device to '
+        'software decoding, this update re-tests hardware automatically.',
+  ],
+  '4.1.47': [
+    'If hardware video decoding fails on several channels in a row, the app '
+        'now switches this device to software decoding automatically (and '
+        'un-sticks itself after an app update), instead of failing the same '
+        'way on every channel. "Force hardware decode" yields to this '
+        'safety switch.',
+  ],
   '4.1.46': [
     'Channels whose stream can\'t use hardware decoding (often 1080i sports '
         'feeds) are now remembered, so the app skips the doomed hardware '
