@@ -54,8 +54,11 @@ void main() {
       'forceHwDecode is off', () {
     final eng = File('lib/player/mpv_engine.dart').readAsStringSync();
     expect(eng.contains('Sql.isHwdecBlocklisted(chUrl)'), isTrue);
-    expect(eng.contains("hwdecMode != 'no' &&"), isTrue);
-    expect(eng.contains('!s.forceHwDecode &&'), isTrue);
+    // fix744 restructured this into hw-chosen -> device-unhealthy -> per-URL;
+    // pin that the per-URL blocklist still sits behind BOTH the hw-chosen outer
+    // gate AND (forceHw off) — it is the else-branch of the device check.
+    expect(eng.contains("if (hwdecMode != 'no') {"), isTrue);
+    expect(eng.contains('} else if (!s.forceHwDecode &&'), isTrue);
     expect(eng.contains('if (blocklistHit) hwdecMode = \'no\';'), isTrue);
     // the applied mode is exposed so the player can gate WRITES
     expect(eng.contains('String? appliedHwdecMode;'), isTrue);

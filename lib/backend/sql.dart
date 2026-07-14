@@ -3303,6 +3303,70 @@ class Sql {
         'Sql: hwdec blocklist upsert (fix743) url-hash=${url.hashCode}');
   }
 
+  /// fix744: how many DISTINCT streams must fail the hw-probe (software
+  /// fallback confirmed each time) WITHIN [hwdecUnhealthyClusterHours] before
+  /// the DEVICE's decoder is judged broken and ALL streams prefer software.
+  static const int hwdecDeviceUnhealthyThreshold = 3;
+
+  /// fix744: failures must CLUSTER within this window to trip the device-level
+  /// verdict. Without it, a few odd-profile streams (e.g. 1080i regional
+  /// sports) hit weeks apart on an otherwise-healthy device would accumulate to
+  /// the threshold and needlessly downgrade the whole device to software. The
+  /// S938U case (every channel fails in one session) trips immediately;
+  /// scattered one-off quirks never accumulate.
+  static const int hwdecUnhealthyClusterHours = 48;
+
+  /// fix744: app_meta key holding the sticky "device hwdec is broken" verdict
+  /// as "{app_version}|{tripped_at_utc_sec}".
+  static const String hwdecUnhealthyMarkerKey = 'hwdec_unhealthy_marker';
+
+  /// fix744: true when the DEVICE's mediacodec decoder is judged broken — the
+  /// HW probe failed on at least [hwdecDeviceUnhealthyThreshold] DISTINCT
+  /// streams clustered within [hwdecUnhealthyClusterHours] (e.g. an OS update
+  /// that regressed HW decode of FPS-0 live TS, as on the S938U). The engine
+  /// then prefers software globally, overriding even forceHwDecode, until the
+  /// verdict ages out or the app / libmpv updates.
+  ///
+  /// The verdict is STICKY: once tripped it is latched into app_meta and
+  /// honored for the full [hwdecBlocklistTtlDays] even though the blocklist
+  /// rows freeze (we stop attempting hardware, so no new failures are recorded)
+  /// — otherwise the cluster window would lapse and the device would re-probe
+  /// the broken decoder every 48h. Scoped to the current app version, so a
+  /// release re-probes hardware automatically (self-healing, like
+  /// [isHwdecBlocklisted]). One indexed COUNT per open until tripped, then a
+  /// single app_meta read; short-circuited by the caller once unhealthy so it
+  /// never stacks with the per-URL lookup.
+  static Future<bool> isHwdecDeviceUnhealthy() async {
+    final info = await PackageInfo.fromPlatform();
+    final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    // Sticky latch: honor a prior verdict for this version until it ages out.
+    final marker = await getAppMeta(hwdecUnhealthyMarkerKey);
+    if (marker != null) {
+      final parts = marker.split('|');
+      if (parts.length == 2 && parts[0] == info.version) {
+        final trippedAt = int.tryParse(parts[1]) ?? 0;
+        if ((nowSec - trippedAt) / 86400.0 < hwdecBlocklistTtlDays) return true;
+      }
+    }
+    // Not latched: count DISTINCT confirmed HW failures on this version that
+    // are clustered within the recent window.
+    var db = await DbFactory.db;
+    final cutoff = nowSec - (hwdecUnhealthyClusterHours * 3600);
+    final rows = await db.getAll(
+        'SELECT COUNT(*) AS n FROM hwdec_blocklist'
+        ' WHERE app_version = ? AND failed_at_utc >= ?',
+        [info.version, cutoff]);
+    final n = rows.isEmpty ? 0 : ((rows.first['n'] as int?) ?? 0);
+    if (n >= hwdecDeviceUnhealthyThreshold) {
+      await setAppMeta(hwdecUnhealthyMarkerKey, '${info.version}|$nowSec');
+      AppLog.warn('Sql: device hwdec judged UNHEALTHY (fix744) — $n failures '
+          'within ${hwdecUnhealthyClusterHours}h on ${info.version}; '
+          'software-only for ${hwdecBlocklistTtlDays}d (self-heals on update)');
+      return true;
+    }
+    return false;
+  }
+
   static Future<void> setAppMeta(String key, String value) async {
     final db = await DbFactory.db;
     await db.execute(

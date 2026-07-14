@@ -1180,25 +1180,34 @@ class MpvEngine implements PlayerEngine {
         isTV: isTV,
         forceHardware: s.forceHwDecode, // fix505: advanced override
       );
-      // fix743: persisted probe blocklist — this URL recently failed the hw
-      // probe on this app version and mpv's software fallback was confirmed
-      // by a decoded frame (fix742 latch). Skip the doomed probe entirely so
-      // reconnects and later tunes of the channel start faster.
-      // forceHwDecode bypasses the blocklist (manual escape hatch); TTL and
-      // app-version checks live in Sql.isHwdecBlocklisted.
+      // fix743/fix744: skip a hardware probe that is known to fail.
+      //  • fix744 (device-level): mediacodec has failed the probe on several
+      //    DISTINCT streams recently (software fallback confirmed each time),
+      //    so the DEVICE's decoder is broken — e.g. an OS update that
+      //    regressed HW decode of FPS-0 live TS. Prefer software for ALL
+      //    streams from the first open (no per-channel penalty). This WINS
+      //    over forceHwDecode: a demonstrably broken decoder must not be
+      //    force-probed back into the reconnect trap. Self-heals via the TTL /
+      //    per-release app_version reset in Sql.isHwdecDeviceUnhealthy.
+      //  • fix743 (per-URL): a single channel failed the probe; skip it on
+      //    later tunes. forceHwDecode re-probes each channel (manual escape).
       var blocklistHit = false;
+      var deviceUnhealthy = false;
       final chUrl = channel.url;
-      if (hwdecMode != 'no' &&
-          !s.forceHwDecode &&
-          chUrl != null &&
-          chUrl.isNotEmpty) {
-        blocklistHit = await Sql.isHwdecBlocklisted(chUrl);
-        if (blocklistHit) hwdecMode = 'no';
+      if (hwdecMode != 'no') {
+        deviceUnhealthy = await Sql.isHwdecDeviceUnhealthy();
+        if (deviceUnhealthy) {
+          hwdecMode = 'no';
+        } else if (!s.forceHwDecode && chUrl != null && chUrl.isNotEmpty) {
+          blocklistHit = await Sql.isHwdecBlocklisted(chUrl);
+          if (blocklistHit) hwdecMode = 'no';
+        }
       }
       appliedHwdecMode = hwdecMode;
       await np.setProperty('hwdec', hwdecMode);
       AppLog.info('Player: hwdec=$hwdecMode isTV=$isTV isTegra=$isTegra '
           'isLowRam=$isLowRam forceHw=${s.forceHwDecode}'
+          '${deviceUnhealthy ? ' device-unhealthy=hw-off (fix744)' : ''}'
           '${blocklistHit ? ' blocklist=hit (fix743)' : ''} (fix395/505)');
     } else if (s.hwDecode && Platform.isIOS) {
       appliedHwdecMode = 'videotoolbox'; // fix743

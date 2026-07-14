@@ -3158,7 +3158,13 @@ class _SettingsState extends State<SettingsView> {
                               'Turn this on to force hardware decode anyway — it '
                               'may be smoother for high-bitrate / 4K streams, but '
                               'if audio and video desync, turn it back off. '
-                              'Requires Hardware decoding to be on. Default: off.',
+                              'Requires Hardware decoding to be on. Default: off.\n\n'
+                              'Note: if this device’s hardware decoder fails to '
+                              'open several channels in a row, the app switches it '
+                              'to software automatically and this override is '
+                              'ignored until the next app update (fix744) — so '
+                              'playback keeps working on a device whose hardware '
+                              'decoder is broken.',
                         ),
                         onChanged: (v) {
                           setState(() => settings.forceHwDecode = v);
