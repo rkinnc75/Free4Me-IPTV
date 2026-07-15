@@ -1,0 +1,360 @@
+diff --git a/lib/player.dart b/lib/player.dart
+index c5aef5e..68e11e4 100644
+--- a/lib/player.dart
++++ b/lib/player.dart
+@@ -294,6 +294,24 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+   Duration? _stallLastPos;
+   DateTime? _stallLastAdvanceAt;
+   bool _enginePlaying = false;
++  // fix753: true only while a pause WE asked for is in effect (user toggle,
++  // cast handoff, sleep timer, overlay handoff; DVR resume and user resume
++  // clear it, and every open() clears it). This is the PRIMARY stall
++  // discriminator. Five theories of sensor-based discrimination (mpv `pause`,
++  // `eof`, demuxTime progress, cacheSpeed==0, cache depth) were each tested
++  // against field data and falsified — during the measured wedge mpv SETS
++  // pause=yes itself with a FULL 95s buffer, and a settled user pause is
++  // sensor-identical to the wedge. Intent is the only reliable separator, and
++  // its coverage is exhaustive: this app has no MediaSession/audio_service/
++  // headset-button handling, so nothing outside these call sites can request
++  // a pause (verified 2026-07-14; an incoming ringing call does not stop
++  // playback at all on the S938U).
++  bool _pauseRequested = false;
++  // fix753: only accumulate stall time while the app is foregrounded — an
++  // ANSWERED call (the one OS-pause case field data could not capture) takes
++  // the app inactive/backgrounded, so gating on resumed closes that class
++  // without enumerating pause causes.
++  bool _lifecycleResumed = true;
+   // A live position frozen this long, while playing and not buffering, is a
+   // dead feed (normal live playback advances ~1s/s) → reconnect.
+   static const int _stallWatchdogSecs = 15;
+@@ -852,6 +870,15 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+   void _checkStall(Timer _) {
+     // Keep the baseline fresh whenever steady progress isn't expected, so a
+     // pause / buffering / grace window can never be mistaken for a stall.
++    //
++    // fix753: mpv's playing flag is NOT a bail condition — the measured S938U
++    // wedge reports playing=false AND pause=yes (mpv self-pauses at a provider
++    // PTS discontinuity with a full buffer), so bailing on either would make
++    // this watchdog structurally blind to the exact failure it exists for
++    // (fix747's original defect). The exemptions are INTENT and CONTEXT:
++    // a pause we requested, DVR (frozen position is normal while scrubbing),
++    // and the app not being foregrounded (an answered call / backgrounding
++    // legitimately halts playback without any pause request of ours).
+     if (!mounted ||
+         exiting ||
+         _exitInvoked ||
+@@ -859,12 +886,19 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+         _isCasting ||
+         _startupGrace ||
+         _bufferingState != null ||
+-        !_enginePlaying) {
++        _pauseRequested ||
++        !_lifecycleResumed ||
++        _engine.dvrActive) {
+       _stallLastPos = _engine.position;
+       _stallLastAdvanceAt = DateTime.now();
+       return;
+     }
+     final pos = _engine.position;
++    // fix753 (measured constraint): ANY position change — forward OR backward,
++    // including the provider PTS resets that jump to negative values
++    // (ABC30: 36002ms → -10031ms) — counts as progress and refreshes the
++    // baseline. Only a truly unchanged position accumulates stall time; the
++    // measured wedge is exactly frozen (2136ms constant for minutes).
+     if (_stallLastPos == null || pos != _stallLastPos) {
+       _stallLastPos = pos;
+       _stallLastAdvanceAt = DateTime.now();
+@@ -873,17 +907,49 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+     final frozenFor =
+         DateTime.now().difference(_stallLastAdvanceAt ?? DateTime.now());
+     if (frozenFor.inSeconds >= _stallWatchdogSecs) {
+-      AppLog.warn(
+-        'Player: stall watchdog → reconnect — live position frozen at '
+-        '${pos.inSeconds}s for ${frozenFor.inSeconds}s with no buffering '
+-        'signal channel="${widget.channel.name}"',
+-      );
+-      _stallWatchdog?.cancel();
+-      _stallWatchdog = null;
+-      onDisconnect(reason: 'stall watchdog');
++      unawaited(_confirmAndFireStall(pos, frozenFor));
+     }
+   }
+ 
++  /// fix753: firing-time heuristic. cacheSpeed==0 is NOT a wedge discriminator
++  /// (a settled pause also reads 0 once its buffer fills, and the measured
++  /// wedge holds a FULL 95s buffer) — but during the first seconds of any
++  /// unflagged pause the demuxer is still topping up (speed > 0), so this
++  /// check delays a false fire long enough for the intent/lifecycle gates to
++  /// be the real protection. A null read (property unavailable / engine
++  /// disposed) is NON-confirming: never fire on missing data.
++  Future<void> _confirmAndFireStall(Duration pos, Duration frozenFor) async {
++    String? speed;
++    final eng = _engine;
++    if (eng is MpvEngine) {
++      speed = await eng.readCacheSpeed();
++    }
++    // Re-validate after the await — the world may have moved.
++    if (!mounted ||
++        exiting ||
++        _exitInvoked ||
++        _isReconnecting ||
++        _pauseRequested ||
++        !_lifecycleResumed ||
++        _stallWatchdog == null) {
++      return;
++    }
++    if (_engine.position != pos) return; // advanced during the read
++    if (speed == null || speed != '0') {
++      // Data still flowing (or unreadable) — hold fire, keep accumulating.
++      return;
++    }
++    AppLog.warn(
++      'Player: stall watchdog → reconnect — live position frozen at '
++      '${pos.inSeconds}s for ${frozenFor.inSeconds}s with no buffering '
++      'signal enginePlaying=$_enginePlaying cacheSpeed=$speed (fix753) '
++      'channel="${widget.channel.name}"',
++    );
++    _stallWatchdog?.cancel();
++    _stallWatchdog = null;
++    onDisconnect(reason: 'stall watchdog');
++  }
++
+   String _playbackUrl() {
+     if (widget.overrideUrl != null) return widget.overrideUrl!;
+     final id = widget.channel.id;
+@@ -1214,6 +1280,15 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+     _codecFallbackTimer = null;
+     _codecFallbackConfirmed = false;
+     _codecErrorLogged = false;
++    // fix753: a fresh open (zap/reconnect) is always an intent to PLAY — clear
++    // any stale pause intent so the stall watchdog can never be left disabled
++    // by a pause that belonged to a previous channel/session. (Adopt-path
++    // note: promote-to-fullscreen adopts an engine WITHOUT open(), so this
++    // reset does not run there; the flag construct-initialises to false, and
++    // an engine adopted mid-stability-pause will therefore be reconnected by
++    // the watchdog after the threshold — acceptable, and today the only
++    // recovery an orphaned stability pause has.)
++    _pauseRequested = false;
+     final timeout = Duration(seconds: widget.settings.openTimeoutSecs);
+     try {
+     while (true) {
+@@ -1551,6 +1626,7 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+         // handlers are guarded by _isCasting below so pausing can't trigger a
+         // spurious reconnect.
+         try {
++          _pauseRequested = true; // fix753: intentional pause (cast handoff)
+           await _engine.pause();
+         } catch (_) {}
+         setState(() => _isCasting = true);
+@@ -1720,7 +1796,10 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+   Future<void> _dvrGoLive() async {
+     if (!_engine.dvrActive) return;
+     await _engine.seek(const Duration(days: 1)); // mpv clamps to live edge
+-    if (!_engine.isPlaying) await _engine.play();
++    if (!_engine.isPlaying) {
++      _pauseRequested = false; // fix753: resumed (DVR)
++      await _engine.play();
++    }
+     AppLog.info('Player: DVR back to live edge');
+   }
+ 
+@@ -1865,8 +1944,10 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+   /// fix576: toggle play/pause (used by D-pad OK / center).
+   Future<void> _togglePlayPause() async {
+     if (_engine.isPlaying) {
++      _pauseRequested = true; // fix753: intentional pause (user)
+       await _engine.pause();
+     } else {
++      _pauseRequested = false; // fix753: user resumed
+       // fix652: optional rewind on resume — VOD only. A paused live-DVR
+       // stream is already behind the live edge by the pause length, so a
+       // further skip back would just double the lag.
+@@ -2062,6 +2143,7 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+         Navigator.of(context).popUntil((r) => r == route);
+       }
+       try {
++        _pauseRequested = true; // fix753: intentional pause (sleep timer)
+         await _engine.pause();
+       } catch (_) {}
+       if (mounted) onExit();
+@@ -2398,6 +2480,7 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+     // mini's open (a brief re-buffer on the mini is acceptable vs. a dead
+     // tile). PlayerEngine exposes only pause() (no stop()).
+     try {
++      _pauseRequested = true; // fix753: intentional pause (overlay handoff)
+       await _engine.pause();
+     } catch (_) {}
+     await OverlayPlayerController.instance.startOverlay(
+@@ -2591,6 +2674,12 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
+   @override
+   void didChangeAppLifecycleState(AppLifecycleState state) {
+     super.didChangeAppLifecycleState(state);
++    // fix753: the stall watchdog only accumulates while foregrounded. An
++    // ANSWERED phone call (the one OS-pause case field data could not
++    // capture — a RINGING call was measured to not stop playback at all)
++    // takes the app inactive/paused; without this gate that would read as an
++    // unexplained freeze and reconnect a legitimately-halted stream.
++    _lifecycleResumed = state == AppLifecycleState.resumed;
+     if (state == AppLifecycleState.paused &&
+         widget.channel.mediaType == MediaType.movie) {
+       final id = widget.channel.id;
+diff --git a/lib/player/mpv_engine.dart b/lib/player/mpv_engine.dart
+index 808d4d5..d74b98b 100644
+--- a/lib/player/mpv_engine.dart
++++ b/lib/player/mpv_engine.dart
+@@ -773,6 +773,22 @@ class MpvEngine implements PlayerEngine {
+   /// format/colour them. `estimated-vf-fps` falling below `container-fps`, a
+   /// climbing `decoder-frame-drop-count`, or a large `avsync` are the headline
+   /// stutter signals; `hwdec-current` empty/"no" means software decode.
++  /// fix753: single-property read for the stall watchdog's firing heuristic.
++  /// The watchdog must NOT depend on [readPlaybackStats] — that poll only runs
++  /// while debug logging is on, and a watchdog that only works with debug
++  /// logging enabled would pass every gate and fail in production. Returns
++  /// null when the property is unavailable (disposed / not native / throws):
++  /// the caller treats null as NON-confirming (never as zero).
++  Future<String?> readCacheSpeed() async {
++    if (_disposed || _player.platform is! mk.NativePlayer) return null;
++    final np = _player.platform as mk.NativePlayer;
++    try {
++      return await np.getProperty('cache-speed');
++    } catch (_) {
++      return null;
++    }
++  }
++
+   Future<Map<String, String>> readPlaybackStats() async {
+     if (_disposed || _player.platform is! mk.NativePlayer) return const {};
+     final np = _player.platform as mk.NativePlayer;
+diff --git a/lib/whats_new_modal.dart b/lib/whats_new_modal.dart
+index dbd0bf8..6c6aec8 100644
+--- a/lib/whats_new_modal.dart
++++ b/lib/whats_new_modal.dart
+@@ -6,6 +6,13 @@ import 'package:open_tv/backend/settings_service.dart';
+ /// in that minor". The dialog shows all entries for [version] whose key is
+ /// a prefix of the running version string.
+ const _changelog = <String, List<String>>{
++  '4.1.54': [
++    'Fixed: a live channel that silently froze on one frame (no spinner, no '
++        'error — some feeds do this after a timestamp glitch) now reconnects '
++        'itself within about 15 seconds instead of sitting frozen until you '
++        'exit. Pausing a stream yourself is untouched — the player only '
++        'recovers freezes nobody asked for.',
++  ],
+   '4.1.53': [
+     'Fixed a serious refresh bug that could leave a source with NO channels. '
+         'If the provider failed to send one kind of content (live channels, '
+diff --git a/pubspec.yaml b/pubspec.yaml
+index 93e6af6..ed287d4 100644
+--- a/pubspec.yaml
++++ b/pubspec.yaml
+@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
+ # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+ # In Windows, build-name is used as the major, minor, and patch parts
+ # of the product and file versions while build-number is used as the build suffix.
+-version: 4.1.53+752
++version: 4.1.54+753
+ 
+ environment:
+   sdk: ^3.10.7
+diff --git a/test/fix747_stall_watchdog_test.dart b/test/fix747_stall_watchdog_test.dart
+index f0e9043..100fd01 100644
+--- a/test/fix747_stall_watchdog_test.dart
++++ b/test/fix747_stall_watchdog_test.dart
+@@ -6,11 +6,26 @@
+ // position-progress watchdog: if a live stream's position stops advancing
+ // while playing and not buffering, it reconnects.
+ //
+-// Design pins:
+-// - Gated on _enginePlaying (tracked from playingStream) so a user/DVR pause
+-//   — a legitimately frozen position — never triggers a reconnect.
++// Design pins (REVISED by fix753 — fix747's central assumption was falsified
++// by field data):
++// - fix747 assumed a silent stall keeps playing=true and bailed on
++//   `!_enginePlaying`. The measured S938U wedge (2026-07-14, ABC30 Fresno)
++//   reports playing=false AND mpv self-sets pause=yes with a FULL 95s buffer —
++//   so bailing on EITHER flag makes the watchdog structurally blind to the
++//   exact failure it exists for, while ALSO refreshing its own baseline every
++//   tick. Five sensor discriminators (mpv pause, eof, demuxTime progress,
++//   cacheSpeed==0, cache depth) were each tested against field logs and
++//   falsified: a settled user pause is sensor-identical to the wedge.
++// - fix753 keys on INTENT (_pauseRequested: user/cast/sleep/overlay set it,
++//   resume + every open() clear it) plus a LIFECYCLE gate (only accumulate
++//   while resumed — an answered call backgrounds the app), with cacheSpeed==0
++//   as a firing-time heuristic only (null/nonzero = hold fire).
++// - ANY position change — forward, backward, or the provider PTS resets that
++//   jump negative (36002ms → -10031ms) — refreshes the baseline; only a truly
++//   unchanged position accumulates.
+ // - Stands down while buffering (the _bufferingWatchdog owns that window),
+-//   during startup grace, while casting/reconnecting; re-arms on buffering=false.
++//   during startup grace, while casting/reconnecting, while DVR is active;
++//   re-arms on buffering=false.
+ // - Livestream-only (VOD position legitimately holds when paused/ended).
+ 
+ import 'dart:io';
+@@ -33,17 +48,59 @@ void main() {
+         isTrue);
+   });
+ 
+-  test('fires onDisconnect only after a real frozen-while-playing stall', () {
++  test('fires onDisconnect only after a real unexplained freeze', () {
+     expect(player.contains("onDisconnect(reason: 'stall watchdog')"), isTrue);
+-    // the guard resets the baseline (never fires) when progress is not expected
+-    expect(player.contains('!_enginePlaying) {'), isTrue);
+     final idxCheck = player.indexOf('void _checkStall(Timer _) {');
+     expect(idxCheck, greaterThan(0));
+-    final body = player.substring(idxCheck, idxCheck + 1400);
+-    // exempts pause / buffering / grace / casting / reconnect
+-    expect(body.contains('_bufferingState != null'), isTrue);
+-    expect(body.contains('_startupGrace'), isTrue);
++    final body = player.substring(idxCheck, idxCheck + 3200);
++    // guard clause only — the warn line legitimately REPORTS enginePlaying.
++    final guard = body.substring(0, body.indexOf('final pos = _engine.position;'));
++    // exempts buffering / grace / casting / reconnect / requested pause /
++    // backgrounded app / DVR scrub
++    expect(guard.contains('_bufferingState != null'), isTrue);
++    expect(guard.contains('_startupGrace'), isTrue);
++    expect(guard.contains('_pauseRequested ||'), isTrue);
++    expect(guard.contains('!_lifecycleResumed ||'), isTrue);
++    expect(guard.contains('_engine.dvrActive) {'), isTrue);
++    // fix753: an UNEXPLAINED playing=false IS the wedge — bailing on mpv's
++    // playing flag re-introduces fix747's structural blindness (the S938U
++    // wedge reports playing=false and refreshes the baseline forever).
++    expect(guard.contains('_enginePlaying'), isFalse,
++        reason: 'fix753: the guard must not consult mpv\'s playing flag');
+     expect(body.contains('frozenFor.inSeconds >= _stallWatchdogSecs'), isTrue);
++    // threshold reached -> firing goes through the async confirmation
++    expect(body.contains('unawaited(_confirmAndFireStall(pos, frozenFor));'),
++        isTrue);
++  });
++
++  test('fix753: firing-time heuristic — cacheSpeed read by the watchdog '
++      'itself, null/nonzero holds fire', () {
++    // the watchdog does its OWN property read (STATS only polls with debug
++    // logging on; a debug-only watchdog fails silently in production)
++    expect(player.contains('await eng.readCacheSpeed();'), isTrue);
++    expect(player.contains("if (speed == null || speed != '0') {"), isTrue);
++    // post-await revalidation before firing
++    final idxFire = player.indexOf('Future<void> _confirmAndFireStall(');
++    expect(idxFire, greaterThan(0));
++    final fire = player.substring(idxFire, idxFire + 2200);
++    expect(fire.contains('if (_engine.position != pos) return;'), isTrue);
++    expect(fire.contains('_pauseRequested ||'), isTrue);
++    expect(fire.contains('!_lifecycleResumed ||'), isTrue);
++  });
++
++  test('fix753: every intentional pause sets the intent flag; resume and '
++      'every open() clear it; lifecycle tracked', () {
++    // set at: user toggle, cast handoff, sleep timer, overlay handoff
++    expect(RegExp(r'_pauseRequested = true;').allMatches(player).length,
++        greaterThanOrEqualTo(4));
++    // cleared at: user resume, DVR resume, per-open reset
++    expect(RegExp(r'_pauseRequested = false;').allMatches(player).length,
++        greaterThanOrEqualTo(3));
++    // foreground gate maintained from the lifecycle callback
++    expect(
++        player.contains(
++            '_lifecycleResumed = state == AppLifecycleState.resumed;'),
++        isTrue);
+   });
+ 
+   test('lifecycle: armed on buffering=false, stood down on buffering / '

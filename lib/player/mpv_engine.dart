@@ -773,6 +773,22 @@ class MpvEngine implements PlayerEngine {
   /// format/colour them. `estimated-vf-fps` falling below `container-fps`, a
   /// climbing `decoder-frame-drop-count`, or a large `avsync` are the headline
   /// stutter signals; `hwdec-current` empty/"no" means software decode.
+  /// fix753: single-property read for the stall watchdog's firing heuristic.
+  /// The watchdog must NOT depend on [readPlaybackStats] — that poll only runs
+  /// while debug logging is on, and a watchdog that only works with debug
+  /// logging enabled would pass every gate and fail in production. Returns
+  /// null when the property is unavailable (disposed / not native / throws):
+  /// the caller treats null as NON-confirming (never as zero).
+  Future<String?> readCacheSpeed() async {
+    if (_disposed || _player.platform is! mk.NativePlayer) return null;
+    final np = _player.platform as mk.NativePlayer;
+    try {
+      return await np.getProperty('cache-speed');
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<Map<String, String>> readPlaybackStats() async {
     if (_disposed || _player.platform is! mk.NativePlayer) return const {};
     final np = _player.platform as mk.NativePlayer;

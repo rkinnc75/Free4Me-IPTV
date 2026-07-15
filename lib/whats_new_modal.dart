@@ -6,6 +6,13 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.54': [
+    'Fixed: a live channel that silently froze on one frame (no spinner, no '
+        'error — some feeds do this after a timestamp glitch) now reconnects '
+        'itself within about 15 seconds instead of sitting frozen until you '
+        'exit. Pausing a stream yourself is untouched — the player only '
+        'recovers freezes nobody asked for.',
+  ],
   '4.1.53': [
     'Fixed a serious refresh bug that could leave a source with NO channels. '
         'If the provider failed to send one kind of content (live channels, '
