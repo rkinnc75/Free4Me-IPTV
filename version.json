@@ -1,19 +1,19 @@
 {
-  "latest": "4.1.54",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.54",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.54/Free4Me-IPTV-4.1.54-universal.apk",
-  "releaseNotes": "\u2022 Fixed: a live channel that silently froze on one frame (no spinner, no error \u2014 some feeds do this after a timestamp glitch) now reconnects itself within about 15 seconds instead of sitting frozen until you exit. Pausing a stream yourself is untouched \u2014 the player only recovers freezes nobody asked for.",
+  "latest": "4.1.55",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.55",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.55/Free4Me-IPTV-4.1.55-universal.apk",
+  "releaseNotes": "\u2022 Playback: channels in codecs the device can't hardware-decode (e.g. AV1 or VP9 on many TV boxes) now go straight to software decoding instead of failing a hardware attempt first and stalling briefly. Standard live TV (H.264) and 4K (HEVC) stay hardware-accelerated as before.",
   "apkUrls": {
-    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.54/Free4Me-IPTV-4.1.54-arm.apk",
-    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.54/Free4Me-IPTV-4.1.54-arm64.apk",
-    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.54/Free4Me-IPTV-4.1.54-x64.apk",
-    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.54/Free4Me-IPTV-4.1.54-universal.apk"
+    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.55/Free4Me-IPTV-4.1.55-arm.apk",
+    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.55/Free4Me-IPTV-4.1.55-arm64.apk",
+    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.55/Free4Me-IPTV-4.1.55-x64.apk",
+    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.55/Free4Me-IPTV-4.1.55-universal.apk"
   },
   "apkSha256s": {
-    "arm": "59ec7ea10657fb984b0ba431490169246426619c7fd0bfa2268598cf07def402",
-    "arm64": "aec8592e29d0a5f9bc14edf0a6b84dcff47901229c1c08c8c1d5cb0b336b6d23",
-    "x64": "a85f161849efcf043d38215d0574a5411372af6e2881c75d56a5bfabf1d921cc",
-    "universal": "4b727d5b3d2634e9aaf308be140be18080ffc774a3786bd62f328bccba7921fb"
+    "arm": "e31324587fc9031e8bfa7b70cc8212faf246cc9143fe671b49e511316bebf9b4",
+    "arm64": "19be0729ec7542e76950598b525666c9ad5b177803253e6e5b88b4e513aca5b0",
+    "x64": "41a41a45a125ca6c18e8fa56031b1b0ff965c86b6c18ae4c3272d1e0c0cacb15",
+    "universal": "ed55087cb919f405069f928c5750c9128bd38e89289e4380769597f3147359ea"
   },
-  "apkSha256": "4b727d5b3d2634e9aaf308be140be18080ffc774a3786bd62f328bccba7921fb"
+  "apkSha256": "ed55087cb919f405069f928c5750c9128bd38e89289e4380769597f3147359ea"
 }
