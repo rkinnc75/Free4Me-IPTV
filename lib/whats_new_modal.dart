@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.55': [
+    'Playback: channels in codecs the device can\'t hardware-decode (e.g. AV1 '
+        'or VP9 on many TV boxes) now go straight to software decoding instead '
+        'of failing a hardware attempt first and stalling briefly. Standard live '
+        'TV (H.264) and 4K (HEVC) stay hardware-accelerated as before.',
+  ],
   '4.1.54': [
     'Fixed: a live channel that silently froze on one frame (no spinner, no '
         'error — some feeds do this after a timestamp glitch) now reconnects '

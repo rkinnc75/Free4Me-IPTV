@@ -70,6 +70,13 @@ class MpvEngine implements PlayerEngine {
   /// player gate blocklist WRITES on hardware having actually been requested.
   String? appliedHwdecMode;
 
+  /// fix754 (Free4Me-libmpv-harvest §2): the codecs Android mediacodec decodes
+  /// reliably. Everything else (av1/vp9/vp8/vc1/mpeg2/mpeg4/prores) is pushed to
+  /// software per-codec so a device lacking that hardware decoder never fails a
+  /// hw probe + eats a fix742 fallback cycle. h264 = ≈all live IPTV, hevc =
+  /// premium/4K. mpv's default `hwdec-codecs` is a much broader list.
+  static const String _hwdecCodecsAllowlist = 'h264,hevc';
+
   /// fix396: periodic decode heartbeat (full-screen + debug logging only).
   /// The Shield black-screen log had "12 s of silence" — no position lines —
   /// which is the smoking gun for a stalled playhead. This logs cheap CACHED
@@ -1149,6 +1156,17 @@ class MpvEngine implements PlayerEngine {
       // fix748: always request the highest-quality HLS rendition (the former
       // 'min' path belonged to the removed Low-latency mode).
       await np.setProperty('hls-bitrate', 'max');
+    }
+
+    // fix754 (Free4Me-libmpv-harvest §2): constrain WHICH codecs may use the
+    // hardware decoder, set once here so every hwdec branch below AND the
+    // runtime routed switches (setHardwareDecode / promoteToFullScreen, which
+    // only run on an already-opened engine) inherit this session-global mpv
+    // property. Only meaningful when a branch picks a hardware hwdec; a no-op
+    // on the hwdec=no paths. See [_hwdecCodecsAllowlist]. Android only —
+    // iOS videotoolbox handles a broader codec set well.
+    if (Platform.isAndroid && s.hwDecode) {
+      await np.setProperty('hwdec-codecs', _hwdecCodecsAllowlist);
     }
 
     // Preview mode (overlay + multi-view cells): use HARDWARE decode but in
