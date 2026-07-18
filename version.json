@@ -1,19 +1,19 @@
 {
-  "latest": "4.1.57",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.57",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.57/Free4Me-IPTV-4.1.57-universal.apk",
-  "releaseNotes": "\u2022 Fixed a rare scheduled-recording race: if a recording finished while the app was applying an earlier status update, that \"finished/failed\" update could be discarded and the recording could look stuck. Status updates are now drained from a renamed batch file so finish events are not lost.",
+  "latest": "4.1.58",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.58",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.58/Free4Me-IPTV-4.1.58-universal.apk",
+  "releaseNotes": "\u2022 Hardened scheduled-recording status handling: overlapping status refreshes are now serialized, and a rare case where a finished, already-converted recording could be reverted to point at a deleted file is prevented.",
   "apkUrls": {
-    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.57/Free4Me-IPTV-4.1.57-arm.apk",
-    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.57/Free4Me-IPTV-4.1.57-arm64.apk",
-    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.57/Free4Me-IPTV-4.1.57-x64.apk",
-    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.57/Free4Me-IPTV-4.1.57-universal.apk"
+    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.58/Free4Me-IPTV-4.1.58-arm.apk",
+    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.58/Free4Me-IPTV-4.1.58-arm64.apk",
+    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.58/Free4Me-IPTV-4.1.58-x64.apk",
+    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.58/Free4Me-IPTV-4.1.58-universal.apk"
   },
   "apkSha256s": {
-    "arm": "09b6a2e5080e875f0bc9a45c7d519e62a927301889681205c9c4dcf6709af289",
-    "arm64": "c6a19bf1d1c1d2ffdad111f8d1d1b10c3b96de43a7c6f817ed45f97611a5826e",
-    "x64": "a95f57105a7435cfc54ef5aed336812063cb5e81277861fb746ae769f597670e",
-    "universal": "8f25867630ea1bbbaceebe887192d179c68bed426a4759c5497e269ba8364db7"
+    "arm": "ff3cde2398f49a04e453be7d104f64c607c7e67c421a2123e32935d0945aa995",
+    "arm64": "4da8fd70485b8ece7c502c09281d699582cf1a766f8e5b1694ce214c0d1e5126",
+    "x64": "810847c04846cea2e47a90ac8c5fe6d3c66b07c9ed6df363e7af859657bd6eb0",
+    "universal": "effe33f9447adeb2dc24fe8faeafae88c29cb4fa8b7a9730b7b3327296830f7d"
   },
-  "apkSha256": "8f25867630ea1bbbaceebe887192d179c68bed426a4759c5497e269ba8364db7"
+  "apkSha256": "effe33f9447adeb2dc24fe8faeafae88c29cb4fa8b7a9730b7b3327296830f7d"
 }
