@@ -6,6 +6,13 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.57': [
+    'Fixed a rare scheduled-recording race: if a recording finished while the '
+        'app was applying an earlier status update, that "finished/failed" '
+        'update could be discarded and the recording could look stuck. Status '
+        'updates are now drained from a renamed batch file so finish events '
+        'are not lost.',
+  ],
   '4.1.56': [
     'Fixed: on a brand-new install, TV boxes could start in the phone layout '
         'until you restarted the app. The TV interface now appears immediately '

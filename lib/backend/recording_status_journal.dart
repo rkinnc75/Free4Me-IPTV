@@ -22,10 +22,14 @@ import 'package:open_tv/models/recording.dart';
 /// Fix: native no longer touches the DB. It appends one JSON line per status
 /// change to `sr_status.jsonl` in the app files dir. Dart — the SINGLE writer —
 /// drains that journal here, applying each event through Sql.updateRecordingStatus
-/// (sqlite_async), then truncates the file. Append-only file I/O is isolate- and
-/// crash-agnostic; no live Dart engine is needed while capture runs.
+/// (sqlite_async), then deletes the RENAMED processing file. Append-only file I/O
+/// is isolate- and crash-agnostic; no live Dart engine is needed while capture runs.
 ///
 /// Each line: {"id":Int,"status":String,"output_path":String?,"error":String?}
+///
+/// fix756: drain a renamed `sr_status.jsonl.processing` batch, never the live
+/// journal the native service may still be appending to. See section 1/2 of
+/// runbooks/fix756.md for the read/apply/truncate race this removes.
 
 /// fix697: a terminal recording transition surfaced by [RecordingStatusJournal.drain]
 /// (done or failed), used to show an in-app completion SnackBar.
@@ -52,8 +56,29 @@ class RecordingStatusJournal {
     File f;
     try {
       f = await _file();
-      if (!await f.exists()) return const [];
     } catch (_) {
+      return const [];
+    }
+
+    // fix756: NEVER read/apply/truncate the live journal in place. The native
+    // service can append another status line after our read but before the old
+    // truncate, and that appended line was erased unapplied. Rename the live
+    // file to a side batch first; native keeps appending to a newly-created
+    // live file. If a previous run crashed after rename but before delete,
+    // adopt that `.processing` batch and finish it before touching live state.
+    final processing = File('${f.path}.processing');
+    try {
+      if (await processing.exists()) {
+        f = processing; // crash recovery: complete the prior renamed batch.
+      } else {
+        if (!await f.exists()) return const [];
+        await f.rename(processing.path);
+        f = processing;
+      }
+    } catch (e) {
+      // A racing drain may have won the rename, or the OS refused it. Either
+      // way there is no safe live file to truncate — leave both files alone.
+      AppLog.warn('RecordingStatusJournal: rename/adopt failed — $e');
       return const [];
     }
 
@@ -65,7 +90,7 @@ class RecordingStatusJournal {
       return const [];
     }
     if (contents.trim().isEmpty) {
-      await _truncate(f);
+      await _deleteProcessed(f);
       return const [];
     }
 
@@ -104,7 +129,7 @@ class RecordingStatusJournal {
       }
     }
 
-    await _truncate(f);
+    await _deleteProcessed(f);
 
     // fix685: run any pending re-muxes (stream-copy .ts -> mp4/mkv via FFI).
     // Best-effort: RecordingRemux is fully fail-open (a failure keeps the .ts).
@@ -122,11 +147,14 @@ class RecordingStatusJournal {
         .toList();
   }
 
-  static Future<void> _truncate(File f) async {
+  static Future<void> _deleteProcessed(File f) async {
     try {
-      await f.writeAsString('', flush: true);
+      // fix756: delete only the renamed batch we just applied. A failure leaves
+      // `sr_status.jsonl.processing` for the next drain to re-apply (duplicate
+      // last-write-wins status updates) instead of erasing unseen native lines.
+      await f.delete();
     } catch (e) {
-      AppLog.warn('RecordingStatusJournal: truncate failed — $e');
+      AppLog.warn('RecordingStatusJournal: processed-journal delete failed — $e');
     }
   }
 
