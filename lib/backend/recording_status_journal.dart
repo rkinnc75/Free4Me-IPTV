@@ -52,7 +52,25 @@ class RecordingStatusJournal {
   /// fix697: returns the terminal (done/failed) transitions applied in THIS pass
   /// so a foregrounded Recordings screen can show an in-app SnackBar twin of the
   /// native completion notification (item 2). Last status per id wins.
+  static bool _draining = false;
+
+  /// fix757 (fix756 review, finding 2): single-flight. drain() is main-isolate
+  /// only — its sole caller is recordings_view._load, reached from initState, a
+  /// 3s Timer.periodic (which does NOT skip ticks for a slow callback), and
+  /// stop/cancel/delete. Overlapping drains could double-adopt or rename-clobber
+  /// the `.processing` batch (the periodic tick coinciding with a user Stop). A
+  /// concurrent second drain does nothing; the in-flight one owns this pass.
   static Future<List<RecordingCompletion>> drain() async {
+    if (_draining) return const [];
+    _draining = true;
+    try {
+      return await _drainOnce();
+    } finally {
+      _draining = false;
+    }
+  }
+
+  static Future<List<RecordingCompletion>> _drainOnce() async {
     File f;
     try {
       f = await _file();
@@ -66,10 +84,17 @@ class RecordingStatusJournal {
     // file to a side batch first; native keeps appending to a newly-created
     // live file. If a previous run crashed after rename but before delete,
     // adopt that `.processing` batch and finish it before touching live state.
+    // fix757 (fix756 review, finding 1): true only when this batch is an
+    // ADOPTED pre-existing `.processing` (a delete that failed last pass, or a
+    // crash mid-drain). Only such a re-drain can replay a line already applied
+    // AND remuxed — which the loop guards against below. A freshly-renamed batch
+    // is always a first apply and needs no guard.
+    var adopted = false;
     final processing = File('${f.path}.processing');
     try {
       if (await processing.exists()) {
         f = processing; // crash recovery: complete the prior renamed batch.
+        adopted = true;
       } else {
         if (!await f.exists()) return const [];
         await f.rename(processing.path);
@@ -111,10 +136,28 @@ class RecordingStatusJournal {
         if (id == null || statusStr == null) continue;
         final status = _parseStatus(statusStr);
         if (status == null) continue;
+        final outputPath = m['output_path'] as String?;
+        // fix757 (fix756 review, finding 1): an ADOPTED batch can replay a
+        // done+remux line whose row was already remuxed to .mp4 with its .ts
+        // deleted. Re-applying it COALESCEs the live .mp4 URI back to the now-
+        // dead .ts (Sql.updateRecordingStatus) and re-triggers remux, which then
+        // _revertDones the row to that dead .ts. Skip a done line that would
+        // DOWNGRADE an already-done row to a different output path.
+        if (adopted &&
+            status == RecordingStatus.done &&
+            outputPath != null) {
+          final current = await Sql.getRecordingById(id);
+          if (current != null &&
+              current.status == RecordingStatus.done &&
+              current.outputPath != null &&
+              current.outputPath != outputPath) {
+            continue;
+          }
+        }
         await Sql.updateRecordingStatus(
           id,
           status,
-          outputPath: m['output_path'] as String?,
+          outputPath: outputPath,
           error: m['error'] as String?,
         );
         if (status == RecordingStatus.done && m['remux'] == true) {

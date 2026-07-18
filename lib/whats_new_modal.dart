@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.58': [
+    'Hardened scheduled-recording status handling: overlapping status refreshes '
+        'are now serialized, and a rare case where a finished, already-converted '
+        'recording could be reverted to point at a deleted file is prevented.',
+  ],
   '4.1.57': [
     'Fixed a rare scheduled-recording race: if a recording finished while the '
         'app was applying an earlier status update, that "finished/failed" '
