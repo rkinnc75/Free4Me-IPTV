@@ -1,19 +1,19 @@
 {
-  "latest": "4.1.55",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.55",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.55/Free4Me-IPTV-4.1.55-universal.apk",
-  "releaseNotes": "\u2022 Playback: channels in codecs the device can't hardware-decode (e.g. AV1 or VP9 on many TV boxes) now go straight to software decoding instead of failing a hardware attempt first and stalling briefly. Standard live TV (H.264) and 4K (HEVC) stay hardware-accelerated as before.",
+  "latest": "4.1.56",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.56",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.56/Free4Me-IPTV-4.1.56-universal.apk",
+  "releaseNotes": "\u2022 Fixed: on a brand-new install, TV boxes could start in the phone layout until you restarted the app. The TV interface now appears immediately after finishing setup \u2014 and after adding another source too.",
   "apkUrls": {
-    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.55/Free4Me-IPTV-4.1.55-arm.apk",
-    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.55/Free4Me-IPTV-4.1.55-arm64.apk",
-    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.55/Free4Me-IPTV-4.1.55-x64.apk",
-    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.55/Free4Me-IPTV-4.1.55-universal.apk"
+    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.56/Free4Me-IPTV-4.1.56-arm.apk",
+    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.56/Free4Me-IPTV-4.1.56-arm64.apk",
+    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.56/Free4Me-IPTV-4.1.56-x64.apk",
+    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.56/Free4Me-IPTV-4.1.56-universal.apk"
   },
   "apkSha256s": {
-    "arm": "e31324587fc9031e8bfa7b70cc8212faf246cc9143fe671b49e511316bebf9b4",
-    "arm64": "19be0729ec7542e76950598b525666c9ad5b177803253e6e5b88b4e513aca5b0",
-    "x64": "41a41a45a125ca6c18e8fa56031b1b0ff965c86b6c18ae4c3272d1e0c0cacb15",
-    "universal": "ed55087cb919f405069f928c5750c9128bd38e89289e4380769597f3147359ea"
+    "arm": "0b83f527e8a230e935cc5a2dad9c7e07d7f6207e618d87e2022d3f7e86bbe89e",
+    "arm64": "670f61e7d7134d01a0d046ba9a5cade180764c7019a37504c096304e5b3ea88b",
+    "x64": "c7ced627fd94731c500c24fd1a91ab754bde3bd4d8376a0b626dfd3b030e37d7",
+    "universal": "dcb91563e39359cf54e230c8000fc262a4d4d5254525f2e31e43c0e93d42d16b"
   },
-  "apkSha256": "ed55087cb919f405069f928c5750c9128bd38e89289e4380769597f3147359ea"
+  "apkSha256": "dcb91563e39359cf54e230c8000fc262a4d4d5254525f2e31e43c0e93d42d16b"
 }
