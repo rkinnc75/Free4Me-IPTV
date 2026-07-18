@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -298,9 +297,11 @@ class _RootPageState extends State<_RootPage> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     if (!widget.skipSetup) return const Setup();
     final Widget home;
-    if (widget.settings.forceTVMode ||
-        widget.isTV ||
-        (!widget.hasTouchScreen && (Platform.isAndroid || Platform.isIOS))) {
+    if (DeviceDetector.useTvShell(
+      forceTVMode: widget.settings.forceTVMode,
+      isTV: widget.isTV,
+      hasTouchScreen: widget.hasTouchScreen,
+    )) {
       home = TvHome(settings: widget.settings);
     } else {
       home = Home(

@@ -25,6 +25,22 @@ class DeviceDetector {
     return _isTvCached = false;
   }
 
+  /// fix755: single source of truth for the "TV shell vs phone shell" decision,
+  /// shared by app startup (main.dart) AND setup completion (setup.dart).
+  /// Previously the boolean was duplicated; setup's copy was missing entirely
+  /// (navigateToHome hardcoded the phone Home), so first-install setup AND the
+  /// add-source wizard always landed in phone mode until the NEXT app launch —
+  /// the isTV/hasTouchScreen detection only took effect on the following cold
+  /// start. Centralizing it here prevents that divergence from recurring.
+  static bool useTvShell({
+    required bool forceTVMode,
+    required bool isTV,
+    required bool hasTouchScreen,
+  }) =>
+      forceTVMode ||
+      isTV ||
+      (!hasTouchScreen && (Platform.isAndroid || Platform.isIOS));
+
   static Future<bool> _isAndroidTV() async {
     final androidInfo = await _deviceInfo.androidInfo;
     return androidInfo.systemFeatures.contains('android.software.leanback');

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:open_tv/widgets/dpad_text_field.dart';
@@ -15,6 +17,8 @@ import 'package:open_tv/backend/sql.dart';
 import 'package:open_tv/backend/utils.dart';
 import 'package:open_tv/correction_modal.dart';
 import 'package:open_tv/home.dart';
+import 'package:open_tv/tv_home.dart'; // fix755
+import 'package:open_tv/backend/settings_service.dart'; // fix755
 import 'package:open_tv/widgets/sources_refresh_dialog.dart';
 import 'package:open_tv/models/filters.dart';
 import 'package:open_tv/models/home_manager.dart';
@@ -334,15 +338,34 @@ class _SetupState extends State<Setup> {
   }
 
   void navigateToHome() {
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(
-        builder: (_) => Home(
-          home: HomeManager(filters: Filters(viewType: ViewType.all)),
+    // fix755: apply the SAME TV-vs-phone shell decision as app startup
+    // (DeviceDetector.useTvShell). This used to hardcode the phone Home, so the
+    // first-install setup AND the add-source wizard always landed in phone mode
+    // until the next app launch (the isTV/hasTouchScreen detection only took
+    // effect on the following cold start). The three inputs are cached by the
+    // startup warm-up, so this resolves effectively synchronously.
+    unawaited(() async {
+      final settings = await SettingsService.getSettings();
+      final isTv = await DeviceDetector.isTV();
+      final hasTouch = await Utils.hasTouchScreen();
+      if (!mounted) return;
+      final useTv = DeviceDetector.useTvShell(
+        forceTVMode: settings.forceTVMode,
+        isTV: isTv,
+        hasTouchScreen: hasTouch,
+      );
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(
+          builder: (_) => useTv
+              ? TvHome(settings: settings)
+              : Home(
+                  home: HomeManager(filters: Filters(viewType: ViewType.all)),
+                ),
         ),
-      ),
-      (route) => false,
-    );
+        (route) => false,
+      );
+    }());
   }
 
   /// fix511: first-run setup is the one place a brand-new install must be

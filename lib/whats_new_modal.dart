@@ -6,6 +6,11 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.56': [
+    'Fixed: on a brand-new install, TV boxes could start in the phone layout '
+        'until you restarted the app. The TV interface now appears immediately '
+        'after finishing setup — and after adding another source too.',
+  ],
   '4.1.55': [
     'Playback: channels in codecs the device can\'t hardware-decode (e.g. AV1 '
         'or VP9 on many TV boxes) now go straight to software decoding instead '
