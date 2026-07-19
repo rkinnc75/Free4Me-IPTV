@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.59': [
+    'Updating from inside the app is cleaner: if a channel was playing when '
+        'you tapped Update, the app no longer pops that video into a small '
+        'picture-in-picture window on top of the "install update?" prompt. '
+        'The install screen now appears by itself.',
+  ],
   '4.1.58': [
     'Hardened scheduled-recording status handling: overlapping status refreshes '
         'are now serialized, and a rare case where a finished, already-converted '

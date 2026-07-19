@@ -27,6 +27,16 @@ class MainActivity : FlutterActivity() {
     // only triggers PiP when video is actually playing.
     private var isVideoPlaying = false
 
+    // fix758: while the updater hands the downloaded APK to the system
+    // installer, PiP/auto-enter must not keep the OLD version visible over the
+    // install prompt. This flag suppresses PiP for the handoff and is cleared
+    // when the user returns (onResume) or if the installer could not open
+    // (endApkInstall). The old task is intentionally NOT removed: OpenFilex
+    // serves the APK through this app's FileProvider, so the process must stay
+    // alive for the (later, post-tap) package read — PackageManager kills it
+    // during the real replace.
+    private var apkInstallHandoff = false
+
     // ── fix647: voice search ──────────────────────────────────────────────
     // The remote's mic button is an Assistant key the system consumes, so the
     // app launches the RecognizerIntent dialog itself instead: from the Search
@@ -226,6 +236,37 @@ class MainActivity : FlutterActivity() {
                     isVideoPlaying = call.argument<Boolean>("playing") ?: false
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                         // Android 12+: update auto-enter enabled live
+                        setPictureInPictureParams(buildPipParams())
+                    }
+                    result.success(null)
+                }
+
+                else -> result.notImplemented()
+            }
+        }
+
+        // ── fix758: in-app update install handoff (PiP suppression only) ──
+        // No task removal and no isVideoPlaying mutation: the installer reads
+        // the APK via this app's FileProvider, so the process must stay alive,
+        // and the apkInstallHandoff flag alone fully suppresses PiP (see
+        // buildPipParams / onUserLeaveHint). onResume clears it on return.
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "me.free4me.iptv/update_install",
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "beginApkInstall" -> {
+                    apkInstallHandoff = true
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        setPictureInPictureParams(buildPipParams())
+                    }
+                    result.success(null)
+                }
+
+                "endApkInstall" -> {
+                    // Installer could not open — restore normal PiP behaviour.
+                    apkInstallHandoff = false
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                         setPictureInPictureParams(buildPipParams())
                     }
                     result.success(null)
@@ -529,9 +570,26 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        // fix758: the user returned to the app (e.g. cancelled the install
+        // prompt) — clear the handoff flag so PiP works normally again.
+        if (apkInstallHandoff) {
+            apkInstallHandoff = false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                setPictureInPictureParams(buildPipParams())
+            }
+        }
+    }
+
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (isVideoPlaying && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        // fix758: never enter PiP while handing the APK to the installer, or a
+        // playing video would keep the old version visible over the prompt.
+        if (!apkInstallHandoff &&
+            isVideoPlaying &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+        ) {
             enterPictureInPictureMode(buildPipParams())
         }
     }
@@ -553,7 +611,8 @@ class MainActivity : FlutterActivity() {
             .setAspectRatio(Rational(16, 9))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             // Auto-enter PiP when the user navigates away (Android 12+).
-            builder.setAutoEnterEnabled(isVideoPlaying)
+            // fix758: never auto-enter during the APK install handoff.
+            builder.setAutoEnterEnabled(isVideoPlaying && !apkInstallHandoff)
         }
         return builder.build()
     }

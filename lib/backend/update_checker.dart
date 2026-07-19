@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:open_tv/backend/app_logger.dart';
 import 'package:open_tv/backend/http_client.dart';
 import 'package:open_filex/open_filex.dart';
@@ -302,17 +303,58 @@ class UpdateChecker {
           'installing unverified APK');
     }
     // Hand off to the Android installer. The user confirms the install prompt.
+    // fix758: suppress PiP for the handoff so a video that is playing behind
+    // the updater cannot pop into a picture-in-picture window on top of the
+    // system install prompt (it would show the OLD version, right where the
+    // user is being asked to install the NEW one). The flag is cleared when
+    // the user returns to the app (native onResume) or, if the installer
+    // never opened, immediately below.
+    await _beginApkInstallHandoff();
     final result = await OpenFilex.open(outFile.path);
     AppLog.info('UpdateChecker: installer result ${result.type} ${result.message}');
-    if (result.type != ResultType.done && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Could not open the installer. Enable "install unknown apps" for '
-            'Free4Me-IPTV in Android settings, then try again.',
+    if (result.type != ResultType.done) {
+      // The installer did not open — nothing to hand off to, so restore
+      // normal PiP behaviour right away rather than waiting for onResume.
+      await _endApkInstallHandoff();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not open the installer. Enable "install unknown apps" for '
+              'Free4Me-IPTV in Android settings, then try again.',
+            ),
           ),
-        ),
-      );
+        );
+      }
+    }
+  }
+
+  // fix758: PiP-suppression handoff around the APK install.
+  //
+  // Deliberately NOT removing the app task and NOT killing this process:
+  // OpenFilex serves the downloaded APK to the system installer through this
+  // app's own FileProvider, so the process must stay alive for the installer
+  // to read the file (the real package replace kills us at the right moment).
+  // All we need is to stop PiP/auto-enter from surfacing the old build over
+  // the install prompt; the native side clears the flag on onResume.
+  static const MethodChannel _installHandoffCh =
+      MethodChannel('me.free4me.iptv/update_install');
+
+  static Future<void> _beginApkInstallHandoff() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _installHandoffCh.invokeMethod<void>('beginApkInstall');
+    } catch (e) {
+      AppLog.warn('UpdateChecker: beginApkInstall failed: $e');
+    }
+  }
+
+  static Future<void> _endApkInstallHandoff() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _installHandoffCh.invokeMethod<void>('endApkInstall');
+    } catch (e) {
+      AppLog.warn('UpdateChecker: endApkInstall failed: $e');
     }
   }
 
