@@ -39,6 +39,11 @@ class AppLogger {
   /// substring still redacts cleanly. Rebuilt by [setSourceSecrets].
   List<MapEntry<String, String>> _secrets = [];
 
+  /// fix759: the sources last passed to [setSourceSecrets], retained so
+  /// [addSourceSecrets] can rebuild the table with one brand-new source
+  /// appended before it has been persisted / re-fetched.
+  List<Source> _knownSources = [];
+
   bool get enabled => _enabled;
 
   /// Enable or disable logging. When enabled, the log file is opened for
@@ -136,6 +141,9 @@ class AppLogger {
   /// longest-first so a host that contains another as a substring (e.g.
   /// `tv.example.com` vs `example.com`) still redacts cleanly.
   void setSourceSecrets(List<Source> sources) {
+    // fix759: retain the list so addSourceSecrets can rebuild the table with a
+    // brand-new source appended (see addSourceSecrets).
+    _knownSources = List<Source>.of(sources);
     final out = <MapEntry<String, String>>[];
     for (final s in sources) {
       final tag = s.name.replaceAll(' ', '');
@@ -190,9 +198,44 @@ class AppLogger {
           if (seg.length >= 12) out.add(MapEntry(seg, '<${tag}_EPG_TOK>'));
         }
       }
+      // fix759 (Jun-audit finding 5): credentials in the URL *authority*
+      // (`http://user:pass@host/...`) live in neither s.username/password nor
+      // the query string, so the rules above masked only the host and left the
+      // `user:pass@` prefix in cleartext (e.g. a raw m3u URL logged in
+      // m3u.dart). Register the userInfo and its user:pass split from every
+      // source URL; <3-char values are skipped, matching the query-cred rule.
+      for (final raw in [s.url, s.urlOrigin, s.epgUrl]) {
+        final ui = _tryParseUri(raw)?.userInfo ?? '';
+        if (ui.isEmpty) continue;
+        if (ui.length >= 3) out.add(MapEntry(ui, '<${tag}_CRED>'));
+        final colon = ui.indexOf(':');
+        if (colon > 0) {
+          final uiUser = ui.substring(0, colon);
+          final uiPass = ui.substring(colon + 1);
+          if (uiUser.length >= 3) out.add(MapEntry(uiUser, '<${tag}_USER>'));
+          if (uiPass.length >= 3) out.add(MapEntry(uiPass, '<${tag}_PASS>'));
+        }
+      }
     }
     out.sort((a, b) => b.key.length.compareTo(a.key.length));
     _secrets = out;
+  }
+
+  /// fix759 (Jun-audit finding 6): register a brand-new source's secrets
+  /// WITHOUT waiting for the next full rebuild. [setSourceSecrets] runs only at
+  /// startup (main.dart) and after Sql.getSources(); neither fires between
+  /// constructing a new source and the first fetch that logs its URL
+  /// (Utils.processSource -> xtream/m3u), so the new host/credentials would
+  /// otherwise leak in cleartext on the very first add. Calling this at the top
+  /// of processSource rebuilds the table from the known sources plus [source].
+  /// Only a source whose name is not already covered triggers a rebuild —
+  /// processSource re-runs on every refresh of an EXISTING source, and an
+  /// unconditional append would grow the table without bound. Source names are
+  /// unique (setup.dart enforces it), so name is a safe identity key here; an
+  /// already-known source is a no-op because setSourceSecrets already holds it.
+  void addSourceSecrets(Source source) {
+    if (_knownSources.any((s) => s.name == source.name)) return;
+    setSourceSecrets([..._knownSources, source]);
   }
 
   /// fix415: extract the bare host (hostname or IP, no scheme/port/path) from a

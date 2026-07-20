@@ -737,6 +737,15 @@ class SettingsIo {
     // Construct with v2 fields first, then overlay v3 additions.
     // Missing v3 fields silently fall back to constructor defaults,
     // which matches user expectation when restoring a v2 backup.
+    //
+    // fix759 (Jun-audit finding 3): the EPG fields below feed sliders whose
+    // value / max / divisions assert on out-of-range input. A hand-edited or
+    // older backup with e.g. epgForecastDays <= 0 crashed the settings screen
+    // (search slider max=0, divisions=-1). Clamp every slider-backed EPG field
+    // to its documented range on import; epgSearchHours's max derives from the
+    // already-clamped forecast window (mirrors the live slider at
+    // settings_view._bufferSlider "Search window (hours)").
+    final epgForecastDays = ((m['epgForecastDays'] as int?) ?? 7).clamp(3, 14);
     final s = Settings(
       defaultView: ViewType.values[m['defaultView'] as int? ?? 0],
       multiViewStabilityBufferSecs:
@@ -775,11 +784,12 @@ class SettingsIo {
       debugLogging: m['debugLogging'] as bool? ?? false,
       logUserPass: m['logUserPass'] as bool? ?? false,
       epgAutoRefresh: m['epgAutoRefresh'] as bool? ?? true,
-      epgRefreshHours: m['epgRefreshHours'] as int? ?? 24,
-      epgRefreshHour: m['epgRefreshHour'] as int? ?? 3,
-      epgPastDays: m['epgPastDays'] as int? ?? 1,
-      epgForecastDays: m['epgForecastDays'] as int? ?? 7,
-      epgSearchHours: m['epgSearchHours'] as int? ?? 3,
+      epgRefreshHours: ((m['epgRefreshHours'] as int?) ?? 24).clamp(6, 168),
+      epgRefreshHour: ((m['epgRefreshHour'] as int?) ?? 3).clamp(0, 23),
+      epgPastDays: ((m['epgPastDays'] as int?) ?? 1).clamp(0, 3),
+      epgForecastDays: epgForecastDays,
+      epgSearchHours:
+          ((m['epgSearchHours'] as int?) ?? 3).clamp(1, epgForecastDays * 24),
     );
 
     if (m['startupGraceMs'] is int) s.startupGraceMs = m['startupGraceMs'];

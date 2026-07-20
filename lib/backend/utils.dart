@@ -73,6 +73,12 @@ class Utils {
     // fix617: stage logging to pinpoint where a phone refresh hangs at
     // "Preparing…" (no on-device repro; the log now survives so the next run
     // shows the exact stall point).
+    // fix759 (Jun-audit finding 6): make this source's host/credentials
+    // redactable BEFORE the first line below (and the URL logged by the
+    // xtream/m3u fetchers) is written. On a brand-new add the redaction table
+    // has not yet been rebuilt with this source, so its URL would otherwise be
+    // logged in cleartext. No-op for an already-known source.
+    AppLog.addSourceSecrets(source);
     AppLog.info('fix617 processSource: "${source.name}" — checking name exists');
     final bool namePreExisted = await Sql.sourceNameExists(source.name);
     AppLog.info('fix617 processSource: "${source.name}" — namePreExisted='
