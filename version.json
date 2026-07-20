@@ -1,19 +1,19 @@
 {
-  "latest": "4.1.59",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.59",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.59/Free4Me-IPTV-4.1.59-universal.apk",
-  "releaseNotes": "\u2022 Updating from inside the app is cleaner: if a channel was playing when you tapped Update, the app no longer pops that video into a small picture-in-picture window on top of the \"install update?\" prompt. The install screen now appears by itself.",
+  "latest": "4.1.60",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.60",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.60/Free4Me-IPTV-4.1.60-universal.apk",
+  "releaseNotes": "\u2022 Hardening: restoring an old or hand-edited settings backup can no longer crash the EPG settings screen (out-of-range guide values are now corrected on import).\n\u2022 Privacy: provider credentials written directly into a playlist address (the \"user:pass@host\" form) \u2014 and a newly added source's address \u2014 are now masked in the debug log, like all other credentials.",
   "apkUrls": {
-    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.59/Free4Me-IPTV-4.1.59-arm.apk",
-    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.59/Free4Me-IPTV-4.1.59-arm64.apk",
-    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.59/Free4Me-IPTV-4.1.59-x64.apk",
-    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.59/Free4Me-IPTV-4.1.59-universal.apk"
+    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.60/Free4Me-IPTV-4.1.60-arm.apk",
+    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.60/Free4Me-IPTV-4.1.60-arm64.apk",
+    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.60/Free4Me-IPTV-4.1.60-x64.apk",
+    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.60/Free4Me-IPTV-4.1.60-universal.apk"
   },
   "apkSha256s": {
-    "arm": "000e21e3105c66f61c26713d8daa6e00e41a38577eb2dd7171e5bcb502becd5a",
-    "arm64": "7697ca20694594753c1f68979ca6656babf57fa38473d2ad09f7439531cf235b",
-    "x64": "7e66c3dfc63849d7fdc918f9407936899963c13d436c7f734415f6ef1a8c6a86",
-    "universal": "f100e96f8151157e8e8a4efd9ce6e3303b9073eb9f0709769bbfe91ca14e402e"
+    "arm": "219c4d453e1270ad93ab9b1872b11469ca3c13c2571aea6bf5f799929f50f1d7",
+    "arm64": "0038701afc4e4567c7e2fe4a0fc2e84e32b4048637a9d104e60902be054d409b",
+    "x64": "cab793cf420ce509b016fc0912197c29883fadc6c924feb3b30ee7c210645583",
+    "universal": "17e327621f68bf12b71e912c5c82ffbd010acf5908ce55c48b181ef8c9aef487"
   },
-  "apkSha256": "f100e96f8151157e8e8a4efd9ce6e3303b9073eb9f0709769bbfe91ca14e402e"
+  "apkSha256": "17e327621f68bf12b71e912c5c82ffbd010acf5908ce55c48b181ef8c9aef487"
 }
