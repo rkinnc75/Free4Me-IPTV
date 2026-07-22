@@ -39,6 +39,12 @@ class ChannelTile extends StatefulWidget {
     return e.url;
   }
 
+  /// fix760: the in-flight prewarm resolution for a channel, if any. Lets the
+  /// Player give a tap-down prewarm a short, bounded head-start window via
+  /// await instead of racing it (and usually losing) on a cold open.
+  static Future<String?>? pendingPrewarm(int channelId) =>
+      _ChannelTileState._prewarmInflight[channelId];
+
   final Channel channel;
   final BuildContext parentContext;
   final Function(Node node) setNode;
@@ -176,6 +182,11 @@ class _ChannelTileState extends State<ChannelTile> {
 
   static final Map<int, _PrewarmEntry> _prewarmCache = {};
   static const Duration _prewarmTtl = Duration(minutes: 5);
+  // fix760: prewarms currently resolving, keyed by channel id, so a play that
+  // starts before the HEAD round-trip finishes can await the SAME future
+  // (bounded) rather than losing the head start. Entries self-remove on
+  // completion; the map is transient and stays tiny.
+  static final Map<int, Future<String?>> _prewarmInflight = {};
 
   @override
   void initState() {
@@ -280,30 +291,47 @@ class _ChannelTileState extends State<ChannelTile> {
     }
   }
 
-  void _maybePrewarm() {
+  void _maybePrewarm({bool tapDown = false}) {
     // Only pre-warm livestreams (VOD/series don't benefit; series is a group anyway)
     if (widget.channel.mediaType != MediaType.livestream) return;
     final url = widget.channel.url;
     final id = widget.channel.id;
     if (url == null || id == null) return;
-    final settings = SettingsService.cached;
-    if (settings == null) return;
-    if (!settings.preWarmOnFocus) return;
+    // fix760: tap-down prewarm is DETERMINISTIC intent (the user is opening
+    // this exact channel right now), so it bypasses the preWarmOnFocus
+    // opt-in — that toggle gates the SPECULATIVE focus-hover prewarm, which
+    // optimisedFor defaults OFF on phones (where touch never drives
+    // FocusNode focus, so phones previously never prewarmed at all). One
+    // HEAD request per actual play is strictly cheaper than the redirect
+    // chain mpv would otherwise walk itself on the same tap.
+    if (!tapDown) {
+      final settings = SettingsService.cached;
+      if (settings == null) return;
+      if (!settings.preWarmOnFocus) return;
+    }
 
-    // Skip if already cached and fresh
+    // Skip if already cached and fresh, or already resolving (fix760)
     final existing = _prewarmCache[id];
     if (existing != null && existing.expiresAt.isAfter(DateTime.now())) return;
+    if (_prewarmInflight.containsKey(id)) return;
 
-    AppLog.info('ChannelTile: prewarming channel="${widget.channel.name}"');
-    // Fire-and-forget; failure is silent
-    AppHttp.resolveRedirects(url).then((resolved) {
+    AppLog.info('ChannelTile: prewarming channel="${widget.channel.name}"'
+        ' trigger=${tapDown ? 'tap-down' : 'focus'}');
+    // Fire-and-forget; failure is silent. fix760: the future is ALSO parked
+    // in _prewarmInflight so Player._startPlayback can await it (bounded,
+    // ≤150 ms) via pendingPrewarm() when the tap-down head start hasn't
+    // resolved by the time playback starts.
+    final fut = AppHttp.resolveRedirects(url).then<String?>((resolved) {
       if (resolved != null) {
         _prewarmCache[id] = _PrewarmEntry(
           resolved,
           DateTime.now().add(_prewarmTtl),
         );
       }
-    }).catchError((_) {});
+      return resolved;
+    }).catchError((_) => null);
+    _prewarmInflight[id] = fut;
+    fut.whenComplete(() => _prewarmInflight.remove(id));
   }
 
   @override
@@ -802,6 +830,10 @@ class _ChannelTileState extends State<ChannelTile> {
         focusNode: _focusNode,
         autofocus: widget.autofocus,
         onLongPress: _onLongPress,
+        // fix760: start resolving the stream URL's redirect chain the moment
+        // the finger lands — ~100–300 ms before onTap fires and the Player
+        // route even starts building. See _maybePrewarm(tapDown:).
+        onTapDown: (_) => _maybePrewarm(tapDown: true),
         onTap: _activate,
         child: widget.poster
             ? _buildPoster(context)

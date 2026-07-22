@@ -16,11 +16,15 @@ import 'package:open_tv/models/multi_view_layout.dart';
 import 'package:open_tv/models/settings.dart';
 
 void main() {
-  test('Settings.defaults() — 13 dev fields match libmpv upstream', () {
+  test('Settings.defaults() — 15 dev fields match libmpv upstream', () {
     final s = Settings.defaults();
 
     // Demuxer / cache.
     expect(s.devDemuxerReadaheadSecs, 1.5);
+    // fix760: probe tunables are opt-in — 0 means the property is never set
+    // and libmpv/libavformat keep their own defaults.
+    expect(s.devDemuxerLavfAnalyzeDurationSecs, 0);
+    expect(s.devDemuxerLavfProbeSizeKiB, 0);
 
     // Network.
     expect(s.devNetworkTimeoutSecs, 30);
@@ -58,6 +62,8 @@ void main() {
 
     for (final s in [sPhone, sTV]) {
       expect(s.devDemuxerReadaheadSecs, 1.5);
+      expect(s.devDemuxerLavfAnalyzeDurationSecs, 0); // fix760
+      expect(s.devDemuxerLavfProbeSizeKiB, 0); // fix760
       expect(s.devFramedrop, FrameDropMode.vo);
       expect(s.devAudioBufferSecs, 0.2);
       expect(s.devAudioSpdif, AudioSpdifMode.no);

@@ -113,6 +113,9 @@ const confirmToExitProp = "confirmToExit"; // fix587 (#23)
 
 // fix394: Developer / libmpv advanced tunables.
 const devDemuxerReadaheadSecsProp = "devDemuxerReadaheadSecs";
+// fix760: opt-in demuxer probe tunables (0 = sentinel, property not set).
+const devDemuxerLavfAnalyzeDurationSecsProp = "devDemuxerLavfAnalyzeDurationSecs";
+const devDemuxerLavfProbeSizeKiBProp = "devDemuxerLavfProbeSizeKiB";
 const devNetworkTimeoutSecsProp = "devNetworkTimeoutSecs";
 const devImportFetchTimeoutSecsProp = "devImportFetchTimeoutSecs";
 const devTlsVerifyProp = "devTlsVerify";
@@ -421,6 +424,15 @@ class SettingsService {
     if (dvrSecs != null) {
       settings.devDemuxerReadaheadSecs = double.tryParse(dvrSecs) ?? 1.5;
     }
+    // fix760: opt-in demuxer probe tunables.
+    final dlad = settingsMap[devDemuxerLavfAnalyzeDurationSecsProp];
+    if (dlad != null) {
+      settings.devDemuxerLavfAnalyzeDurationSecs = double.tryParse(dlad) ?? 0;
+    }
+    final dlps = settingsMap[devDemuxerLavfProbeSizeKiBProp];
+    if (dlps != null) {
+      settings.devDemuxerLavfProbeSizeKiB = int.tryParse(dlps) ?? 0;
+    }
     final dnt = settingsMap[devNetworkTimeoutSecsProp];
     if (dnt != null) {
       settings.devNetworkTimeoutSecs = int.tryParse(dnt) ?? 30;
@@ -616,6 +628,11 @@ class SettingsService {
     // enums as their `name` (so a re-read uses fromJson).
     settingsMap[devDemuxerReadaheadSecsProp] =
         settings.devDemuxerReadaheadSecs.toString();
+    // fix760: opt-in demuxer probe tunables.
+    settingsMap[devDemuxerLavfAnalyzeDurationSecsProp] =
+        settings.devDemuxerLavfAnalyzeDurationSecs.toString();
+    settingsMap[devDemuxerLavfProbeSizeKiBProp] =
+        settings.devDemuxerLavfProbeSizeKiB.toString();
     settingsMap[devNetworkTimeoutSecsProp] =
         settings.devNetworkTimeoutSecs.toString();
     settingsMap[devImportFetchTimeoutSecsProp] =

@@ -1258,6 +1258,11 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   /// user-initiated channel open, not on every reconnect.
   bool _connProbeDone = false;
 
+  /// fix760: one-shot — the bounded wait for an in-flight tap-down prewarm
+  /// only applies to the initial user-initiated open, never to reconnects
+  /// (by then the cache is either warm or expired and mpv should just go).
+  bool _prewarmWaitDone = false;
+
   /// fix659: one-shot — landscape lock is applied BEFORE the first open() so
   /// the decoder never initializes against the portrait/unsettled surface.
   bool _preOpenFullscreenDone = false;
@@ -1296,6 +1301,33 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
       if (myGen != _openGeneration) return; // finding 21: superseded
       _startupWatchdog?.cancel(); // fix94: clear before re-open
       try {
+        // fix760: if a tap-down prewarm (ChannelTile) is still resolving the
+        // redirect chain, give it a short, bounded head-start window before
+        // reading the URL — otherwise the resolution races this open and
+        // usually loses. When it lands in time, _playbackUrl() returns the
+        // pre-resolved URL and mpv skips the redirect walk entirely.
+        // Not free at worst: if the resolver does NOT finish within the bound,
+        // mpv (its own native network stack — it can't reuse the Dart-warmed
+        // connection) walks the redirects itself, so a timeout adds up to the
+        // bound with no gain. The bound is kept short (150 ms) because tap-down
+        // already gives a ~100–300 ms head start before this runs, so the
+        // common wins land during that head start regardless — 150 ms only has
+        // to catch resolutions that finish just after _startPlayback begins,
+        // while halving the worst-case waste vs a 300 ms bound.
+        if (!_prewarmWaitDone) {
+          _prewarmWaitDone = true;
+          final chId = widget.channel.id;
+          if (widget.overrideUrl == null && chId != null) {
+            final pending = ChannelTile.pendingPrewarm(chId);
+            if (pending != null) {
+              await pending
+                  .timeout(const Duration(milliseconds: 150))
+                  .catchError((_) => null);
+              // finding 21 hygiene: an await opened a superseding window.
+              if (myGen != _openGeneration) return;
+            }
+          }
+        }
         final playbackUrl = _playbackUrl();
         // fix421: one-shot connection-setup timing (DNS/TCP/TLS) for this
         // channel open — diagnostic only, fire-and-forget, skipped on
@@ -1317,18 +1349,28 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
         // success site remains as a harmless idempotent re-assert. Skipped in
         // PiP (can't rotate) and for engines that manage their own
         // fullscreen, mirroring the existing post-open condition.
+        // fix760: the rotate/relayout wait (fix659) and the mpv option
+        // application are independent — options need no surface, the surface
+        // needs no options — so run them CONCURRENTLY instead of serially.
+        // Both still complete before open(), which is the ordering that
+        // actually matters (fix659: landscape surface before open; engine
+        // contract: options applied before open).
+        final preOpen = <Future<void>>[];
         if (!_preOpenFullscreenDone &&
             !_inPipMode &&
             !_engine.handlesOwnFullscreen) {
           _preOpenFullscreenDone = true;
-          try {
-            await _enterSystemFullscreen();
-            // Give the relayout one frame to land so the video surface
-            // attaches at its final (landscape) size before open().
-            await WidgetsBinding.instance.endOfFrame;
-          } catch (e) {
-            AppLog.warn('Player: pre-open fullscreen failed (non-fatal) — $e');
-          }
+          preOpen.add(() async {
+            try {
+              await _enterSystemFullscreen();
+              // Give the relayout one frame to land so the video surface
+              // attaches at its final (landscape) size before open().
+              await WidgetsBinding.instance.endOfFrame;
+            } catch (e) {
+              AppLog.warn(
+                  'Player: pre-open fullscreen failed (non-fatal) — $e');
+            }
+          }());
         }
         final httpHeaders = headers != null
             ? {
@@ -1339,19 +1381,20 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
             : null;
 
         if (_engine case final MpvEngine mpv) {
-          await mpv.reapplyOptions(
+          preOpen.add(mpv.reapplyOptions(
             url: playbackUrl,
             ignoreSsl: _isIgnoreSsl(headers),
             // fix414: while minimized to PiP, MediaCodec can't re-init, so the
             // re-open would hang — force software decode for the reconnect so
             // it recovers in PiP. No-op for the initial open (never in PiP).
             forceSoftwareDecode: _inPipMode,
-          );
+          ));
           // finding 18: remember whether this open was forced to software so
           // PiP-exit can restore hardware decode (otherwise the stream stays on
           // software decode forever — black-with-audio on Tegra full-screen).
           _lastOpenForcedSoftware = _inPipMode;
         }
+        if (preOpen.isNotEmpty) await Future.wait(preOpen);
 
         _startupGrace = true;
         _lastOpenAt = DateTime.now(); // fix112

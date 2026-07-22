@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.61': [
+    'Channels start faster on phones: the app now begins connecting the '
+        'moment your finger touches a channel, trims duplicate setup work '
+        'before playback, and adds two optional Developer tunables for '
+        'even quicker live-stream startup.',
+  ],
   '4.1.60': [
     'Hardening: restoring an old or hand-edited settings backup can no longer '
         'crash the EPG settings screen (out-of-range guide values are now '

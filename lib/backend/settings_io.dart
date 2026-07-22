@@ -710,6 +710,9 @@ class SettingsIo {
 
         // fix394: Developer / libmpv advanced tunables (schema v4).
         'devDemuxerReadaheadSecs': s.devDemuxerReadaheadSecs,
+        // fix760: opt-in demuxer probe tunables.
+        'devDemuxerLavfAnalyzeDurationSecs': s.devDemuxerLavfAnalyzeDurationSecs,
+        'devDemuxerLavfProbeSizeKiB': s.devDemuxerLavfProbeSizeKiB,
         'devNetworkTimeoutSecs': s.devNetworkTimeoutSecs,
         'devImportFetchTimeoutSecs': s.devImportFetchTimeoutSecs,
         'devTlsVerify': s.devTlsVerify,
@@ -842,6 +845,16 @@ class SettingsIo {
     if (m['devDemuxerReadaheadSecs'] is num) {
       s.devDemuxerReadaheadSecs =
           (m['devDemuxerReadaheadSecs'] as num).toDouble();
+    }
+    // fix760: opt-in demuxer probe tunables. Missing in older backups →
+    // constructor defaults (0 = property not set) stay in place.
+    if (m['devDemuxerLavfAnalyzeDurationSecs'] is num) {
+      s.devDemuxerLavfAnalyzeDurationSecs =
+          (m['devDemuxerLavfAnalyzeDurationSecs'] as num).toDouble();
+    }
+    if (m['devDemuxerLavfProbeSizeKiB'] is num) {
+      s.devDemuxerLavfProbeSizeKiB =
+          (m['devDemuxerLavfProbeSizeKiB'] as num).toInt();
     }
     if (m['devNetworkTimeoutSecs'] is num) {
       s.devNetworkTimeoutSecs =

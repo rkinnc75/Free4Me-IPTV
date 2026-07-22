@@ -1390,6 +1390,19 @@ class MpvEngine implements PlayerEngine {
     // names are either the wrong type or do not exist in libmpv.)
     await np.setProperty('demuxer-readahead-secs',
         s.devDemuxerReadaheadSecs.toString());
+    // fix760: opt-in demuxer probe tunables. Sentinel 0 skips the setProperty
+    // entirely so libmpv/libavformat keep their own defaults, matching the
+    // fix394 sentinel-enum pattern. `demuxer-lavf-probe-info` is deliberately
+    // NOT exposed — that is the fix748 landmine (nostreams stripped SPS/PPS
+    // from mid-stream live-TS joins and broke hardware decode everywhere).
+    if (s.devDemuxerLavfAnalyzeDurationSecs > 0) {
+      await np.setProperty('demuxer-lavf-analyzeduration',
+          s.devDemuxerLavfAnalyzeDurationSecs.toString());
+    }
+    if (s.devDemuxerLavfProbeSizeKiB > 0) {
+      await np.setProperty('demuxer-lavf-probesize',
+          (s.devDemuxerLavfProbeSizeKiB * 1024).toString());
+    }
     await np.setProperty('video-sync', s.devVideoSync.value);
     await np.setProperty('video-sync-max-video-change',
         s.devVideoSyncMaxVideoChange.toString());

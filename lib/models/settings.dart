@@ -234,6 +234,20 @@ class Settings {
   /// libmpv `demuxer-readahead-secs` (seconds). Default 1.5.
   double devDemuxerReadaheadSecs;
 
+  /// fix760: libmpv `demuxer-lavf-analyzeduration` (seconds). 0 = sentinel:
+  /// the property is NOT set and libavformat keeps its own default. Opt-in
+  /// only — shrinking the analyze window speeds up live-TS stream detection
+  /// (often 0.5–2 s on channel start) but can miss late-appearing audio/sub
+  /// tracks on odd muxes. NOTE: `demuxer-lavf-probe-info` is deliberately
+  /// untouched (fix748: probe-info=nostreams stripped SPS/PPS and broke
+  /// hardware decode) — this is the safe, orthogonal knob.
+  double devDemuxerLavfAnalyzeDurationSecs;
+
+  /// fix760: libmpv `demuxer-lavf-probesize` in KiB (the engine multiplies to
+  /// bytes). 0 = sentinel: property NOT set. Same opt-in rationale as
+  /// [devDemuxerLavfAnalyzeDurationSecs].
+  int devDemuxerLavfProbeSizeKiB;
+
   // fix394 review: removed devDemuxerCacheWaitSecs, devDemuxerMaxWaitKeepaliveSecs,
   // devDemuxerBackwardBufferSecs, devDemuxerDontBufferSecs. `demuxer-cache-wait`
   // is a yes/no flag (not a seconds value), and `demuxer-max-wait-keepalive`,
@@ -402,6 +416,8 @@ class Settings {
     // fix394: Developer / libmpv advanced tunables — defaults match libmpv
     // upstream exactly. See lib/models/dev_mpv_options.dart.
     this.devDemuxerReadaheadSecs = 1.5,
+    this.devDemuxerLavfAnalyzeDurationSecs = 0, // fix760: 0 = libmpv default
+    this.devDemuxerLavfProbeSizeKiB = 0, // fix760: 0 = libmpv default
     this.devNetworkTimeoutSecs = 30,
     this.devImportFetchTimeoutSecs = 60,
     this.devTlsVerify = false,
@@ -563,6 +579,8 @@ class Settings {
     // (no isTV branching; PAL/50Hz is a future fix once a PAL device is
     // reported with an A/V issue).
     s.devDemuxerReadaheadSecs = 1.5;
+    s.devDemuxerLavfAnalyzeDurationSecs = 0; // fix760: opt-in, 0 = default
+    s.devDemuxerLavfProbeSizeKiB = 0; // fix760: opt-in, 0 = default
     s.devNetworkTimeoutSecs = 30;
     s.devImportFetchTimeoutSecs = 60;
     s.devTlsVerify = false;

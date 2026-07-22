@@ -3269,6 +3269,14 @@ class Sql {
   /// fix743: how long a persisted hw-probe failure suppresses re-probing.
   static const int hwdecBlocklistTtlDays = 30;
 
+  // fix760: PackageInfo is immutable for the process lifetime, but
+  // PackageInfo.fromPlatform() is a platform-channel round trip — and the
+  // hwdec gates below were paying it (up to twice) on EVERY stream open.
+  // Cache the first read; every later open is a sync field access.
+  static PackageInfo? _pkgInfoCache;
+  static Future<PackageInfo> _packageInfo() async =>
+      _pkgInfoCache ??= await PackageInfo.fromPlatform();
+
   /// fix743: true when [url] recently failed the hardware-decode probe on THIS
   /// app version. Rows from another version or older than
   /// [hwdecBlocklistTtlDays] are treated as absent (self-healing: an app/libmpv
@@ -3279,7 +3287,7 @@ class Sql {
         'SELECT failed_at_utc, app_version FROM hwdec_blocklist WHERE url = ?',
         [url]);
     if (rows.isEmpty) return false;
-    final info = await PackageInfo.fromPlatform();
+    final info = await _packageInfo(); // fix760
     if ((rows.first['app_version'] as String?) != info.version) return false;
     final nowUtc = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final ageDays = (nowUtc - (rows.first['failed_at_utc'] as int)) / 86400.0;
@@ -3290,7 +3298,7 @@ class Sql {
   /// was CONFIRMED by a decoded frame. Upsert keeps the newest failure.
   static Future<void> addHwdecBlocklist(String url) async {
     var db = await DbFactory.db;
-    final info = await PackageInfo.fromPlatform();
+    final info = await _packageInfo(); // fix760
     await db.execute(
       'INSERT INTO hwdec_blocklist(url, failed_at_utc, app_version)'
       ' VALUES(?, ?, ?)'
@@ -3337,7 +3345,7 @@ class Sql {
   /// single app_meta read; short-circuited by the caller once unhealthy so it
   /// never stacks with the per-URL lookup.
   static Future<bool> isHwdecDeviceUnhealthy() async {
-    final info = await PackageInfo.fromPlatform();
+    final info = await _packageInfo(); // fix760
     final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     // Sticky latch: honor a prior verdict for this version until it ages out.
     final marker = await getAppMeta(hwdecUnhealthyMarkerKey);

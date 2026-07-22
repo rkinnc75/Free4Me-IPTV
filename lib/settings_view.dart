@@ -411,6 +411,32 @@ const _helpDevDemuxerReadaheadSecs = (
       '↓ Decreasing — less RAM; more visible rebuffering on slow links.',
 );
 
+// fix760: opt-in demuxer probe tunables.
+const _helpDevDemuxerLavfAnalyzeDurationSecs = (
+  title: 'Stream Analyze Duration (seconds)',
+  body:
+      'How long libavformat inspects a stream to detect its audio/video '
+      'tracks before playback can start. Lowering it can shave 0.5–2 s off '
+      'channel start on live MPEG-TS, at the risk of missing audio or '
+      'subtitle tracks that appear late in unusual muxes.\n\n'
+      'Default: 0 (off — libmpv decides). Range: 0–10 s.\n\n'
+      '↑ Increasing — safer track detection; slower channel start.\n\n'
+      '↓ Decreasing (non-zero) — faster channel start; a track may be missed '
+      'on rare streams. Set back to 0 to restore the default.',
+);
+
+const _helpDevDemuxerLavfProbeSizeKiB = (
+  title: 'Stream Probe Size (KiB)',
+  body:
+      'How many kilobytes libavformat reads to identify the stream format '
+      'before playback can start. Lowering it can speed up channel start, at '
+      'the risk of misdetecting unusual streams.\n\n'
+      'Default: 0 (off — libmpv decides). Range: 0–2048 KiB.\n\n'
+      '↑ Increasing — safer format detection; slower channel start.\n\n'
+      '↓ Decreasing (non-zero) — faster channel start; rare streams may fail '
+      'to open. Set back to 0 to restore the default.',
+);
+
 const _helpDevNetworkTimeoutSecs = (
   title: 'Network Timeout (seconds)',
   body:
@@ -4724,6 +4750,37 @@ class _SettingsState extends State<SettingsView> {
                         onChanged: (v) {
                           setState(
                             () => settings.devDemuxerReadaheadSecs = v,
+                          );
+                          updateSettings();
+                        },
+                      ),
+                      // fix760: opt-in demuxer probe tunables (0 = off).
+                      _bufferSlider(
+                        label: "Stream analyze duration (seconds, 0 = off)",
+                        value: settings.devDemuxerLavfAnalyzeDurationSecs,
+                        min: 0,
+                        max: 10,
+                        divisions: 100, // 0.1 s steps
+                        decimals: 1,
+                        help: _helpDevDemuxerLavfAnalyzeDurationSecs,
+                        onChanged: (v) {
+                          setState(
+                            () => settings.devDemuxerLavfAnalyzeDurationSecs = v,
+                          );
+                          updateSettings();
+                        },
+                      ),
+                      _bufferSlider(
+                        label: "Stream probe size (KiB, 0 = off)",
+                        value: settings.devDemuxerLavfProbeSizeKiB.toDouble(),
+                        min: 0,
+                        max: 2048,
+                        divisions: 64, // 32 KiB steps
+                        help: _helpDevDemuxerLavfProbeSizeKiB,
+                        onChanged: (v) {
+                          setState(
+                            () =>
+                                settings.devDemuxerLavfProbeSizeKiB = v.round(),
                           );
                           updateSettings();
                         },
