@@ -1,19 +1,19 @@
 {
-  "latest": "4.1.60",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.60",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.60/Free4Me-IPTV-4.1.60-universal.apk",
-  "releaseNotes": "\u2022 Hardening: restoring an old or hand-edited settings backup can no longer crash the EPG settings screen (out-of-range guide values are now corrected on import).\n\u2022 Privacy: provider credentials written directly into a playlist address (the \"user:pass@host\" form) \u2014 and a newly added source's address \u2014 are now masked in the debug log, like all other credentials.",
+  "latest": "4.1.61",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.61",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.61/Free4Me-IPTV-4.1.61-universal.apk",
+  "releaseNotes": "\u2022 Channels start faster on phones: the app now begins connecting the moment your finger touches a channel, trims duplicate setup work before playback, and adds two optional Developer tunables for even quicker live-stream startup.",
   "apkUrls": {
-    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.60/Free4Me-IPTV-4.1.60-arm.apk",
-    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.60/Free4Me-IPTV-4.1.60-arm64.apk",
-    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.60/Free4Me-IPTV-4.1.60-x64.apk",
-    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.60/Free4Me-IPTV-4.1.60-universal.apk"
+    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.61/Free4Me-IPTV-4.1.61-arm.apk",
+    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.61/Free4Me-IPTV-4.1.61-arm64.apk",
+    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.61/Free4Me-IPTV-4.1.61-x64.apk",
+    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.61/Free4Me-IPTV-4.1.61-universal.apk"
   },
   "apkSha256s": {
-    "arm": "219c4d453e1270ad93ab9b1872b11469ca3c13c2571aea6bf5f799929f50f1d7",
-    "arm64": "0038701afc4e4567c7e2fe4a0fc2e84e32b4048637a9d104e60902be054d409b",
-    "x64": "cab793cf420ce509b016fc0912197c29883fadc6c924feb3b30ee7c210645583",
-    "universal": "17e327621f68bf12b71e912c5c82ffbd010acf5908ce55c48b181ef8c9aef487"
+    "arm": "2fdde9cffd2dcb3e78f84776d3d63875e31815fc597fc55c795ad8f09a3328de",
+    "arm64": "537cee25dde8a0dd005b408a70d28896f342452011338ce05cf46f1c4b6dc17c",
+    "x64": "7fed34e2e35a8c02f2013db6443756f73df4d0d3544e62ce5c4a40566c6c579f",
+    "universal": "c3497fa800d32e88349cfba1c304f29b04d313b12236eaa9605be7186a79b41f"
   },
-  "apkSha256": "17e327621f68bf12b71e912c5c82ffbd010acf5908ce55c48b181ef8c9aef487"
+  "apkSha256": "c3497fa800d32e88349cfba1c304f29b04d313b12236eaa9605be7186a79b41f"
 }
