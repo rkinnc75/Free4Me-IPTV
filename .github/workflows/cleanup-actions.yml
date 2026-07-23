@@ -1,0 +1,160 @@
+# Actions storage cleanup — run it from your phone.
+#
+# GitHub mobile app / mobile web: repo -> Actions -> "Cleanup Actions storage"
+# -> "Run workflow" -> set inputs -> Run.
+#
+# Uses the built-in GITHUB_TOKEN. No personal access token, no local shell.
+#
+# SAFETY: dry_run defaults to TRUE. The first run only PRINTS what would be
+# deleted. Re-run with dry_run unticked to actually delete. Deletion is
+# irreversible.
+#
+# Release assets (libmpv-n6.0-r1, vnext) are NOT touched — release storage
+# is separate from the Actions storage quota.
+
+name: Cleanup Actions storage
+
+on:
+  workflow_dispatch:
+    inputs:
+      keep:
+        description: "How many of the newest to keep"
+        required: true
+        default: "5"
+      delete_artifacts:
+        description: "Delete old artifacts (the usual quota hog)"
+        type: boolean
+        default: true
+      delete_caches:
+        description: "Delete ALL caches (same quota; rebuilt on demand)"
+        type: boolean
+        default: true
+      delete_runs:
+        description: "Delete old workflow runs too (removes their logs; keep is repo-wide across ALL workflows)"
+        type: boolean
+        default: false
+      dry_run:
+        description: "Preview only — print, do not delete"
+        type: boolean
+        default: true
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cleanup
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          KEEP: ${{ inputs.keep }}
+          DO_ARTIFACTS: ${{ inputs.delete_artifacts }}
+          DO_CACHES: ${{ inputs.delete_caches }}
+          DO_RUNS: ${{ inputs.delete_runs }}
+          DRY: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+
+          # Guard: keep must be a non-negative integer. An empty keep would make
+          # $((KEEP + 1)) evaluate to 1 (unary plus, no error), so `tail -n +1`
+          # would emit EVERY row and a live run would delete ALL artifacts/runs.
+          # required:true + default "5" prevent this from the phone UI, but a
+          # hand-crafted API dispatch could still pass keep="". Fail closed.
+          case "$KEEP" in
+            ''|*[!0-9]*)
+              echo "ERROR: keep must be a non-negative integer (got '$KEEP')" >&2
+              exit 1
+              ;;
+          esac
+
+          if [ "$DRY" = "true" ]; then
+            echo "=== DRY RUN — nothing will be deleted ==="
+          else
+            echo "=== LIVE RUN — deletions are permanent ==="
+          fi
+          echo "repo=$REPO  keep=$KEEP"
+          echo
+
+          # ---------------------------------------------------------------
+          # Artifacts — newest KEEP retained, remainder deleted.
+          # ---------------------------------------------------------------
+          if [ "$DO_ARTIFACTS" = "true" ]; then
+            echo "--- Artifacts ---"
+            gh api "repos/$REPO/actions/artifacts" --paginate \
+              --jq '.artifacts[] | [.created_at, (.id|tostring), .name, (.size_in_bytes|tostring)] | @tsv' \
+              > /tmp/art.tsv || : > /tmp/art.tsv
+
+            echo "found: $(wc -l < /tmp/art.tsv | tr -d ' ')"
+            sort -r /tmp/art.tsv | tail -n "+$((KEEP + 1))" > /tmp/art_del.tsv || : > /tmp/art_del.tsv
+            echo "keeping: $KEEP   deleting: $(wc -l < /tmp/art_del.tsv | tr -d ' ')"
+
+            awk -F'\t' '{printf "  %s  id=%s  %s bytes  %s\n", $1, $2, $4, $3}' /tmp/art_del.tsv
+            freed=$(awk -F'\t' '{s+=$4} END {print s+0}' /tmp/art_del.tsv)
+
+            if [ "$DRY" != "true" ]; then
+              for id in $(awk -F'\t' '{print $2}' /tmp/art_del.tsv); do
+                gh api -X DELETE "repos/$REPO/actions/artifacts/$id" --silent \
+                  || echo "  (id=$id already gone or expired — skipped)"
+              done
+            fi
+            echo "reclaims: ~$((freed / 1024 / 1024)) MiB"
+            echo
+          fi
+
+          # ---------------------------------------------------------------
+          # Caches — no keep-newest here; a cache is rebuilt on demand, so
+          # clearing all is safe (the next build is just slower).
+          # ---------------------------------------------------------------
+          if [ "$DO_CACHES" = "true" ]; then
+            echo "--- Caches ---"
+            gh api "repos/$REPO/actions/caches" --paginate \
+              --jq '.actions_caches[] | [(.id|tostring), .key, (.size_in_bytes|tostring)] | @tsv' \
+              > /tmp/cache.tsv || : > /tmp/cache.tsv
+
+            echo "found: $(wc -l < /tmp/cache.tsv | tr -d ' ')"
+            awk -F'\t' '{printf "  id=%s  %s bytes  %s\n", $1, $3, $2}' /tmp/cache.tsv
+            freed=$(awk -F'\t' '{s+=$3} END {print s+0}' /tmp/cache.tsv)
+
+            if [ "$DRY" != "true" ]; then
+              for id in $(awk -F'\t' '{print $1}' /tmp/cache.tsv); do
+                gh api -X DELETE "repos/$REPO/actions/caches/$id" --silent \
+                  || echo "  (id=$id already gone — skipped)"
+              done
+            fi
+            echo "reclaims: ~$((freed / 1024 / 1024)) MiB"
+            echo
+          fi
+
+          # ---------------------------------------------------------------
+          # Workflow runs — optional. Deleting a run removes its logs and
+          # anything still attached to it. THIS run is always the newest, so
+          # it is never in the delete set.
+          # ---------------------------------------------------------------
+          if [ "$DO_RUNS" = "true" ]; then
+            echo "--- Workflow runs ---"
+            gh api "repos/$REPO/actions/runs" --paginate \
+              --jq '.workflow_runs[] | select(.status == "completed") | [.created_at, (.id|tostring), .name] | @tsv' \
+              > /tmp/runs.tsv || : > /tmp/runs.tsv
+
+            echo "found (completed): $(wc -l < /tmp/runs.tsv | tr -d ' ')"
+            sort -r /tmp/runs.tsv | tail -n "+$((KEEP + 1))" > /tmp/runs_del.tsv || : > /tmp/runs_del.tsv
+            echo "keeping: $KEEP   deleting: $(wc -l < /tmp/runs_del.tsv | tr -d ' ')"
+
+            awk -F'\t' '{printf "  %s  id=%s  %s\n", $1, $2, $3}' /tmp/runs_del.tsv
+
+            if [ "$DRY" != "true" ]; then
+              for id in $(awk -F'\t' '{print $2}' /tmp/runs_del.tsv); do
+                gh api -X DELETE "repos/$REPO/actions/runs/$id" --silent \
+                  || echo "  (id=$id could not be deleted — skipped)"
+              done
+            fi
+            echo
+          fi
+
+          echo "Done. The storage figure usually catches up within 5-10 minutes."
+          if [ "$DRY" = "true" ]; then
+            echo "This was a DRY RUN. Re-run with dry_run unticked to delete."
+          fi
