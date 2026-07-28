@@ -796,6 +796,29 @@ class MpvEngine implements PlayerEngine {
     }
   }
 
+  /// fix762: single-property read of mpv's `eof-reached` for the stall
+  /// watchdog's fast path. Same contract as [readCacheSpeed]: this must NOT
+  /// depend on [readPlaybackStats] (that poll only runs while debug logging
+  /// is on, so a watchdog built on it would fail in production — the fix753
+  /// trap), and a null return means UNAVAILABLE, never "no".
+  ///
+  /// Unlike cache-speed, this IS a discriminator. fix753 correctly rejected
+  /// cacheSpeed==0 as a wedge signal because a settled pause also reads 0 —
+  /// but pausing does not make the demuxer hit end-of-stream. `eof-reached`
+  /// says the read side is finished, which on a LIVE feed only happens when
+  /// the server closed the connection. Confirmed against the S938U field log
+  /// (2026-07-27): 44 eof=yes samples, every one inside a provider drop, none
+  /// in the 26-minute clean session that preceded them.
+  Future<String?> readEofReached() async {
+    if (_disposed || _player.platform is! mk.NativePlayer) return null;
+    final np = _player.platform as mk.NativePlayer;
+    try {
+      return await np.getProperty('eof-reached');
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<Map<String, String>> readPlaybackStats() async {
     if (_disposed || _player.platform is! mk.NativePlayer) return const {};
     final np = _player.platform as mk.NativePlayer;

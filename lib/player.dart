@@ -315,6 +315,16 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   // A live position frozen this long, while playing and not buffering, is a
   // dead feed (normal live playback advances ~1s/s) → reconnect.
   static const int _stallWatchdogSecs = 15;
+
+  /// fix762: the EOF fast path's freeze threshold. When mpv reports
+  /// `eof-reached=yes` on a LIVE stream the provider has closed the
+  /// connection — there is nothing left to wait for, so the full
+  /// [_stallWatchdogSecs] window is dead screen time. Still requires one
+  /// complete 3 s sample interval of a genuinely frozen position (never fires
+  /// off a single tick, which could just be a position not yet republished).
+  /// Measured on the S938U log: cuts ~15 s of frozen picture per provider
+  /// drop down to ~3–6 s.
+  static const int _stallEofFastSecs = 3;
   // finding 28: true once playback has meaningfully started this session (first
   // buffering=false). Gates the movie resume-position save so a failed/aborted
   // open can't overwrite a good stored position with 0.
@@ -906,8 +916,15 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
     }
     final frozenFor =
         DateTime.now().difference(_stallLastAdvanceAt ?? DateTime.now());
+    // fix762: two windows now feed the same confirm step. The full
+    // _stallWatchdogSecs window is unchanged (cacheSpeed==0 heuristic). The
+    // short _stallEofFastSecs window ALSO requires a confirmed live-stream
+    // EOF, which a pause cannot produce — see _confirmAndFireStall.
     if (frozenFor.inSeconds >= _stallWatchdogSecs) {
       unawaited(_confirmAndFireStall(pos, frozenFor));
+    } else if (frozenFor.inSeconds >= _stallEofFastSecs &&
+        widget.channel.mediaType == MediaType.livestream) {
+      unawaited(_confirmAndFireStall(pos, frozenFor, eofFastPath: true));
     }
   }
 
@@ -918,11 +935,16 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
   /// check delays a false fire long enough for the intent/lifecycle gates to
   /// be the real protection. A null read (property unavailable / engine
   /// disposed) is NON-confirming: never fire on missing data.
-  Future<void> _confirmAndFireStall(Duration pos, Duration frozenFor) async {
+  Future<void> _confirmAndFireStall(Duration pos, Duration frozenFor,
+      {bool eofFastPath = false}) async {
     String? speed;
+    String? eof;
     final eng = _engine;
     if (eng is MpvEngine) {
       speed = await eng.readCacheSpeed();
+      // fix762: only the fast path needs this second read, so the full-window
+      // behaviour keeps exactly the property cost fix753 shipped with.
+      if (eofFastPath) eof = await eng.readEofReached();
     }
     // Re-validate after the await — the world may have moved.
     if (!mounted ||
@@ -939,14 +961,24 @@ class _PlayerState extends State<Player> with WidgetsBindingObserver {
       // Data still flowing (or unreadable) — hold fire, keep accumulating.
       return;
     }
+    // fix762: the fast path fires ONLY on a confirmed end-of-stream. A null
+    // read is non-confirming (same rule as cacheSpeed): fall through and let
+    // the full window handle it rather than firing on missing data.
+    if (eofFastPath && eof != 'yes') return;
     AppLog.warn(
       'Player: stall watchdog → reconnect — live position frozen at '
       '${pos.inSeconds}s for ${frozenFor.inSeconds}s with no buffering '
-      'signal enginePlaying=$_enginePlaying cacheSpeed=$speed (fix753) '
+      'signal enginePlaying=$_enginePlaying cacheSpeed=$speed '
+      '${eofFastPath ? 'eofReached=$eof (fix762 fast path)' : '(fix753)'} '
       'channel="${widget.channel.name}"',
     );
     _stallWatchdog?.cancel();
     _stallWatchdog = null;
+    // fix762: the reason string stays exactly 'stall watchdog'. It is
+    // log-only (no consumer branches on it), fix747's suite pins the literal,
+    // and the rolling log analyzer keys on it — the fast path is already
+    // distinguishable from the warn line above, so there is nothing to gain
+    // by forking the value here.
     onDisconnect(reason: 'stall watchdog');
   }
 

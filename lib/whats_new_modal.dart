@@ -6,6 +6,12 @@ import 'package:open_tv/backend/settings_service.dart';
 /// in that minor". The dialog shows all entries for [version] whose key is
 /// a prefix of the running version string.
 const _changelog = <String, List<String>>{
+  '4.1.63': [
+    'Faster recovery when a provider drops a live channel: the app now spots '
+        'that the stream actually ended and reconnects in a few seconds '
+        'instead of waiting out the full stall timer, cutting roughly twelve '
+        'seconds of frozen picture from each drop.',
+  ],
   '4.1.62': [
     'Documentation: the README now reflects the current feature set '
         '(silent-stall watchdog, catchup, per-ABI updates, TV guide '
