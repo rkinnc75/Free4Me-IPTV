@@ -1,19 +1,19 @@
 {
-  "latest": "4.1.62",
-  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.62",
-  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.62/Free4Me-IPTV-4.1.62-universal.apk",
-  "releaseNotes": "\u2022 Documentation: the README now reflects the current feature set (silent-stall watchdog, catchup, per-ABI updates, TV guide preview, diagnostics, and more). No behavior change.",
+  "latest": "4.1.63",
+  "releaseUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/tag/v4.1.63",
+  "apkUrl": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.63/Free4Me-IPTV-4.1.63-universal.apk",
+  "releaseNotes": "\u2022 Faster recovery when a provider drops a live channel: the app now spots that the stream actually ended and reconnects in a few seconds instead of waiting out the full stall timer, cutting roughly twelve seconds of frozen picture from each drop.",
   "apkUrls": {
-    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.62/Free4Me-IPTV-4.1.62-arm.apk",
-    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.62/Free4Me-IPTV-4.1.62-arm64.apk",
-    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.62/Free4Me-IPTV-4.1.62-x64.apk",
-    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.62/Free4Me-IPTV-4.1.62-universal.apk"
+    "arm": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.63/Free4Me-IPTV-4.1.63-arm.apk",
+    "arm64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.63/Free4Me-IPTV-4.1.63-arm64.apk",
+    "x64": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.63/Free4Me-IPTV-4.1.63-x64.apk",
+    "universal": "https://github.com/rkinnc75/Free4Me-IPTV/releases/download/v4.1.63/Free4Me-IPTV-4.1.63-universal.apk"
   },
   "apkSha256s": {
-    "arm": "9083d66da4f426d6e99de75cf11699ac28ba0372b70e3962076d8d3165b278f6",
-    "arm64": "cef7a6c8c0a683c0c133973df4a0aa54560d089d8c90103b9eb1aedca0227b5a",
-    "x64": "19fcc91a9b5a119c7c210cad3ef95916cff1a614dc0023e3c816a0fb9ec2a4db",
-    "universal": "5ca80a10de4662af4671475eb30cdad50784a069a41787f0041e791826e82eb3"
+    "arm": "07a5f137e53c841739bc19d92aa79adac296dd505a231b8a965de2792d60ceb4",
+    "arm64": "5f7b6e62fcb88f6b5bd6b6b61be557c0f158325d12b7d68e643afa01fb7d9705",
+    "x64": "8e868fecc652003d1a0707d6c1ed003e04de2c30bf4e61486d6a39aed0443af5",
+    "universal": "4e9bec52facedc90787767ae05da4e920e714884d187336d8827dc3517e16171"
   },
-  "apkSha256": "5ca80a10de4662af4671475eb30cdad50784a069a41787f0041e791826e82eb3"
+  "apkSha256": "4e9bec52facedc90787767ae05da4e920e714884d187336d8827dc3517e16171"
 }
