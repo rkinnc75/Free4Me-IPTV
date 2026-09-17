@@ -1,6 +1,14 @@
 # Changelog
 
 All notable changes to Free4Me-IPTV are documented here.
+## [v4.1.64+763] - 2026-09-17
+
+### Changed
+- **fix763 — Release pipeline verification build** — no functional changes. This release exists to verify the release credentials and CI pipeline produce a complete, correctly signed build end-to-end after a credential rotation.
+
+### Technical
+- **fix763**: `pubspec.yaml` version bump + this entry only. No app code, assets, or build configuration changed. Version → 4.1.64+763.
+
 ## [v4.1.44+741] - 2026-07-13
 
 ### Added
