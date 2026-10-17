@@ -272,7 +272,7 @@ export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 export ANDROID_HOME="$HOME/Library/Android/sdk"
 export ANDROID_SDK_ROOT="$ANDROID_HOME"
 export PATH="$JAVA_HOME/bin:$PATH"
-cd ~/git/free4me-iptv
+cd "${PERSONAL_ROOT:-$HOME}/git/free4me-iptv"
 flutter clean
 flutter pub get
 flutter build apk --release 2>&1 | tee /tmp/release-transcript.txt
@@ -335,7 +335,7 @@ Downloading file from: https://github.com/media-kit/libmpv-android-video-build/r
 Your project is configured with Android NDK 27.0.12077973, but the following plugin(s) depend on a different Android NDK version:
 - jni requires Android NDK 28.2.13676358
 Fix this issue by using the highest Android NDK version (they are backward compatible).
-Add the following to ~/git/free4me-iptv/android/app/build.gradle:
+Add the following to ~/Shared/git/free4me-iptv/android/app/build.gradle:
 
     android {
         ndkVersion = "28.2.13676358"
@@ -373,15 +373,15 @@ Notes on the warnings (all non-fatal, all present in the host's working v1.15.7 
 
 After `flutter build apk --release` succeeds, the script does the following — verbatim commands and their observed output from the actual `v1.15.7` run on this host:
 
-**Step b1: copy the APK to `~/Downloads/` with the version-tagged name.**
+**Step b1: copy the APK to `$PERSONAL_ROOT/Downloads/` (`~/Shared/Downloads` on the Mac) with the version-tagged name.**
 
 ```bash
 APK_SRC="$REPO_DIR/build/app/outputs/flutter-apk/app-release.apk"
-APK_DOWNLOADS="$HOME/Downloads/Free4Me-IPTV-${VERSION}-arm64.apk"
+APK_DOWNLOADS="${PERSONAL_ROOT:-$HOME}/Downloads/Free4Me-IPTV-${VERSION}-arm64.apk"
 cp "$APK_SRC" "$APK_DOWNLOADS"
 ```
 
-This is purely a local convenience for sideloading; CI does not need it. Observed from `~/Downloads/`:
+This is purely a local convenience for sideloading; CI does not need it. Observed from `~/Downloads/` (before 2026-10-16):
 
 ```
 -rw-r--r--  Free4Me-IPTV-1.15.5-arm64.apk  106706054 bytes
@@ -488,7 +488,7 @@ Observed output from v1.15.7 (verbatim, only the final lines):
 |---|---|
 | `flutter build apk --release` writes | `build/app/outputs/flutter-apk/app-release.apk` |
 | Companion sha1 file | `build/app/outputs/flutter-apk/app-release.apk.sha1` |
-| Local copy after script step b1 | `~/Downloads/Free4Me-IPTV-${VERSION}-arm64.apk` |
+| Local copy after script step b1 | `$PERSONAL_ROOT/Downloads/Free4Me-IPTV-${VERSION}-arm64.apk` |
 | Uploaded asset name on GH release | `Free4Me-IPTV-${VERSION}-arm64.apk` |
 
 `${VERSION}` is parsed from `pubspec.yaml` line 19 by:

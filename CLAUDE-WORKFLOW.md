@@ -83,7 +83,7 @@ are ~3–5 min.
 
   - reads the GitHub PAT from macOS Keychain
   - uses `~/.ssh/id_rsa` for SSH push
-  - copies the APK to `~/Downloads/`
+  - copies the APK to `$PERSONAL_ROOT/Downloads/` (`~/Shared/Downloads` on the Mac)
   - creates the GH release via the REST API directly
 
 Use this when you want the APK on disk, when GitHub Actions is down, or
@@ -322,8 +322,8 @@ the pushed commit).
 6. Generate, copy the `github_pat_...` value
 7. On the Mac:
    ```bash
-   echo 'github_pat_XXX' > ~/git/free4me-iptv/.github-token
-   chmod 600 ~/git/free4me-iptv/.github-token
+   echo 'github_pat_XXX' > "${PERSONAL_ROOT:-$HOME}/git/free4me-iptv/.github-token"
+   chmod 600 "${PERSONAL_ROOT:-$HOME}/git/free4me-iptv/.github-token"
    ```
 8. Next Cowork session: Claude reads `.github-token` and uses it on push.
 
@@ -334,7 +334,7 @@ repo root on the Mac (gitignored, `chmod 600`). It contains all four
 values already formatted as `KEY=VALUE` lines.
 
 ```bash
-cat ~/git/free4me-iptv/.release-keystore-secrets
+cat "${PERSONAL_ROOT:-$HOME}/git/free4me-iptv/.release-keystore-secrets"
 ```
 
 Then https://github.com/rkinnc75/Free4Me-IPTV/settings/secrets/actions →

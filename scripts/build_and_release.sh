@@ -8,7 +8,7 @@
 # What it does:
 #   1. Reads version from pubspec.yaml
 #   2. Builds the release APK
-#   3. Copies 4 APKs (arm/arm64/x64/universal) to ~/Downloads/
+#   3. Copies 4 APKs (arm/arm64/x64/universal) to ${PERSONAL_ROOT:-~}/Downloads/
 #   4. Commits pubspec.yaml (version bump must already be done)
 #   5. Pushes to github.com:rkinnc75/Free4Me-IPTV (using ~/.ssh/id_rsa)
 #   6. Creates a GitHub Release tagged v{version}
@@ -22,6 +22,7 @@
 # =============================================================================
 
 set -euo pipefail
+DOWNLOADS="${PERSONAL_ROOT:-$HOME}/Downloads"
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_DIR"
@@ -97,11 +98,11 @@ flutter build apk --release --target-platform android-arm,android-arm64,android-
 
 APK_OUT="$REPO_DIR/build/app/outputs/flutter-apk"
 
-cp "$APK_OUT/app-release.apk"           "$HOME/Downloads/$APK_NAME"
-cp "$APK_OUT/app-armeabi-v7a-release.apk" "$HOME/Downloads/$APK_ARM"
-cp "$APK_OUT/app-arm64-v8a-release.apk"   "$HOME/Downloads/$APK_ARM64"
-cp "$APK_OUT/app-x86_64-release.apk"      "$HOME/Downloads/$APK_X64"
-echo " APKs copied to ~/Downloads/ ($APK_NAME + arm/arm64/x64 slims)"
+cp "$APK_OUT/app-release.apk"           "$DOWNLOADS/$APK_NAME"
+cp "$APK_OUT/app-armeabi-v7a-release.apk" "$DOWNLOADS/$APK_ARM"
+cp "$APK_OUT/app-arm64-v8a-release.apk"   "$DOWNLOADS/$APK_ARM64"
+cp "$APK_OUT/app-x86_64-release.apk"      "$DOWNLOADS/$APK_X64"
+echo " APKs copied to $DOWNLOADS/ ($APK_NAME + arm/arm64/x64 slims)"
 
 # ── 3a. Auto-generate a What's New entry from commits if one is missing ──────
 # fix242: the in-app What's New dialog and version.json both read the
@@ -242,7 +243,7 @@ print(match[0] if match else '')
   UPLOAD_RESPONSE=$(curl -sf -X POST \
     -H "Authorization: token $GITHUB_TOKEN" \
     -H "Content-Type: application/vnd.android.package-archive" \
-    --data-binary @"$HOME/Downloads/$NAME" \
+    --data-binary @"$DOWNLOADS/$NAME" \
     "https://uploads.github.com/repos/rkinnc75/Free4Me-IPTV/releases/${RELEASE_ID}/assets?name=${NAME}")
   echo "   $(echo "$UPLOAD_RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['browser_download_url'])")"
 done

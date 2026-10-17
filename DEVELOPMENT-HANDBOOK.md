@@ -444,7 +444,7 @@ After every version:
 export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
 export PATH="~/tools/flutter/bin:$JAVA_HOME/bin:$PATH"
 export ANDROID_HOME="$HOME/Library/Android/sdk"
-cd ~/git/free4me-iptv
+cd "${PERSONAL_ROOT:-$HOME}/git/free4me-iptv"
 flutter pub get
 flutter analyze --no-fatal-warnings
 flutter build apk --release --split-per-abi

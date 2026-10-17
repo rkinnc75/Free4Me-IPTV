@@ -1,6 +1,6 @@
 # free4me-iptv `channels` Table — Index / SQL Cross-Reference
 
-**Sources:** `/Users/rich.kalsky/git/free4me-iptv/lib/backend/db_factory.dart` (migrations 1–40, index DDL), `/Users/rich.kalsky/git/free4me-iptv/lib/backend/sql.dart` (index-management machinery + all channels SQL builders), `lib/backend/timed_db.dart`, `lib/backend/search_perf_test.dart`, plus observed on-device `fix418 PLAN:` logs (`pvt_2026-07-01T22-51.log`, `onn_refresh2.log`, `onn_epg_refresh.log`, `onn_rematch*.log`).
+**Sources:** `lib/backend/db_factory.dart` (migrations 1–40, index DDL), `lib/backend/sql.dart` (index-management machinery + all channels SQL builders), `lib/backend/timed_db.dart`, `lib/backend/search_perf_test.dart`, plus observed on-device `fix418 PLAN:` logs (`pvt_2026-07-01T22-51.log`, `onn_refresh2.log`, `onn_epg_refresh.log`, `onn_rematch*.log`).
 
 **The 6-tier tier CASE** (referenced below as `<tier>`) — `sql.dart:1614` `_t6`, byte-identical to `BrowseOrder.tier` and every migration's inline expression:
 
